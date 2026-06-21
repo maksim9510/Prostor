@@ -232,7 +232,7 @@
     },
     "linux": {
       "category": "Development",
-      "maintainer": "Nous Research <support@nousresearch.com>",
+      "maintainer": "maksim9510 <maksim9510@users.noreply.github.com>",
       "synopsis": "Native desktop shell for Prostor Agent.",
       "target": [
         "AppImage",
