@@ -98,31 +98,31 @@ def test_normalize_lang_accepts_aliases():
 
 
 def test_normalize_lang_unknown_falls_back():
-    assert i18n._normalize_lang("klingon") == "en"
-    assert i18n._normalize_lang("") == "en"
-    assert i18n._normalize_lang(None) == "en"
+    assert i18n._normalize_lang("klingon") == "ru"
+    assert i18n._normalize_lang("") == "ru"
+    assert i18n._normalize_lang(None) == "ru"
 
 
 def test_env_var_override(monkeypatch):
-    """HERMES_LANGUAGE wins over config."""
+    """PROSTOR_LANGUAGE wins over config."""
     i18n.reset_language_cache()
-    monkeypatch.setenv("HERMES_LANGUAGE", "ja")
+    monkeypatch.setenv("PROSTOR_LANGUAGE", "ja")
     assert i18n.get_language() == "ja"
 
 
 def test_env_var_normalized(monkeypatch):
     i18n.reset_language_cache()
-    monkeypatch.setenv("HERMES_LANGUAGE", "Chinese")
+    monkeypatch.setenv("PROSTOR_LANGUAGE", "Chinese")
     assert i18n.get_language() == "zh"
 
 
 def test_default_when_nothing_set(monkeypatch):
-    """With no env var and no config override, falls back to English."""
-    monkeypatch.delenv("HERMES_LANGUAGE", raising=False)
+    """With no env var and no config override, falls back to Russian (default)."""
+    monkeypatch.delenv("PROSTOR_LANGUAGE", raising=False)
     # Force config lookup to return None -- patch the cached reader.
     i18n.reset_language_cache()
     monkeypatch.setattr(i18n, "_config_language_cached", lambda: None)
-    assert i18n.get_language() == "en"
+    assert i18n.get_language() == "ru"
 
 
 # ---------------------------------------------------------------------------
@@ -147,26 +147,26 @@ def test_t_missing_key_returns_key():
     assert result == "nonexistent.key.path"
 
 
-def test_t_missing_key_in_non_english_falls_back_to_english(tmp_path, monkeypatch):
-    """If a key exists in English but not in the target locale, fall back."""
+def test_t_missing_key_in_non_default_falls_back_to_default(tmp_path, monkeypatch):
+    """If a key exists in the default language (ru) but not in the target locale, fall back."""
     # Stand up a fake incomplete locale under a temp locales dir.
     fake_locales = tmp_path / "locales"
     fake_locales.mkdir()
-    (fake_locales / "en.yaml").write_text("foo: English Foo\n", encoding="utf-8")
+    (fake_locales / "ru.yaml").write_text("foo: Russian Foo\n", encoding="utf-8")
     (fake_locales / "zh.yaml").write_text("# intentionally empty\n", encoding="utf-8")
     monkeypatch.setattr(i18n, "_locales_dir", lambda: fake_locales)
     i18n.reset_language_cache()
     try:
-        assert i18n.t("foo", lang="zh") == "English Foo"
+        assert i18n.t("foo", lang="zh") == "Russian Foo"
     finally:
         # Clear the cache on teardown so subsequent tests don't see the
-        # fake "foo: English Foo" catalog instead of the real locales/*.yaml.
+        # fake "foo: Russian Foo" catalog instead of the real locales/*.yaml.
         i18n.reset_language_cache()
 
 
-def test_t_unknown_language_uses_english():
-    """Unknown lang codes normalize to English, not to a key-path fallback."""
-    assert i18n.t("approval.denied", lang="klingon") == i18n.t("approval.denied", lang="en")
+def test_t_unknown_language_uses_default():
+    """Unknown lang codes normalize to the default language (ru), not to a key-path fallback."""
+    assert i18n.t("approval.denied", lang="klingon") == i18n.t("approval.denied", lang="ru")
 
 
 # ---------------------------------------------------------------------------
@@ -176,17 +176,17 @@ def test_t_unknown_language_uses_english():
 # ---------------------------------------------------------------------------
 
 def test_locales_dir_env_override_used_when_dir_exists(tmp_path, monkeypatch):
-    """HERMES_BUNDLED_LOCALES wins when it points at a real directory."""
+    """PROSTOR_BUNDLED_LOCALES wins when it points at a real directory."""
     bundled = tmp_path / "bundled-locales"
     bundled.mkdir()
-    monkeypatch.setenv("HERMES_BUNDLED_LOCALES", str(bundled))
+    monkeypatch.setenv("PROSTOR_BUNDLED_LOCALES", str(bundled))
     assert i18n._locales_dir() == bundled
 
 
 def test_locales_dir_env_override_ignored_when_missing(tmp_path, monkeypatch):
-    """A bogus HERMES_BUNDLED_LOCALES falls through to source/wheel resolution
+    """A bogus PROSTOR_BUNDLED_LOCALES falls through to source/wheel resolution
     instead of returning a path that doesn't exist."""
-    monkeypatch.setenv("HERMES_BUNDLED_LOCALES", str(tmp_path / "does-not-exist"))
+    monkeypatch.setenv("PROSTOR_BUNDLED_LOCALES", str(tmp_path / "does-not-exist"))
     result = i18n._locales_dir()
     assert result != tmp_path / "does-not-exist"
     # In a source checkout this is the repo-root locales dir.
@@ -199,7 +199,7 @@ def test_locales_dir_falls_back_to_data_scheme(tmp_path, monkeypatch):
     import sysconfig
 
     # No env override.
-    monkeypatch.delenv("HERMES_BUNDLED_LOCALES", raising=False)
+    monkeypatch.delenv("PROSTOR_BUNDLED_LOCALES", raising=False)
 
     # Force the source-adjacent path to a location with no locales/ dir.
     fake_pkg = tmp_path / "site-packages" / "agent"

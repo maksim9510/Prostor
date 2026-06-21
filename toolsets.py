@@ -28,12 +28,12 @@ from typing import List, Dict, Any, Set, Optional
 
 # Shared tool list for CLI and all messaging platform toolsets.
 # Edit this once to update all platforms simultaneously.
-_HERMES_CORE_TOOLS = [
+_PROSTOR_CORE_TOOLS = [
     # Web
     "web_search", "web_extract",
     # Terminal + process management
     "terminal", "process",
-    # Read the desktop GUI's embedded terminal pane (gated on HERMES_DESKTOP
+    # Read the desktop GUI's embedded terminal pane (gated on PROSTOR_DESKTOP
     # via check_fn in tools/read_terminal_tool.py — hidden outside the GUI).
     "read_terminal",
     # File manipulation
@@ -62,7 +62,7 @@ _HERMES_CORE_TOOLS = [
     # Home Assistant smart home control (gated on HASS_TOKEN via check_fn)
     "ha_list_entities", "ha_get_state", "ha_list_services", "ha_call_service",
     # Kanban multi-agent coordination — only in schema when the agent is
-    # spawned as a kanban worker (HERMES_KANBAN_TASK env set) or the current
+    # spawned as a kanban worker (PROSTOR_KANBAN_TASK env set) or the current
     # profile explicitly enables the kanban toolset. Gated via check_fn in
     # tools/kanban_tools.py.
     "kanban_show", "kanban_list",
@@ -76,7 +76,7 @@ _HERMES_CORE_TOOLS = [
 # Webhook events may originate from untrusted third-party content (for example,
 # public PR titles/comments). Keep the default webhook toolset intentionally
 # constrained to avoid local file/system execution by prompt injection.
-_HERMES_WEBHOOK_SAFE_TOOLS = [
+_PROSTOR_WEBHOOK_SAFE_TOOLS = [
     "web_search",
     "web_extract",
     "vision_analyze",
@@ -105,7 +105,7 @@ TOOLSETS = {
             "Search X (Twitter) posts and threads via xAI's built-in "
             "x_search Responses tool. Available when xAI credentials are "
             "configured (SuperGrok OAuth or XAI_API_KEY). Off by default; "
-            "enable in `hermes tools` → X (Twitter) Search."
+            "enable in `prostor tools` → X (Twitter) Search."
         ),
         "tools": ["x_search"],
         "includes": []
@@ -134,7 +134,7 @@ TOOLSETS = {
             "Video generation tools. Single ``video_generate`` tool covers "
             "text-to-video (prompt only) and image-to-video (prompt + "
             "image_url) — the active backend auto-routes. Configure via "
-            "``hermes tools`` → Video Generation."
+            "``prostor tools`` → Video Generation."
         ),
         "tools": ["video_generate"],
         "includes": []
@@ -253,7 +253,7 @@ TOOLSETS = {
     "kanban": {
         "description": (
             "Kanban multi-agent coordination — only active when the agent "
-            "is spawned by the kanban dispatcher (HERMES_KANBAN_TASK env "
+            "is spawned by the kanban dispatcher (PROSTOR_KANBAN_TASK env "
             "set). The dispatcher runs inside the gateway by default; see "
             "`kanban.dispatch_in_gateway` in config.yaml. Lets workers mark "
             "tasks done with structured handoffs, block for human input, "
@@ -332,7 +332,7 @@ TOOLSETS = {
         "includes": ["web", "vision", "image_gen"]
     },
 
-    # Coding posture (base Hermes — CLI/TUI/desktop/ACP). Auto-selected in a
+    # Coding posture (base Prostor — CLI/TUI/desktop/ACP). Auto-selected in a
     # code workspace; see agent/coding_context.py. Keeps everything you reach
     # for while pairing on code and drops the rest (messaging, tts, image_gen,
     # spotify, home-assistant, cron, computer-use).
@@ -355,20 +355,20 @@ TOOLSETS = {
         "includes": [],
         # Posture toolset: selected per-session by agent/coding_context.py,
         # never auto-recovered into per-platform tool config (see the
-        # non-configurable-toolset recovery loop in hermes_cli/tools_config.py).
+        # non-configurable-toolset recovery loop in prostor_cli/tools_config.py).
         "posture": True,
     },
     
     # ==========================================================================
-    # Full Hermes toolsets (CLI + messaging platforms)
+    # Full Prostor toolsets (CLI + messaging platforms)
     #
     # All platforms share the same core tools. Note: agents do NOT get an
     # agent-callable send_message tool — outbound platform messaging is handled
     # outside the agent loop (cron delivery, the gateway kanban notifier, and
-    # the `hermes send` CLI), not by the model deciding to send on its own.
+    # the `prostor send` CLI), not by the model deciding to send on its own.
     # ==========================================================================
 
-    "hermes-acp": {
+    "prostor-acp": {
         "description": "Editor integration (VS Code, Zed, JetBrains) — coding-focused tools without messaging, audio, or clarify UI",
         "tools": [
             "web_search", "web_extract",
@@ -387,7 +387,7 @@ TOOLSETS = {
         "includes": []
     },
 
-    "hermes-api-server": {
+    "prostor-api-server": {
         "description": "OpenAI-compatible API server — full agent tools accessible via HTTP (no interactive UI tools like clarify or send_message)",
         "tools": [
             # Web
@@ -420,95 +420,95 @@ TOOLSETS = {
         "includes": []
     },
     
-    "hermes-cli": {
+    "prostor-cli": {
         "description": "Full interactive CLI toolset - all default tools plus cronjob management",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-cron": {
-        # Mirrors hermes-cli so cron's "default" toolset is the same set of
-        # core tools users see interactively — then `hermes tools` filters
+    "prostor-cron": {
+        # Mirrors prostor-cli so cron's "default" toolset is the same set of
+        # core tools users see interactively — then `prostor tools` filters
         # them down per the platform config. _DEFAULT_OFF_TOOLSETS (moa,
         # homeassistant) are excluded by _get_platform_tools() unless
         # the user explicitly enables them.
-        "description": "Default cron toolset - same core tools as hermes-cli; gated by `hermes tools`",
-        "tools": _HERMES_CORE_TOOLS,
+        "description": "Default cron toolset - same core tools as prostor-cli; gated by `prostor tools`",
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-telegram": {
+    "prostor-telegram": {
         "description": "Telegram bot toolset - full access for personal use (terminal has safety checks)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
     
-    "hermes-discord": {
+    "prostor-discord": {
         "description": "Discord bot toolset - full access (terminal has safety checks via dangerous command approval)",
-        "tools": _HERMES_CORE_TOOLS + [
+        "tools": _PROSTOR_CORE_TOOLS + [
             "discord",
             "discord_admin",
         ],
         "includes": []
     },
     
-    "hermes-whatsapp": {
+    "prostor-whatsapp": {
         "description": "WhatsApp bot toolset - similar to Telegram (personal messaging, more trusted)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
     
-    "hermes-slack": {
+    "prostor-slack": {
         "description": "Slack bot toolset - full access for workspace use (terminal has safety checks)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
     
-    "hermes-signal": {
+    "prostor-signal": {
         "description": "Signal bot toolset - encrypted messaging platform (full access)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-bluebubbles": {
+    "prostor-bluebubbles": {
         "description": "BlueBubbles iMessage bot toolset - Apple iMessage via local BlueBubbles server",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-homeassistant": {
+    "prostor-homeassistant": {
         "description": "Home Assistant bot toolset - smart home event monitoring and control",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-email": {
-        "description": "Email bot toolset - interact with Hermes via email (IMAP/SMTP)",
-        "tools": _HERMES_CORE_TOOLS,
+    "prostor-email": {
+        "description": "Email bot toolset - interact with Prostor via email (IMAP/SMTP)",
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-mattermost": {
+    "prostor-mattermost": {
         "description": "Mattermost bot toolset - self-hosted team messaging (full access)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-matrix": {
+    "prostor-matrix": {
         "description": "Matrix bot toolset - decentralized encrypted messaging (full access)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-dingtalk": {
+    "prostor-dingtalk": {
         "description": "DingTalk bot toolset - enterprise messaging platform (full access)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-feishu": {
+    "prostor-feishu": {
         "description": "Feishu/Lark bot toolset - enterprise messaging via Feishu/Lark (full access)",
-        "tools": _HERMES_CORE_TOOLS + [
+        "tools": _PROSTOR_CORE_TOOLS + [
             "feishu_doc_read",
             "feishu_drive_list_comments",
             "feishu_drive_list_comment_replies",
@@ -518,33 +518,33 @@ TOOLSETS = {
         "includes": []
     },
 
-    "hermes-weixin": {
+    "prostor-weixin": {
         "description": "Weixin bot toolset - personal WeChat messaging via iLink (full access)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-qqbot": {
+    "prostor-qqbot": {
         "description": "QQBot toolset - QQ messaging via Official Bot API v2 (full access)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-wecom": {
+    "prostor-wecom": {
         "description": "WeCom bot toolset - enterprise WeChat messaging (full access)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-wecom-callback": {
+    "prostor-wecom-callback": {
         "description": "WeCom callback toolset - enterprise self-built app messaging (full access)",
-        "tools": _HERMES_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-yuanbao": {
+    "prostor-yuanbao": {
         "description": "Yuanbao Bot 元宝消息平台工具集 - 群信息、成员查询、私聊、贴纸表情",
-        "tools": _HERMES_CORE_TOOLS + [
+        "tools": _PROSTOR_CORE_TOOLS + [
             "yb_query_group_info",
             "yb_query_group_members",
             "yb_send_dm",
@@ -555,22 +555,22 @@ TOOLSETS = {
         "includes": []
     },
 
-    "hermes-sms": {
-        "description": "SMS bot toolset - interact with Hermes via SMS (Twilio)",
-        "tools": _HERMES_CORE_TOOLS,
+    "prostor-sms": {
+        "description": "SMS bot toolset - interact with Prostor via SMS (Twilio)",
+        "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
 
-    "hermes-webhook": {
+    "prostor-webhook": {
         "description": "Webhook toolset - receive and process external webhook events",
-        "tools": _HERMES_WEBHOOK_SAFE_TOOLS,
+        "tools": _PROSTOR_WEBHOOK_SAFE_TOOLS,
         "includes": []
     },
 
-    "hermes-gateway": {
+    "prostor-gateway": {
         "description": "Gateway toolset - union of all messaging platform tools",
         "tools": [],
-        "includes": ["hermes-telegram", "hermes-discord", "hermes-whatsapp", "hermes-slack", "hermes-signal", "hermes-bluebubbles", "hermes-homeassistant", "hermes-email", "hermes-sms", "hermes-mattermost", "hermes-matrix", "hermes-dingtalk", "hermes-feishu", "hermes-wecom", "hermes-wecom-callback", "hermes-weixin", "hermes-qqbot", "hermes-webhook", "hermes-yuanbao"]
+        "includes": ["prostor-telegram", "prostor-discord", "prostor-whatsapp", "prostor-slack", "prostor-signal", "prostor-bluebubbles", "prostor-homeassistant", "prostor-email", "prostor-sms", "prostor-mattermost", "prostor-matrix", "prostor-dingtalk", "prostor-feishu", "prostor-wecom", "prostor-wecom-callback", "prostor-weixin", "prostor-qqbot", "prostor-webhook", "prostor-yuanbao"]
     }
 }
 
@@ -665,15 +665,15 @@ def resolve_toolset(name: str, visited: Set[str] = None) -> List[str]:
     # Get toolset definition
     toolset = get_toolset(name)
     if not toolset:
-        # Auto-generate a toolset for plugin platforms (hermes-<name>).
-        # Gives them _HERMES_CORE_TOOLS plus any tools the plugin registered
+        # Auto-generate a toolset for plugin platforms (prostor-<name>).
+        # Gives them _PROSTOR_CORE_TOOLS plus any tools the plugin registered
         # into a toolset matching the platform name.
-        if name.startswith("hermes-"):
-            platform_name = name[len("hermes-"):]
+        if name.startswith("prostor-"):
+            platform_name = name[len("prostor-"):]
             try:
                 from gateway.platform_registry import platform_registry
                 if platform_registry.is_registered(platform_name):
-                    plugin_tools = set(_HERMES_CORE_TOOLS)
+                    plugin_tools = set(_PROSTOR_CORE_TOOLS)
                     try:
                         from tools.registry import registry
                         plugin_tools.update(

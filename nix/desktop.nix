@@ -1,26 +1,26 @@
-# nix/desktop.nix — Hermes Desktop (Electron) app build + wrapper
+# nix/desktop.nix — Prostor Desktop (Electron) app build + wrapper
 #
-# `hermesAgent` is the fully-built `.#default` package — it ships the
-# `hermes` binary with the venv, runtime PATH, bundled skills/plugins, etc.
+# `prostorAgent` is the fully-built `.#default` package — it ships the
+# `prostor` binary with the venv, runtime PATH, bundled skills/plugins, etc.
 # already wired up.  We point the desktop at it via the existing
-# `HERMES_DESKTOP_HERMES` override env var, so the desktop's resolver
-# uses our fully wrapped binary at step 4 ("existing Hermes CLI").
+# `PROSTOR_DESKTOP_PROSTOR` override env var, so the desktop's resolver
+# uses our fully wrapped binary at step 4 ("existing Prostor CLI").
 # No reimplementation of the agent resolution in this wrapper.
 {
   pkgs,
   lib,
   stdenv,
   makeWrapper,
-  hermesNpmLib,
+  prostorNpmLib,
   electron,
-  hermesAgent,
+  prostorAgent,
   ...
 }:
 let
-  npm = hermesNpmLib.mkNpmPassthru {
+  npm = prostorNpmLib.mkNpmPassthru {
     folder = "apps/desktop";
     attr = "desktop";
-    pname = "hermes-desktop";
+    pname = "prostor-desktop";
   };
 
   packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/apps/desktop/package.json"));
@@ -30,7 +30,7 @@ let
   renderer = pkgs.buildNpmPackage (
     npm
     // {
-      pname = "hermes-desktop-renderer";
+      pname = "prostor-desktop-renderer";
       inherit version;
       doCheck = true;
 
@@ -103,7 +103,7 @@ in
 
 # Electron wrapper: nixpkgs' electron binary pointed at the renderer dir.
 stdenv.mkDerivation {
-  pname = "hermes-desktop";
+  pname = "prostor-desktop";
   inherit version;
 
   dontUnpack = true;
@@ -114,24 +114,24 @@ stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/share/hermes-desktop $out/bin
-    cp -r ${renderer}/* $out/share/hermes-desktop/
+    mkdir -p $out/share/prostor-desktop $out/bin
+    cp -r ${renderer}/* $out/share/prostor-desktop/
 
     # Standard nixpkgs pattern for electron-builder apps: patch process.resourcesPath
     # to point to the app's directory. In Nix, unpackaged electron defaults this
     # to the electron distribution's resources path, breaking extraResources lookups.
-    substituteInPlace $out/share/hermes-desktop/electron/main.cjs \
-      --replace-fail "process.resourcesPath" "'$out/share/hermes-desktop'"
+    substituteInPlace $out/share/prostor-desktop/electron/main.cjs \
+      --replace-fail "process.resourcesPath" "'$out/share/prostor-desktop'"
 
     # Wrap the nixpkgs electron binary to launch our app.  Set
-    # HERMES_DESKTOP_HERMES to the absolute path of the nix-built `hermes`
-    # binary so the desktop's resolver step 4 ("existing Hermes CLI on
+    # PROSTOR_DESKTOP_PROSTOR to the absolute path of the nix-built `prostor`
+    # binary so the desktop's resolver step 4 ("existing Prostor CLI on
     # PATH") uses our fully wrapped binary — venv with all deps,
     # bundled skills/plugins, runtime PATH (ripgrep/git/ffmpeg/etc).
     # No reimplementation of the agent resolver in the wrapper.
-    makeWrapper ${lib.getExe electron} $out/bin/hermes-desktop \
-      --add-flags "$out/share/hermes-desktop" \
-      --set HERMES_DESKTOP_HERMES "${lib.getExe hermesAgent}" \
+    makeWrapper ${lib.getExe electron} $out/bin/prostor-desktop \
+      --add-flags "$out/share/prostor-desktop" \
+      --set PROSTOR_DESKTOP_PROSTOR "${lib.getExe prostorAgent}" \
       --set ELECTRON_IS_DEV 0
 
     runHook postInstall
@@ -142,10 +142,10 @@ stdenv.mkDerivation {
   };
 
   meta = with lib; {
-    description = "Native Electron desktop shell for Hermes Agent";
-    homepage = "https://github.com/NousResearch/hermes-agent";
+    description = "Native Electron desktop shell for Prostor Agent";
+    homepage = "https://github.com/NousResearch/prostor-agent";
     license = licenses.mit;
     platforms = platforms.unix;
-    mainProgram = "hermes-desktop";
+    mainProgram = "prostor-desktop";
   };
 }

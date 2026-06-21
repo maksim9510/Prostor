@@ -16,18 +16,18 @@ from trajectory_compressor import (
 )
 
 
-def test_import_loads_env_from_hermes_home(tmp_path, monkeypatch):
-    home = tmp_path / ".hermes"
+def test_import_loads_env_from_prostor_home(tmp_path, monkeypatch):
+    home = tmp_path / ".prostor"
     home.mkdir()
-    (home / ".env").write_text("OPENROUTER_API_KEY=from-hermes-home\n", encoding="utf-8")
+    (home / ".env").write_text("OPENROUTER_API_KEY=from-prostor-home\n", encoding="utf-8")
 
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("PROSTOR_HOME", str(home))
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
     sys.modules.pop("trajectory_compressor", None)
     importlib.import_module("trajectory_compressor")
 
-    assert os.getenv("OPENROUTER_API_KEY") == "from-hermes-home"
+    assert os.getenv("OPENROUTER_API_KEY") == "from-prostor-home"
 
 
 def test_generate_summary_kimi_omits_temperature():

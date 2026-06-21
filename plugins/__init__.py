@@ -1,1 +1,1 @@
-# Hermes plugins package
+# Prostor plugins package

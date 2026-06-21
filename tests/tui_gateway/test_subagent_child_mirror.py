@@ -20,12 +20,12 @@ def server():
     with patch.dict(
         "sys.modules",
         {
-            "hermes_constants": MagicMock(
-                get_hermes_home=MagicMock(return_value="/tmp/hermes_test_child_mirror")
+            "prostor_constants": MagicMock(
+                get_prostor_home=MagicMock(return_value="/tmp/prostor_test_child_mirror")
             ),
-            "hermes_cli.env_loader": MagicMock(),
-            "hermes_cli.banner": MagicMock(),
-            "hermes_state": MagicMock(),
+            "prostor_cli.env_loader": MagicMock(),
+            "prostor_cli.banner": MagicMock(),
+            "prostor_state": MagicMock(),
         },
     ):
         import importlib
