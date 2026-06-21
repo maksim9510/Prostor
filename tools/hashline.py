@@ -699,7 +699,13 @@ _CACHE_LOCK = threading.Lock()
 
 def get_index(content: str, file_path: Optional[str] = None,
               file_mtime: Optional[float] = None) -> HashLineIndex:
-    """Get a HashLineIndex, from cache if valid, or build new."""
+    """Get a HashLineIndex, from cache if valid, or build new.
+
+    Cache resolution order:
+    1. In-memory cache (fastest — same process)
+    2. Persistent disk cache (fast — skip index rebuild for unchanged files)
+    3. Build new index (slowest — full hash computation)
+    """
     if file_path:
         cache_key = os.path.abspath(file_path)
         with _CACHE_LOCK:
@@ -708,14 +714,39 @@ def get_index(content: str, file_path: Optional[str] = None,
                 # Validate: mtime + size must match
                 if (cached.mtime == file_mtime and cached.size == len(content)):
                     return cached.index
-            # Build new
-            index = HashLineIndex(content, file_path, file_mtime)
+
+        # Try persistent disk cache (between sessions)
+        try:
+            from tools.hashline_persistent_cache import load_index as _load_persistent
+            disk_index = _load_persistent(file_path, file_mtime, len(content))
+            if disk_index is not None:
+                # Promote to in-memory cache
+                with _CACHE_LOCK:
+                    _INDEX_CACHE[cache_key] = CachedIndex(disk_index, file_mtime, len(content))
+                return disk_index
+        except ImportError:
+            pass  # persistent cache module not available
+        except Exception as e:
+            logger.debug("Persistent cache load failed: %s", e)
+
+        # Build new
+        index = HashLineIndex(content, file_path, file_mtime)
+        with _CACHE_LOCK:
             _INDEX_CACHE[cache_key] = CachedIndex(index, file_mtime, len(content))
-            return index
+
+        # Save to persistent cache (async-friendly, but sync for simplicity)
+        try:
+            from tools.hashline_persistent_cache import save_index as _save_persistent
+            _save_persistent(index, file_path, file_mtime, len(content))
+        except ImportError:
+            pass
+        except Exception:
+            pass  # cache save failure is non-fatal
+
+        return index
     else:
         # No file_path → no caching
         return HashLineIndex(content)
-
 # ---------------------------------------------------------------------------
 # Main API — hashline_find_and_replace
 # ---------------------------------------------------------------------------
