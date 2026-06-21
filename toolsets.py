@@ -37,7 +37,7 @@ _PROSTOR_CORE_TOOLS = [
     # via check_fn in tools/read_terminal_tool.py — hidden outside the GUI).
     "read_terminal",
     # File manipulation
-    "read_file", "write_file", "patch", "batch_patch", "search_files",
+    "read_file", "batch_read", "write_file", "patch", "batch_patch", "search_files",
     # Vision + image generation
     "vision_analyze", "image_generate",
     # Skills
@@ -341,7 +341,7 @@ TOOLSETS = {
         "tools": [
             "web_search", "web_extract",
             "terminal", "process", "read_terminal",
-            "read_file", "write_file", "patch", "batch_patch", "search_files",
+            "read_file", "batch_read", "write_file", "patch", "batch_patch", "search_files",
             "vision_analyze",
             "skills_list", "skill_view", "skill_manage",
             "browser_navigate", "browser_snapshot", "browser_click",
@@ -373,7 +373,7 @@ TOOLSETS = {
         "tools": [
             "web_search", "web_extract",
             "terminal", "process",
-            "read_file", "write_file", "patch", "batch_patch", "search_files",
+            "read_file", "batch_read", "write_file", "patch", "batch_patch", "search_files",
             "vision_analyze",
             "skills_list", "skill_view", "skill_manage",
             "browser_navigate", "browser_snapshot", "browser_click",
@@ -395,7 +395,7 @@ TOOLSETS = {
             # Terminal + process management
             "terminal", "process",
             # File manipulation
-            "read_file", "write_file", "patch", "batch_patch", "search_files",
+            "read_file", "batch_read", "write_file", "patch", "batch_patch", "search_files",
             # Vision + image generation
             "vision_analyze", "image_generate",
             # Skills
