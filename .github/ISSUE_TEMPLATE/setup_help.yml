@@ -12,7 +12,7 @@ body:
         - Run `prostor debug share` and paste the links in the Debug Report section below
         - If you're in a chat session, you can use `/debug` instead — it does the same thing
         - Try `prostor update` to get the latest version
-        - Check the [README troubleshooting section](https://github.com/NousResearch/prostor-agent#troubleshooting)
+        - Check the [README troubleshooting section](https://github.com/maksim9510/Prostor#troubleshooting)
         - For general questions, consider the [Nous Research Discord](https://discord.gg/NousResearch) for faster help
 
   - type: textarea

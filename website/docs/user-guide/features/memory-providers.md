@@ -68,7 +68,7 @@ prostor memory setup        # select "honcho" — runs the Honcho-specific post-
 
 The legacy `prostor honcho setup` command still works (it now redirects to `prostor memory setup`), but is only registered after Honcho is selected as the active memory provider.
 
-**Config:** `$PROSTOR_HOME/honcho.json` (profile-local) or `~/.honcho/config.json` (global). Resolution order: `$PROSTOR_HOME/honcho.json` > `~/.prostor/honcho.json` > `~/.honcho/config.json`. See the [config reference](https://github.com/NousResearch/prostor-agent/blob/main/plugins/memory/honcho/README.md) and the [Honcho integration guide](https://docs.honcho.dev/v3/guides/integrations/prostor).
+**Config:** `$PROSTOR_HOME/honcho.json` (profile-local) or `~/.honcho/config.json` (global). Resolution order: `$PROSTOR_HOME/honcho.json` > `~/.prostor/honcho.json` > `~/.honcho/config.json`. See the [config reference](https://github.com/maksim9510/Prostor/blob/main/plugins/memory/honcho/README.md) and the [Honcho integration guide](https://docs.honcho.dev/v3/guides/integrations/prostor).
 
 <details>
 <summary>Full config reference</summary>
@@ -270,7 +270,7 @@ Off-gateway these keys do nothing. `prostor memory setup` only prompts for them 
 
 </details>
 
-See the [config reference](https://github.com/NousResearch/prostor-agent/blob/main/plugins/memory/honcho/README.md) and [Honcho integration guide](https://docs.honcho.dev/v3/guides/integrations/prostor).
+See the [config reference](https://github.com/maksim9510/Prostor/blob/main/plugins/memory/honcho/README.md) and [Honcho integration guide](https://docs.honcho.dev/v3/guides/integrations/prostor).
 
 
 ---
@@ -386,7 +386,7 @@ The setup wizard installs dependencies automatically and only installs what's ne
 | `retain_assistant_prefix` | `Assistant` | Label used before assistant turns in auto-retained transcripts |
 | `recall_tags` | — | Tags to filter on recall |
 
-See [plugin README](https://github.com/NousResearch/prostor-agent/blob/main/plugins/memory/hindsight/README.md) for the full configuration reference.
+See [plugin README](https://github.com/maksim9510/Prostor/blob/main/plugins/memory/hindsight/README.md) for the full configuration reference.
 
 ---
 

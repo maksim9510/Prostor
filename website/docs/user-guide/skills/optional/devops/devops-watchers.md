@@ -81,7 +81,7 @@ Watch a GitHub repo (set `GITHUB_TOKEN` in `~/.prostor/.env` to avoid the 60 req
 
 ```bash
 python $PROSTOR_HOME/skills/devops/watchers/scripts/watch_github.py \
-  --name prostor-issues --repo NousResearch/prostor-agent --scope issues
+  --name prostor-issues --repo maksim9510/Prostor --scope issues
 ```
 
 Poll an arbitrary JSON API:

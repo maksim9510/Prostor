@@ -79,7 +79,7 @@ def _discord_request(
         headers={
             "Authorization": f"Bot {token}",
             "Content-Type": "application/json",
-            "User-Agent": "Prostor-Agent (https://github.com/NousResearch/prostor-agent)",
+            "User-Agent": "Prostor-Agent (https://github.com/maksim9510/Prostor)",
         },
     )
 

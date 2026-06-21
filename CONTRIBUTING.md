@@ -89,7 +89,7 @@ development environment on the same layout the CLI, updater, lazy dependency
 installer, gateway, and docs assume.
 
 ```bash
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 cd "${PROSTOR_HOME:-$HOME/.prostor}/prostor-agent"
 
 # Add dev/test extras on top of the standard install.
@@ -115,7 +115,7 @@ system `python3 -m prostor_cli.main` can pick up unrelated system Python
 packages.
 
 ```bash
-git clone https://github.com/NousResearch/prostor-agent.git
+git clone https://github.com/maksim9510/Prostor.git
 cd prostor-agent
 
 # Create venv with Python 3.11
@@ -232,7 +232,7 @@ prostor-agent/
 ├── skills/                   # Bundled skills (copied to ~/.prostor/skills/ on install)
 ├── optional-skills/          # Official optional skills (discoverable via hub, not activated by default)
 ├── tests/                    # Test suite
-├── website/                  # Documentation site (prostor-agent.nousresearch.com)
+├── website/                  # Documentation site (github.com/maksim9510/Prostor)
 │
 ├── cli-config.yaml.example   # Example configuration (copied to ~/.prostor/config.yaml)
 └── AGENTS.md                 # Development guide for AI coding assistants
@@ -939,7 +939,7 @@ test(tools): add unit tests for file_operations
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/NousResearch/prostor-agent/issues)
+- Use [GitHub Issues](https://github.com/maksim9510/Prostor/issues)
 - Include: OS, Python version, Prostor version (`prostor version`), full error traceback
 - Include steps to reproduce
 - Check existing issues before creating duplicates

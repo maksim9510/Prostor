@@ -3521,7 +3521,7 @@ def check_for_skill_updates(
 # Prostor centralized index source
 # ---------------------------------------------------------------------------
 
-PROSTOR_INDEX_URL = "https://prostor-agent.nousresearch.com/docs/api/skills-index.json"
+PROSTOR_INDEX_URL = "https://github.com/maksim9510/Prostor/docs/api/skills-index.json"
 PROSTOR_INDEX_CACHE_FILE = INDEX_CACHE_DIR / "prostor-index.json"
 PROSTOR_INDEX_TTL = 6 * 3600  # 6 hours
 

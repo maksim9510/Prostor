@@ -15,19 +15,19 @@ Prostor isn't just a CLI tool. You can import `AIAgent` directly and use it prog
 Install Prostor directly from the repository:
 
 ```bash
-pip install git+https://github.com/NousResearch/prostor-agent.git
+pip install git+https://github.com/maksim9510/Prostor.git
 ```
 
 Or with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv pip install git+https://github.com/NousResearch/prostor-agent.git
+uv pip install git+https://github.com/maksim9510/Prostor.git
 ```
 
 You can also pin it in your `requirements.txt`:
 
 ```text
-prostor-agent @ git+https://github.com/NousResearch/prostor-agent.git
+prostor-agent @ git+https://github.com/maksim9510/Prostor.git
 ```
 
 :::tip

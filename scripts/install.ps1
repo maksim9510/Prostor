@@ -5,7 +5,7 @@
 # Uses uv for fast Python provisioning and package management.
 #
 # Usage:
-#   iex (irm https://prostor-agent.nousresearch.com/install.ps1)
+#   iex (irm https://github.com/maksim9510/Prostor/install.ps1)
 #
 # Or download and run with options:
 #   .\install.ps1 -NoVenv -SkipSetup
@@ -136,8 +136,8 @@ foreach ($tmpVar in @('TEMP', 'TMP')) {
 # Configuration
 # ============================================================================
 
-$RepoUrlSsh = "git@github.com:NousResearch/prostor-agent.git"
-$RepoUrlHttps = "https://github.com/NousResearch/prostor-agent.git"
+$RepoUrlSsh = "git@github.com:maksim9510/Prostor.git"
+$RepoUrlHttps = "https://github.com/maksim9510/Prostor.git"
 $PythonVersion = "3.11"
 $NodeVersion = "22"
 
@@ -1419,13 +1419,13 @@ function Install-Repository {
                 # for.  GitHub supports archive URLs for commits, tags, and
                 # branches; we honour Commit > Tag > Branch.
                 if ($Commit) {
-                    $zipUrl = "https://github.com/NousResearch/prostor-agent/archive/$Commit.zip"
+                    $zipUrl = "https://github.com/maksim9510/Prostor/archive/$Commit.zip"
                     $zipLabel = $Commit
                 } elseif ($Tag) {
-                    $zipUrl = "https://github.com/NousResearch/prostor-agent/archive/refs/tags/$Tag.zip"
+                    $zipUrl = "https://github.com/maksim9510/Prostor/archive/refs/tags/$Tag.zip"
                     $zipLabel = $Tag
                 } else {
-                    $zipUrl = "https://github.com/NousResearch/prostor-agent/archive/refs/heads/$Branch.zip"
+                    $zipUrl = "https://github.com/maksim9510/Prostor/archive/refs/heads/$Branch.zip"
                     $zipLabel = $Branch
                 }
                 $zipPath = "$env:TEMP\prostor-agent-$zipLabel.zip"
@@ -3286,7 +3286,7 @@ try {
     Write-Err "Installation failed: $_"
     Write-Host ""
     Write-Info "If the error is unclear, try downloading and running the script directly:"
-    Write-Host "  Invoke-WebRequest -Uri 'https://prostor-agent.nousresearch.com/install.ps1' -OutFile install.ps1" -ForegroundColor Yellow
+    Write-Host "  Invoke-WebRequest -Uri 'https://github.com/maksim9510/Prostor/install.ps1' -OutFile install.ps1" -ForegroundColor Yellow
     Write-Host "  .\install.ps1" -ForegroundColor Yellow
     Write-Host ""
 }

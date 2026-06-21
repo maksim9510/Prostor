@@ -1,6 +1,6 @@
 """Tests for get_prostor_home() profile-mode fallback warning.
 
-Regression test for https://github.com/NousResearch/prostor-agent/issues/18594.
+Regression test for https://github.com/maksim9510/Prostor/issues/18594.
 
 When PROSTOR_HOME is unset but an active_profile file indicates a non-default
 profile is active, get_prostor_home() should:

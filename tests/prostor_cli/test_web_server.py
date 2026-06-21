@@ -1637,7 +1637,7 @@ class TestWebServerEndpoints:
         assert "personal WeChat" in weixin["description"]
         assert "Official Account" not in f"{weixin['name']} {weixin['description']}"
         assert weixin["docs_url"] == (
-            "https://prostor-agent.nousresearch.com/docs/user-guide/messaging/weixin/"
+            "https://github.com/maksim9510/Prostor/docs/user-guide/messaging/weixin/"
         )
 
         fields = {field["key"]: field for field in weixin["env_vars"]}

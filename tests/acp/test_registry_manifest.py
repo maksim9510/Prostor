@@ -32,8 +32,8 @@ def test_agent_json_matches_official_registry_required_fields():
     assert re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
     assert data["name"] == "Prostor Agent"
     assert data["description"]
-    assert data["repository"] == "https://github.com/NousResearch/prostor-agent"
-    assert data["website"].startswith("https://prostor-agent.nousresearch.com/")
+    assert data["repository"] == "https://github.com/maksim9510/Prostor"
+    assert data["website"].startswith("https://github.com/maksim9510/Prostor/")
     assert data["authors"] == ["Nous Research"]
     assert data["license"] == "MIT"
     assert set(data["distribution"]) <= ALLOWED_DISTRIBUTIONS

@@ -81,7 +81,7 @@ python $PROSTOR_HOME/skills/devops/watchers/scripts/watch_rss.py \
 
 ```bash
 python $PROSTOR_HOME/skills/devops/watchers/scripts/watch_github.py \
-  --name prostor-issues --repo NousResearch/prostor-agent --scope issues
+  --name prostor-issues --repo maksim9510/Prostor --scope issues
 ```
 
 轮询任意 JSON API：

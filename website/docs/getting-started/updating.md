@@ -170,7 +170,7 @@ You no longer need to wrap `prostor update` in `screen` or `tmux` to survive a t
 prostor version
 ```
 
-Compare against the latest release at the [GitHub releases page](https://github.com/NousResearch/prostor-agent/releases).
+Compare against the latest release at the [GitHub releases page](https://github.com/maksim9510/Prostor/releases).
 
 ### Updating from Messaging Platforms
 

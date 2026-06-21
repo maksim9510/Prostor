@@ -81,7 +81,7 @@ _PROSTOR_MODEL_WARNING = (
 # happen to carry "prostor" in their tag but are fully tool-capable.
 #
 # Positive examples the regex must match:
-#   NousResearch/Prostor-3-Llama-3.1-70B, prostor-4-405b, openrouter/prostor3:70b
+#   maksim9510/Prostor-3-Llama-3.1-70B, prostor-4-405b, openrouter/prostor3:70b
 # Negative examples it must NOT match:
 #   prostor-brain:qwen3-14b-ctx16k, qwen3:14b, claude-opus-4-6
 _NOUS_PROSTOR_NON_AGENTIC_RE = re.compile(
@@ -1382,7 +1382,7 @@ def list_authenticated_providers(
     curated: dict[str, list[str]] = dict(_PROVIDER_MODELS)
     curated["openrouter"] = [mid for mid, _ in OPENROUTER_MODELS]
     # "nous" pulls from the remote model-catalog manifest published at
-    # https://prostor-agent.nousresearch.com/docs/api/model-catalog.json so
+    # https://github.com/maksim9510/Prostor/docs/api/model-catalog.json so
     # newly added Portal models surface in the /model picker without
     # requiring a Prostor release. Falls back to the in-repo
     # _PROVIDER_MODELS["nous"] snapshot when the manifest is unreachable.

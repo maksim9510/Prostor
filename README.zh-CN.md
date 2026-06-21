@@ -5,9 +5,9 @@
 # Prostor Agent ☤
 
 <p align="center">
-  <a href="https://prostor-agent.nousresearch.com/docs/"><img src="https://img.shields.io/badge/Docs-prostor--agent.nousresearch.com-FFD700?style=for-the-badge" alt="Documentation"></a>
+  <a href="https://github.com/maksim9510/Prostor/docs/"><img src="https://img.shields.io/badge/Docs-prostor--agent.nousresearch.com-FFD700?style=for-the-badge" alt="Documentation"></a>
   <a href="https://discord.gg/NousResearch"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://github.com/NousResearch/prostor-agent/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://github.com/maksim9510/Prostor/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://nousresearch.com"><img src="https://img.shields.io/badge/Built%20by-Nous%20Research-blueviolet?style=for-the-badge" alt="Built by Nous Research"></a>
   <a href="README.md"><img src="https://img.shields.io/badge/Lang-English-lightgrey?style=for-the-badge" alt="English"></a>
   <a href="README.ur-pk.md"><img src="https://img.shields.io/badge/Lang-اردو-green?style=for-the-badge" alt="اردو"></a>
@@ -32,12 +32,12 @@
 ## 快速安装
 
 ```bash
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 ```
 
 支持 Linux、macOS、WSL2 和 Android (Termux)。安装程序会自动处理平台特定的配置。
 
-> **Android / Termux：** 已测试的手动安装路径请参考 [Termux 指南](https://prostor-agent.nousresearch.com/docs/getting-started/termux)。在 Termux 上，Prostor 会安装精选的 `.[termux]` 扩展，因为完整的 `.[all]` 扩展会拉取 Android 不兼容的语音依赖。
+> **Android / Termux：** 已测试的手动安装路径请参考 [Termux 指南](https://github.com/maksim9510/Prostor/docs/getting-started/termux)。在 Termux 上，Prostor 会安装精选的 `.[termux]` 扩展，因为完整的 `.[all]` 扩展会拉取 Android 不兼容的语音依赖。
 >
 > **Windows：** 原生 Windows 不受支持。请安装 [WSL2](https://learn.microsoft.com/zh-cn/windows/wsl/install) 并运行上述命令。
 
@@ -64,7 +64,7 @@ prostor update       # 更新到最新版本
 prostor doctor       # 诊断问题
 ```
 
-📖 **[完整文档 →](https://prostor-agent.nousresearch.com/docs/)**
+📖 **[完整文档 →](https://github.com/maksim9510/Prostor/docs/)**
 
 ---
 
@@ -81,7 +81,7 @@ Prostor 始终允许你使用任意服务商，这点不会改变。但如果你
 prostor setup --portal
 ```
 
-它会通过 OAuth 登录、把 Nous 设为推理服务商，并启用 Tool Gateway。随时用 `prostor portal info` 查看路由状态。完整说明见 [Tool Gateway 文档](https://prostor-agent.nousresearch.com/docs/user-guide/features/tool-gateway)。
+它会通过 OAuth 登录、把 Nous 设为推理服务商，并启用 Tool Gateway。随时用 `prostor portal info` 查看路由状态。完整说明见 [Tool Gateway 文档](https://github.com/maksim9510/Prostor/docs/user-guide/features/tool-gateway)。
 
 你随时可以按工具单独切回自己的 API Key — Gateway 是按工具粒度生效的，不是一刀切。
 
@@ -103,31 +103,31 @@ Prostor 有两种入口：用 `prostor` 启动终端 UI，或运行网关从 Tel
 | 中断当前工作 | `Ctrl+C` 或发送新消息 | `/stop` 或发送新消息 |
 | 平台特定状态 | `/platforms` | `/status`、`/sethome` |
 
-完整命令列表请参阅 [CLI 指南](https://prostor-agent.nousresearch.com/docs/user-guide/cli) 和 [消息网关指南](https://prostor-agent.nousresearch.com/docs/user-guide/messaging)。
+完整命令列表请参阅 [CLI 指南](https://github.com/maksim9510/Prostor/docs/user-guide/cli) 和 [消息网关指南](https://github.com/maksim9510/Prostor/docs/user-guide/messaging)。
 
 ---
 
 ## 文档
 
-所有文档位于 **[prostor-agent.nousresearch.com/docs](https://prostor-agent.nousresearch.com/docs/)**：
+所有文档位于 **[github.com/maksim9510/Prostor/docs](https://github.com/maksim9510/Prostor/docs/)**：
 
 | 章节 | 内容 |
 |------|------|
-| [快速开始](https://prostor-agent.nousresearch.com/docs/getting-started/quickstart) | 安装 → 设置 → 2 分钟内开始首次对话 |
-| [CLI 使用](https://prostor-agent.nousresearch.com/docs/user-guide/cli) | 命令、快捷键、人格、会话 |
-| [配置](https://prostor-agent.nousresearch.com/docs/user-guide/configuration) | 配置文件、提供商、模型、所有选项 |
-| [消息网关](https://prostor-agent.nousresearch.com/docs/user-guide/messaging) | Telegram、Discord、Slack、WhatsApp、Signal、Home Assistant |
-| [安全](https://prostor-agent.nousresearch.com/docs/user-guide/security) | 命令审批、DM 配对、容器隔离 |
-| [工具与工具集](https://prostor-agent.nousresearch.com/docs/user-guide/features/tools) | 40+ 工具、工具集系统、终端后端 |
-| [技能系统](https://prostor-agent.nousresearch.com/docs/user-guide/features/skills) | 过程记忆、技能中心、创建技能 |
-| [记忆](https://prostor-agent.nousresearch.com/docs/user-guide/features/memory) | 持久记忆、用户画像、最佳实践 |
-| [MCP 集成](https://prostor-agent.nousresearch.com/docs/user-guide/features/mcp) | 连接任意 MCP 服务器扩展能力 |
-| [定时调度](https://prostor-agent.nousresearch.com/docs/user-guide/features/cron) | 定时任务与平台投递 |
-| [上下文文件](https://prostor-agent.nousresearch.com/docs/user-guide/features/context-files) | 影响每次对话的项目上下文 |
-| [架构](https://prostor-agent.nousresearch.com/docs/developer-guide/architecture) | 项目结构、代理循环、关键类 |
-| [贡献](https://prostor-agent.nousresearch.com/docs/developer-guide/contributing) | 开发设置、PR 流程、代码风格 |
-| [CLI 参考](https://prostor-agent.nousresearch.com/docs/reference/cli-commands) | 所有命令和标志 |
-| [环境变量](https://prostor-agent.nousresearch.com/docs/reference/environment-variables) | 完整环境变量参考 |
+| [快速开始](https://github.com/maksim9510/Prostor/docs/getting-started/quickstart) | 安装 → 设置 → 2 分钟内开始首次对话 |
+| [CLI 使用](https://github.com/maksim9510/Prostor/docs/user-guide/cli) | 命令、快捷键、人格、会话 |
+| [配置](https://github.com/maksim9510/Prostor/docs/user-guide/configuration) | 配置文件、提供商、模型、所有选项 |
+| [消息网关](https://github.com/maksim9510/Prostor/docs/user-guide/messaging) | Telegram、Discord、Slack、WhatsApp、Signal、Home Assistant |
+| [安全](https://github.com/maksim9510/Prostor/docs/user-guide/security) | 命令审批、DM 配对、容器隔离 |
+| [工具与工具集](https://github.com/maksim9510/Prostor/docs/user-guide/features/tools) | 40+ 工具、工具集系统、终端后端 |
+| [技能系统](https://github.com/maksim9510/Prostor/docs/user-guide/features/skills) | 过程记忆、技能中心、创建技能 |
+| [记忆](https://github.com/maksim9510/Prostor/docs/user-guide/features/memory) | 持久记忆、用户画像、最佳实践 |
+| [MCP 集成](https://github.com/maksim9510/Prostor/docs/user-guide/features/mcp) | 连接任意 MCP 服务器扩展能力 |
+| [定时调度](https://github.com/maksim9510/Prostor/docs/user-guide/features/cron) | 定时任务与平台投递 |
+| [上下文文件](https://github.com/maksim9510/Prostor/docs/user-guide/features/context-files) | 影响每次对话的项目上下文 |
+| [架构](https://github.com/maksim9510/Prostor/docs/developer-guide/architecture) | 项目结构、代理循环、关键类 |
+| [贡献](https://github.com/maksim9510/Prostor/docs/developer-guide/contributing) | 开发设置、PR 流程、代码风格 |
+| [CLI 参考](https://github.com/maksim9510/Prostor/docs/reference/cli-commands) | 所有命令和标志 |
+| [环境变量](https://github.com/maksim9510/Prostor/docs/reference/environment-variables) | 完整环境变量参考 |
 
 ---
 
@@ -162,14 +162,14 @@ prostor claw migrate --overwrite  # 覆盖已有冲突
 
 ## 贡献
 
-欢迎贡献！请参阅 [贡献指南](https://prostor-agent.nousresearch.com/docs/developer-guide/contributing) 了解开发设置、代码风格和 PR 流程。
+欢迎贡献！请参阅 [贡献指南](https://github.com/maksim9510/Prostor/docs/developer-guide/contributing) 了解开发设置、代码风格和 PR 流程。
 
 贡献者快速开始——使用标准安装器，然后在它创建的完整 git checkout 中开发：
 `$PROSTOR_HOME/prostor-agent`（通常是 `~/.prostor/prostor-agent`）。这会匹配
 `prostor update`、托管 venv、lazy dependencies、gateway 和 docs tooling 使用的布局。
 
 ```bash
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 cd "${PROSTOR_HOME:-$HOME/.prostor}/prostor-agent"
 uv pip install -e ".[all,dev]"
 scripts/run_tests.sh
@@ -191,8 +191,8 @@ python -m pytest tests/ -q
 
 - 💬 [Discord](https://discord.gg/NousResearch)
 - 📚 [技能中心](https://agentskills.io)
-- 🐛 [问题反馈](https://github.com/NousResearch/prostor-agent/issues)
-- 💡 [讨论区](https://github.com/NousResearch/prostor-agent/discussions)
+- 🐛 [问题反馈](https://github.com/maksim9510/Prostor/issues)
+- 💡 [讨论区](https://github.com/maksim9510/Prostor/discussions)
 - 🔌 [ProstorClaw](https://github.com/AaronWong1999/prostorclaw) — 社区微信桥接：在同一微信账号上运行 Prostor Agent 和 OpenClaw。
 
 ---

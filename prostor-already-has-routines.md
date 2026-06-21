@@ -149,11 +149,11 @@ prostor webhook subscribe pr-review \
   --deliver github_comment
 ```
 
-Full automation blueprints gallery: [prostor-agent.nousresearch.com/docs/reference/automation-blueprints-catalog](https://prostor-agent.nousresearch.com/docs/reference/automation-blueprints-catalog)
+Full automation blueprints gallery: [github.com/maksim9510/Prostor/docs/reference/automation-blueprints-catalog](https://github.com/maksim9510/Prostor/docs/reference/automation-blueprints-catalog)
 
-Documentation: [prostor-agent.nousresearch.com](https://prostor-agent.nousresearch.com)
+Documentation: [github.com/maksim9510/Prostor](https://github.com/maksim9510/Prostor)
 
-GitHub: [github.com/NousResearch/prostor-agent](https://github.com/NousResearch/prostor-agent)
+GitHub: [github.com/maksim9510/Prostor](https://github.com/maksim9510/Prostor)
 
 ---
 

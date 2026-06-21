@@ -9,8 +9,8 @@ Outputs:
                                     comments separating files.
 
 Both publish at:
-  https://prostor-agent.nousresearch.com/docs/llms.txt
-  https://prostor-agent.nousresearch.com/docs/llms-full.txt
+  https://github.com/maksim9510/Prostor/docs/llms.txt
+  https://github.com/maksim9510/Prostor/docs/llms-full.txt
 
 The `/docs/` prefix is not a mistake — Docusaurus serves `website/static/`
 at the `docs/` base path. Clients and IDE plugins that probe the classic
@@ -31,7 +31,7 @@ WEBSITE = SCRIPT_DIR.parent
 DOCS = WEBSITE / "docs"
 STATIC = WEBSITE / "static"
 
-SITE_BASE = "https://prostor-agent.nousresearch.com/docs"
+SITE_BASE = "https://github.com/maksim9510/Prostor/docs"
 
 # Curated sections for llms.txt — mirrors the product story, not the filesystem.
 # Each entry: (docs-relative path without .md, display title, optional short desc).
@@ -210,12 +210,12 @@ def emit_llms_index() -> str:
     )
     lines.append("")
     lines.append(
-        "Install: `curl -fsSL https://raw.githubusercontent.com/NousResearch/"
+        "Install: `curl -fsSL https://raw.githubusercontent.com/maksim9510/"
         "prostor-agent/main/scripts/install.sh | bash`  "
         "(Linux, macOS, WSL2, Termux)"
     )
     lines.append("")
-    lines.append("Repo: https://github.com/NousResearch/prostor-agent")
+    lines.append("Repo: https://github.com/maksim9510/Prostor")
     lines.append("")
 
     for section, items in SECTIONS:
@@ -248,8 +248,8 @@ def emit_llms_full() -> str:
             "Started, Using Prostor, Features, Messaging, Integrations, Guides, "
             "Developer Guide, Reference, then everything else.\n"
         ),
-        "Canonical site: https://prostor-agent.nousresearch.com/docs\n",
-        "Short index: https://prostor-agent.nousresearch.com/docs/llms.txt\n",
+        "Canonical site: https://github.com/maksim9510/Prostor/docs\n",
+        "Short index: https://github.com/maksim9510/Prostor/docs/llms.txt\n",
         "\n---\n\n",
     ]
 

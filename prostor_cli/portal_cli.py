@@ -28,7 +28,7 @@ from prostor_cli.config import load_config
 
 DEFAULT_PORTAL_URL = "https://portal.nousresearch.com"
 SUBSCRIPTION_URL = "https://portal.nousresearch.com/manage-subscription"
-DOCS_URL = "https://prostor-agent.nousresearch.com/docs/user-guide/features/tool-gateway"
+DOCS_URL = "https://github.com/maksim9510/Prostor/docs/user-guide/features/tool-gateway"
 
 
 def _cmd_status(args) -> int:

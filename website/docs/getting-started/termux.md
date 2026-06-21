@@ -46,7 +46,7 @@ That does not stop Prostor from working well as a phone-native CLI agent — it 
 Prostor now ships a Termux-aware installer path:
 
 ```bash
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 ```
 
 On Termux, the installer automatically:
@@ -80,7 +80,7 @@ Why these packages?
 ### 2. Clone Prostor
 
 ```bash
-git clone https://github.com/NousResearch/prostor-agent.git
+git clone https://github.com/maksim9510/Prostor.git
 cd prostor-agent
 ```
 

@@ -7,10 +7,10 @@ const config: Config = {
   tagline: 'The self-improving AI agent',
   favicon: 'img/favicon.ico',
 
-  url: 'https://prostor-agent.nousresearch.com',
+  url: 'https://github.com/maksim9510/Prostor',
   baseUrl: '/docs/',
 
-  organizationName: 'NousResearch',
+  organizationName: 'maksim9510',
   projectName: 'prostor-agent',
 
   onBrokenLinks: 'warn',
@@ -90,7 +90,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',  // Docs at the root of /docs/
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/NousResearch/prostor-agent/edit/main/website/',
+          editUrl: 'https://github.com/maksim9510/Prostor/edit/main/website/',
         },
         blog: false,
         theme: {
@@ -131,7 +131,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://prostor-agent.nousresearch.com/',
+          href: 'https://github.com/maksim9510/Prostor/',
           label: 'Download',
           position: 'left',
         },
@@ -140,17 +140,17 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: 'https://prostor-agent.nousresearch.com',
+          href: 'https://github.com/maksim9510/Prostor',
           label: 'Home',
           position: 'right',
         },
         {
-          href: 'https://github.com/NousResearch/prostor-agent',
+          href: 'https://github.com/maksim9510/Prostor',
           label: 'GitHub',
           position: 'right',
         },
         {
-          href: 'https://discord.gg/NousResearch',
+          href: 'https://discord.gg/maksim9510',
           label: 'Discord',
           position: 'right',
         },
@@ -171,16 +171,16 @@ const config: Config = {
         {
           title: 'Community',
           items: [
-            { label: 'Discord', href: 'https://discord.gg/NousResearch' },
-            { label: 'GitHub Issues', href: 'https://github.com/NousResearch/prostor-agent/issues' },
+            { label: 'Discord', href: 'https://discord.gg/maksim9510' },
+            { label: 'GitHub Issues', href: 'https://github.com/maksim9510/Prostor/issues' },
             { label: 'Skills Hub', href: 'https://agentskills.io' },
           ],
         },
         {
           title: 'More',
           items: [
-            { label: 'Desktop Download', href: 'https://prostor-agent.nousresearch.com/' },
-            { label: 'GitHub', href: 'https://github.com/NousResearch/prostor-agent' },
+            { label: 'Desktop Download', href: 'https://github.com/maksim9510/Prostor/' },
+            { label: 'GitHub', href: 'https://github.com/maksim9510/Prostor' },
             { label: 'Nous Research', href: 'https://nousresearch.com' },
           ],
         },

@@ -140,7 +140,7 @@ tail -f ~/.prostor/logs/update.log
 prostor version
 ```
 
-与 [GitHub releases 页面](https://github.com/NousResearch/prostor-agent/releases) 上的最新版本进行比较。
+与 [GitHub releases 页面](https://github.com/maksim9510/Prostor/releases) 上的最新版本进行比较。
 
 ### 从消息平台更新
 

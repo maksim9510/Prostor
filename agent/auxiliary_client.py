@@ -348,7 +348,7 @@ _PROVIDERS_WITHOUT_VISION: frozenset = frozenset({
 # `X-Title` is the canonical attribution header OpenRouter's dashboard
 # reads; the previous `X-OpenRouter-Title` label was not recognized there.
 _OR_HEADERS_BASE = {
-    "HTTP-Referer": "https://prostor-agent.nousresearch.com",
+    "HTTP-Referer": "https://github.com/maksim9510/Prostor",
     "X-Title": "Prostor Agent",
     "X-OpenRouter-Categories": "productivity,cli-agent",
 }

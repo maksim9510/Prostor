@@ -17,7 +17,7 @@ Usage::
 Output: ``website/static/api/model-catalog.json``
 
 Live URL (after ``deploy-site.yml`` runs on merge to main):
-``https://prostor-agent.nousresearch.com/docs/api/model-catalog.json``
+``https://github.com/maksim9510/Prostor/docs/api/model-catalog.json``
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def build_catalog() -> dict:
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "metadata": {
             "source": "prostor-agent repo",
-            "docs": "https://prostor-agent.nousresearch.com/docs/reference/model-catalog",
+            "docs": "https://github.com/maksim9510/Prostor/docs/reference/model-catalog",
         },
         "providers": {
             "openrouter": {

@@ -295,14 +295,14 @@ export default function UserStoriesCollage(): JSX.Element {
       <div className={styles.footer}>
         Built something with Prostor?{' '}
         <a
-          href="https://github.com/NousResearch/prostor-agent/edit/main/website/src/data/userStories.json"
+          href="https://github.com/maksim9510/Prostor/edit/main/website/src/data/userStories.json"
           target="_blank"
           rel="noopener noreferrer"
         >
           Add your story to this page
         </a>{' '}
         by editing <code>userStories.json</code>, or post it in the{' '}
-        <a href="https://discord.gg/NousResearch" target="_blank" rel="noopener noreferrer">
+        <a href="https://discord.gg/maksim9510" target="_blank" rel="noopener noreferrer">
           Nous Research Discord
         </a>{' '}
         and we&apos;ll pick it up.

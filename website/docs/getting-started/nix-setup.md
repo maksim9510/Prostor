@@ -35,11 +35,11 @@ No clone needed. Nix fetches, builds, and runs everything:
 
 ```bash
 # Run directly (builds on first use, cached after)
-nix run github:NousResearch/prostor-agent -- setup
-nix run github:NousResearch/prostor-agent -- chat
+nix run github:maksim9510/Prostor -- setup
+nix run github:maksim9510/Prostor -- chat
 
 # Or install persistently
-nix profile install github:NousResearch/prostor-agent
+nix profile install github:maksim9510/Prostor
 prostor setup
 prostor chat
 ```
@@ -50,13 +50,13 @@ After `nix profile install`, `prostor`, `prostor-agent`, and `prostor-acp` are o
 The default package doesn't include messaging platform libraries — they were moved to on-demand installation, which can't work in Nix's read-only environment. If you plan to connect the agent to Discord, Telegram, or Slack, install the `messaging` variant:
 
 ```bash
-nix profile install github:NousResearch/prostor-agent#messaging
+nix profile install github:maksim9510/Prostor#messaging
 ```
 
 For all optional extras (voice, all providers, all platforms):
 
 ```bash
-nix profile install github:NousResearch/prostor-agent#full
+nix profile install github:maksim9510/Prostor#full
 ```
 
 The `full` variant adds ~700 MB to the closure. If you only need messaging platforms, `#messaging` adds just ~33 MB.
@@ -66,7 +66,7 @@ The `full` variant adds ~700 MB to the closure. If you only need messaging platf
 <summary><strong>Building from a local clone</strong></summary>
 
 ```bash
-git clone https://github.com/NousResearch/prostor-agent.git
+git clone https://github.com/maksim9510/Prostor.git
 cd prostor-agent
 nix build
 ./result/bin/prostor setup
@@ -91,7 +91,7 @@ This module requires NixOS. For non-NixOS systems (macOS, other Linux distros), 
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    prostor-agent.url = "github:NousResearch/prostor-agent";
+    prostor-agent.url = "github:maksim9510/Prostor";
   };
 
   outputs = { nixpkgs, prostor-agent, ... }: {
@@ -730,7 +730,7 @@ External flakes can override the package directly:
 
 ```nix
 {
-  inputs.prostor-agent.url = "github:NousResearch/prostor-agent";
+  inputs.prostor-agent.url = "github:maksim9510/Prostor";
   outputs = { prostor-agent, nixpkgs, ... }: {
     nixpkgs.overlays = [ prostor-agent.overlays.default ];
     # Then:

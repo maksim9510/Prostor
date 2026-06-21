@@ -2,7 +2,7 @@
 
 Renders any content as colored ASCII character video. Audio, video, images, text, or pure math in, MP4/GIF/PNG sequence out. Full RGB color per character cell, 1080p 24fps default. No GPU.
 
-Built for [Prostor Agent](https://github.com/NousResearch/prostor-agent). Usable in any coding agent. Canonical source lives here; synced to [`NousResearch/prostor-agent/skills/creative/ascii-video`](https://github.com/NousResearch/prostor-agent/tree/main/skills/creative/ascii-video) via PR.
+Built for [Prostor Agent](https://github.com/maksim9510/Prostor). Usable in any coding agent. Canonical source lives here; synced to [`maksim9510/Prostor/skills/creative/ascii-video`](https://github.com/maksim9510/Prostor/tree/main/skills/creative/ascii-video) via PR.
 
 ## What this is
 

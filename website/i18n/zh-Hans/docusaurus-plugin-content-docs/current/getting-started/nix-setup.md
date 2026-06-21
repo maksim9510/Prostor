@@ -35,11 +35,11 @@ Prostor Agent 提供了一个 Nix flake，支持三个层级的集成：
 
 ```bash
 # 直接运行（首次使用时构建，之后使用缓存）
-nix run github:NousResearch/prostor-agent -- setup
-nix run github:NousResearch/prostor-agent -- chat
+nix run github:maksim9510/Prostor -- setup
+nix run github:maksim9510/Prostor -- chat
 
 # 或持久化安装
-nix profile install github:NousResearch/prostor-agent
+nix profile install github:maksim9510/Prostor
 prostor setup
 prostor chat
 ```
@@ -50,7 +50,7 @@ prostor chat
 <summary><strong>从本地克隆构建</strong></summary>
 
 ```bash
-git clone https://github.com/NousResearch/prostor-agent.git
+git clone https://github.com/maksim9510/Prostor.git
 cd prostor-agent
 nix build
 ./result/bin/prostor setup
@@ -75,7 +75,7 @@ nix build
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    prostor-agent.url = "github:NousResearch/prostor-agent";
+    prostor-agent.url = "github:maksim9510/Prostor";
   };
 
   outputs = { nixpkgs, prostor-agent, ... }: {
@@ -685,7 +685,7 @@ services.prostor-agent = {
 
 ```nix
 {
-  inputs.prostor-agent.url = "github:NousResearch/prostor-agent";
+  inputs.prostor-agent.url = "github:maksim9510/Prostor";
   outputs = { prostor-agent, nixpkgs, ... }: {
     nixpkgs.overlays = [ prostor-agent.overlays.default ];
     # 然后：

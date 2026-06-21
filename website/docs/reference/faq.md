@@ -33,7 +33,7 @@ Set your provider with `prostor model` or by editing `~/.prostor/.env`. See the 
 **Yes, natively.** Prostor supports native Windows via the PowerShell installer — no WSL required. Run in PowerShell:
 
 ```powershell
-iex (irm https://prostor-agent.nousresearch.com/install.ps1)
+iex (irm https://github.com/maksim9510/Prostor/install.ps1)
 ```
 
 The installer provisions a PortableGit that backs the terminal tool's shell. See the [Windows (Native) Guide](../user-guide/windows-native.md) for details.
@@ -41,7 +41,7 @@ The installer provisions a PortableGit that backs the terminal tool's shell. See
 WSL2 remains a fully supported alternative. To run Prostor inside WSL2, install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and use the standard install command:
 
 ```bash
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 ```
 
 ### I run Prostor in WSL2. What's the best way to control my normal Windows Chrome?
@@ -69,7 +69,7 @@ Yes — Prostor now has a tested Termux install path for Android phones.
 Quick install:
 
 ```bash
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 ```
 
 For the fully explicit manual steps, supported extras, and current limitations, see the [Termux guide](../getting-started/termux.md).
@@ -233,7 +233,7 @@ source ~/.bashrc
 # If you previously installed with sudo, clean up:
 sudo rm /usr/local/bin/prostor
 # Then re-run the standard installer
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 ```
 
 ---
@@ -759,7 +759,7 @@ Skills with very long descriptions are truncated to 40 characters in the Telegra
 
 1. Install Prostor Agent on the new machine:
    ```bash
-   curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+   curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
    ```
 
 2. On the **source machine**, create a full backup:
@@ -863,6 +863,6 @@ If using OpenRouter, make sure your API key has credits. A 400 from OpenRouter o
 
 If your issue isn't covered here:
 
-1. **Search existing issues:** [GitHub Issues](https://github.com/NousResearch/prostor-agent/issues)
+1. **Search existing issues:** [GitHub Issues](https://github.com/maksim9510/Prostor/issues)
 2. **Ask the community:** [Nous Research Discord](https://discord.gg/nousresearch)
 3. **File a bug report:** Include your OS, Python version (`python3 --version`), Prostor version (`prostor --version`), and the full error message

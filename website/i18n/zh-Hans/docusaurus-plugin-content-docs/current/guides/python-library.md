@@ -15,19 +15,19 @@ Prostor 不仅仅是一个 CLI 工具。你可以直接导入 `AIAgent`，在自
 直接从仓库安装 Prostor：
 
 ```bash
-pip install git+https://github.com/NousResearch/prostor-agent.git
+pip install git+https://github.com/maksim9510/Prostor.git
 ```
 
 或使用 [uv](https://docs.astral.sh/uv/)：
 
 ```bash
-uv pip install git+https://github.com/NousResearch/prostor-agent.git
+uv pip install git+https://github.com/maksim9510/Prostor.git
 ```
 
 也可以在 `requirements.txt` 中固定版本：
 
 ```text
-prostor-agent @ git+https://github.com/NousResearch/prostor-agent.git
+prostor-agent @ git+https://github.com/maksim9510/Prostor.git
 ```
 
 :::tip

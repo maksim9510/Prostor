@@ -3,7 +3,7 @@
   "updated_at": "2026-06-16T18:04:33Z",
   "metadata": {
     "source": "prostor-agent repo",
-    "docs": "https://prostor-agent.nousresearch.com/docs/reference/model-catalog"
+    "docs": "https://github.com/maksim9510/Prostor/docs/reference/model-catalog"
   },
   "providers": {
     "openrouter": {

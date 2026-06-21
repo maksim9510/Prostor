@@ -13,7 +13,7 @@ required_credential_files:
 metadata:
   prostor:
     tags: [Google, Gmail, Calendar, Drive, Sheets, Docs, Contacts, Email, OAuth]
-    homepage: https://github.com/NousResearch/prostor-agent
+    homepage: https://github.com/maksim9510/Prostor
     related_skills: [himalaya]
 ---
 

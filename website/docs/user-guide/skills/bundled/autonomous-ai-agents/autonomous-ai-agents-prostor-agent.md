@@ -46,13 +46,13 @@ People use Prostor for software development, research, system administration, da
 
 **This skill helps you work with Prostor Agent effectively** — setting it up, configuring features, spawning additional agent instances, troubleshooting issues, finding the right commands and settings, and understanding how the system works when you need to extend or contribute to it.
 
-**Docs:** https://prostor-agent.nousresearch.com/docs/
+**Docs:** https://github.com/maksim9510/Prostor/docs/
 
 ## Quick Start
 
 ```bash
 # Install
-curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
 
 # Interactive chat (default)
 prostor
@@ -174,7 +174,7 @@ prostor gateway setup        Configure platforms
 
 Supported platforms: Telegram, Discord, Slack, WhatsApp, Signal, Email, SMS, Matrix, Mattermost, Home Assistant, DingTalk, Feishu, WeCom, BlueBubbles (iMessage), Weixin (WeChat), API Server, Webhooks. Open WebUI connects via the API Server adapter.
 
-Platform docs: https://prostor-agent.nousresearch.com/docs/user-guide/messaging/
+Platform docs: https://github.com/maksim9510/Prostor/docs/user-guide/messaging/
 
 ### Sessions
 
@@ -256,7 +256,7 @@ prostor uninstall            Uninstall Prostor
 
 Type these during an interactive chat session. New commands land fairly
 often; if something below looks stale, run `/help` in-session for the
-authoritative list or see the [live slash commands reference](https://prostor-agent.nousresearch.com/docs/reference/slash-commands).
+authoritative list or see the [live slash commands reference](https://github.com/maksim9510/Prostor/docs/reference/slash-commands).
 The registry of record is `prostor_cli/commands.py` — every consumer
 (autocomplete, Telegram menu, Slack mapping, `/help`) derives from it.
 
@@ -389,7 +389,7 @@ Edit with `prostor config edit` or `prostor config set section.key value`.
 | `delegation` | `model`, `provider`, `base_url`, `api_key`, `max_iterations` (50), `reasoning_effort` |
 | `checkpoints` | `enabled`, `max_snapshots` (50) |
 
-Full config reference: https://prostor-agent.nousresearch.com/docs/user-guide/configuration
+Full config reference: https://github.com/maksim9510/Prostor/docs/user-guide/configuration
 
 ### Providers
 
@@ -419,7 +419,7 @@ Full config reference: https://prostor-agent.nousresearch.com/docs/user-guide/co
 | Custom endpoint | Config | `model.base_url` + `model.api_key` in config.yaml |
 | GitHub Copilot ACP | External | `COPILOT_CLI_PATH` or Copilot CLI |
 
-Full provider docs: https://prostor-agent.nousresearch.com/docs/integrations/providers
+Full provider docs: https://github.com/maksim9510/Prostor/docs/integrations/providers
 
 ### Toolsets
 
@@ -679,7 +679,7 @@ the `cronjob` tool, the `prostor cron` CLI (`list`, `add`, `edit`,
   header/footer instead of being mirrored into the target gateway
   session (keeps role alternation intact).
 
-User docs: https://prostor-agent.nousresearch.com/docs/user-guide/features/cron
+User docs: https://github.com/maksim9510/Prostor/docs/user-guide/features/cron
 
 ### Curator (skill lifecycle)
 
@@ -700,7 +700,7 @@ so nothing is lost.
 
 Config: `curator.*` (`enabled`, `interval_hours`, `min_idle_hours`,
 `stale_after_days`, `archive_after_days`, `backup.*`).
-User docs: https://prostor-agent.nousresearch.com/docs/user-guide/features/curator
+User docs: https://github.com/maksim9510/Prostor/docs/user-guide/features/curator
 
 ### Kanban (multi-agent work queue)
 
@@ -729,7 +729,7 @@ sessions still have zero `kanban_*` schema footprint unless configured.
   `PROSTOR_KANBAN_BOARD` pinned in env); tenant is a soft namespace
   within a board for workspace-path + memory-key isolation.
 
-User docs: https://prostor-agent.nousresearch.com/docs/user-guide/features/kanban
+User docs: https://github.com/maksim9510/Prostor/docs/user-guide/features/kanban
 
 ---
 
@@ -880,18 +880,18 @@ prostor config set auxiliary.vision.model <model_name>
 
 | Looking for... | Location |
 |----------------|----------|
-| Config options | `prostor config edit` or [Configuration docs](https://prostor-agent.nousresearch.com/docs/user-guide/configuration) |
-| Available tools | `prostor tools list` or [Tools reference](https://prostor-agent.nousresearch.com/docs/reference/tools-reference) |
-| Slash commands | `/help` in session or [Slash commands reference](https://prostor-agent.nousresearch.com/docs/reference/slash-commands) |
-| Skills catalog | `prostor skills browse` or [Skills catalog](https://prostor-agent.nousresearch.com/docs/reference/skills-catalog) |
-| Provider setup | `prostor model` or [Providers guide](https://prostor-agent.nousresearch.com/docs/integrations/providers) |
-| Platform setup | `prostor gateway setup` or [Messaging docs](https://prostor-agent.nousresearch.com/docs/user-guide/messaging/) |
-| MCP servers | `prostor mcp list` or [MCP guide](https://prostor-agent.nousresearch.com/docs/user-guide/features/mcp) |
-| Profiles | `prostor profile list` or [Profiles docs](https://prostor-agent.nousresearch.com/docs/user-guide/profiles) |
-| Cron jobs | `prostor cron list` or [Cron docs](https://prostor-agent.nousresearch.com/docs/user-guide/features/cron) |
-| Memory | `prostor memory status` or [Memory docs](https://prostor-agent.nousresearch.com/docs/user-guide/features/memory) |
-| Env variables | `prostor config env-path` or [Env vars reference](https://prostor-agent.nousresearch.com/docs/reference/environment-variables) |
-| CLI commands | `prostor --help` or [CLI reference](https://prostor-agent.nousresearch.com/docs/reference/cli-commands) |
+| Config options | `prostor config edit` or [Configuration docs](https://github.com/maksim9510/Prostor/docs/user-guide/configuration) |
+| Available tools | `prostor tools list` or [Tools reference](https://github.com/maksim9510/Prostor/docs/reference/tools-reference) |
+| Slash commands | `/help` in session or [Slash commands reference](https://github.com/maksim9510/Prostor/docs/reference/slash-commands) |
+| Skills catalog | `prostor skills browse` or [Skills catalog](https://github.com/maksim9510/Prostor/docs/reference/skills-catalog) |
+| Provider setup | `prostor model` or [Providers guide](https://github.com/maksim9510/Prostor/docs/integrations/providers) |
+| Platform setup | `prostor gateway setup` or [Messaging docs](https://github.com/maksim9510/Prostor/docs/user-guide/messaging/) |
+| MCP servers | `prostor mcp list` or [MCP guide](https://github.com/maksim9510/Prostor/docs/user-guide/features/mcp) |
+| Profiles | `prostor profile list` or [Profiles docs](https://github.com/maksim9510/Prostor/docs/user-guide/profiles) |
+| Cron jobs | `prostor cron list` or [Cron docs](https://github.com/maksim9510/Prostor/docs/user-guide/features/cron) |
+| Memory | `prostor memory status` or [Memory docs](https://github.com/maksim9510/Prostor/docs/user-guide/features/memory) |
+| Env variables | `prostor config env-path` or [Env vars reference](https://github.com/maksim9510/Prostor/docs/reference/environment-variables) |
+| CLI commands | `prostor --help` or [CLI reference](https://github.com/maksim9510/Prostor/docs/reference/cli-commands) |
 | Gateway logs | `~/.prostor/logs/gateway.log` |
 | Session files | `prostor sessions browse` (reads state.db) |
 | Source code | `~/.prostor/prostor-agent/` |
@@ -900,7 +900,7 @@ prostor config set auxiliary.vision.model <model_name>
 
 ## Contributor Quick Reference
 
-For occasional contributors and PR authors. Full developer docs: https://prostor-agent.nousresearch.com/docs/developer-guide/
+For occasional contributors and PR authors. Full developer docs: https://github.com/maksim9510/Prostor/docs/developer-guide/
 
 ### Project Layout
 
