@@ -1,310 +1,322 @@
-# Prostor Agent - Development Guide
+# Prostor Agent — Руководство для разработчиков
 
-Instructions for AI coding assistants and developers working on the prostor-agent codebase.
+Инструкции для AI-ассистентов и разработчиков, работающих с кодовой базой prostor-agent.
 
-**Never give up on the right solution.**
+**Никогда не сдавайтесь в поисках правильного решения.**
 
-## What Prostor Is
+## Что такое Prostor
 
-Prostor is a personal AI agent that runs the same agent core across a CLI, a
-messaging gateway (Telegram, Discord, Slack, and ~20 other platforms), a TUI,
-and an Electron desktop app. It learns across sessions (memory + skills),
-delegates to subagents, runs scheduled jobs, and drives a real terminal and
-browser. It is extended primarily through **plugins and skills**, not by
-growing the core.
+Prostor — персональный AI-агент, который запускает одно и то же ядро в CLI,
+messaging gateway (Telegram, Discord, Slack и ~20 других платформах), TUI
+и Electron-приложении. Он обучается между сессиями (память + навыки),
+делегирует субагентам, выполняет запланированные задачи и управляет
+настоящим терминалом и браузером. Расширяется в основном через **плагины
+и навыки**, а не разрастанием ядра.
 
-Two properties shape almost every design decision and are the lens for
-reviewing any change:
+Два свойства определяют почти каждое архитектурное решение и являются
+критерием review любых изменений:
 
-- **Per-conversation prompt caching is sacred.** A long-lived conversation
-  reuses a cached prefix every turn. Anything that mutates past context,
-  swaps toolsets, or rebuilds the system prompt mid-conversation invalidates
-  that cache and multiplies the user's cost. We do not do it (the one
-  exception is context compression).
-- **The core is a narrow waist; capability lives at the edges.** Every model
-  tool we add is sent on every API call, so the bar for a new *core* tool is
-  high. Most new capability should arrive as a CLI command + skill, a
-  service-gated tool, or a plugin — not as core surface.
+- **Per-conversation prompt caching неприкосновенен.** Долгоживущий разговор
+  повторно использует кэшированный префикс каждый ход. Всё, что мутирует
+  прошлый контекст, меняет toolset или пересобирает system prompt
+  mid-conversation, инвалидирует кэш и умножает стоимость для пользователя.
+  Мы этого не делаем (единственное исключение — сжатие контекста).
+- **Ядро — узкая талия; возможности живут на краях.** Каждый model tool,
+  который мы добавляем, отправляется на каждый API-вызов, поэтому планка для
+  нового *core* tool высокая. Большинство новых возможностей должно
+  приходить как CLI-команда + skill, service-gated tool или плагин — а не
+  как core surface.
 
-## Contribution Rubric — What We Want / What We Don't
+## Рубрика контрибуции — что мы хотим / чего не хотим
 
-This is the project's intent layer. Use it two ways:
+Это intent layer проекта. Используйте двумя способами:
 
-1. **For humans and for your own work** — what gets merged and what gets
-   rejected, so a contribution aims at the target.
-2. **For automated review (the triage sweeper)** — guidance on when a PR is
-   safe to close on the three allowed reasons (`implemented_on_main`,
-   `cannot_reproduce`, `incoherent`) and, just as important, **when NOT to
-   close** one. Taste-based "we don't want this / out of scope" closes are NOT
-   an automated decision — those stay with a human maintainer. The sweeper's
-   job here is to recognize design intent and *avoid wrongly closing a
-   legitimate contribution*, not to make the won't-implement call itself.
+1. **Для людей и для собственной работы** — что мержится, а что
+   отклоняется, чтобы контрибуция попадала в цель.
+2. **Для автоматического review (триаж-свипер)** — руководство, когда PR
+   безопасно закрыть по трём разрешённым причинам (`implemented_on_main`,
+   `cannot_reproduce`, `incoherent`) и, что не менее важно, **когда НЕ
+   закрывать** PR. Вкус-based «мы это не хотим / вне scope» закрытия — НЕ
+   автоматическое решение, оно остаётся за человеком-мейнтейнером. Задача
+   свипера — распознать design intent и *избежать ошибочного закрытия
+   легитимной контрибуции*, а не делать вызов won't-implement.
 
-Read the balance right: Prostor ships a **lot** — most merges are bug fixes to
-real reported behavior, and the product surface (platforms, channels,
-providers, models, desktop/TUI features) expands aggressively and on purpose.
-The restraint below is aimed squarely at the **core agent + the model tool
-schema**, the one place where every addition is paid for on every API call.
-"Smallest footprint" governs *how a capability is wired into the core*, NOT
-whether the product is allowed to grow. We are expansive at the edges and
-conservative at the waist.
+Читайте баланс верно: Prostor отгружает **много** — большинство мержей — это
+bug fix'ы к реально сообщённому поведению, а продуктовая поверхность
+(платформы, каналы, провайдеры, модели, desktop/TUI-фичи) расширяется
+агрессивно и намереренно. Ограничения ниже направлены исключительно на
+**core agent + model tool schema** — единственное место, где каждое
+добавление оплачивается на каждом API-вызове. «Smallest footprint»
+управляет *как возможность встроена в ядро*, а НЕ тем, разрешено ли продукту
+расти. Мы экспансивны на краях и консервативны в талии.
 
-### What we want
+### Что мы хотим
 
-- **Fix real bugs, well.** The bulk of what lands is `fix(...)` against an
-  actual reported symptom. A good fix reproduces the symptom on current
-  `main`, points to the exact line where it manifests, and fixes the whole bug
-  class — sibling call paths included — not just the one site the reporter hit.
-- **Expand reach at the edges.** New platform adapters, channels, providers,
-  models, and desktop/TUI/dashboard features are welcome and land routinely,
-  including large ones (a new messaging channel, a session-cap feature, a
-  Windows PTY bridge). Breadth in the product is a goal, not a footprint
-  concern — as long as it integrates with the existing setup/config UX
-  (`prostor tools`, `prostor setup`, auto-install) rather than bolting on a raw
-  env var.
-- **Refactor god-files into clean modules.** Extracting a multi-thousand-line
-  cluster out of `cli.py` / `run_agent.py` / `gateway/run.py` into a focused
-  mixin or module is wanted work, even when the diff is huge and mechanical
-  (large `+N/-N` refactors merge regularly). The "every line traces to the
-  request" test applies to *feature* PRs; a declared refactor's request IS the
-  extraction.
-- **Keep the core narrow.** New *model tools* are the expensive exception —
-  every tool ships on every API call. Prefer, in order: extend existing code →
-  CLI command + skill → service-gated tool (`check_fn`) → plugin → MCP server
-  in the catalog → new core tool (last resort). See "The Footprint Ladder."
-- **Extend, don't duplicate.** Before adding a module/manager/hook, check
-  whether existing infrastructure already covers the use case. When several PRs
-  integrate the same *category*, design one shared interface instead of merging
-  them one at a time (see the ABC + orchestrator note under the Footprint
-  Ladder).
-- **Behavior contracts over snapshots.** Tests should assert how two pieces of
-  data must relate (invariants), not freeze a current value (model lists,
-  config version literals, enumeration counts). See "Don't write
-  change-detector tests."
-- **E2E validation, not just green unit mocks.** For anything touching
-  resolution chains, config propagation, security boundaries, remote
-  backends, or file/network I/O, exercise the real path with real imports
-  against a temp `PROSTOR_HOME`. Mocks hide integration bugs.
-- **Cache-, alternation-, and invariant-safe.** Preserve prompt caching, strict
-  message role alternation (never two same-role messages in a row; never a
-  synthetic user message injected mid-loop), and a system prompt that is
-  byte-stable for the life of a conversation.
-- **Contributor credit preserved.** Salvage external work by cherry-picking
-  (rebase-merge) so authorship survives in git history; don't reimplement from
-  scratch when you can build on top.
+- **Хорошо фиксить реальные баги.** Основная масса — `fix(...)` против
+  реального сообщённого симптома. Хороший фикс воспроизводит симптом на
+  текущем `main`, указывает на точную строку, где он проявляется, и фиксит
+  весь класс багов — включая смежные пути — а не только тот, на который
+  наткнулся репортер.
+- **Расширять охват на краях.** Новые платформенные адаптеры, каналы,
+  провайдеры, модели и desktop/TUI/dashboard-фичи приветствуются и
+  мержатся регулярно, включая крупные (новый messaging-канал, session-cap
+  фича, Windows PTY-мост). Широта продукта — цель, а не footprint-concern —
+  при условии, что интеграция идёт через существующий setup/config UX
+  (`prostor tools`, `prostor setup`, auto-install), а не через сырую env var.
+- **Рефакторить god-файлы в чистые модули.** Извлечение много-тысячестрочного
+  кластера из `cli.py` / `run_agent.py` / `gateway/run.py` в фокусный mixin
+  или модуль — желанная работа, даже если diff огромный и механический
+  (крупные `+N/-N` рефакторы мержатся регулярно). Тест «каждая строка ведёт
+  к запросу» применяется к *feature* PR; запрос объявленного рефактора — это
+  извлечение.
+- **Держать ядро узким.** Новые *model tools* — дорогое исключение: каждый
+  tool уходит на каждом API-вызове. Предпочтение по порядку: расширить
+  существующий код → CLI-команда + skill → service-gated tool (`check_fn`) →
+  плагин → MCP server в каталоге → новый core tool (последнее средство).
+  См. «Footprint Ladder».
+- **Расширять, не дублировать.** Перед добавлением модуля/manager/hook
+  проверьте, не покрывает ли существующая инфраструктура этот use case.
+  Когда несколько PR интегрируют одну *категорию*, спроектируйте один общий
+  интерфейс, а не мержите их по одному (см. ABC + orchestrator note под
+  Footprint Ladder).
+- **Контракты поведения, а не снапшоты.** Тесты должны проверять, как две
+  части данных должны соотноситься (инварианты), а не замораживать текущее
+  значение (списки моделей, литералы версий config, counts перечислений).
+  См. «Не пишите change-detector тесты».
+- **E2E-валидация, а не только зелёные unit-моки.** Для всего, что касается
+  resolution chains, распространения конфига, security boundaries, удалённых
+  бэкендов или file/network I/O, гоните реальный путь с реальными импортами
+  против temp `PROSTOR_HOME`. Моки скрывают интеграционные баги.
+- **Cache-, alternation- и invariant-safe.** Сохраняйте prompt caching, строгую
+  ролевую альтернацию сообщений (никогда два same-role сообщения подряд; никогда
+  синтетическое user message, инжектированное mid-loop), и system prompt,
+  байт-стабильный в течение жизни разговора.
+- **Кредит контрибьютора сохранён.** Спасайте внешнюю работу через
+  cherry-pick (rebase-merge), чтобы авторство сохранялось в git history;
+  не переписывайте с нуля, если можно строить поверх.
 
-### What we don't want (rejected even when well-built)
+### Чего мы не хотим (отклоняется даже при качественной реализации)
 
-- **Speculative infrastructure.** Hooks, callbacks, or extension points with no
-  concrete consumer. Adding a hook is easy; removing one after plugins depend
-  on it is hard. A hook is NOT speculative if a contributor has a real, stated
-  use case — even if the consumer ships separately.
-- **New `PROSTOR_*` env vars for non-secret config.** `.env` is for secrets
-  only (API keys, tokens, passwords). All behavioral settings — timeouts,
-  thresholds, feature flags, display prefs — go in `config.yaml`. Bridge to an
-  internal env var if the mechanism needs one, but user-facing docs point to
-  `config.yaml`. Reject PRs that tell users to "set X in your .env" unless X
-  is a credential.
-- **A new core tool when terminal + file already do the job, or when a skill
-  would.** If the only barrier is file visibility on a remote backend, fix the
-  mount, not the toolset.
-- **Lazy-reading escape hatches on instructional tools.** No `offset`/`limit`
-  pagination on tools that load content the agent must read fully (skills,
-  prompts, playbooks). Models will read page 1 and skip the rest.
-- **"Fixes" that destroy the feature they secure.** A mitigation that kills the
-  feature's purpose is the wrong mitigation. Read the original commit's intent
-  (`git log -p -S`) before restricting behavior; find a fix that preserves the
-  feature.
-- **Outbound telemetry / usage attribution without opt-in gating.** No new
-  analytics, third-party identifier tagging, or attribution tags until a
-  generic user-facing opt-in (config gate + setup prompt + `prostor tools`
-  toggle) exists. Park behind a label, do not merge.
-- **Change-detector tests, cache-breaking mid-conversation, dead code wired in
-  without E2E proof, and plugins that touch core files.** Plugins live in their
-  own directory and work within the ABCs/hooks we provide; if a plugin needs
-  more, widen the generic plugin surface, don't special-case it in core.
+- **Спекулятивная инфраструктура.** Хуки, callback'и или точки расширения без
+  конкретного потребителя. Добавить хук легко; удалить после того, как плагины
+  зависят от него — сложно. Хук НЕ спекулятивный, если у контрибьютора есть
+  реальный, заявленный use case — даже если потребитель отгружается отдельно.
+- **Новые `PROSTOR_*` env vars для non-secret конфигурации.** `.env` — только
+  для секретов (API-ключи, токены, пароли). Все поведенческие настройки —
+  таймауты, пороги, feature flags, display prefs — идут в `config.yaml`.
+  Бриджите во внутреннюю env var, если механизм требует, но user-facing docs
+  указывают на `config.yaml`. Отклоняйте PR, которые говорят пользователям
+  «установите X в .env», если X — не credential.
+- **Новый core tool, когда terminal + file уже справляются, или когда справился
+  бы skill.** Если единственный барьер — видимость файлов на удалённом бэкенде,
+  фиксите mount, а не toolset.
+- **Lazy-reading escape hatches на instructional tools.** Никакой
+  `offset`/`limit` пагинации на инструментах, загружающих контент, который
+  агент должен прочитать полностью (skills, prompts, playbooks). Модели
+  прочитают страницу 1 и пропустят остальное.
+- **«Фиксы», убивающие фичу, которую они защищают.** Митигация, убивающая
+  назначение фичи — неправильная митигация. Читайте intent оригинального
+  коммита (`git log -p -S`) до ограничения поведения; найдите фикс,
+  сохраняющий фичу.
+- **Outbound telemetry / usage attribution без opt-in gating.** Никакой
+  новой аналитики, сторонней идентификации или attribution tags, пока не
+  существует generic user-facing opt-in (config gate + setup prompt +
+  `prostor tools` toggle). Паркуйте за label, не мержите.
+- **Change-detector тесты, cache-breaking mid-conversation, мёртвый код,
+  подключённый без E2E-доказательств, и плагины, трогающие core-файлы.**
+  Плагины живут в своей директории и работают в рамках предоставленных
+  ABCs/hooks; если плагину нужно больше — расширяйте generic plugin surface,
+  а не специализируйте в core.
 
-### Before you call it a bug — verify the premise (and when NOT to close)
+### Прежде чем назвать это багом — проверьте предпосылку (и когда НЕ закрывать)
 
-The most common reason a well-written PR gets closed is not code quality — it
-is that the change is built on a **wrong premise**, or it treats an
-**intentional design as a gap**. These patterns cut both ways: they tell a
-human reviewer what to scrutinize, and they tell the automated sweeper when a
-PR is NOT safe to close as `implemented_on_main` / `cannot_reproduce` (when in
-doubt, leave it open for a human). They are distilled from real closes.
+Самая частая причина закрытия хорошо написанного PR — не качество кода, а то,
+что изменение построено на **неверной предпосылке** или трактует
+**намеренный дизайн как пробел**. Эти паттерны работают в обе стороны: они
+подсказывают human-reviewer'у, что scrutinize, и automated sweeper'у, когда PR
+НЕ безопасно закрывать как `implemented_on_main` / `cannot_reproduce` (в
+сомнениях — оставляйте человеку). Они дистиллированы из реальных закрытий.
 
-- **"Intentional design, not a gap."** A limitation that looks like an
-  oversight is often deliberate. Before "fixing" a missing link or a
-  restriction, ask whether the isolation IS the design. Example: profiles are
-  independent islands on purpose — a PR adding live config inheritance from the
-  default profile was closed because coupling profiles together is exactly what
-  the design prevents (the copy-at-creation `--clone` path already covers the
-  legitimate "start from my default" case). Read the original commit's intent
-  (`git log -p -S "<symbol>"`) before assuming something is unfinished.
-- **"The premise doesn't hold against how X actually works."** A PR's
-  justification frequently rests on a wrong mental model of an existing
-  mechanism. Trace the real code/runtime before accepting the rationale. Two
-  real closes: a rate-limit "re-probe during cooldown" PR (the breaker only
-  trips on a *confirmed-empty* account bucket, so re-probing just hammers a
-  bucket we've already proven empty); a usage-accumulation fix whose new branch
-  **never executes at runtime** because an earlier guard already popped the
-  state it depended on. If you can't point to the exact line where the bug
-  manifests AND show the fix changes that line's behavior, you haven't verified
-  the premise.
-- **"This fix was wrong — the absence/omission was deliberate."** Adding the
-  obvious-looking missing piece can break things the omission was protecting.
-  Example: restoring "missing" `__init__.py` files made a test tree importable
-  as a dotted package that shadowed the real plugin, deleting its `register()`
-  at import time. The absence was load-bearing.
-- **"Overreached / resurrected an approach we'd moved past."** Scope creep that
-  supersedes an agreed-on base, or revives a direction the maintainers
-  deliberately closed, gets rejected even when the code works. Keep the change
-  to the narrow piece that was actually agreed; offer the rest as a focused
-  follow-up.
+- **«Намеренный дизайн, а не пробел.»** Ограничение, выглядящее как упущение,
+  часто сделано специально. Перед «фиксом» недостающего звена или ограничения
+  спросите, не является ли изоляция дизайном. Пример: profiles — независимые
+  острова намеренно — PR с live config inheritance от default profile был
+  закрыт, потому что связывание профилей — именно то, что дизайн предотвращает
+  (путь copy-at-creation `--clone` уже покрывает легитимный «начать с моего
+  default»). Читайте intent оригинального коммита (`git log -p -S "<symbol>"`)
+  прежде чем считать что-то незавершённым.
+- **«Предпосылка не выдерживает проверку тем, как X реально работает.»**
+  Обоснование PR часто держится на неверной ментальной модели существующего
+  механизма. Трассируйте реальный код/runtime, прежде чем принимать rationale.
+  Два реальных закрытия: rate-limit «re-probe during cooldown» PR (breaker
+  срабатывает только на *confirmed-empty* account bucket, поэтому re-probe
+  просто бьёт по bucket, который уже доказан пустым); usage-accumulation fix,
+  чья новая ветка **никогда не выполняется в runtime**, потому что более
+  ранний guard уже вынул состояние, от которого она зависела. Если не можете
+  указать точную строку, где баг проявляется, И показать, что фикс меняет
+  поведение этой строки — предпосылка не верифицирована.
+- **«Этот фикс был неверным — отсутствие/упущение было намеренным.»** Добавление
+  очевидно недостающего куска может сломать то, что упущение защищало. Пример:
+  восстановление «недостающих» `__init__.py` файлов сделало тестовое дерево
+  импортируемым как dotted package, затеняющий реальный плагин и удаляющий
+  его `register()` при импорте. Отсутствие было load-bearing.
+- **«Overreached / воскресил подход, от которого ушли.»** Scope creep, который
+  подменяет согласованный base, или воскрешает направление, которое мейнтейнеры
+  намеренно закрыли, отклоняется, даже если код работает. Держите изменение в
+  узком куске, который реально был согласован; остальное предлагайте как
+  фокусный follow-up.
 
-The throughline: **verify the claim AND the intent against the codebase before
-writing or merging a fix.** A confirmed reproduction on current `main` plus a
-line-level account of where the fix acts beats a plausible-sounding rationale
-every time. When in doubt about intent, it is cheaper to ask than to ship a
-fix that fights the design.
+Сквозное: **проверяйте claim И intent против кодовой базы до написания или
+мержа фикса.** Подтверждённое воспроизведение на текущем `main` плюс
+line-level account того, где фикс действует, побеждает правдоподобно звучащий
+rationale каждый раз. В сомнениях о intent — дешевле спросить, чем отгружать
+фикс, борющийся с дизайном.
 
-### The Footprint Ladder (new capability decision)
+### Footprint Ladder (решение о новой возможности)
 
-Each rung adds more permanent surface than the one above. Choose the highest
-(least-footprint) rung that correctly solves the problem:
+Каждая ступень добавляет больше постоянной поверхности, чем предыдущая.
+Выбирайте высшую (наименее footprint) ступень, корректно решающую проблему:
 
-1. **Extend existing code** — the capability is a variation of something that
-   already exists. Zero new surface.
-2. **CLI command + skill** — manages config/state/infra expressible as shell
-   commands. The agent runs `prostor <subcommand>` guided by a skill. Zero
-   model-tool footprint. Default choice for subscriptions, scheduled tasks,
-   service setup. Examples: `prostor webhook`, `prostor cron`, `prostor tools`.
-3. **Service-gated tool (`check_fn`)** — needs structured params/returns AND
-   only appears when a prerequisite is configured. Zero footprint otherwise.
-   Examples: Home Assistant tools (gated on token), memory-provider tools.
-4. **Plugin** — third-party/niche/user-specific capability that doesn't ship in
-   core. Lives in `~/.prostor/plugins/` or a pip package, discovered at runtime.
-5. **MCP server (in the catalog)** — if the capability genuinely needs to be a
-   tool (structured I/O the agent invokes) but isn't core-fundamental, prefer
-   building it as an MCP server and adding it to the MCP catalog over growing
-   the core toolset. The agent connects to it through the built-in MCP client;
-   zero permanent core-schema footprint, and it's reusable by any MCP host.
-6. **New core tool** — only when the capability is fundamental, broadly useful
-   to nearly every user, and unreachable via terminal + file (or an MCP server).
-   Examples of correct core tools: terminal, read_file, web_search,
+1. **Расширить существующий код** — возможность — вариация того, что уже есть.
+   Ноль новой поверхности.
+2. **CLI-команда + skill** — управляет config/state/infra, выразимым как shell
+   команды. Агент запускает `prostor <subcommand>` под управлением skill. Ноль
+   model-tool footprint. Дефолт для подписок, scheduled tasks, service setup.
+   Примеры: `prostor webhook`, `prostor cron`, `prostor tools`.
+3. **Service-gated tool (`check_fn`)** — нужны структурированные params/returns
+   И появляется только когда prerequisite настроен. Ноль footprint в остальном.
+   Примеры: Home Assistant tools (gated on token), memory-provider tools.
+4. **Плагин** — third-party/niche/user-specific возможность, не отгружается в
+   core. Живёт в `~/.prostor/plugins/` или pip-пакете, обнаруживается в runtime.
+5. **MCP server (в каталоге)** — если возможность действительно должна быть
+   tool (структурированный I/O, который агент вызывает), но не core-fundamental,
+   предпочитайте MCP server в каталоге росту core toolset. Агент подключается
+   через встроенный MCP-клиент; ноль постоянного core-schema footprint, и
+   переиспользуемо любым MCP-хостом.
+6. **Новый core tool** — только когда возможность фундаментальна, широко полезна
+   почти каждому пользователю и недостижима через terminal + file (или MCP
+   server). Примеры корректных core tools: terminal, read_file, web_search,
    browser_navigate.
 
-When 3+ open PRs try to integrate the same *category* of thing (memory
-backends, providers, notifiers), don't merge them one at a time — design an
-ABC + orchestrator, wrap the existing built-in as the first provider, and turn
-the competing PRs into plugins against that interface.
+Когда 3+ открытых PR пытаются интегрировать одну *категорию* (memory backends,
+providers, notifiers), не мержите по одному — спроектируйте ABC + orchestrator,
+оберните существующий built-in как первого provider и превратите конкурирующие
+PR в плагины против этого интерфейса.
 
-## Development Environment
+## Среда разработки
 
 ```bash
-# Prefer .venv; fall back to venv if that's what your checkout has.
-source .venv/bin/activate   # or: source venv/bin/activate
+# Предпочитайте .venv; fallback на venv, если у вашего checkout его нет.
+source .venv/bin/activate   # или: source venv/bin/activate
 ```
 
-`scripts/run_tests.sh` probes `.venv` first, then `venv`, then
-`$HOME/.prostor/prostor-agent/venv` (for worktrees that share a venv with the
-main checkout).
+`scripts/run_tests.sh` пробует `.venv`, затем `venv`, затем
+`$HOME/.prostor/prostor-agent/venv` (для worktree, разделяющих venv с
+основным checkout).
 
-## Project Structure
+## Структура проекта
 
-File counts shift constantly — don't treat the tree below as exhaustive.
-The canonical source is the filesystem. The notes call out the load-bearing
-entry points you'll actually edit.
+Количество файлов меняется постоянно — не считайте дерево ниже исчерпывающим.
+Канонический источник — файловая система. Комментарии отмечают load-bearing
+точки входа, которые вы реально будете редактировать.
 
 ```
 prostor-agent/
-├── run_agent.py          # AIAgent class — core conversation loop (~12k LOC)
-├── model_tools.py        # Tool orchestration, discover_builtin_tools(), handle_function_call()
-├── toolsets.py           # Toolset definitions, _PROSTOR_CORE_TOOLS list
-├── cli.py                # ProstorCLI class — interactive CLI orchestrator (~11k LOC)
-├── prostor_state.py       # SessionDB — SQLite session store (FTS5 search)
-├── prostor_constants.py   # get_prostor_home(), display_prostor_home() — profile-aware paths
-├── prostor_logging.py     # setup_logging() — agent.log / errors.log / gateway.log (profile-aware)
-├── batch_runner.py       # Parallel batch processing
-├── agent/                # Agent internals (provider adapters, memory, caching, compression, etc.)
-├── prostor_cli/           # CLI subcommands, setup wizard, plugins loader, skin engine
-├── tools/                # Tool implementations — auto-discovered via tools/registry.py
-│   └── environments/     # Terminal backends (local, docker, ssh, modal, daytona, singularity)
+├── run_agent.py          # Класс AIAgent — основной цикл разговора (~12k LOC)
+├── model_tools.py        # Оркестрация инструментов, discover_builtin_tools(), handle_function_call()
+├── toolsets.py           # Определения toolset, список _PROSTOR_CORE_TOOLS
+├── cli.py                # Класс ProstorCLI — интерактивный CLI-оркестратор (~11k LOC)
+├── prostor_state.py       # SessionDB — SQLite-хранилище сессий (FTS5-поиск)
+├── prostor_constants.py   # get_prostor_home(), display_prostor_home() — пути с учётом профилей
+├── prostor_logging.py     # setup_logging() — agent.log / errors.log / gateway.log (с учётом профилей)
+├── batch_runner.py       # Параллельная пакетная обработка
+├── agent/                # Внутренности агента (адаптеры провайдеров, память, кэширование, сжатие)
+├── prostor_cli/           # CLI-подкоманды, мастер настройки, загрузчик плагинов, движок скинов
+├── tools/                # Реализации инструментов — автообнаружение через tools/registry.py
+│   └── environments/     # Терминальные бэкенды (local, docker, ssh, modal, daytona, singularity)
 ├── gateway/              # Messaging gateway — run.py + session.py + platforms/
-│   ├── platforms/        # Adapter per platform (telegram, discord, slack, whatsapp,
+│   ├── platforms/        # Адаптеры по платформам (telegram, discord, slack, whatsapp,
 │   │                     #   homeassistant, signal, matrix, mattermost, email, sms,
 │   │                     #   dingtalk, wecom, weixin, feishu, qqbot, bluebubbles,
-│   │                     #   yuanbao, webhook, api_server, ...). See ADDING_A_PLATFORM.md.
-│   └── builtin_hooks/    # Extension point for always-registered gateway hooks (none shipped)
-├── plugins/              # Plugin system (see "Plugins" section below)
-│   ├── memory/           # Memory-provider plugins (honcho, mem0, supermemory, ...)
-│   ├── context_engine/   # Context-engine plugins
-│   ├── model-providers/  # Inference backend plugins (openrouter, anthropic, gmi, ...)
+│   │                     #   yuanbao, webhook, api_server, ...). См. ADDING_A_PLATFORM.md.
+│   └── builtin_hooks/    # Точка расширения для всегда-зарегистрированных gateway-хуков
+├── plugins/              # Система плагинов (см. раздел «Плагины» ниже)
+│   ├── memory/           # Плагины memory-provider (honcho, mem0, supermemory, ...)
+│   ├── context_engine/   # Плагины context-engine
+│   ├── model-providers/  # Плагины inference backend (openrouter, anthropic, gmi, ...)
 │   ├── kanban/           # Multi-agent board dispatcher + worker plugin
-│   ├── prostor-achievements/  # Gamified achievement tracking
-│   ├── observability/    # Metrics / traces / logs plugin
-│   ├── image_gen/        # Image-generation providers
+│   ├── prostor-achievements/  # Геймифицированный tracking достижений
+│   ├── observability/    # Плагин метрик / трейсов / логов
+│   ├── image_gen/        # Плагины генерации изображений
 │   └── <others>/         # disk-cleanup, google_meet, platforms, spotify,
 │                         #   strike-freedom-cockpit, ...
-├── optional-skills/      # Heavier/niche skills shipped but NOT active by default
-├── skills/               # Built-in skills bundled with the repo
-├── ui-tui/               # Ink (React) terminal UI — `prostor --tui`
+├── optional-skills/      # Тяжёлые/нишевые навыки, отгружаемые, но НЕ активные по умолчанию
+├── skills/               # Встроенные навыки, поставляемые с репозиторием
+├── ui-tui/               # Ink (React) терминальный UI — `prostor --tui`
 │   └── src/              # entry.tsx, app.tsx, gatewayClient.ts + app/components/hooks/lib
-├── tui_gateway/          # Python JSON-RPC backend for the TUI
-├── acp_adapter/          # ACP server (VS Code / Zed / JetBrains integration)
-├── cron/                 # Scheduler — jobs.py, scheduler.py
-├── scripts/              # run_tests.sh, release.py, auxiliary scripts
-├── website/              # Docusaurus docs site
-└── tests/                # Pytest suite (~17k tests across ~900 files as of May 2026)
+├── tui_gateway/          # Python JSON-RPC бэкенд для TUI
+├── acp_adapter/          # ACP-сервер (интеграция VS Code / Zed / JetBrains)
+├── cron/                 # Планировщик — jobs.py, scheduler.py
+├── scripts/              # run_tests.sh, release.py, вспомогательные скрипты
+├── website/              # Docusaurus-сайт документации
+└── tests/                # Набор pytest (~17k тестов в ~900 файлах по состоянию на май 2026)
 ```
 
-**User config:** `~/.prostor/config.yaml` (settings), `~/.prostor/.env` (API keys only).
-**Logs:** `~/.prostor/logs/` — `agent.log` (INFO+), `errors.log` (WARNING+),
-`gateway.log` when running the gateway. Profile-aware via `get_prostor_home()`.
-Browse with `prostor logs [--follow] [--level ...] [--session ...]`.
+**Конфигурация пользователя:** `~/.prostor/config.yaml` (настройки),
+`~/.prostor/.env` (только API-ключи).
+**Логи:** `~/.prostor/logs/` — `agent.log` (INFO+), `errors.log` (WARNING+),
+`gateway.log` при работе gateway. С учётом профилей через `get_prostor_home()`.
+Просмотр: `prostor logs [--follow] [--level ...] [--session ...]`.
 
-## TypeScript Style
+## TypeScript-стиль
 
-Applies to TypeScript across Prostor: desktop, TUI, website, and future TS packages.
+Применяется к TypeScript во всём Prostor: desktop, TUI, website и будущим TS-пакетам.
 
-- Prefer small nanostores over component state when state is shared, reused, or read by distant UI.
-- Let each feature own its atoms. Chat state belongs near chat, shell state near shell, shared state in `src/store`.
-- Components that render from an atom should use `useStore`. Non-rendering actions should read with `$atom.get()`.
-- Do not pass state through three components when the leaf can subscribe to the atom.
-- Keep persistence beside the atom that owns it.
-- Keep route roots thin. They compose routes and shell; they should not become controllers.
-- No monolithic hooks. A hook should own one narrow job.
-- Prefer colocated action modules over hidden god hooks.
-- If a callback is pure side effect, use the terse void form:
+- Предпочитайте небольшие nanostores вместо component state, когда state
+  разделяется, переиспользуется или читается удалённым UI.
+- Каждый feature владеет своими atoms. Chat state — рядом с chat, shell state —
+  рядом с shell, shared state — в `src/store`.
+- Компоненты, рендерящие из atom, используют `useStore`. Non-rendering actions
+  читают через `$atom.get()`.
+- Не прокидывайте state через три компонента, если leaf может подписаться на atom.
+- Держите персистентность рядом с atom, владеющим ей.
+- Держите route roots тонкими. Они компонуют routes и shell; не должны становиться
+  контроллерами.
+- Никаких монолитных hooks. Hook должен владеть одной узкой задачей.
+- Предпочитайте colocated action-модули скрытым god hooks.
+- Если callback — чистый side effect, используйте terse void form:
   `onState={st => void setGatewayState(st)}`.
-- Async UI handlers should make intent explicit:
+- Async UI handlers должны делать intent явным:
   `onClick={() => void save()}`.
-- Prefer interfaces for public props and shared object shapes. Avoid `type X = { ... }` for object props.
-- Extend React primitives for props: `React.ComponentProps<'button'>`, `React.ComponentProps<typeof Dialog>`, `Omit<...>`, `Pick<...>`.
-- Table-driven beats condition ladders when mapping ids, routes, or views.
-- `src/app` owns routes, pages, and page-specific components.
-- `src/store` owns shared atoms.
-- `src/lib` owns shared pure helpers.
+- Предпочитайте interfaces для public props и shared object shapes. Избегайте
+  `type X = { ... }` для object props.
+- Расширяйте React primitives для props: `React.ComponentProps<'button'>`,
+  `React.ComponentProps<typeof Dialog>`, `Omit<...>`, `Pick<...>`.
+- Table-driven превосходит condition ladders при маппинге id, routes, views.
+- `src/app` владеет routes, pages и page-specific компонентами.
+- `src/store` владеет shared atoms.
+- `src/lib` владеет shared pure helpers.
 
-## File Dependency Chain
+## Цепочка файловых зависимостей
 
 ```
-tools/registry.py  (no deps — imported by all tool files)
+tools/registry.py  (нет deps — импортируется всеми tool-файлами)
        ↑
-tools/*.py  (each calls registry.register() at import time)
+tools/*.py  (каждый вызывает registry.register() при импорте)
        ↑
-model_tools.py  (imports tools/registry + triggers tool discovery)
+model_tools.py  (импортирует tools/registry + запускает tool discovery)
        ↑
 run_agent.py, cli.py, batch_runner.py, environments/
 ```
 
 ---
 
-## AIAgent Class (run_agent.py)
+## Класс AIAgent (run_agent.py)
 
-The real `AIAgent.__init__` takes ~60 parameters (credentials, routing, callbacks,
-session context, budget, credential pool, etc.). The signature below is the
-minimum subset you'll usually touch — read `run_agent.py` for the full list.
+Реальный `AIAgent.__init__` принимает ~60 параметров (credentials, routing,
+callbacks, session context, budget, credential pool и т.д.). Сигнатура ниже —
+минимальное подмножество, которое вы обычно будете трогать — читайте
+`run_agent.py` для полного списка.
 
 ```python
 class AIAgent:
@@ -313,33 +325,33 @@ class AIAgent:
         api_key: str = None,
         provider: str = None,
         api_mode: str = None,              # "chat_completions" | "codex_responses" | ...
-        model: str = "",                   # empty → resolved from config/provider later
-        max_iterations: int = 90,          # tool-calling iterations (shared with subagents)
+        model: str = "",                   # пусто → резолвится из config/provider позже
+        max_iterations: int = 90,          # итерации tool-calling (shared с субагентами)
         enabled_toolsets: list = None,
         disabled_toolsets: list = None,
         quiet_mode: bool = False,
         save_trajectories: bool = False,
-        platform: str = None,              # "cli", "telegram", etc.
+        platform: str = None,              # "cli", "telegram", и т.д.
         session_id: str = None,
         skip_context_files: bool = False,
         skip_memory: bool = False,
         credential_pool=None,
-        # ... plus callbacks, thread/user/chat IDs, iteration_budget, fallback_model,
-        # checkpoints config, prefill_messages, service_tier, reasoning_config, etc.
+        # ... плюс callbacks, thread/user/chat IDs, iteration_budget, fallback_model,
+        # checkpoints config, prefill_messages, service_tier, reasoning_config, и т.д.
     ): ...
 
     def chat(self, message: str) -> str:
-        """Simple interface — returns final response string."""
+        """Простой интерфейс — возвращает финальную строку ответа."""
 
     def run_conversation(self, user_message: str, system_message: str = None,
                          conversation_history: list = None, task_id: str = None) -> dict:
-        """Full interface — returns dict with final_response + messages."""
+        """Полный интерфейс — возвращает dict с final_response + messages."""
 ```
 
-### Agent Loop
+### Цикл агента
 
-The core loop is inside `run_conversation()` — entirely synchronous, with
-interrupt checks, budget tracking, and a one-turn grace call:
+Основной цикл внутри `run_conversation()` — полностью синхронный, с проверками
+прерывания, tracking бюджетом и one-turn grace call:
 
 ```python
 while (api_call_count < self.max_iterations and self.iteration_budget.remaining > 0) \
@@ -355,70 +367,85 @@ while (api_call_count < self.max_iterations and self.iteration_budget.remaining 
         return response.content
 ```
 
-Messages follow OpenAI format: `{"role": "system/user/assistant/tool", ...}`.
-Reasoning content is stored in `assistant_msg["reasoning"]`.
+Сообщения в формате OpenAI: `{"role": "system/user/assistant/tool", ...}`.
+Reasoning content хранится в `assistant_msg["reasoning"]`.
 
 ---
 
-## CLI Architecture (cli.py)
+## Архитектура CLI (cli.py)
 
-- **Rich** for banner/panels, **prompt_toolkit** for input with autocomplete
-- **KawaiiSpinner** (`agent/display.py`) — animated faces during API calls, `┊` activity feed for tool results
-- `load_cli_config()` in cli.py merges hardcoded defaults + user config YAML
-- **Skin engine** (`prostor_cli/skin_engine.py`) — data-driven CLI theming; initialized from `display.skin` config key at startup; skins customize banner colors, spinner faces/verbs/wings, tool prefix, response box, branding text
-- `process_command()` is a method on `ProstorCLI` — dispatches on canonical command name resolved via `resolve_command()` from the central registry
-- Skill slash commands: `agent/skill_commands.py` scans `~/.prostor/skills/`, injects as **user message** (not system prompt) to preserve prompt caching
+- **Rich** для banner/panels, **prompt_toolkit** для ввода с автодополнением
+- **KawaiiSpinner** (`agent/display.py`) — анимированные лица во время API-вызовов,
+  `┊` activity feed для результатов инструментов
+- `load_cli_config()` в cli.py мержит хардкод default'ы + user config YAML
+- **Skin engine** (`prostor_cli/skin_engine.py`) — data-driven CLI-темы; инициализируется
+  из `display.skin` config key при старте; скины кастомизируют цвета баннера,
+  спиннер faces/verbs/wings, префикс инструментов, response box, branding text
+- `process_command()` — метод на `ProstorCLI` — диспетчеризует по canonical command name,
+  резолвимому через `resolve_command()` из центрального registry
+- Skill slash-команды: `agent/skill_commands.py` сканирует `~/.prostor/skills/`,
+  инжектирует как **user message** (не system prompt) для сохранения prompt caching
 
 ### Slash Command Registry (`prostor_cli/commands.py`)
 
-All slash commands are defined in a central `COMMAND_REGISTRY` list of `CommandDef` objects. Every downstream consumer derives from this registry automatically:
+Все slash-команды определены в центральном `COMMAND_REGISTRY` — список `CommandDef`
+объектов. Каждый downstream consumer наследует из этого registry автоматически:
 
-- **CLI** — `process_command()` resolves aliases via `resolve_command()`, dispatches on canonical name
-- **Gateway** — `GATEWAY_KNOWN_COMMANDS` frozenset for hook emission, `resolve_command()` for dispatch
-- **Gateway help** — `gateway_help_lines()` generates `/help` output
-- **Telegram** — `telegram_bot_commands()` generates the BotCommand menu
-- **Slack** — `slack_subcommand_map()` generates `/prostor` subcommand routing
+- **CLI** — `process_command()` резолвит алиасы через `resolve_command()`,
+  диспетчеризует по canonical name
+- **Gateway** — `GATEWAY_KNOWN_COMMANDS` frozenset для хук-эмиссии, `resolve_command()`
+  для диспетчеризации
+- **Gateway help** — `gateway_help_lines()` генерирует `/help` output
+- **Telegram** — `telegram_bot_commands()` генерирует BotCommand menu
+- **Slack** — `slack_subcommand_map()` генерирует `/prostor` subcommand routing
 - **Autocomplete** — `COMMANDS` flat dict feeds `SlashCommandCompleter`
 - **CLI help** — `COMMANDS_BY_CATEGORY` dict feeds `show_help()`
 
-### Adding a Slash Command
+### Добавление slash-команды
 
-1. Add a `CommandDef` entry to `COMMAND_REGISTRY` in `prostor_cli/commands.py`:
+1. Добавьте `CommandDef` в `COMMAND_REGISTRY` в `prostor_cli/commands.py`:
 ```python
-CommandDef("mycommand", "Description of what it does", "Session",
+CommandDef("mycommand", "Описание что делает", "Session",
            aliases=("mc",), args_hint="[arg]"),
 ```
-2. Add handler in `ProstorCLI.process_command()` in `cli.py`:
+2. Добавьте handler в `ProstorCLI.process_command()` в `cli.py`:
 ```python
 elif canonical == "mycommand":
     self._handle_mycommand(cmd_original)
 ```
-3. If the command is available in the gateway, add a handler in `gateway/run.py`:
+3. Если команда доступна в gateway, добавьте handler в `gateway/run.py`:
 ```python
 if canonical == "mycommand":
     return await self._handle_mycommand(event)
 ```
-4. For persistent settings, use `save_config_value()` in `cli.py`
+4. Для персистентных настроек используйте `save_config_value()` в `cli.py`
 
-**CommandDef fields:**
-- `name` — canonical name without slash (e.g. `"background"`)
-- `description` — human-readable description
-- `category` — one of `"Session"`, `"Configuration"`, `"Tools & Skills"`, `"Info"`, `"Exit"`
-- `aliases` — tuple of alternative names (e.g. `("bg",)`)
-- `args_hint` — argument placeholder shown in help (e.g. `"<prompt>"`, `"[name]"`)
-- `cli_only` — only available in the interactive CLI
-- `gateway_only` — only available in messaging platforms
-- `gateway_config_gate` — config dotpath (e.g. `"display.tool_progress_command"`); when set on a `cli_only` command, the command becomes available in the gateway if the config value is truthy. `GATEWAY_KNOWN_COMMANDS` always includes config-gated commands so the gateway can dispatch them; help/menus only show them when the gate is open.
+**Поля CommandDef:**
+- `name` — canonical name без слэша (напр. `"background"`)
+- `description` — human-readable описание
+- `category` — один из `"Session"`, `"Configuration"`, `"Tools & Skills"`, `"Info"`, `"Exit"`
+- `aliases` — tuple альтернативных имён (напр. `("bg",)`)
+- `args_hint` — плейсхолдер аргумента в help (напр. `"<prompt>"`, `"[name]"`)
+- `cli_only` — только в интерактивном CLI
+- `gateway_only` — только в messaging-платформах
+- `gateway_config_gate` — config dotpath (напр. `"display.tool_progress_command"`);
+  когда установлен на `cli_only`-команде, команда становится доступной в gateway,
+  если config value truthy. `GATEWAY_KNOWN_COMMANDS` всегда включает config-gated
+  команды, чтобы gateway мог диспетчеризовать; help/menus показывает их только
+  когда gate открыт.
 
-**Adding an alias** requires only adding it to the `aliases` tuple on the existing `CommandDef`. No other file changes needed — dispatch, help text, Telegram menu, Slack mapping, and autocomplete all update automatically.
+**Добавление алиаса** требует только добавления в `aliases` tuple существующего
+`CommandDef`. Других изменений не нужно — dispatch, help text, Telegram menu,
+Slack mapping и autocomplete обновятся автоматически.
 
 ---
 
-## TUI Architecture (ui-tui + tui_gateway)
+## Архитектура TUI (ui-tui + tui_gateway)
 
-The TUI is a full replacement for the classic (prompt_toolkit) CLI, activated via `prostor --tui` or `PROSTOR_TUI=1`.
+TUI — полноценная замена классического (prompt_toolkit) CLI, активируется через
+`prostor --tui` или `PROSTOR_TUI=1`.
 
-### Process Model
+### Модель процессов
 
 ```
 prostor --tui
@@ -427,15 +454,17 @@ prostor --tui
        └─ renders transcript, composer, prompts, activity
 ```
 
-TypeScript owns the screen. Python owns sessions, tools, model calls, and slash command logic.
+TypeScript владеет экраном. Python владеет sessions, tools, model calls и
+slash-command logic.
 
-### Transport
+### Транспорт
 
-Newline-delimited JSON-RPC over stdio. Requests from Ink, events from Python. See `tui_gateway/server.py` for the full method/event catalog.
+Newline-delimited JSON-RPC over stdio. Запросы из Ink, события из Python.
+См. `tui_gateway/server.py` для полного каталога methods/events.
 
-### Key Surfaces
+### Ключевые поверхности
 
-| Surface | Ink component | Gateway method |
+| Surface | Ink компонент | Gateway метод |
 |---------|---------------|----------------|
 | Chat streaming | `app.tsx` + `messageLine.tsx` | `prompt.submit` → `message.delta/complete` |
 | Tool activity | `thinking.tsx` | `tool.start/progress/complete` |
@@ -446,71 +475,122 @@ Newline-delimited JSON-RPC over stdio. Requests from Ink, events from Python. Se
 | Completions | `useCompletion` hook | `complete.slash`, `complete.path` |
 | Theming | `theme.ts` + `branding.tsx` | `gateway.ready` with skin data |
 
-### Slash Command Flow
+### Поток slash-команд
 
-1. Built-in client commands (`/help`, `/quit`, `/clear`, `/resume`, `/copy`, `/paste`, etc.) handled locally in `app.tsx`
-2. Everything else → `slash.exec` (runs in persistent `_SlashWorker` subprocess) → `command.dispatch` fallback
+1. Built-in клиентские команды (`/help`, `/quit`, `/clear`, `/resume`, `/copy`,
+   `/paste` и т.д.) обрабатываются локально в `app.tsx`
+2. Всё остальное → `slash.exec` (в persistent `_SlashWorker` subprocess) →
+   `command.dispatch` fallback
 
-### Dev Commands
+### Dev-команды
 
 ```bash
 cd ui-tui
-npm install       # first time
-npm run dev       # watch mode (rebuilds prostor-ink + tsx --watch)
+npm install       # первый раз
+npm run dev       # watch mode (пересобирает prostor-ink + tsx --watch)
 npm start         # production
-npm run build     # full build (prostor-ink + tsc)
-npm run typecheck # typecheck only (tsc --noEmit)
+npm run build     # полная сборка (prostor-ink + tsc)
+npm run typecheck # только typecheck (tsc --noEmit)
 npm run lint      # eslint
 npm run fmt       # prettier
 npm test          # vitest
 ```
 
-### TUI in the Dashboard (`prostor dashboard` → `/chat`)
+### TUI в Dashboard (`prostor dashboard` → `/chat`)
 
-The dashboard embeds the real `prostor --tui` — **not** a rewrite.  See `prostor_cli/pty_bridge.py` + the `@app.websocket("/api/pty")` endpoint in `prostor_cli/web_server.py`.
+Dashboard встраивает реальный `prostor --tui` — **не** rewrite. См.
+`prostor_cli/pty_bridge.py` + endpoint `@app.websocket("/api/pty")` в
+`prostor_cli/web_server.py`.
 
-- Browser loads `web/src/pages/ChatPage.tsx`, which mounts xterm.js's `Terminal` with the WebGL renderer, `@xterm/addon-fit` for container-driven resize, and `@xterm/addon-unicode11` for modern wide-character widths.
-- `/api/pty?token=…` upgrades to a WebSocket; auth uses the same ephemeral `_SESSION_TOKEN` as REST, via query param (browsers can't set `Authorization` on WS upgrade).
-- The server spawns whatever `prostor --tui` would spawn, through `ptyprocess` (POSIX PTY — WSL works, native Windows does not).
-- Frames: raw PTY bytes each direction; resize via `\x1b[RESIZE:<cols>;<rows>]` intercepted on the server and applied with `TIOCSWINSZ`.
+- Браузер грузит `web/src/pages/ChatPage.tsx`, который монтирует xterm.js
+  `Terminal` с WebGL renderer, `@xterm/addon-fit` для resize по контейнеру и
+  `@xterm/addon-unicode11` для современных wide-character widths.
+- `/api/pty?token=…` апгрейдится до WebSocket; auth использует тот же ephemeral
+  `_SESSION_TOKEN` как REST, через query param (браузеры не могут установить
+  `Authorization` на WS upgrade).
+- Сервер спавнит то, что спавнил бы `prostor --tui`, через `ptyprocess`
+  (POSIX PTY — WSL работает, native Windows — нет).
+- Frames: raw PTY bytes в обе стороны; resize через `\x1b[RESIZE:<cols>;<rows>]`,
+  перехватываемый на сервере и применяемый через `TIOCSWINSZ`.
 
-**Do not re-implement the primary chat experience in React.** The main transcript, composer/input flow (including slash-command behavior), and PTY-backed terminal belong to the embedded `prostor --tui` — anything new you add to Ink shows up in the dashboard automatically. If you find yourself rebuilding the transcript or composer for the dashboard, stop and extend Ink instead.
+**Не реимплементируйте основной chat experience в React.** Основной transcript,
+composer/input flow (включая slash-command behavior) и PTY-backed terminal
+принадлежат встроенному `prostor --tui` — всё новое в Ink автоматически
+появляется в dashboard. Если ловите себя на перестроении transcript или composer
+для dashboard — остановитесь и расширьте Ink.
 
-**Structured React UI around the TUI is allowed when it is not a second chat surface.** Sidebar widgets, inspectors, summaries, status panels, and similar supporting views (e.g. `ChatSidebar`, `ModelPickerDialog`, `ToolCall`) are fine when they complement the embedded TUI rather than replacing the transcript / composer / terminal. Keep their state independent of the PTY child's session and surface their failures non-destructively so the terminal pane keeps working unimpaired.
+**Структурированный React UI вокруг TUI разрешён, если это не второй chat surface.**
+Sidebar widgets, inspectors, summaries, status panels и подобные supporting views
+(напр. `ChatSidebar`, `ModelPickerDialog`, `ToolCall`) — допустимы, когда
+комплементируют встроенный TUI, а не заменяют transcript / composer / terminal.
+Держите их state независимым от PTY-child сессии и их failures — non-destructive,
+чтобы терминальная панель продолжала работать.
 
 ### Electron Desktop Chat App (`apps/desktop/`)
 
-A **separate** chat surface from both the classic CLI and the dashboard's embedded TUI. It is an Electron + React + nanostore renderer (`@assistant-ui/react`) that talks to a `tui_gateway` backend over JSON-RPC (`requestGateway(method, params)`). It does NOT embed `prostor --tui` — it has its own composer, transcript, and slash-command pipeline. Route desktop bugs to the `prostor-desktop-app-work` skill, not `prostor-dashboard-work`.
+**Отдельная** chat surface от классического CLI и встроенного TUI dashboard.
+Electron + React + nanostore renderer (`@assistant-ui/react`), общается с
+`tui_gateway` backend через JSON-RPC (`requestGateway(method, params)`). НЕ
+встраивает `prostor --tui` — имеет свой composer, transcript и slash-command
+pipeline. Баги desktop маршрутизируйте в навык `prostor-desktop-app-work`, не
+`prostor-dashboard-work`.
 
-**Slash commands in the desktop app are curated client-side, then dispatched to the backend.** The pipeline:
+**Slash-команды в desktop app курируются client-side, затем диспетчеризуются на backend.**
+Пайплайн:
 
-- **Backend already provides everything.** `tui_gateway/server.py` `commands.catalog` (empty-query list) and `complete.slash` (typed-query completions) both include built-in commands, user `quick_commands`, AND skill-derived commands (`scan_skill_commands()` / `get_skill_commands()`). The desktop app does not need a new RPC to see skills.
-- **The renderer curates via `apps/desktop/src/lib/desktop-slash-commands.ts`.** This is the load-bearing file. It holds `DESKTOP_COMMANDS` (the ~19 built-ins shown in the palette) plus block-lists for terminal-only / messaging-only / picker-owned / settings-owned / advanced commands that should NOT clutter the desktop popover.
-  - `isDesktopSlashCommand(name)` — gates **execution**. Returns true for built-ins AND for any non-built-in (skill / quick command), so typed extension commands run.
-  - `isDesktopSlashSuggestion(name)` — gates **discovery/completion**. Used by BOTH completion paths in `app/chat/composer/hooks/use-slash-completions.ts` (empty-query catalog filter + typed-query `complete.slash` filter) and by `filterDesktopCommandsCatalog`.
-  - `isDesktopSlashExtensionCommand(name)` — true when the command is NOT a known Prostor built-in (i.e. a skill or user quick command). Both suggestion and catalog-filter paths allow extensions through so skill commands surface in the palette. (Added when fixing "skill commands missing from the desktop slash palette" — the curated allow-list was silently dropping every skill/quick command from completions even though they executed fine when typed.)
-- **Dispatch** lives in `app/session/hooks/use-prompt-actions.ts` (`runSlash`): built-ins that the desktop owns (`/skin`, `/help`, `/new`, …) are handled locally or via `commands.catalog`; everything else goes to `slash.exec`, falling back to `command.dispatch` (which the gateway resolves into skill / alias / exec directives). A skill command resolves to `{type: "skill", message}` and is submitted as a normal prompt.
+- **Backend уже предоставляет всё.** `tui_gateway/server.py` `commands.catalog`
+  (empty-query list) и `complete.slash` (typed-query completions) включают
+  built-in команды, user `quick_commands` И skill-derived команды
+  (`scan_skill_commands()` / `get_skill_commands()`). Desktop app не нужен новый
+  RPC для skills.
+- **Renderer курирует через `apps/desktop/src/lib/desktop-slash-commands.ts`.**
+  Это load-bearing файл. Содержит `DESKTOP_COMMANDS` (~19 built-ins, показанных
+  в палитре) плюс block-lists для terminal-only / messaging-only / picker-owned /
+  settings-owned / advanced команд, которые НЕ должны загромождать desktop popover.
+  - `isDesktopSlashCommand(name)` — гейт **выполнения**. True для built-ins И для
+    любого non-built-in (skill / quick command), так что typed extension commands
+    запускаются.
+  - `isDesktopSlashSuggestion(name)` — гейт **discovery/completion**. Используется
+    BOTH completion paths в `app/chat/composer/hooks/use-slash-completions.ts`
+    (empty-query catalog filter + typed-query `complete.slash` filter) и
+    `filterDesktopCommandsCatalog`.
+  - `isDesktopSlashExtensionCommand(name)` — true, когда команда НЕ известный
+    Prostor built-in (т.е. skill или user quick command). Оба suggestion и
+    catalog-filter paths пропускают extensions, так что skill commands попадают
+    в палитру.
+- **Dispatch** живёт в `app/session/hooks/use-prompt-actions.ts` (`runSlash`):
+  built-ins, которыми владеет desktop (`/skin`, `/help`, `/new`, …), обрабатываются
+  локально или через `commands.catalog`; всё остальное идёт в `slash.exec`,
+  fallback на `command.dispatch` (который gateway резолвит в skill / alias / exec
+  directives). Skill command резолвится в `{type: "skill", message}` и
+  отправляется как обычный prompt.
 
-**Rule:** the desktop slash palette's curation is about hiding noise (terminal-only / messaging-only built-ins), NOT about hiding user-activated extensions. Skill commands and `quick_commands` are extensions the backend surfaces — they belong in completions. If you tighten `desktop-slash-commands.ts`, keep `isDesktopSlashExtensionCommand` flowing into both the suggestion and catalog-filter paths. Tests: `apps/desktop/src/lib/desktop-slash-commands.test.ts` (run via the repo-root `vitest`, since `apps/desktop` resolves deps from the root workspace install).
+**Правило:** курирование desktop slash palette — про скрытие шума (terminal-only /
+messaging-only built-ins), НЕ про скрытие user-activated extensions. Skill commands
+и `quick_commands` — extensions, которые backend surfaces; они принадлежат
+completions. Если затягиваете `desktop-slash-commands.ts`, держите
+`isDesktopSlashExtensionCommand` протекающим в оба suggestion и catalog-filter paths.
+Тесты: `apps/desktop/src/lib/desktop-slash-commands.test.ts` (через repo-root `vitest`,
+т.к. `apps/desktop` резолвит deps из root workspace install).
 
 ---
 
-## Adding New Tools
+## Добавление новых инструментов
 
-Before adding any tool, settle the footprint question first (see "The
-Footprint Ladder" in the Contribution Rubric): most capabilities should NOT
-be core tools. For custom or local-only tools, do **not** edit Prostor core.
-Use the plugin route instead: create `~/.prostor/plugins/<name>/plugin.yaml`
-and `~/.prostor/plugins/<name>/__init__.py`, then register tools with
-`ctx.register_tool(...)`. Plugin toolsets are discovered automatically and can be
-enabled or disabled without touching `tools/` or `toolsets.py`.
+Перед добавлением любого tool сначала решите footprint-вопрос (см.
+«Footprint Ladder» в Rubric контрибуции): большинство возможностей НЕ должно быть
+core tools. Для custom или local-only tools **не** редактируйте Prostor core.
+Используйте plugin-маршрут: создайте `~/.prostor/plugins/<name>/plugin.yaml` и
+`~/.prostor/plugins/<name>/__init__.py`, затем регистрируйте tools через
+`ctx.register_tool(...)`. Plugin toolset'ы обнаруживаются автоматически и могут
+включаться/выключаться без touches `tools/` или `toolsets.py`.
 
-Use the built-in route below only when the user is explicitly contributing a new
-core Prostor tool that should ship in the base system.
+Используйте built-in маршрут ниже, только если пользователь явно контрибьютит
+новый core Prostor tool, который должен отгружаться в базовой системе.
 
-Built-in/core tools require changes in **2 files**:
+Built-in/core tools требуют изменений в **2 файлах**:
 
-**1. Create `tools/your_tool.py`:**
+**1. Создайте `tools/your_tool.py`:**
 ```python
 import json, os
 from tools.registry import registry
@@ -531,25 +611,38 @@ registry.register(
 )
 ```
 
-**2. Add to `toolsets.py`** — either `_PROSTOR_CORE_TOOLS` (all platforms) or a new toolset. **This step is required:** auto-discovery imports the tool and registers its schema, but the tool is only *exposed to an agent* if its name appears in a toolset. `_PROSTOR_CORE_TOOLS` is not dead code — it's the default bundle every platform's base toolset inherits from.
+**2. Добавьте в `toolsets.py`** — либо `_PROSTOR_CORE_TOOLS` (все платформы),
+либо новый toolset. **Этот шаг обязателен:** auto-discovery импортирует tool и
+регистрирует его schema, но tool *экспонируется агенту* только если его имя
+появляется в toolset. `_PROSTOR_CORE_TOOLS` — не мёртвый код; это default bundle,
+от которого наследует base toolset каждой платформы.
 
-Auto-discovery: any `tools/*.py` file with a top-level `registry.register()` call is imported automatically — no manual import list to maintain. Wiring into a toolset is still a deliberate, manual step.
+Auto-discovery: любой `tools/*.py` файл с top-level `registry.register()` вызовом
+импортируется автоматически — нет ручного import list. Wiring в toolset —
+по-прежнему deliberate, ручной шаг.
 
-The registry handles schema collection, dispatch, availability checking, and error wrapping. All handlers MUST return a JSON string.
+Registry обрабатывает schema collection, dispatch, availability checking и
+error wrapping. Все handlers MUST возвращать JSON string.
 
-**Path references in tool schemas**: If the schema description mentions file paths (e.g. default output directories), use `display_prostor_home()` to make them profile-aware. The schema is generated at import time, which is after `_apply_profile_override()` sets `PROSTOR_HOME`.
+**Path references в tool schemas:** если описание schema упоминает файловые пути
+(напр. дефолтные output-директории), используйте `display_prostor_home()` для
+profile-aware. Schema генерируется при import time, после `_apply_profile_override()`,
+который устанавливает `PROSTOR_HOME`.
 
-**State files**: If a tool stores persistent state (caches, logs, checkpoints), use `get_prostor_home()` for the base directory — never `Path.home() / ".prostor"`. This ensures each profile gets its own state.
+**State files:** если tool хранит персистентное state (кэши, логи, checkpoints),
+используйте `get_prostor_home()` для base directory — никогда `Path.home() / ".prostor"`.
+Это гарантирует каждому профилю своё state.
 
-**Agent-level tools** (todo, memory): intercepted by `run_agent.py` before `handle_function_call()`. See `tools/todo_tool.py` for the pattern.
+**Agent-level tools** (todo, memory): перехватываются `run_agent.py` до
+`handle_function_call()`. См. `tools/todo_tool.py` для паттерна.
 
 ---
 
-## Dependency Pinning Policy
+## Политика пиннинга зависимостей
 
-All dependencies must have upper bounds to limit supply-chain attack surface.
-This policy was established after the litellm compromise (PR #2796, #2810) and
-reinforced after the Mini Shai-Hulud worm campaign (May 2026).
+Все зависимости должны иметь upper bounds для ограничения surface supply-chain
+атак. Политика установлена после litellm compromise (PR #2796, #2810) и
+усилена после Mini Shai-Hulud worm campaign (май 2026).
 
 | Source type | Treatment | Example |
 |---|---|---|
@@ -558,47 +651,47 @@ reinforced after the Mini Shai-Hulud worm campaign (May 2026).
 | GitHub Actions | Commit SHA + comment | `uses: actions/checkout@<sha>  # v4` |
 | CI-only pip | `==exact` | `pyyaml==6.0.2` |
 
-**When adding a new dependency to `pyproject.toml`:**
-1. Pin to `>=current_version,<next_major` for post-1.0 (e.g. `>=1.5.0,<2`).
-2. For pre-1.0 packages, use `<0.(current_minor + 2)` (e.g. `>=0.29,<0.32`).
-3. Never commit a bare `>=X.Y.Z` without a ceiling — CI and reviewers will reject it.
-4. Run `uv lock` to regenerate `uv.lock` with hashes.
+**При добавлении новой зависимости в `pyproject.toml`:**
+1. Пин `>=current_version,<next_major` для post-1.0 (напр. `>=1.5.0,<2`).
+2. Для pre-1.0 пакетов используйте `<0.(current_minor + 2)` (напр. `>=0.29,<0.32`).
+3. Никогда не коммитьте bare `>=X.Y.Z` без ceiling — CI и reviewers отклонят.
+4. Запустите `uv lock` для регенерации `uv.lock` с хешами.
 
 Reference: #2810 (bounds pass), #9801 (SHA pinning + audit CI).
 
 ---
 
-## Adding Configuration
+## Добавление конфигурации
 
-### config.yaml options:
-1. Add to `DEFAULT_CONFIG` in `prostor_cli/config.py`
-2. Bump `_config_version` (check the current value at the top of `DEFAULT_CONFIG`)
-   ONLY if you need to actively migrate/transform existing user config
-   (renaming keys, changing structure). Adding a new key to an existing
-   section is handled automatically by the deep-merge and does NOT require
-   a version bump.
+### Опции config.yaml:
+1. Добавьте в `DEFAULT_CONFIG` в `prostor_cli/config.py`
+2. Бампите `_config_version` (проверьте текущее значение в начале `DEFAULT_CONFIG`)
+   ТОЛЬКО если нужно активно мигрировать/трансформировать существующий user config
+   (переименование ключей, изменение структуры). Добавление нового ключа в
+   существующую section обрабатывается автоматически через deep-merge и НЕ
+   требует version bump.
 
-### Top-level `config.yaml` sections (non-exhaustive):
+### Top-level `config.yaml` sections (не exhaustive):
 
 `model`, `agent`, `terminal`, `compression`, `display`, `stt`, `tts`,
 `memory`, `security`, `delegation`, `smart_model_routing`, `checkpoints`,
 `auxiliary`, `curator`, `skills`, `gateway`, `logging`, `cron`, `profiles`,
 `plugins`, `honcho`.
 
-`auxiliary` holds per-task overrides for side-LLM work (curator, vision,
-embedding, title generation, session_search, etc.) — each task can pin
-its own provider/model/base_url/max_tokens/reasoning_effort. See
-`agent/auxiliary_client.py::_resolve_auto` for resolution order.
+`auxiliary` хранит per-task override'ы для side-LLM работы (curator, vision,
+embedding, title generation, session_search и т.д.) — каждая task может пинить
+свой provider/model/base_url/max_tokens/reasoning_effort. См.
+`agent/auxiliary_client.py::_resolve_auto` для порядка resolution.
 
-`curator` holds the background skill-maintenance config —
+`curator` хранит background skill-maintenance config —
 `enabled`, `interval_hours`, `min_idle_hours`, `stale_after_days`,
 `archive_after_days`, `backup` (nested).
 
-### .env variables (SECRETS ONLY — API keys, tokens, passwords):
-1. Add to `OPTIONAL_ENV_VARS` in `prostor_cli/config.py` with metadata:
+### .env variables (ТОЛЬКО СЕКРЕТЫ — API-ключи, токены, пароли):
+1. Добавьте в `OPTIONAL_ENV_VARS` в `prostor_cli/config.py` с metadata:
 ```python
 "NEW_API_KEY": {
-    "description": "What it's for",
+    "description": "Для чего",
     "prompt": "Display name",
     "url": "https://...",
     "password": True,
@@ -606,50 +699,50 @@ its own provider/model/base_url/max_tokens/reasoning_effort. See
 },
 ```
 
-Non-secret settings (timeouts, thresholds, feature flags, paths, display
-preferences) belong in `config.yaml`, not `.env`. If internal code needs an
-env var mirror for backward compatibility, bridge it from `config.yaml` to
-the env var in code (see `gateway_timeout`, `terminal.cwd` → `TERMINAL_CWD`).
+Non-secret настройки (timeouts, thresholds, feature flags, paths, display
+preferences) принадлежат `config.yaml`, не `.env`. Если внутренний код требует
+env var mirror для backward compatibility, бриджите из `config.yaml` в env var
+в коде (см. `gateway_timeout`, `terminal.cwd` → `TERMINAL_CWD`).
 
-### Config loaders (three paths — know which one you're in):
+### Config loaders (три пути — знайте, в каком вы):
 
-| Loader | Used by | Location |
+| Loader | Используется | Location |
 |--------|---------|----------|
-| `load_cli_config()` | CLI mode | `cli.py` — merges CLI-specific defaults + user YAML |
-| `load_config()` | `prostor tools`, `prostor setup`, most CLI subcommands | `prostor_cli/config.py` — merges `DEFAULT_CONFIG` + user YAML |
-| Direct YAML load | Gateway runtime | `gateway/run.py` + `gateway/config.py` — reads user YAML raw |
+| `load_cli_config()` | CLI mode | `cli.py` — мержит CLI-specific defaults + user YAML |
+| `load_config()` | `prostor tools`, `prostor setup`, большинство CLI subcommands | `prostor_cli/config.py` — мержит `DEFAULT_CONFIG` + user YAML |
+| Direct YAML load | Gateway runtime | `gateway/run.py` + `gateway/config.py` — читает user YAML raw |
 
-If you add a new key and the CLI sees it but the gateway doesn't (or vice
-versa), you're on the wrong loader. Check `DEFAULT_CONFIG` coverage.
+Если добавили новый ключ и CLI видит его, а gateway — нет (или наоборот), вы
+на неправильном loader. Проверьте coverage `DEFAULT_CONFIG`.
 
 ### Working directory:
-- **CLI** — uses the process's current directory (`os.getcwd()`).
-- **Messaging** — uses `terminal.cwd` from `config.yaml`. The gateway bridges this
-  to the `TERMINAL_CWD` env var for child tools. **`MESSAGING_CWD` has been
-  removed** — the config loader prints a deprecation warning if it's set in
-  `.env`. Same for `TERMINAL_CWD` in `.env`; the canonical setting is
-  `terminal.cwd` in `config.yaml`.
+- **CLI** — использует process's current directory (`os.getcwd()`).
+- **Messaging** — использует `terminal.cwd` из `config.yaml`. Gateway бриджит это
+  в `TERMINAL_CWD` env var для child tools. **`MESSAGING_CWD` удалён** — config
+  loader печатает deprecation warning, если он установлен в `.env`. То же для
+  `TERMINAL_CWD` в `.env`; canonical setting — `terminal.cwd` в `config.yaml`.
 
 ---
 
-## Skin/Theme System
+## Skin/Theme система
 
-The skin engine (`prostor_cli/skin_engine.py`) provides data-driven CLI visual customization. Skins are **pure data** — no code changes needed to add a new skin.
+Skin engine (`prostor_cli/skin_engine.py`) — data-driven CLI visual customization.
+Скины — **pure data**, код не нужен для нового skin.
 
-### Architecture
+### Архитектура
 
 ```
 prostor_cli/skin_engine.py    # SkinConfig dataclass, built-in skins, YAML loader
 ~/.prostor/skins/*.yaml       # User-installed custom skins (drop-in)
 ```
 
-- `init_skin_from_config()` — called at CLI startup, reads `display.skin` from config
-- `get_active_skin()` — returns cached `SkinConfig` for the current skin
-- `set_active_skin(name)` — switches skin at runtime (used by `/skin` command)
-- `load_skin(name)` — loads from user skins first, then built-ins, then falls back to default
-- Missing skin values inherit from the `default` skin automatically
+- `init_skin_from_config()` — вызывается при CLI startup, читает `display.skin`
+- `get_active_skin()` — возвращает кэшированный `SkinConfig` для текущего skin
+- `set_active_skin(name)` — переключает skin в runtime (используется `/skin`)
+- `load_skin(name)` — грузит из user skins, затем built-ins, затем fallback
+- Недостающие skin values наследуют от `default` skin автоматически
 
-### What skins customize
+### Что скины кастомизируют
 
 | Element | Skin Key | Used By |
 |---------|----------|---------|
@@ -672,19 +765,19 @@ prostor_cli/skin_engine.py    # SkinConfig dataclass, built-in skins, YAML loade
 
 ### Built-in skins
 
-- `default` — Classic Prostor gold/kawaii (the current look)
-- `ares` — Crimson/bronze war-god theme with custom spinner wings
-- `mono` — Clean grayscale monochrome
-- `slate` — Cool blue developer-focused theme
+- `default` — Классический Prostor gold/kawaii (текущий look)
+- `ares` — Малиново-бронзовая тема бога войны с кастомными spinner wings
+- `mono` — Чистый grayscale monochrome
+- `slate` — Прохладная blue developer-focused тема
 
-### Adding a built-in skin
+### Добавление built-in skin
 
-Add to `_BUILTIN_SKINS` dict in `prostor_cli/skin_engine.py`:
+Добавьте в `_BUILTIN_SKINS` dict в `prostor_cli/skin_engine.py`:
 
 ```python
 "mytheme": {
     "name": "mytheme",
-    "description": "Short description",
+    "description": "Короткое описание",
     "colors": { ... },
     "spinner": { ... },
     "branding": { ... },
@@ -694,7 +787,7 @@ Add to `_BUILTIN_SKINS` dict in `prostor_cli/skin_engine.py`:
 
 ### User skins (YAML)
 
-Users create `~/.prostor/skins/<name>.yaml`:
+Users создают `~/.prostor/skins/<name>.yaml`:
 
 ```yaml
 name: cyberpunk
@@ -717,126 +810,124 @@ branding:
 tool_prefix: "▏"
 ```
 
-Activate with `/skin cyberpunk` or `display.skin: cyberpunk` in config.yaml.
+Активация: `/skin cyberpunk` или `display.skin: cyberpunk` в config.yaml.
 
 ---
 
-## Plugins
+## Плагины
 
-Prostor has two plugin surfaces. Both live under `plugins/` in the repo so
-repo-shipped plugins can be discovered alongside user-installed ones in
-`~/.prostor/plugins/` and pip-installed entry points.
+У Prostor две plugin surfaces. Обе живут в `plugins/` в репо, поэтому
+repo-shipped plugins обнаруживаются рядом с user-installed в
+`~/.prostor/plugins/` и pip entry points.
 
 ### General plugins (`prostor_cli/plugins.py` + `plugins/<name>/`)
 
-`PluginManager` discovers plugins from `~/.prostor/plugins/`, `./.prostor/plugins/`,
-and pip entry points. Each plugin exposes a `register(ctx)` function that
-can:
+`PluginManager` обнаруживает плагины в `~/.prostor/plugins/`, `./.prostor/plugins/`,
+и pip entry points. Каждый плагин exposes функцию `register(ctx)`, которая может:
 
-- Register Python-callback lifecycle hooks:
+- Регистрировать Python-callback lifecycle hooks:
   `pre_tool_call`, `post_tool_call`, `pre_llm_call`, `post_llm_call`,
   `on_session_start`, `on_session_end`
-- Register new tools via `ctx.register_tool(...)`
-- Register CLI subcommands via `ctx.register_cli_command(...)` — the
-  plugin's argparse tree is wired into `prostor` at startup so
-  `prostor <pluginname> <subcmd>` works with no change to `main.py`
+- Регистрировать новые tools через `ctx.register_tool(...)`
+- Регистрировать CLI subcommands через `ctx.register_cli_command(...)` —
+  argparse tree плагина подключается в `prostor` при старте, так что
+  `prostor <pluginname> <subcmd>` работает без изменений в `main.py`
 
-Hooks are invoked from `model_tools.py` (pre/post tool) and `run_agent.py`
-(lifecycle). **Discovery timing pitfall:** `discover_plugins()` only runs
-as a side effect of importing `model_tools.py`. Code paths that read plugin
-state without importing `model_tools.py` first must call `discover_plugins()`
-explicitly (it's idempotent).
+Hooks вызываются из `model_tools.py` (pre/post tool) и `run_agent.py`
+(lifecycle). **Pitfall discovery timing:** `discover_plugins()` запускается
+только как side effect импорта `model_tools.py`. Code paths, читающие plugin
+state без импорта `model_tools.py`, должны вызвать `discover_plugins()`
+явно (идемпотент).
 
 ### Memory-provider plugins (`plugins/memory/<name>/`)
 
-Separate discovery system for pluggable memory backends. Current built-in
-providers include **honcho, mem0, supermemory, byterover, hindsight,
+Отдельная система discovery для pluggable memory backends. Текущие built-in
+providers: **honcho, mem0, supermemory, byterover, hindsight,
 holographic, openviking, retaindb**.
 
-Each provider implements the `MemoryProvider` ABC (see `agent/memory_provider.py`)
-and is orchestrated by `agent/memory_manager.py`. Lifecycle hooks include
-`sync_turn(turn_messages)`, `prefetch(query)`, `shutdown()`, and optional
-`post_setup(prostor_home, config)` for setup-wizard integration.
+Каждый provider реализует `MemoryProvider` ABC (см. `agent/memory_provider.py`)
+и оркеструется `agent/memory_manager.py`. Lifecycle hooks:
+`sync_turn(turn_messages)`, `prefetch(query)`, `shutdown()`, и опционально
+`post_setup(prostor_home, config)` для setup-wizard integration.
 
-**CLI commands via `plugins/memory/<name>/cli.py`:** if a memory plugin
-defines `register_cli(subparser)`, `discover_plugin_cli_commands()` finds
-it at argparse setup time and wires it into `prostor <plugin>`. The
-framework only exposes CLI commands for the **currently active** memory
-provider (read from `memory.provider` in config.yaml), so disabled
-providers don't clutter `prostor --help`.
+**CLI commands через `plugins/memory/<name>/cli.py`:** если memory plugin
+определяет `register_cli(subparser)`, `discover_plugin_cli_commands()`
+находит его при argparse setup и подключает в `prostor <plugin>`. Фреймворк
+экспонирует CLI команды только для **активного** memory provider (читается из
+`memory.provider` в config.yaml), поэтому отключённые providers не
+загромождают `prostor --help`.
 
-**Rule (Teknium, May 2026):** plugins MUST NOT modify core files
-(`run_agent.py`, `cli.py`, `gateway/run.py`, `prostor_cli/main.py`, etc.).
-If a plugin needs a capability the framework doesn't expose, expand the
-generic plugin surface (new hook, new ctx method) — never hardcode
-plugin-specific logic into core. PR #5295 removed 95 lines of hardcoded
-honcho argparse from `main.py` for exactly this reason.
+**Правило (Teknium, май 2026):** плагины НЕ ДОЛЖНЫ модифицировать core-файлы
+(`run_agent.py`, `cli.py`, `gateway/run.py`, `prostor_cli/main.py`, и т.д.).
+Если плагину нужна возможность, которую фреймворк не экспонирует — расширяйте
+generic plugin surface (новый hook, новый ctx method) — никогда не хардкодите
+plugin-specific logic в core. PR #5295 удалил 95 строк хардкод honcho argparse
+из `main.py` именно по этой причине.
 
-**No new in-tree memory providers (policy, May 2026):** the set of
-built-in memory providers under `plugins/memory/` is closed. New memory
-backends must ship as **standalone plugin repos** that users install
-into `~/.prostor/plugins/` (or via pip entry points) — they implement
-the same `MemoryProvider` ABC, register through the same discovery
-path, and integrate via `prostor memory setup` / `post_setup()` without
-landing in this tree. PRs that add a new directory under
-`plugins/memory/` will be closed with a pointer to publish the
-provider as its own repo. Existing in-tree providers stay; bug fixes
-to them are welcome.
+**Новых in-tree memory providers не принимаем (политика, май 2026):** набор
+built-in memory providers под `plugins/memory/` закрыт. Новые memory backends
+должны отгружаться как **standalone plugin repos**, которые users устанавливают
+в `~/.prostor/plugins/` (или через pip entry points) — они реализуют тот же
+`MemoryProvider` ABC, регистрируются через тот же discovery path и
+интегрируются через `prostor memory setup` / `post_setup()` без попадания в
+это tree. PR, добавляющие директорию под `plugins/memory/`, будут закрыты с
+указанием опубликовать provider как собственный repo. Существующие in-tree
+providers остаются; bug fix'ы к ним приветствуются.
 
 ### Model-provider plugins (`plugins/model-providers/<name>/`)
 
-Every inference backend (openrouter, anthropic, gmi, deepseek, nvidia, …)
-ships as a plugin here. Each plugin's `__init__.py` calls
-`providers.register_provider(ProviderProfile(...))` at module load.
-`providers/__init__.py._discover_providers()` is a **lazy, separate
-discovery system** — scanned on first `get_provider_profile()` or
-`list_providers()` call, NOT by the general PluginManager.
+Каждый inference backend (openrouter, anthropic, gmi, deepseek, nvidia, …)
+отгружается как плагин здесь. `__init__.py` каждого плагина вызывает
+`providers.register_provider(ProviderProfile(...))` при module load.
+`providers/__init__.py._discover_providers()` — **lazy, отдельная система
+discovery** — сканируется при первом `get_provider_profile()` или
+`list_providers()` вызове, НЕ general PluginManager.
 
 Scan order:
 1. Bundled: `<repo>/plugins/model-providers/<name>/`
 2. User: `$PROSTOR_HOME/plugins/model-providers/<name>/`
 3. Legacy: `<repo>/providers/<name>.py` (back-compat)
 
-User plugins of the same name override bundled ones — `register_provider()`
-is last-writer-wins. This lets third parties swap out any built-in
-profile without a repo patch.
+User plugins с тем же именем override bundled — `register_provider()`
+last-writer-wins. Это позволяет third parties заменять любой built-in profile
+без repo patch.
 
-The general PluginManager records `kind: model-provider` manifests but does
-NOT import them (would double-instantiate `ProviderProfile`). Plugins
-without an explicit `kind:` get auto-coerced via a source-text heuristic
-(`register_provider` + `ProviderProfile` in `__init__.py`).
+General PluginManager записывает `kind: model-provider` manifest, но НЕ
+импортирует их (double-instantiate `ProviderProfile`). Плагины без явного
+`kind:` авто-coerce'ятся через source-text heuristic (`register_provider` +
+`ProviderProfile` в `__init__.py`).
 
-Full authoring guide: `website/docs/developer-guide/model-provider-plugin.md`.
+Полный authoring guide: `website/docs/developer-guide/model-provider-plugin.md`.
 
 ### Dashboard / context-engine / image-gen plugin directories
 
-`plugins/context_engine/`, `plugins/image_gen/`, etc. follow the same
-pattern (ABC + orchestrator + per-plugin directory). Context engines
-plug into `agent/context_engine.py`; image-gen providers into
+`plugins/context_engine/`, `plugins/image_gen/` и т.д. следуют тому же
+паттерну (ABC + orchestrator + per-plugin directory). Context engines
+подключаются в `agent/context_engine.py`; image-gen providers — в
 `agent/image_gen_provider.py`. Reference / docs-companion plugins
 (`example-dashboard`, `strike-freedom-cockpit`, `plugin-llm-example`,
-`plugin-llm-async-example`) live in the
-[`prostor-example-plugins`](https://github.com/NousResearch/prostor-example-plugins)
-companion repo, not in this tree.
+`plugin-llm-async-example`) живут в companion-repo
+[`prostor-example-plugins`](https://github.com/NousResearch/prostor-example-plugins),
+не в этом tree.
 
 ---
 
-## Skills
+## Навыки
 
-Two parallel surfaces:
+Две параллельные поверхности:
 
-- **`skills/`** — built-in skills shipped and loadable by default.
-  Organized by category directories (e.g. `skills/github/`, `skills/mlops/`).
-- **`optional-skills/`** — heavier or niche skills shipped with the repo but
-  NOT active by default. Installed explicitly via
-  `prostor skills install official/<category>/<skill>`. Adapter lives in
-  `tools/skills_hub.py` (`OptionalSkillSource`). Categories include
+- **`skills/`** — built-in skills, отгружаемые и загружаемые по умолчанию.
+  Организованы по category-директориям (напр. `skills/github/`, `skills/mlops/`).
+- **`optional-skills/`** — тяжёлые или нишевые skills, отгружаемые с репо, но
+  НЕ активные по умолчанию. Устанавливаются явно через
+  `prostor skills install official/<category>/<skill>`. Адаптер в
+  `tools/skills_hub.py` (`OptionalSkillSource`). Категории:
   `autonomous-ai-agents`, `blockchain`, `communication`, `creative`,
   `devops`, `email`, `health`, `mcp`, `migration`, `mlops`, `productivity`,
   `research`, `security`, `web-development`.
 
-When reviewing skill PRs, check which directory they target — heavy-dep or
-niche skills belong in `optional-skills/`.
+При review skill PR проверяйте, в какую директорию они нацелены — heavy-dep
+или нишевые skills принадлежат `optional-skills/`.
 
 ### SKILL.md frontmatter
 
@@ -844,24 +935,23 @@ Standard fields: `name`, `description`, `version`, `author`, `license`,
 `platforms` (OS-gating list: `[macos]`, `[linux, macos]`, ...),
 `metadata.prostor.tags`, `metadata.prostor.category`,
 `metadata.prostor.related_skills`, `metadata.prostor.config` (config.yaml
-settings the skill needs — stored under `skills.config.<key>`, prompted
-during setup, injected at load time).
+настройки, которые skill требует — хранятся под `skills.config.<key>`,
+запрашиваются при setup, инжектируются при load).
 
-Top-level `tags:` and `category:` are also accepted and mirrored from
-`metadata.prostor.*` by the loader.
+Top-level `tags:` и `category:` также принимаются и зеркалируются из
+`metadata.prostor.*` loader'ом.
 
-### Skill authoring standards (HARDLINE)
+### Стандарты authoring skills (HARDLINE)
 
-Every new or modernized skill — bundled, optional, or contributed —
-must meet these standards before merge. Reviewers reject PRs that
-violate them.
+Каждый новый или модернизируемый skill — bundled, optional или contributed —
+должен соответствовать этим стандартам до merge. Reviewers отклоняют PR,
+нарушающие их.
 
-1. **`description` ≤ 60 characters, one sentence, ends with a period.**
-   Long descriptions bloat skill listings and dilute the model's
-   attention when many skills are loaded. State the capability, not
-   the implementation. No marketing words ("powerful",
-   "comprehensive", "seamless", "advanced"). Don't repeat the skill
-   name. Verify with:
+1. **`description` ≤ 60 символов, одно предложение, заканчивается точкой.**
+   Длинные descriptions раздувают skill listings и разбавляют внимание модели,
+   когда загружено много skills. State capability, не implementation. Без
+   marketing words («мощный», «комплексный», «бесшовный», «продвинутый»).
+   Не повторяйте name skill. Проверьте:
    ```python
    import re, pathlib
    m = re.search(r'^description: (.*)$',
@@ -870,370 +960,377 @@ violate them.
    assert len(m.group(1)) <= 60, len(m.group(1))
    ```
 
-2. **Tools referenced in SKILL.md prose must be native Prostor tools or
-   MCP servers the skill explicitly expects.** When the skill needs a
-   capability, point at the proper tool by name in backticks
+2. **Tools, упомянутые в SKILL.md prose, должны быть native Prostor tools или
+   MCP servers, которые skill явно ожидает.** Когда skill нуждается в
+   возможности, указывайте proper tool по имени в backticks
    (`` `terminal` ``, `` `web_extract` ``, `` `read_file` ``,
    `` `patch` ``, `` `search_files` ``, `` `vision_analyze` ``,
-   `` `browser_navigate` ``, `` `delegate_task` ``, etc.). Do NOT
-   name shell utilities the agent already has wrapped — `grep` →
+   `` `browser_navigate` ``, `` `delegate_task` ``, и т.д.). НЕ называйте
+   shell utilities, которые agent уже обёрнул — `grep` →
    `search_files`, `cat`/`head`/`tail` → `read_file`, `sed`/`awk` →
-   `patch`, `find`/`ls` → `search_files target='files'`. If the skill
-   depends on an MCP server, name the MCP server and document the
-   expected setup in `## Prerequisites`. Anything else (third-party
-   CLIs, shell pipelines, etc.) is fair game inside script files but
-   should not be the headline interaction surface in the prose.
+   `patch`, `find`/`ls` → `search_files target='files'`. Если skill
+   зависит от MCP server, назовите MCP server и задокументируйте ожидаемый
+   setup в `## Prerequisites`. Всё остальное (third-party CLIs, shell
+   pipelines и т.д.) — fair game внутри script files, но не должно быть
+   headline interaction surface в prose.
 
-3. **`platforms:` gating audited against actual script imports.**
-   Skills that use POSIX-only primitives (`fcntl`, `termios`,
-   `os.setsid`, `os.kill(pid, 0)` for liveness, `/proc`, `/tmp`
-   hardcoded, `signal.SIGKILL`, bash heredocs, `osascript`, `apt`,
-   `systemctl`) must declare their supported platforms. Default
-   posture: try to fix it cross-platform first — `tempfile.gettempdir`,
-   `pathlib.Path`, `psutil.pid_exists`, Python-level filtering instead
-   of `grep`. Gate to a narrower set only when the dependency is
-   genuinely platform-bound.
+3. **`platforms:` gating проверен против реальных script imports.** Skills,
+   использующие POSIX-only primitives (`fcntl`, `termios`,
+   `os.setsid`, `os.kill(pid, 0)` для liveness, `/proc`, хардкод `/tmp`,
+   `signal.SIGKILL`, bash heredocs, `osascript`, `apt`,
+   `systemctl`), должны декларировать поддерживаемые platforms. Дефолт:
+   сначала попытаться cross-platform fix — `tempfile.gettmpdir`,
+   `pathlib.Path`, `psutil.pid_exists`, Python-level filtering вместо
+   `grep`. Gate на narrower set только когда зависимость genuinely
+   platform-bound.
 
-4. **`author` credits the human contributor first.** For external
-   contributions, the contributor's real name + GitHub handle goes
-   first; "Prostor Agent" is the secondary collaborator. If the
-   contributor's commit shows "Prostor Agent" as author (because they
-   used Prostor to draft the skill), replace it with their actual name
-   — credit the human, not the tool.
+4. **`author` кредитует human contributor первым.** Для внешних
+   контрибуций — real name + GitHub handle контрибьютора первым; "Prostor Agent" —
+   secondary collaborator. Если commit контрибьютора показывает "Prostor Agent"
+   как author (потому что они использовали Prostor для drafting skill),
+   замените на их actual name — кредитуйте human, не tool.
 
-5. **SKILL.md body uses the modern section order.** `# <Skill> Skill`
-   title, 2-3 sentence intro stating what it does and doesn't do,
-   `## When to Use`, `## Prerequisites`, `## How to Run`,
-   `## Quick Reference`, `## Procedure`, `## Pitfalls`,
-   `## Verification`. Target ~200 lines for a complex skill,
-   ~100 lines for a simple one. Cut redundant intro fluff, marketing
-   prose, and re-explanations of env vars already in
-   `## Prerequisites`.
+5. **SKILL.md body использует modern section order.** `# <Skill> Skill`
+   title, 2-3 предложения intro, `## When to Use`, `## Prerequisites`,
+   `## How to Run`, `## Quick Reference`, `## Procedure`, `## Pitfalls`,
+   `## Verification`. Target ~200 строк для complex skill,
+   ~100 строк для simple one. Cut redundant intro fluff, marketing prose,
+   и re-explanations env vars уже в `## Prerequisites`.
 
-6. **Scripts go in `scripts/`, references in `references/`,
-   templates in `templates/`.** Don't expect the model to inline-write
-   parsers, XML walkers, or non-trivial logic every call — ship a
-   helper script. Reference it from SKILL.md by path relative to the
-   skill directory.
+6. **Scripts в `scripts/`, references в `references/`,
+   templates в `templates/`.** Не ожидайте, что модель inline-write
+   parsers, XML walkers или non-trivial logic каждый call — ship helper
+   script. Reference по path relative to skill directory.
 
-7. **Tests live at `tests/skills/test_<skill>_skill.py`** and use only
+7. **Tests живут в `tests/skills/test_<skill>_skill.py`** и используют только
    stdlib + pytest + `unittest.mock`. No live network calls. Run via
    `scripts/run_tests.sh tests/skills/test_<skill>_skill.py -q`.
 
-8. **`.env.example` additions are isolated to a clearly delimited
-   block.** Don't touch the surrounding file — contributor-supplied
-   `.env.example` versions are usually stale and edits outside the
-   skill's own block must be dropped during salvage.
+8. **`.env.example` additions изолированы в чётко delimited block.** Не трогайте
+   surrounding file — contributor-supplied `.env.example` versions обычно stale,
+   и edits вне skill's own block будут dropped при salvage.
 
-The full salvage / modernization checklist for external skill PRs
-lives in the `prostor-agent-dev` skill at
-`references/new-skill-pr-salvage.md` — load it before polishing
-contributor skill PRs.
+Полный salvage / modernization checklist для external skill PR живёт в
+навыке `prostor-agent-dev` в
+`references/new-skill-pr-salvage.md` — загрузите его перед polishing
+contributor skill PR.
 
 ---
 
 ## Toolsets
 
-All toolsets are defined in `toolsets.py` as a single `TOOLSETS` dict.
-Each platform's adapter picks a base toolset (e.g. Telegram uses
-`"messaging"`); `_PROSTOR_CORE_TOOLS` is the default bundle most
-platforms inherit from.
+Все toolsets определены в `toolsets.py` как единый `TOOLSETS` dict.
+Адаптер каждой платформы выбирает base toolset (напр. Telegram использует
+`"messaging"`); `_PROSTOR_CORE_TOOLS` — default bundle, от которого наследует
+большинство платформ.
 
-Current toolset keys: `browser`, `clarify`, `code_execution`, `cronjob`,
+Текущие toolset keys: `browser`, `clarify`, `code_execution`, `cronjob`,
 `debugging`, `delegation`, `discord`, `discord_admin`, `feishu_doc`,
 `feishu_drive`, `file`, `homeassistant`, `image_gen`, `kanban`, `memory`,
 `messaging`, `moa`, `rl`, `safe`, `search`, `session_search`, `skills`,
 `spotify`, `terminal`, `todo`, `tts`, `video`, `vision`, `web`, `yuanbao`.
 
-Enable/disable per platform via `prostor tools` (the curses UI) or the
-`tools.<platform>.enabled` / `tools.<platform>.disabled` lists in
-`config.yaml`.
+Enable/disable per platform через `prostor tools` (curses UI) или
+`tools.<platform>.enabled` / `tools.<platform>.disabled` lists в `config.yaml`.
 
 ---
 
-## Delegation (`delegate_task`)
+## Делегирование (`delegate_task`)
 
-`tools/delegate_tool.py` spawns a subagent with an isolated
-context + terminal session. Synchronous: the parent waits for the
-child's summary before continuing its own loop — if the parent is
-interrupted, the child is cancelled.
+`tools/delegate_tool.py` спавнит субагента с изолированным
+context + terminal session. Синхронно: parent ждёт summary child, прежде чем
+продолжить свой loop — если parent прерван, child отменяется.
 
-Two shapes:
+Две формы:
 
-- **Single:** pass `goal` (+ optional `context`, `toolsets`).
-- **Batch (parallel):** pass `tasks: [...]` — each gets its own subagent
-  running concurrently. Concurrency is capped by
-  `delegation.max_concurrent_children` (default 3).
+- **Single:** передайте `goal` (+ опционально `context`, `toolsets`).
+- **Batch (parallel):** передайте `tasks: [...]` — каждый получает свой subagent
+  конкурентно. Concurrency cap через `delegation.max_concurrent_children` (default 3).
 
-Roles:
+Роли:
 
-- `role="leaf"` (default) — focused worker. Cannot call `delegate_task`,
+- `role="leaf"` (default) — фокусный worker. Не может `delegate_task`,
   `clarify`, `memory`, `send_message`, `execute_code`.
-- `role="orchestrator"` — retains `delegate_task` so it can spawn its
-  own workers. Gated by `delegation.orchestrator_enabled` (default true)
-  and bounded by `delegation.max_spawn_depth` (default 2).
+- `role="orchestrator"` — сохраняет `delegate_task` для спавна своих workers.
+  Gated через `delegation.orchestrator_enabled` (default true) и bounded через
+  `delegation.max_spawn_depth` (default 2).
 
-Key config knobs (under `delegation:` in `config.yaml`):
+Ключевые config knobs (под `delegation:` в `config.yaml`):
 `max_concurrent_children`, `max_spawn_depth`, `child_timeout_seconds`,
 `orchestrator_enabled`, `subagent_auto_approve`, `inherit_mcp_toolsets`,
 `max_iterations`.
 
-Synchronicity rule: delegate_task is **not** durable. For long-running
-work that must outlive the current turn, use `cronjob` or
-`terminal(background=True, notify_on_complete=True)` instead.
+Synchronicity rule: delegate_task **не** durable. Для long-running work,
+которое должно пережить текущий turn, используйте `cronjob` или
+`terminal(background=True, notify_on_complete=True)`.
 
 ---
 
-## Curator (skill lifecycle)
+## Curator (жизненный цикл skills)
 
-Background skill-maintenance system that tracks usage on agent-created
-skills and auto-archives stale ones. Users never lose skills; archives
-go to `~/.prostor/skills/.archive/` and are restorable.
+Background skill-maintenance система, tracking usage на agent-created skills
+и auto-archive stale ones. Users никогда не теряют skills; archives идут в
+`~/.prostor/skills/.archive/` и restorable.
 
 - **Core:** `agent/curator.py` (review loop, auto-transitions, LLM review
   prompt) + `agent/curator_backup.py` (pre-run tar.gz snapshots).
-- **CLI:** `prostor_cli/curator.py` wires `prostor curator <verb>` where
-  verbs are: `status`, `run`, `pause`, `resume`, `pin`, `unpin`,
+- **CLI:** `prostor_cli/curator.py` подключает `prostor curator <verb>`, где
+  verbs: `status`, `run`, `pause`, `resume`, `pin`, `unpin`,
   `archive`, `restore`, `prune`, `backup`, `rollback`.
-- **Telemetry:** `tools/skill_usage.py` owns the sidecar
+- **Telemetry:** `tools/skill_usage.py` владеет sidecar
   `~/.prostor/skills/.usage.json` — per-skill `use_count`, `view_count`,
   `patch_count`, `last_activity_at`, `state` (active / stale /
   archived), `pinned`.
 
-Invariants:
-- Curator only touches skills with `created_by: "agent"` provenance —
-  bundled + hub-installed skills are off-limits.
-- Never deletes; max destructive action is archive.
-- Pinned skills are exempt from every auto-transition and from the
-  LLM review pass.
-- `skill_manage(action="delete")` refuses pinned skills; patch/edit/
-  write_file/remove_file go through so the agent can keep improving
+Инварианты:
+- Curator трогает только skills с `created_by: "agent"` provenance —
+  bundled + hub-installed skills вне зоны доступа.
+- Никогда не удаляет; max destructive action — archive.
+- Pinned skills exempt от каждого auto-transition и от LLM review pass.
+- `skill_manage(action="delete")` отказывает для pinned skills; patch/edit/
+  write_file/remove_file проходят, чтобы агент мог продолжать улучшать
   pinned skills.
 
-Config section (`curator:` in `config.yaml`):
+Config section (`curator:` в `config.yaml`):
 `enabled`, `interval_hours`, `min_idle_hours`, `stale_after_days`,
 `archive_after_days`, `backup.*`.
 
-Full user-facing docs: `website/docs/user-guide/features/curator.md`.
+Полные user-facing docs: `website/docs/user-guide/features/curator.md`.
 
 ---
 
-## Cron (scheduled jobs)
+## Cron (запланированные задачи)
 
-`cron/jobs.py` (job store) + `cron/scheduler.py` (tick loop). Agents
-schedule jobs via the `cronjob` tool; users via `prostor cron <verb>`
-(`list`, `add`, `edit`, `pause`, `resume`, `run`, `remove`) or the
+`cron/jobs.py` (job store) + `cron/scheduler.py` (tick loop). Агенты
+планируют jobs через `cronjob` tool; users через `prostor cron <verb>`
+(`list`, `add`, `edit`, `pause`, `resume`, `run`, `remove`) или
 `/cron` slash command.
 
-Supported schedule formats:
+Поддерживаемые форматы schedule:
 - Duration: `"30m"`, `"2h"`, `"1d"`
 - "every" phrase: `"every 2h"`, `"every monday 9am"`
 - 5-field cron expression: `"0 9 * * *"`
 - ISO timestamp (one-shot): `"2026-06-01T09:00:00Z"`
 
-Per-job fields include `skills` (load specific skills), `model` /
-`provider` overrides, `script` (pre-run data-collection script whose
-stdout is injected into the prompt; `no_agent=True` turns the script
-into the entire job), `context_from` (chain job A's last output into
-job B's prompt), `workdir` (run in a specific directory with its
-`AGENTS.md`/`CLAUDE.md` loaded), and multi-platform delivery.
+Per-job fields включают `skills` (load specific skills), `model` /
+`provider` overrides, `script` (pre-run data-collection script, чей stdout
+инжектируется в prompt; `no_agent=True` превращает script в entire job),
+`context_from` (chain output job A в prompt job B), `workdir` (run в
+specific directory с его `AGENTS.md`/`CLAUDE.md` loaded), и multi-platform
+delivery.
 
 Hardening invariants:
-- **3-minute hard interrupt** on cron sessions — runaway agent loops
-  cannot monopolize the scheduler.
+- **3-минутный hard interrupt** на cron sessions — runaway agent loops
+  не могут монополизировать scheduler.
 - Catchup window: half the job's period, clamped to 120s–2h.
-- Grace window: 120s for one-shot jobs whose fire time was missed.
-- File lock at `~/.prostor/cron/.tick.lock` prevents duplicate ticks
+- Grace window: 120s для one-shot jobs, чьё fire time было пропущено.
+- File lock в `~/.prostor/cron/.tick.lock` предотвращает duplicate ticks
   across processes.
-- Cron sessions pass `skip_memory=True` by default; memory providers
-  intentionally do not run during cron.
+- Cron sessions pass `skip_memory=True` по умолчанию; memory providers
+  намеренно не запускаются во время cron.
 
-Cron deliveries are **not** mirrored into the target gateway session —
-they land in their own cron session with a header/footer frame so the
-main conversation's message-role alternation stays intact.
+Cron deliveries **не** зеркалируются в target gateway session — они
+приземляются в свой собственный cron session с header/footer frame, так что
+message-role alternation главного разговора остаётся intact.
 
 ---
 
 ## Kanban (multi-agent work queue)
 
-Durable SQLite-backed board that lets multiple profiles / workers
-collaborate on shared tasks. Users drive it via `prostor kanban <verb>`;
-workers spawned by the dispatcher drive it via a dedicated `kanban_*`
-toolset so their schema footprint is zero when they're not inside a
-kanban task.
+Durable SQLite-backed board, позволяющий multiple profiles / workers
+collaborate на shared tasks. Users drive через `prostor kanban <verb>`;
+workers, spawned dispatcher'ом, drive через dedicated `kanban_*`
+toolset, так что их schema footprint — ноль, когда они не внутри kanban task.
 
-- **CLI:** `prostor_cli/kanban.py` wires `prostor kanban` with verbs
+- **CLI:** `prostor_cli/kanban.py` подключает `prostor kanban` с verbs
   `init`, `create`, `list` (alias `ls`), `show`, `assign`, `link`,
   `unlink`, `comment`, `complete`, `block`, `unblock`, `archive`,
-  `tail`, plus less-commonly-used `watch`, `stats`, `runs`, `log`,
+  `tail`, плюс less-commonly-used `watch`, `stats`, `runs`, `log`,
   `assignees`, `heartbeat`, `notify-*`, `dispatch`, `daemon`, `gc`.
 - **Worker/orchestrator toolset:** `tools/kanban_tools.py` exposes
   `kanban_show`, `kanban_complete`, `kanban_block`, `kanban_heartbeat`,
-  `kanban_comment`, `kanban_create`, `kanban_link`; profiles that
-  explicitly enable the `kanban` toolset outside a dispatcher-spawned
-  task also get `kanban_list` and `kanban_unblock` for board routing.
-- **Dispatcher:** long-lived loop that (default every 60s) reclaims
-  stale claims, promotes ready tasks, atomically claims, and spawns
-  assigned profiles. Runs **inside the gateway** by default via
+  `kanban_comment`, `kanban_create`, `kanban_link`; profiles, которые
+  явно enable `kanban` toolset вне dispatcher-spawned
+  task, также получают `kanban_list` и `kanban_unblock` для board routing.
+- **Dispatcher:** long-lived loop (default every 60s) reclaims
+  stale claims, promotes ready tasks, atomically claims, и spawns
+  assigned profiles. Runs **inside gateway** по умолчанию через
   `kanban.dispatch_in_gateway: true`.
 - **Plugin assets:** `plugins/kanban/dashboard/` (web UI) +
-  `plugins/kanban/systemd/` (`prostor-kanban-dispatcher.service` for
+  `plugins/kanban/systemd/` (`prostor-kanban-dispatcher.service` для
   standalone dispatcher deployment).
 
 Isolation model:
-- **Board** is the hard boundary — workers are spawned with
-  `PROSTOR_KANBAN_BOARD` pinned in their env so they can't see other
+- **Board** — hard boundary; workers spawned с
+  `PROSTOR_KANBAN_BOARD` pinned в env, так что не видят другие
   boards.
-- **Tenant** is a soft namespace *within* a board — one specialist
-  fleet can serve multiple businesses with workspace-path + memory-key
+- **Tenant** — soft namespace *within* a board; один specialist
+  fleet может serve multiple businesses с workspace-path + memory-key
   isolation.
-- After `kanban.failure_limit` consecutive non-success attempts on the
-  same task (default: 2), the dispatcher auto-blocks it to prevent spin
+- После `kanban.failure_limit` consecutive non-success attempts на
+  same task (default: 2), dispatcher auto-blocks it для prevent spin
   loops.
 
-Full user-facing docs: `website/docs/user-guide/features/kanban.md`.
+Полные user-facing docs: `website/docs/user-guide/features/kanban.md`.
 
 ---
 
-## Important Policies
+## Важные политики
 
-### Prompt Caching Must Not Break
+### Prompt Caching не должен ломаться
 
-Prostor-Agent ensures caching remains valid throughout a conversation. **Do NOT implement changes that would:**
-- Alter past context mid-conversation
-- Change toolsets mid-conversation
-- Reload memories or rebuild system prompts mid-conversation
+Prostor-Agent обеспечивает caching valid в течение разговора. **НЕ реализуйте
+изменения, которые:**
+- Альтерируют прошлый контекст mid-conversation
+- Меняют toolset mid-conversation
+- Перезагружают memories или пересобирают system prompt mid-conversation
 
-Cache-breaking forces dramatically higher costs. The ONLY time we alter context is during context compression.
+Cache-breaking форсирует драматически более высокие costs. Единственный раз,
+когда мы альтерируем context — context compression.
 
-Slash commands that mutate system-prompt state (skills, tools, memory, etc.)
-must be **cache-aware**: default to deferred invalidation (change takes
-effect next session), with an opt-in `--now` flag for immediate
-invalidation. See `/skills install --now` for the canonical pattern.
+Slash-команды, мутирующие system-prompt state (skills, tools, memory и т.д.),
+должны быть **cache-aware**: default на deferred invalidation (change
+действует next session), с opt-in `--now` flag для immediate invalidation.
+См. `/skills install --now` для canonical pattern.
 
 ### Background Process Notifications (Gateway)
 
-When `terminal(background=true, notify_on_complete=true)` is used, the gateway runs a watcher that
-detects process completion and triggers a new agent turn. Control verbosity of background process
-messages with `display.background_process_notifications`
-in config.yaml (or `PROSTOR_BACKGROUND_NOTIFICATIONS` env var):
+Когда `terminal(background=true, notify_on_complete=true)` используется, gateway
+запускает watcher, детектирующий completion process и trigger'ящий новый agent
+turn. Контролируйте verbosity background process messages через
+`display.background_process_notifications`
+в config.yaml (или `PROSTOR_BACKGROUND_NOTIFICATIONS` env var):
 
 - `all` — running-output updates + final message (default)
-- `result` — only the final completion message
-- `error` — only the final message when exit code != 0
-- `off` — no watcher messages at all
+- `result` — только final completion message
+- `error` — только final message когда exit code != 0
+- `off` — никаких watcher messages
 
 ---
 
-## Profiles: Multi-Instance Support
+## Профили: Multi-Instance Support
 
-Prostor supports **profiles** — multiple fully isolated instances, each with its own
-`PROSTOR_HOME` directory (config, API keys, memory, sessions, skills, gateway, etc.).
+Prostor поддерживает **profiles** — multiple fully isolated instances, каждый
+со своим `PROSTOR_HOME` directory (config, API keys, memory, sessions, skills,
+gateway и т.д.).
 
-The core mechanism: `_apply_profile_override()` in `prostor_cli/main.py` sets
-`PROSTOR_HOME` before any module imports. All `get_prostor_home()` references
-automatically scope to the active profile.
+Core mechanism: `_apply_profile_override()` в `prostor_cli/main.py` устанавливает
+`PROSTOR_HOME` до любого module import. Все `get_prostor_home()` references
+автоматически scope к active profile.
 
-### Rules for profile-safe code
+### Правила для profile-safe code
 
-1. **Use `get_prostor_home()` for all PROSTOR_HOME paths.** Import from `prostor_constants`.
-   NEVER hardcode `~/.prostor` or `Path.home() / ".prostor"` in code that reads/writes state.
+1. **Используйте `get_prostor_home()` для всех PROSTOR_HOME путей.** Импорт из
+   `prostor_constants`. НИКОГДА не хардкодьте `~/.prostor` или `Path.home() / ".prostor"`
+   в коде, который читает/пишет state.
    ```python
    # GOOD
    from prostor_constants import get_prostor_home
    config_path = get_prostor_home() / "config.yaml"
 
-   # BAD — breaks profiles
+   # BAD — ломает profiles
    config_path = Path.home() / ".prostor" / "config.yaml"
    ```
 
-2. **Use `display_prostor_home()` for user-facing messages.** Import from `prostor_constants`.
-   This returns `~/.prostor` for default or `~/.prostor/profiles/<name>` for profiles.
+2. **Используйте `display_prostor_home()` для user-facing messages.** Импорт из
+   `prostor_constants`. Возвращает `~/.prostor` для default или
+   `~/.prostor/profiles/<name>` для profiles.
    ```python
    # GOOD
    from prostor_constants import display_prostor_home
    print(f"Config saved to {display_prostor_home()}/config.yaml")
 
-   # BAD — shows wrong path for profiles
+   # BAD — показывает wrong path для profiles
    print("Config saved to ~/.prostor/config.yaml")
    ```
 
-3. **Module-level constants are fine** — they cache `get_prostor_home()` at import time,
-   which is AFTER `_apply_profile_override()` sets the env var. Just use `get_prostor_home()`,
-   not `Path.home() / ".prostor"`.
+3. **Module-level constants — OK** — они кэшируют `get_prostor_home()` при
+   import time, который AFTER `_apply_profile_override()` устанавливает env var.
+   Просто используйте `get_prostor_home()`, не `Path.home() / ".prostor"`.
 
-4. **Tests that mock `Path.home()` must also set `PROSTOR_HOME`** — since code now uses
-   `get_prostor_home()` (reads env var), not `Path.home() / ".prostor"`:
+4. **Тесты, мокающие `Path.home()`, должны также set `PROSTOR_HOME`** — т.к. код
+   теперь использует `get_prostor_home()` (читает env var), не `Path.home() / ".prostor"`:
    ```python
    with patch.object(Path, "home", return_value=tmp_path), \
         patch.dict(os.environ, {"PROSTOR_HOME": str(tmp_path / ".prostor")}):
        ...
    ```
 
-5. **Gateway platform adapters should use token locks** — if the adapter connects with
-   a unique credential (bot token, API key), call `acquire_scoped_lock()` from
-   `gateway.status` in the `connect()`/`start()` method and `release_scoped_lock()` in
-   `disconnect()`/`stop()`. This prevents two profiles from using the same credential.
-   See `gateway/platforms/telegram.py` for the canonical pattern.
+5. **Gateway platform adapters должны использовать token locks** — если adapter
+   подключается с unique credential (bot token, API key), вызывайте
+   `acquire_scoped_lock()` из `gateway.status` в `connect()`/`start()` method и
+   `release_scoped_lock()` в `disconnect()`/`stop()`. Это предотвращает два profiles
+   от использования того же credential. См. `gateway/platforms/telegram.py` для
+   canonical pattern.
 
-6. **Profile operations are HOME-anchored, not PROSTOR_HOME-anchored** — `_get_profiles_root()`
-   returns `Path.home() / ".prostor" / "profiles"`, NOT `get_prostor_home() / "profiles"`.
-   This is intentional — it lets `prostor -p coder profile list` see all profiles regardless
-   of which one is active.
+6. **Profile operations — HOME-anchored, не PROSTOR_HOME-anchored** —
+   `_get_profiles_root()` возвращает `Path.home() / ".prostor" / "profiles"`,
+   НЕ `get_prostor_home() / "profiles"`. Это намеренно — позволяет
+   `prostor -p coder profile list` видеть все profiles независимо от того,
+   какой active.
 
-## Known Pitfalls
+## Известные pitfalls
 
-### DO NOT hardcode `~/.prostor` paths
-Use `get_prostor_home()` from `prostor_constants` for code paths. Use `display_prostor_home()`
-for user-facing print/log messages. Hardcoding `~/.prostor` breaks profiles — each profile
-has its own `PROSTOR_HOME` directory. This was the source of 5 bugs fixed in PR #3575.
+### НЕ хардкодьте пути `~/.prostor`
+Используйте `get_prostor_home()` из `prostor_constants` для code paths.
+Используйте `display_prostor_home()` для user-facing print/log messages.
+Хардкод `~/.prostor` ломает profiles — каждый profile имеет свой `PROSTOR_HOME`
+directory. Это было источником 5 багов, пофикшенных в PR #3575.
 
-### DO NOT introduce new `simple_term_menu` usage
-Existing call sites in `prostor_cli/main.py` remain for legacy fallback only;
-the preferred UI is curses (stdlib) because `simple_term_menu` has
-ghost-duplication rendering bugs in tmux/iTerm2 with arrow keys. New
-interactive menus must use `prostor_cli/curses_ui.py` — see
-`prostor_cli/tools_config.py` for the canonical pattern.
+### НЕ вводите новые `simple_term_menu` usage
+Существующие call sites в `prostor_cli/main.py` остаются для legacy fallback;
+предпочтительный UI — curses (stdlib), т.к. `simple_term_menu` имеет
+ghost-duplication rendering bugs в tmux/iTerm2 с arrow keys. Новые
+interactive menus должны использовать `prostor_cli/curses_ui.py` — см.
+`prostor_cli/tools_config.py` для canonical pattern.
 
-### DO NOT use `\033[K` (ANSI erase-to-EOL) in spinner/display code
-Leaks as literal `?[K` text under `prompt_toolkit`'s `patch_stdout`. Use space-padding: `f"\r{line}{' ' * pad}"`.
+### НЕ используйте `\033[K` (ANSI erase-to-EOL) в spinner/display code
+Утечка как literal `?[K` text под `prompt_toolkit`'s `patch_stdout`.
+Используйте space-padding: `f"\r{line}{' ' * pad}"`.
 
-### `_last_resolved_tool_names` is a process-global in `model_tools.py`
-`_run_single_child()` in `delegate_tool.py` saves and restores this global around subagent execution. If you add new code that reads this global, be aware it may be temporarily stale during child agent runs.
+### `_last_resolved_tool_names` — process-global в `model_tools.py`
+`_run_single_child()` в `delegate_tool.py` save и restore этот global вокруг
+subagent execution. Если добавляете код, читающий этот global, имейте в виду,
+что он может быть temporarily stale во время child agent runs.
 
-### DO NOT hardcode cross-tool references in schema descriptions
-Tool schema descriptions must not mention tools from other toolsets by name (e.g., `browser_navigate` saying "prefer web_search"). Those tools may be unavailable (missing API keys, disabled toolset), causing the model to hallucinate calls to non-existent tools. If a cross-reference is needed, add it dynamically in `get_tool_definitions()` in `model_tools.py` — see the `browser_navigate` / `execute_code` post-processing blocks for the pattern.
+### НЕ хардкодьте cross-tool references в schema descriptions
+Tool schema descriptions не должны упоминать tools из других toolsets по имени
+(напр. `browser_navigate` говорит "prefer web_search"). Эти tools могут быть
+unavailable (missing API keys, disabled toolset), вызывая hallucination calls к
+non-existent tools. Если cross-reference нужен, добавьте динамически в
+`get_tool_definitions()` в `model_tools.py` — см. `browser_navigate` /
+`execute_code` post-processing blocks для pattern.
 
-### The gateway has TWO message guards — both must bypass approval/control commands
-When an agent is running, messages pass through two sequential guards:
-(1) **base adapter** (`gateway/platforms/base.py`) queues messages in
-`_pending_messages` when `session_key in self._active_sessions`, and
+### Gateway имеет ДВА message guards — оба должны bypass approval/control commands
+Когда agent running, messages проходят через два sequential guards:
+(1) **base adapter** (`gateway/platforms/base.py`) queues messages в
+`_pending_messages` когда `session_key in self._active_sessions`, и
 (2) **gateway runner** (`gateway/run.py`) intercepts `/stop`, `/new`,
-`/queue`, `/status`, `/approve`, `/deny` before they reach
-`running_agent.interrupt()`. Any new command that must reach the runner
-while the agent is blocked (e.g. approval prompts) MUST bypass BOTH
-guards and be dispatched inline, not via `_process_message_background()`
-(which races session lifecycle).
+`/queue`, `/status`, `/approve`, `/deny` до того, как они достигнут
+`running_agent.interrupt()`. Любая новая команда, которая должна достигнуть
+runner, пока agent blocked (напр. approval prompts), MUST bypass BOTH guards
+и dispatch inline, не через `_process_message_background()`
+(которое race'ит session lifecycle).
 
-### Squash merges from stale branches silently revert recent fixes
-Before squash-merging a PR, ensure the branch is up to date with `main`
-(`git fetch origin main && git reset --hard origin/main` in the worktree,
-then re-apply the PR's commits). A stale branch's version of an unrelated
-file will silently overwrite recent fixes on main when squashed. Verify
-with `git diff HEAD~1..HEAD` after merging — unexpected deletions are a
-red flag.
+### Squash merges из stale branches silently revert recent fixes
+Перед squash-merge PR, убедитесь, что branch up to date с `main`
+(`git fetch origin main && git reset --hard origin/main` в worktree,
+затем re-apply PR's commits). Stale branch's version unrelated файла silently
+overwrite recent fixes на main при squash. Verify через
+`git diff HEAD~1..HEAD` после merge — unexpected deletions — red flag.
 
-### Don't wire in dead code without E2E validation
-Unused code that was never shipped was dead for a reason. Before wiring an
-unused module into a live code path, E2E test the real resolution chain
-with actual imports (not mocks) against a temp `PROSTOR_HOME`.
+### Не подключайте dead code без E2E validation
+Unused code, которое никогда не отгружалось, было dead по причине. Перед
+wiring unused module в live code path, E2E test реальный resolution chain
+с actual imports (не mocks) против temp `PROSTOR_HOME`.
 
-### Tests must not write to `~/.prostor/`
-The `_isolate_prostor_home` autouse fixture in `tests/conftest.py` redirects `PROSTOR_HOME` to a temp dir. Never hardcode `~/.prostor/` paths in tests.
+### Тесты не должны писать в `~/.prostor/`
+Autouse fixture `_isolate_prostor_home` в `tests/conftest.py` redirects
+`PROSTOR_HOME` в temp dir. Никогда не хардкодьте `~/.prostor/` paths в тестах.
 
-**Profile tests**: When testing profile features, also mock `Path.home()` so that
-`_get_profiles_root()` and `_get_default_prostor_home()` resolve within the temp dir.
-Use the pattern from `tests/prostor_cli/test_profiles.py`:
+**Profile tests:** при тестировании profile features, также mock `Path.home()`,
+чтобы `_get_profiles_root()` и `_get_default_prostor_home()` resolved внутри
+temp dir. Используйте pattern из `tests/prostor_cli/test_profiles.py`:
 ```python
 @pytest.fixture
 def profile_env(tmp_path, monkeypatch):
@@ -1246,124 +1343,124 @@ def profile_env(tmp_path, monkeypatch):
 
 ---
 
-## Testing
+## Тестирование
 
-**ALWAYS use `scripts/run_tests.sh`** — do not call `pytest` directly. The script enforces
-hermetic environment parity with CI (unset credential vars, TZ=UTC, LANG=C.UTF-8,
-`-n auto` xdist workers, in-tree subprocess-isolation plugin). Direct `pytest`
-on a 16+ core developer machine with API keys set diverges from CI in ways
-that have caused multiple "works locally, fails in CI" incidents (and the reverse).
+**ВСЕГДА используйте `scripts/run_tests.sh`** — не вызывайте `pytest` напрямую.
+Script обеспечивает hermetic environment parity с CI (unset credential vars,
+TZ=UTC, LANG=C.UTF-8, `-n auto` xdist workers, in-tree subprocess-isolation
+plugin). Direct `pytest` на 16+ core developer machine с API keys set diverges
+от CI так, что вызвало multiple «works locally, fails in CI» incidents (и
+reverse).
 
 ```bash
-scripts/run_tests.sh                                  # full suite, CI-parity
-scripts/run_tests.sh tests/gateway/                   # one directory
-scripts/run_tests.sh tests/agent/test_foo.py::test_x  # one test
+scripts/run_tests.sh                                  # полный suite, CI-parity
+scripts/run_tests.sh tests/gateway/                   # одна директория
+scripts/run_tests.sh tests/agent/test_foo.py::test_x  # один тест
 scripts/run_tests.sh -v --tb=long                     # pass-through pytest flags
-scripts/run_tests.sh --no-isolate tests/foo/          # disable subprocess isolation (faster, for debugging)
+scripts/run_tests.sh --no-isolate tests/foo/          # disable isolation (быстрее, для debugging)
 ```
 
 ### Subprocess-per-test isolation
 
-Every test runs in a freshly-spawned Python subprocess via the in-tree plugin
-at `tests/_isolate_plugin.py`. This means module-level dicts/sets and
-ContextVars from one test cannot leak into the next — the historic
-`_reset_module_state` autouse fixture is gone.
+Каждый тест запускается в freshly-spawned Python subprocess через in-tree plugin
+в `tests/_isolate_plugin.py`. Это значит, что module-level dicts/sets и
+ContextVars из одного теста не могут утечь в следующий — исторический
+`_reset_module_state` autouse fixture упразднён.
 
 Implementation notes:
 
-- The plugin uses `multiprocessing.get_context("spawn")`, which works on
-  Linux, macOS, and Windows alike (POSIX `fork` is not used).
-- Per-test overhead is ~0.5–1.0s (Python startup + pytest collection). xdist
-  parallelism amortizes this across cores; on a 20-core box the full suite
-  finishes in roughly the same wall time as before, but flake-free.
-- `isolate_timeout` (configured in `pyproject.toml`) caps each test at 30s.
-  Hangs are killed and surfaced as a failure report.
-- Pass `--no-isolate` to disable isolation — useful when debugging a single
-  test interactively, or when you specifically want to verify state leakage.
-- The plugin disables itself in child processes (sentinel envvar
-  `PROSTOR_ISOLATE_CHILD=1`), so there's no fork-bomb risk.
+- Plugin использует `multiprocessing.get_context("spawn")`, который работает
+  на Linux, macOS и Windows (POSIX `fork` не используется).
+- Per-test overhead ~0.5–1.0s (Python startup + pytest collection). xdist
+  parallelism amortizes это across cores; на 20-core box полный suite
+  finishes примерно за то же wall time, но flake-free.
+- `isolate_timeout` (configured в `pyproject.toml`) caps каждый test на 30s.
+  Hangs killed и surfaced как failure report.
+- Pass `--no-isolate` для disable isolation — полезно при debugging single test
+  interactively, или когда хотите verify state leakage.
+- Plugin disables себя в child processes (sentinel envvar
+  `PROSTOR_ISOLATE_CHILD=1`), поэтому fork-bomb risk нет.
 
-### Why the wrapper (and why the old "just call pytest" doesn't work)
+### Почему wrapper (и почему старое «просто вызови pytest» не работает)
 
-Five real sources of local-vs-CI drift the script closes:
+Пять реальных источников local-vs-CI drift, которые script закрывает:
 
-| | Without wrapper | With wrapper |
+| | Без wrapper | С wrapper |
 |---|---|---|
-| Provider API keys | Whatever is in your env (auto-detects pool) | All `*_API_KEY`/`*_TOKEN`/etc. unset |
-| HOME / `~/.prostor/` | Your real config+auth.json | Temp dir per test |
-| Timezone | Local TZ (PDT etc.) | UTC |
-| Locale | Whatever is set | C.UTF-8 |
+| Provider API keys | Что в env (auto-detects pool) | Все `*_API_KEY`/`*_TOKEN`/etc. unset |
+| HOME / `~/.prostor/` | Ваш real config+auth.json | Temp dir per test |
+| Timezone | Local TZ (PDT и т.д.) | UTC |
+| Locale | Что set | C.UTF-8 |
 | xdist workers | `-n auto` = all cores | `-n auto` (safe — subprocess isolation prevents cross-worker flakes) |
 
-`tests/conftest.py` also enforces points 1-4 as an autouse fixture so ANY pytest
-invocation (including IDE integrations) gets hermetic behavior — but the wrapper
-is belt-and-suspenders.
+`tests/conftest.py` также enforcement points 1-4 как autouse fixture, поэтому
+ANY pytest invocation (включая IDE integrations) получает hermetic behavior —
+но wrapper — belt-and-suspenders.
 
-### Running without the wrapper (only if you must)
+### Запуск без wrapper (только если нужно)
 
-If you can't use the wrapper (e.g. inside an IDE that shells pytest directly),
-at minimum activate the venv. The isolation plugin loads automatically from
-`addopts` in `pyproject.toml`, so you get the same per-test process isolation
-either way.
+Если не можете использовать wrapper (напр. внутри IDE, которая shells pytest
+напрямую), minimum — activate venv. Isolation plugin loads автоматически из
+`addopts` в `pyproject.toml`, поэтому per-test process isolation тот же.
 
 ```bash
-source .venv/bin/activate   # or: source venv/bin/activate
+source .venv/bin/activate   # или: source venv/bin/activate
 python -m pytest tests/ -q
 ```
 
-If you need to bypass isolation for fast feedback while debugging:
+Если нужно bypass isolation для fast feedback при debugging:
 
 ```bash
 python -m pytest tests/agent/test_foo.py -q --no-isolate
 ```
 
-Always run the full suite before pushing changes.
+Всегда запускайте полный suite перед push изменений.
 
-### Don't write change-detector tests
+### Не пишите change-detector тесты
 
-A test is a **change-detector** if it fails whenever data that is **expected
-to change** gets updated — model catalogs, config version numbers,
-enumeration counts, hardcoded lists of provider models. These tests add no
-behavioral coverage; they just guarantee that routine source updates break
-CI and cost engineering time to "fix."
+Тест — **change-detector**, если он fail'ит когда данные, которые **ожидается
+изменить**, обновляются — model catalogs, config version numbers, enumeration
+counts, hardcoded lists of provider models. Эти тесты не добавляют
+behavioral coverage; они только гарантируют, что routine source updates break
+CI и cost engineering time на «fix».
 
-**Do not write:**
+**Не пишите:**
 
 ```python
-# catalog snapshot — breaks every model release
+# catalog snapshot — ломается каждый model release
 assert "gemini-2.5-pro" in _PROVIDER_MODELS["gemini"]
 assert "MiniMax-M2.7" in models
 
-# config version literal — breaks every schema bump
+# config version literal — ломается каждый schema bump
 assert DEFAULT_CONFIG["_config_version"] == 21
 
-# enumeration count — breaks every time a skill/provider is added
+# enumeration count — ломается каждый раз, когда skill/provider добавлен
 assert len(_PROVIDER_MODELS["huggingface"]) == 8
 ```
 
-**Do write:**
+**Пишите:**
 
 ```python
-# behavior: does the catalog plumbing work at all?
+# behavior: работает ли catalog plumbing вообще?
 assert "gemini" in _PROVIDER_MODELS
 assert len(_PROVIDER_MODELS["gemini"]) >= 1
 
-# behavior: does migration bump the user's version to current latest?
+# behavior: мигрирует ли bump user's version к current latest?
 assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
 
-# invariant: no plan-only model leaks into the legacy list
+# invariant: ни один plan-only model не утекает в legacy list
 assert not (set(moonshot_models) & coding_plan_only_models)
 
-# invariant: every model in the catalog has a context-length entry
+# invariant: каждый model в catalog имеет context-length entry
 for m in _PROVIDER_MODELS["huggingface"]:
     assert m.lower() in DEFAULT_CONTEXT_LENGTHS_LOWER
 ```
 
-The rule: if the test reads like a snapshot of current data, delete it. If
-it reads like a contract about how two pieces of data must relate, keep it.
-When a PR adds a new provider/model and you want a test, make the test
-assert the relationship (e.g. "catalog entries all have context lengths"),
-not the specific names.
+Правило: если тест читается как snapshot current data — удалите его. Если
+читается как contract о том, как две части данных должны соотноситься —
+сохраните. Когда PR добавляет new provider/model и нужен тест, делайте test
+assert relationship (напр. "catalog entries all have context lengths"), а не
+specific names.
 
-Reviewers should reject new change-detector tests; authors should convert
-them into invariants before re-requesting review.
+Reviewers должны отклонять новые change-detector tests; authors должны
+convert'ить их в invariants перед re-request review.
