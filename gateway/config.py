@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
 
-from prostor_cli.config import get_prostor_home
+from prostor_core import get_prostor_home
 from utils import env_int, is_truthy_value
 
 logger = logging.getLogger(__name__)

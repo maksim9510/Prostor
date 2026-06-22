@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from prostor_cli.config import get_prostor_home
+from prostor_core import get_prostor_home
 
 logger = logging.getLogger(__name__)
 

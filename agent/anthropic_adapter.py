@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 from typing import Any, Dict, List, Optional, Tuple
 from utils import base_url_host_matches, normalize_proxy_env_vars
 

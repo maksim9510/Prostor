@@ -203,7 +203,7 @@ class VideoGenProvider(abc.ABC):
 
 def _videos_cache_dir() -> Path:
     """Return ``$PROSTOR_HOME/cache/videos/``, creating parents as needed."""
-    from prostor_constants import get_prostor_home
+    from prostor_core import get_prostor_home
 
     path = get_prostor_home() / "cache" / "videos"
     path.mkdir(parents=True, exist_ok=True)

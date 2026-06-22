@@ -75,7 +75,7 @@ try:
 except ImportError:  # pragma: no cover
     fcntl = None  # type: ignore[assignment]
 
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 from utils import atomic_replace
 
 logger = logging.getLogger(__name__)

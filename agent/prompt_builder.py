@@ -12,7 +12,7 @@ import contextvars
 from collections import OrderedDict
 from pathlib import Path
 
-from prostor_constants import get_prostor_home, get_skills_dir, is_wsl
+from prostor_core import get_prostor_home, get_skills_dir, is_wsl
 from typing import Optional
 
 from agent.runtime_cwd import resolve_agent_cwd

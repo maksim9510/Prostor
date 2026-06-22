@@ -49,7 +49,7 @@ from agent.tool_guardrails import (
 )
 from prostor_cli.config import cfg_get
 from prostor_cli.timeouts import get_provider_request_timeout
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 from utils import base_url_host_matches, is_truthy_value
 
 # Use the same logger name as run_agent so tests patching ``run_agent.logger``

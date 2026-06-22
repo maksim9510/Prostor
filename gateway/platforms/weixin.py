@@ -66,7 +66,7 @@ from gateway.platforms.base import (
     cache_document_from_bytes,
     cache_image_from_bytes,
 )
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 from utils import atomic_json_write
 
 ILINK_BASE_URL = "https://ilinkai.weixin.qq.com"

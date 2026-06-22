@@ -937,7 +937,7 @@ class MemoryManager:
         ``get_prostor_home()`` themselves.
         """
         if "prostor_home" not in kwargs:
-            from prostor_constants import get_prostor_home
+            from prostor_core import get_prostor_home
             kwargs["prostor_home"] = str(get_prostor_home())
         for provider in self._providers:
             try:

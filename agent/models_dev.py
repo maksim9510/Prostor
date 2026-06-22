@@ -186,7 +186,7 @@ _MODELS_DEV_TO_PROVIDER: Optional[Dict[str, str]] = None
 
 def _get_cache_path() -> Path:
     """Return path to disk cache file."""
-    from prostor_constants import get_prostor_home
+    from prostor_core import get_prostor_home
     return get_prostor_home() / "models_dev_cache.json"
 
 

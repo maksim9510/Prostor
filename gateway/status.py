@@ -20,7 +20,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 from typing import Any, Optional
 from utils import atomic_json_write
 

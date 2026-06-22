@@ -462,7 +462,7 @@ _ensure_ssl_certs()
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Resolve Prostor home directory (respects PROSTOR_HOME override)
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 from utils import atomic_json_write, atomic_yaml_write, base_url_host_matches, is_truthy_value
 _prostor_home = get_prostor_home()
 
@@ -12528,7 +12528,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             name = (source.profile or "").strip() or get_active_profile_name() or "default"
             return get_profile_dir(name)
         except Exception:
-            from prostor_constants import get_prostor_home
+            from prostor_core import get_prostor_home
             return get_prostor_home()
 
     async def _run_agent_inner(

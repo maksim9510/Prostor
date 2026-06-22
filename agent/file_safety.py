@@ -10,7 +10,7 @@ from typing import Optional
 def _prostor_home_path() -> Path:
     """Resolve the active PROSTOR_HOME (profile-aware) without circular imports."""
     try:
-        from prostor_constants import get_prostor_home  # local import to avoid cycles
+        from prostor_core import get_prostor_home  # local import to avoid cycles
         return get_prostor_home()
     except Exception:
         return Path(os.path.expanduser("~/.prostor"))

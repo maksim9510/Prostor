@@ -206,7 +206,7 @@ def _remove_claude_code(provider: str, removed) -> RemovalResult:
 
 def _remove_prostor_pkce(provider: str, removed) -> RemovalResult:
     """~/.prostor/.anthropic_oauth.json is ours — delete it outright."""
-    from prostor_constants import get_prostor_home
+    from prostor_core import get_prostor_home
 
     result = RemovalResult()
     oauth_file = get_prostor_home() / ".anthropic_oauth.json"

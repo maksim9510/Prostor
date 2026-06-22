@@ -11,7 +11,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from prostor_cli.config import get_prostor_home
+from prostor_core import get_prostor_home
 from utils import atomic_json_write
 
 logger = logging.getLogger(__name__)

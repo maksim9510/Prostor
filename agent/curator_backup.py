@@ -48,7 +48,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 from agent.skill_utils import is_excluded_skill_path
 
 logger = logging.getLogger(__name__)

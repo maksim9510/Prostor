@@ -1617,7 +1617,7 @@ class AutoSetHomeMiddleware(InboundMiddleware):
                 adapter._auto_sethome_done = True  # DM seen — no further upgrades needed
             if _should_set:
                 try:
-                    from prostor_constants import get_prostor_home
+                    from prostor_core import get_prostor_home
                     from utils import atomic_yaml_write
                     import yaml
 

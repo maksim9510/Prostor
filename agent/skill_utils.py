@@ -462,7 +462,7 @@ def get_external_skills_dirs() -> List[Path]:
     if not isinstance(raw_dirs, list):
         return []
 
-    from prostor_constants import get_prostor_home
+    from prostor_core import get_prostor_home
 
     prostor_home = get_prostor_home()
     local_skills = get_skills_dir().resolve()

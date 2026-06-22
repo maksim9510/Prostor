@@ -115,7 +115,7 @@ _ENDPOINT_MODEL_CACHE_TTL = 300
 
 def _get_model_metadata_cache_path() -> Path:
     """Return path to the OpenRouter model metadata disk cache."""
-    from prostor_constants import get_prostor_home
+    from prostor_core import get_prostor_home
     return get_prostor_home() / "cache" / "openrouter_model_metadata.json"
 
 
@@ -909,7 +909,7 @@ def _resolve_endpoint_context_length(
 
 def _get_context_cache_path() -> Path:
     """Return path to the persistent context length cache file."""
-    from prostor_constants import get_prostor_home
+    from prostor_core import get_prostor_home
     return get_prostor_home() / "context_length_cache.yaml"
 
 

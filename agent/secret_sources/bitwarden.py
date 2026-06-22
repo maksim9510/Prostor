@@ -208,7 +208,7 @@ class FetchResult:
 
 def _prostor_bin_dir() -> Path:
     """Where Prostor stores its managed binaries.  Profile-aware."""
-    from prostor_constants import get_prostor_home
+    from prostor_core import get_prostor_home
 
     return get_prostor_home() / "bin"
 

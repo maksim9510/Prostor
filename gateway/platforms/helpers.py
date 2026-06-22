@@ -227,7 +227,7 @@ class ThreadParticipationTracker:
         }
 
     def _state_path(self) -> Path:
-        from prostor_constants import get_prostor_home
+        from prostor_core import get_prostor_home
         return get_prostor_home() / f"{self._platform}_threads.json"
 
     def _load(self) -> list[str]:

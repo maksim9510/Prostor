@@ -384,7 +384,7 @@ class ResponseStore:
         self._max_size = max_size
         if db_path is None:
             try:
-                from prostor_cli.config import get_prostor_home
+                from prostor_core import get_prostor_home
                 db_path = str(get_prostor_home() / "response_store.db")
             except Exception:
                 db_path = ":memory:"

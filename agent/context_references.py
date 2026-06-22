@@ -348,7 +348,7 @@ def _resolve_path(cwd: Path, target: str, *, allowed_root: Path | None = None) -
 
 
 def _ensure_reference_path_allowed(path: Path) -> None:
-    from prostor_constants import get_prostor_home
+    from prostor_core import get_prostor_home
     home = Path(os.path.expanduser("~")).resolve()
     prostor_home = get_prostor_home().resolve()
 

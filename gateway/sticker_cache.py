@@ -14,7 +14,7 @@ import tempfile
 import time
 from typing import Optional
 
-from prostor_cli.config import get_prostor_home
+from prostor_core import get_prostor_home
 
 
 CACHE_PATH = get_prostor_home() / "sticker_cache.json"

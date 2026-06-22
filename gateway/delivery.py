@@ -16,7 +16,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
-from prostor_cli.config import get_prostor_home
+from prostor_core import get_prostor_home
 
 logger = logging.getLogger(__name__)
 

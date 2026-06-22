@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set
 
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 from tools import skill_usage
 from utils import atomic_json_write
 

@@ -50,7 +50,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
-from prostor_constants import get_prostor_home
+from prostor_core import get_prostor_home
 
 logger = logging.getLogger(__name__)
 

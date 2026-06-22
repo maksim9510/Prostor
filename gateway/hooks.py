@@ -43,7 +43,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import yaml
 
-from prostor_cli.config import get_prostor_home
+from prostor_core import get_prostor_home
 
 
 HOOKS_DIR = get_prostor_home() / "hooks"
