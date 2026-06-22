@@ -119,13 +119,16 @@ curl -fsSL https://raw.githubusercontent.com/maksim9510/Prostor/main/install.sh 
 **Режимы:**
 
 ```bash
-./install.sh                         # стандартная установка с sudo
+./install.sh                         # стандартная установка с sudo (только CLI)
 ./install.sh --user                  # без sudo, в ~/.local
 ./install.sh --minimal               # без Docker и ffmpeg extras
 ./install.sh --no-system             # только Python пакет, без системных deps
 ./install.sh --no-systemd            # без создания service user
+./install.sh --with-desktop          # + Desktop приложение (Electron, нужен X11/Wayland + Node.js 22+)
+./install.sh --no-desktop            # явно без desktop (по умолчанию)
 PROSTOR_VERSION=v0.18.0 ./install.sh # конкретная версия
 ./install.sh --verbose               # подробный вывод
+./install.sh --dry-run               # показать что будет без выполнения
 ./install.sh --help                  # все опции
 ```
 
