@@ -1,3 +1,10 @@
+from prostor_state_schema_mixin import SessionSchemaMixin
+from prostor_state_fts_mixin import SessionFtsMixin
+from prostor_state_crud_mixin import SessionCrudMixin
+from prostor_state_compression_mixin import SessionCompressionMixin
+from prostor_state_messages_mixin import SessionMessagesMixin
+from prostor_state_prune_mixin import SessionPruneMixin
+
 #!/usr/bin/env python3
 """
 SQLite State Store for Prostor Agent.
@@ -655,7 +662,7 @@ END;
 """
 
 
-class SessionDB:
+class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCompressionMixin, SessionMessagesMixin, SessionPruneMixin):
     """
     SQLite-backed session storage with FTS5 search.
 
