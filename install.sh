@@ -14,11 +14,19 @@
 # Использование:
 #   curl -fsSL https://raw.githubusercontent.com/maksim9510/Prostor/main/install.sh | bash
 #   # или
-#   ./install.sh                         # установить
+#   ./install.sh                         # установить (только CLI)
 #   ./install.sh --user                  # установить без sudo (в ~/.local)
 #   ./install.sh --minimal               # без Docker, без ffmpeg extras
 #   ./install.sh --no-system             # только Python пакет, без системных deps
+#   ./install.sh --with-desktop          # + Desktop приложение (Electron, X11/Wayland)
+#   ./install.sh --no-desktop            # явно без desktop (по умолчанию)
 #   PROSTOR_VERSION=v0.18.0 ./install.sh # конкретная версия
+#
+# Что устанавливается:
+#   - prostor (CLI в /usr/local/bin или ~/.local/bin)
+#   - Python 3.11+ (через uv)
+#   - Системные пакеты: ffmpeg, ripgrep, libolm, docker
+#   - Desktop: только если --with-desktop (требует X11/Wayland и Node.js 22+)
 #
 # Требования:
 #   - bash 4+
@@ -45,6 +53,7 @@ INSTALL_USER_MODE=false    # --user
 MINIMAL_MODE=false         # --minimal
 NO_SYSTEM_DEPS=false       # --no-system
 SKIP_SYSTEMCTL=false       # без systemd unit (для AstraLite, контейнеров)
+INSTALL_DESKTOP=false      # --with-desktop
 DRY_RUN=false              # --dry-run
 VERBOSE=false              # --verbose
 
@@ -87,11 +96,13 @@ parse_args() {
             --minimal)      MINIMAL_MODE=true; shift ;;
             --no-system)    NO_SYSTEM_DEPS=true; shift ;;
             --no-systemd)   SKIP_SYSTEMCTL=true; shift ;;
+            --with-desktop) INSTALL_DESKTOP=true; shift ;;
+            --no-desktop)   INSTALL_DESKTOP=false; shift ;;
             --dry-run)      DRY_RUN=true; shift ;;
             --verbose|-v)   VERBOSE=true; shift ;;
             --version)      echo "install.sh v${SCRIPT_VERSION}"; exit 0 ;;
             --help|-h)
-                sed -n '2,30p' "$0" | sed 's/^# \?//'
+                sed -n '2,40p' "$0" | sed 's/^# \?//'
                 exit 0
                 ;;
             *)
@@ -447,6 +458,118 @@ install_prostor_python() {
 }
 
 # ---------------------------------------------------------------------------
+# Опционально: установить Desktop приложение (Electron)
+# ---------------------------------------------------------------------------
+install_desktop_app() {
+    if [ "$INSTALL_DESKTOP" != "true" ]; then
+        return 0
+    fi
+
+    log_section "Установка Prostor Desktop (Electron)"
+
+    # Проверить X11/Wayland
+    if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+        log_warn "DISPLAY/WAYLAND_DISPLAY не заданы — это нормально для SSH-сессии"
+        log_info "Запустите desktop в graphical session: startx / gnome-session / etc."
+    fi
+
+    # Node.js
+    if ! command -v node >/dev/null 2>&1; then
+        log_info "Node.js не найден — устанавливаю..."
+        local distro="$1"
+        case "$distro" in
+            debian|astra)
+                # Astra 1.8 = Debian 12 — nodejs 20.x в стандартных репах
+                run_root bash -c "apt-get install -y --no-install-recommends nodejs npm" \
+                    || die "Не удалось установить Node.js. Поставьте вручную: https://nodejs.org/"
+                ;;
+            rhel|redos)
+                run_root bash -c "dnf install -y nodejs npm" \
+                    || die "Не удалось установить Node.js"
+                ;;
+            arch)
+                run_root bash -c "pacman -S --noconfirm --needed nodejs npm" \
+                    || die "Не удалось установить Node.js"
+                ;;
+            alpine)
+                run_root bash -c "apk add --no-cache nodejs npm" \
+                    || die "Не удалось установить Node.js"
+                ;;
+            *)
+                die "Установите Node.js 22+ вручную с https://nodejs.org/"
+                ;;
+        esac
+    fi
+
+    local node_version
+    node_version=$(node --version 2>/dev/null | tr -d 'v')
+    log_ok "Node.js $node_version найден"
+
+    # Проверить минимальную версию Node (требуется 22+)
+    local node_major
+    node_major=$(echo "$node_version" | cut -d. -f1)
+    if [ "$node_major" -lt 22 ]; then
+        log_warn "Node.js $node_version < 22. Desktop может работать нестабильно."
+        log_warn "Рекомендуется обновить до Node 22 LTS."
+    fi
+
+    # Клонировать репозиторий (если ещё не)
+    local repo_dir="/opt/prostor-src"
+    if [ "$INSTALL_USER_MODE" = "true" ]; then
+        repo_dir="$HOME/prostor-src"
+    fi
+
+    if [ -d "$repo_dir/.git" ]; then
+        log_ok "Prostor source уже клонирован: $repo_dir"
+    else
+        log_info "Клонирую Prostor в $repo_dir..."
+        if [ "$DRY_RUN" = "true" ]; then
+            log_info "[DRY-RUN] git clone $PROSTOR_REPO $repo_dir"
+        else
+            if [ "$INSTALL_USER_MODE" = "true" ]; then
+                git clone --depth 1 "$PROSTOR_REPO" "$repo_dir" \
+                    || die "Не удалось клонировать репозиторий"
+            else
+                run_root git clone --depth 1 "$PROSTOR_REPO" "$repo_dir" \
+                    || die "Не удалось клонировать репозиторий"
+            fi
+        fi
+    fi
+
+    # Поставить desktop
+    log_info "Устанавливаю desktop dependencies (это займёт ~2 минуты)..."
+    if [ "$DRY_RUN" = "true" ]; then
+        log_info "[DRY-RUN] cd $repo_dir/apps/desktop && npm install --omit=dev"
+    else
+        cd "$repo_dir/apps/desktop" || die "Не нашёл apps/desktop"
+        if [ "$INSTALL_USER_MODE" = "true" ]; then
+            npm install --omit=dev || die "npm install failed"
+        else
+            run_root bash -c "cd '$repo_dir/apps/desktop' && npm install --omit=dev" \
+                || die "npm install failed"
+        fi
+        log_ok "Desktop dependencies установлены"
+    fi
+
+    # Создать launcher в /usr/local/bin/prostor-desktop
+    if [ "$INSTALL_USER_MODE" = "false" ] && [ "$DRY_RUN" = "false" ]; then
+        log_info "Создаю /usr/local/bin/prostor-desktop..."
+        run_root tee /usr/local/bin/prostor-desktop >/dev/null <<EOF
+#!/bin/bash
+# Prostor Desktop launcher
+exec $repo_dir/apps/desktop/node_modules/.bin/electron \\
+  $repo_dir/apps/desktop/electron/main.cjs \\
+  "\$@"
+EOF
+        run_root chmod +x /usr/local/bin/prostor-desktop
+        log_ok "Команда 'prostor-desktop' доступна"
+    fi
+
+    log_ok "Desktop app установлен"
+    log_info "Запуск: prostor-desktop  (требует X11/Wayland session)"
+}
+
+# ---------------------------------------------------------------------------
 # Опционально: создать service user (для systemd / корпоративных установок)
 # ---------------------------------------------------------------------------
 create_service_user() {
@@ -586,6 +709,9 @@ main() {
 
     # 6. Сам Prostor
     install_prostor_python
+
+    # 6.5. Desktop (опционально, --with-desktop)
+    install_desktop_app "$distro"
 
     # 7. Service user (опционально)
     create_service_user
