@@ -1,0 +1,69 @@
+# Codecov configuration for Prostor Agent
+# https://docs.codecov.com/docs/codecov-yaml
+
+codecov:
+  # CI failure threshold: don't fail builds on coverage dip
+  # (we want to track trends, not block merges on noise).
+  require_ci_to_pass: false
+  notify:
+    # Wait for all jobs to finish before commenting on PRs
+    after_n_builds: 6
+    wait_for_ci: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...90"
+
+  status:
+    project:
+      default:
+        # Don't fail PR on coverage drop — just track
+        target: auto
+        threshold: 1%
+        if_ci_failed: error
+        only_pulls: false
+    patch:
+      default:
+        target: auto
+        threshold: 5%
+        if_ci_failed: error
+
+# Per-source-path rules — focus on the modules we care about most.
+flag_management:
+  default_rules:
+    carryforward: true
+    statuses:
+      - type: project
+        target: auto
+        threshold: 1%
+      - type: patch
+        target: auto
+        threshold: 5%
+  individual_flags:
+    - name: unittests
+      paths:
+        - tools/
+        - agent/
+        - prostor_cli/
+
+# Files that should NOT count against coverage
+ignore:
+  - "tests/**"
+  - "**/test_*.py"
+  - "**/*_test.py"
+  - "scripts/build_skills_index.py"   # external network — not unit-testable
+  - "scripts/run_tests_parallel.py"   # test infrastructure itself
+  - "**/__pycache__/**"
+  - ".venv/**"
+  - "website/**"                      # Docusaurus — covered by separate docs CI
+  - "apps/**"                         # Desktop / TUI — covered by separate CI
+  - "**/conftest.py"
+
+# PR comment template — short and actionable
+comment:
+  layout: "header, diff, flags, components, files, footer"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true

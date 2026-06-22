@@ -118,6 +118,28 @@ jobs:
           OPENAI_API_KEY: ""
           NOUS_API_KEY: ""
 
+      - name: Generate coverage report (slice 1 only)
+        # Coverage only on slice 1 to avoid 6× redundant work; codecov-action
+        # merges per-job coverage.xml into a single report at upload time.
+        if: matrix.slice == 1
+        run: |
+          source .venv/bin/activate
+          pytest --cov=tools --cov=agent --cov=prostor_cli \
+                 --cov-report=xml:coverage.xml \
+                 --cov-report=term-missing \
+                 --no-header -q \
+                 tests/ -x --ignore=tests/integration --ignore=tests/e2e \
+                 -p no:cacheprovider 2>&1 | tail -200
+
+      - name: Upload coverage to Codecov
+        if: matrix.slice == 1
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Upload per-slice durations
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
