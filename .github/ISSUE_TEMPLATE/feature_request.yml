@@ -1,85 +1,84 @@
-name: "✨ Feature Request"
-description: Suggest a new feature or improvement.
+name: ✨ Feature Request
+description: Предложить новую фичу в Prostor
 title: "[Feature]: "
-labels: ["enhancement"]
+labels: ["enhancement", "status:needs-triage"]
+assignees: []
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the suggestion! Before submitting, please consider:
+        Хотите новую возможность в Prostor? Опишите её здесь.
+        Хороший запрос содержит **проблему**, **решение** и **альтернативы**.
 
-        - **Is this a new skill?** Most capabilities should be [skills, not tools](https://github.com/maksim9510/Prostor/blob/main/CONTRIBUTING.md#should-it-be-a-skill-or-a-tool). If it's a specialized integration (crypto, NFT, niche SaaS), it belongs on the Skills Hub, not bundled.
-        - **Search [existing issues](https://github.com/maksim9510/Prostor/issues)** — someone may have already proposed this.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Область
+      options:
+        - area:agents
+        - area:tools
+        - area:gateway
+        - area:ui
+        - area:cli
+        - area:skills
+        - area:docs
+        - area:i18n
+        - area:release
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Приоритет (по вашему мнению)
+      options:
+        - priority:critical (блокирует мою работу)
+        - priority:high (нужно в ближайшем релизе)
+        - priority:medium (когда-нибудь)
+        - priority:low (nice-to-have)
+    validations:
+      required: false
 
   - type: textarea
     id: problem
     attributes:
-      label: Problem or Use Case
-      description: What problem does this solve? What are you trying to do that you can't today?
-      placeholder: |
-        I'm trying to use Prostor with [provider/platform/workflow] but currently
-        there's no way to...
+      label: Какую проблему решаем?
+      description: Опишите use case / боль / ситуацию, в которой эта фича нужна
     validations:
       required: true
 
   - type: textarea
     id: solution
     attributes:
-      label: Proposed Solution
-      description: How do you think this should work? Be as specific as you can — CLI flags, config options, UI behavior.
-      placeholder: |
-        Add a `--foo` flag to `prostor chat` that enables...
-        Or: Add a config key `bar.baz` that controls...
+      label: Предлагаемое решение
+      description: Как вы представляете реализацию? API, CLI-команда, skill?
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives Considered
-      description: What other approaches did you consider? Why is the proposed solution better?
-
-  - type: dropdown
-    id: type
-    attributes:
-      label: Feature Type
-      options:
-        - New tool
-        - New bundled skill
-        - CLI improvement
-        - Gateway / messaging improvement
-        - Configuration option
-        - Performance / reliability
-        - Developer experience (tests, docs, CI)
-        - Other
+      label: Альтернативы, которые вы рассматривали
+      description: Workaround'ы, другие подходы, почему они не подходят
     validations:
-      required: true
-
-  - type: dropdown
-    id: scope
-    attributes:
-      label: Scope
-      description: How big is this change?
-      options:
-        - Small (single file, < 50 lines)
-        - Medium (few files, < 300 lines)
-        - Large (new module or significant refactor)
-
-  - type: checkboxes
-    id: pr-ready
-    attributes:
-      label: Contribution
-      options:
-        - label: I'd like to implement this myself and submit a PR
+      required: false
 
   - type: textarea
-    id: debug-report
+    id: examples
     attributes:
-      label: Debug Report (optional)
-      description: |
-        If this feature request is related to a problem you're experiencing, run `prostor debug share` and paste the links here.
-        In an interactive chat session, you can use `/debug` instead.
-        This helps us understand your environment and any related logs.
+      label: Примеры
+      description: Примеры использования, желательно в формате CLI/skills
       placeholder: |
-        Report   https://paste.rs/abc123
-      render: shell
+        prostor tools install my-skill
+        /команда аргументы
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: hacktoberfest
+    attributes:
+      label: Участие
+      options:
+        - label: Готов(а) реализовать в PR
+        - label: Готов(а) тестировать
+        - label: Это для Hacktoberfest

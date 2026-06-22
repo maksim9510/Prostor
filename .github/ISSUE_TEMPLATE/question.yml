@@ -1,0 +1,27 @@
+name: ❓ Question
+description: Задать вопрос о Prostor
+title: "[Question]: "
+labels: ["question", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Вопросы по использованию Prostor лучше задавать в
+        [Discord](https://discord.gg/NousResearch) — там быстрее ответят.
+        Этот шаблон — для случаев, когда ответ должен быть публичным и закреплённым.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Ваш вопрос
+      description: Сформулируйте максимально конкретно
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Контекст
+      description: Что вы пытаетесь сделать? Какие шаги уже предприняли?
+    validations:
+      required: false

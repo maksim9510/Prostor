@@ -1,11 +1,11 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
-  - name: 💬 Nous Research Discord
+  - name: 💬 Discord (Nous Research)
     url: https://discord.gg/NousResearch
-    about: For quick questions, showcasing projects, sharing skills, and community chat.
-  - name: 📖 Documentation
+    about: Задавайте вопросы и обсуждайте идеи в Discord
+  - name: 📚 Документация
     url: https://github.com/maksim9510/Prostor/blob/main/README.md
-    about: Check the README and docs before opening an issue.
-  - name: 🤝 Contributing Guide
-    url: https://github.com/maksim9510/Prostor/blob/main/CONTRIBUTING.md
-    about: Read this before submitting a PR.
+    about: Прочтите README, AGENTS.md и CONTRIBUTING.md перед созданием issue
+  - name: 🔒 Security issues
+    url: https://github.com/maksim9510/Prostor/blob/main/SECURITY.md
+    about: Сообщайте об уязвимостях через security policy, не через публичный issue

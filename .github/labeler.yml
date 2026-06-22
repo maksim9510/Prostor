@@ -1,0 +1,74 @@
+# Конфигурация labeler — какие файлы → какие labels
+# Документация: https://github.com/actions/labeler#configuration
+
+# area: labels
+area:tools:
+  - tools/**
+  - "**/hashline*.py"
+  - "**/batch_*.py"
+
+area:gateway:
+  - gateway/**
+
+area:ui:
+  - apps/**
+  - ui-tui/**
+
+area:cli:
+  - prostor_cli/**
+  - cli.py
+
+area:skills:
+  - skills/**
+  - optional-skills/**
+
+area:agents:
+  - agent/**
+  - run_agent.py
+  - trajectory_compressor.py
+
+area:ci:
+  - .github/workflows/**
+  - .github/dependabot.yml
+  - .github/labeler.yml
+  - .github/CODEOWNERS
+  - .github/PULL_REQUEST_TEMPLATE.md
+
+area:docs:
+  - docs/**
+  - website/**
+  - "*.md"
+
+area:i18n:
+  - locales/**
+  - agent/i18n.py
+  - "**/ru.ts"
+  - "**/ru.yaml"
+
+area:release:
+  - Dockerfile
+  - docker/**
+  - packaging/**
+  - apps/desktop/build/**
+  - "**/release/**"
+
+# type: labels
+type:docs:
+  - "**/*.md"
+  - docs/**
+  - website/**
+
+type:test:
+  - tests/**
+  - "**/test_*.py"
+  - "**/*_test.py"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+
+type:deps:
+  - package-lock.json
+  - uv.lock
+  - package.json
+  - pyproject.toml
+  - .github/dependabot.yml

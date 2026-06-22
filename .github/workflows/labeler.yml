@@ -1,0 +1,25 @@
+# Auto-labeler — автоматически проставляет labels на PR на основе изменённых файлов
+# https://github.com/actions/labeler
+name: 🏷️ Auto Labeler
+
+on:
+  - pull_request_target
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  labeler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run labeler
+        uses: actions/labeler@v5
+        with:
+          configuration-path: .github/labeler.yml
+          fail-on-any-error: false

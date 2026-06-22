@@ -1,75 +1,65 @@
-## What does this PR do?
+## Summary
 
-<!-- Describe the change clearly. What problem does it solve? Why is this approach the right one? -->
+<!-- Опишите, что меняет этот PR и зачем. 1-3 предложения. -->
 
+## Related issue
 
+<!-- Ссылка на issue, который закрывает этот PR: Fixes #123, Closes #456 -->
 
-## Related Issue
+## Type of change
 
-<!-- Link the issue this PR addresses. If no issue exists, consider creating one first. -->
-
-Fixes #
-
-## Type of Change
-
-<!-- Check the one that applies. -->
+<!-- Поставьте x в подходящий пункт. -->
 
 - [ ] 🐛 Bug fix (non-breaking change that fixes an issue)
 - [ ] ✨ New feature (non-breaking change that adds functionality)
-- [ ] 🔒 Security fix
-- [ ] 📝 Documentation update
-- [ ] ✅ Tests (adding or improving test coverage)
-- [ ] ♻️ Refactor (no behavior change)
-- [ ] 🎯 New skill (bundled or hub)
+- [ ] 💥 Breaking change (fix or feature that would break existing functionality)
+- [ ] 📝 Documentation / README update
+- [ ] 🧹 Refactor (no functional changes)
+- [ ] ⚡ Performance improvement
+- [ ] 🧪 Tests only
 
-## Changes Made
+## Affected areas
 
-<!-- List the specific changes. Include file paths for code changes. -->
+<!-- Какие зоны репо затрагивает PR (поставить x в нужные). -->
 
-- 
+- [ ] `area:agents` (`agent/`, `run_agent.py`)
+- [ ] `area:tools` (`tools/`, hashline, batch_*)
+- [ ] `area:gateway` (Telegram/Discord/etc)
+- [ ] `area:ui` (Desktop / TUI)
+- [ ] `area:cli` (`prostor_cli`)
+- [ ] `area:skills` (`skills/`, Skills Hub)
+- [ ] `area:ci` (`.github/workflows`)
+- [ ] `area:docs` (`docs/`, `website/`)
+- [ ] `area:i18n` (русский перевод)
+- [ ] `area:release` (packaging, installers)
 
-## How to Test
+## How to test
 
-<!-- Steps to verify this change works. For bugs: reproduction steps + proof that the fix works. -->
+<!-- Как проверить, что PR работает. Пошагово, с командами. -->
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## Checklist
 
-<!-- Complete these before requesting review. -->
+<!-- Автор PR — поставь x в подходящие пункты. -->
 
-### Code
+- [ ] Мои изменения не ломают обратной совместимости (или описаны в "Breaking changes")
+- [ ] Я добавил/обновил тесты, где это уместно
+- [ ] Локально прогнал `pytest` / `npm test` — всё проходит
+- [ ] Я прочитал [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md)
+- [ ] Я прочитал [AGENTS.md](../blob/main/AGENTS.md) (особенно "Рубрика контрибуции")
+- [ ] Для больших изменений я приложил описание в commit message и PR body
 
-- [ ] I've read the [Contributing Guide](https://github.com/maksim9510/Prostor/blob/main/CONTRIBUTING.md)
-- [ ] My commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`fix(scope):`, `feat(scope):`, etc.)
-- [ ] I searched for [existing PRs](https://github.com/maksim9510/Prostor/pulls) to make sure this isn't a duplicate
-- [ ] My PR contains **only** changes related to this fix/feature (no unrelated commits)
-- [ ] I've run `pytest tests/ -q` and all tests pass
-- [ ] I've added tests for my changes (required for bug fixes, strongly encouraged for features)
-- [ ] I've tested on my platform: <!-- e.g. Ubuntu 24.04, macOS 15.2, Windows 11 -->
+## Screenshots / Logs (если применимо)
 
-### Documentation & Housekeeping
+<!-- Перетащите картинку или приложите код вывода. -->
 
-<!-- Check all that apply. It's OK to check "N/A" if a category doesn't apply to your change. -->
+```
 
-- [ ] I've updated relevant documentation (README, `docs/`, docstrings) — or N/A
-- [ ] I've updated `cli-config.yaml.example` if I added/changed config keys — or N/A
-- [ ] I've updated `CONTRIBUTING.md` or `AGENTS.md` if I changed architecture or workflows — or N/A
-- [ ] I've considered cross-platform impact (Windows, macOS) per the [compatibility guide](https://github.com/maksim9510/Prostor/blob/main/CONTRIBUTING.md#cross-platform-compatibility) — or N/A
-- [ ] I've updated tool descriptions/schemas if I changed tool behavior — or N/A
+```
 
-## For New Skills
+## Additional context
 
-<!-- Only fill this out if you're adding a skill. Delete this section otherwise. -->
-
-- [ ] This skill is **broadly useful** to most users (if bundled) — see [Contributing Guide](https://github.com/maksim9510/Prostor/blob/main/CONTRIBUTING.md#should-the-skill-be-bundled)
-- [ ] SKILL.md follows the [standard format](https://github.com/maksim9510/Prostor/blob/main/CONTRIBUTING.md#skillmd-format) (frontmatter, trigger conditions, steps, pitfalls)
-- [ ] No external dependencies that aren't already available (prefer stdlib, curl, existing Prostor tools)
-- [ ] I've tested the skill end-to-end: `prostor --toolsets skills -q "Use the X skill to do Y"`
-
-## Screenshots / Logs
-
-<!-- If applicable, add screenshots or log output showing the fix/feature in action. -->
-
+<!-- Любая дополнительная информация, которая поможет reviewer'ам. -->

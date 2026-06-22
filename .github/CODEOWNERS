@@ -1,0 +1,32 @@
+# CODEOWNERS — автоматическое назначение reviewers
+# См. https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Порядок важен: последний match имеет приоритет.
+# Формат: pattern @owner
+
+# Дефолтный владелец — мейнтейнер репо
+* @maksim9510
+
+# Skills — несколько владельцев для контрибуции
+/skills/ @maksim9510
+
+# CI/CD — владелец workflows
+/.github/ @maksim9510
+
+# Tools (HashLine, batch_patch, etc)
+/tools/ @maksim9510
+
+# Agent core
+/agent/ @maksim9510
+/run_agent.py @maksim9510
+
+# Desktop UI
+/apps/ @maksim9510
+/ui-tui/ @maksim9510
+
+# Gateway (Telegram, Discord, etc)
+/gateway/ @maksim9510
+
+# Документация
+/docs/ @maksim9510
+/website/ @maksim9510

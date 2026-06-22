@@ -1,0 +1,49 @@
+# Stale bot — автоматически закрывает неактивные issues/PR через 60 дней
+# https://github.com/actions/stale
+name: 🧹 Stale Issues
+
+on:
+  schedule:
+    # Каждый понедельник в 09:00 UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch:  # Можно запустить вручную
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark stale issues
+        uses: actions/stale@v9
+        with:
+          # Days before marking issues/PR as stale
+          days-before-stale: 30
+          # Days before closing stale issues/PR
+          days-before-close: 14
+          # Limit to a maximum of X issues/PRs to act on
+          operations-per-run: 100
+          # Issue close reason
+          close-issue-reason: "not_planned"
+          # Labels
+          stale-issue-label: "status:stale"
+          close-issue-message: |
+            Этот issue был автоматически закрыт из-за неактивности (30+ дней без ответа).
+
+            Если проблема всё ещё актуальна — откройте новый issue со свежей информацией:
+            - что работает / что не работает
+            - версия Prostor
+            - минимальный repro
+
+            Спасибо за вклад в Prostor! 🙏
+          stale-pr-label: "status:stale"
+          close-pr-message: |
+            Этот PR был автоматически закрыт из-за неактивности.
+            Откройте новый PR если работа ещё актуальна.
+          # Исключения — никогда не помечать stale
+          exempt-issue-labels: "priority:critical,priority:high,status:blocked,good first issue,hacktoberfest"
+          exempt-pr-labels: "priority:critical,priority:high,status:blocked,area:release"
+          # Только issues без метки wontfix/duplicate
+          only: "issues"
