@@ -1622,161 +1622,22 @@ def _hex_to_ansi(hex_color: str, *, bold: bool = False) -> str:
 #   5. OSC 11 query (\x1b]11;?\x1b\\) — ask the terminal directly
 #   6. Default: assume dark (matches the legacy Prostor assumption)
 #
-# Cached after first call so we don't query the terminal repeatedly.
-_LIGHT_MODE_CACHE: bool | None = None
-_TRUE_RE = re.compile(r"^(1|true|on|yes|y)$")
-_FALSE_RE = re.compile(r"^(0|false|off|no|n)$")
-_LIGHT_DEFAULT_TERM_PROGRAMS = frozenset()  # Apple_Terminal doesn't reliably indicate; require explicit
-
-
-def _luminance_from_hex(hex_str: str) -> float | None:
-    s = (hex_str or "").strip().lstrip("#")
-    if len(s) == 3:
-        s = "".join(c * 2 for c in s)
-    if len(s) != 6 or not all(c in "0123456789abcdefABCDEF" for c in s):
-        return None
-    try:
-        r, g, b = int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
-    except ValueError:
-        return None
-    # Rec.709 luma
-    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
-
-
-def _query_osc11_background() -> str | None:
-    """Ask the terminal for its background color via OSC 11.
-
-    Most modern terminals reply with \x1b]11;rgb:RRRR/GGGG/BBBB\x1b\\
-    within a few ms.  We wait up to 100ms total before giving up.
-    Returns "#RRGGBB" or None on timeout / non-tty.
-
-    Skipped over SSH: the round-trip routinely exceeds our 100ms budget, so a
-    late reply lands after prompt_toolkit has grabbed the tty — its payload
-    leaks in as typed text and the BEL terminator reads as Ctrl+G (open
-    editor), trapping the user in a stray editor. Remote sessions fall back to
-    COLORFGBG / env hints / the dark default instead.
-    """
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
-        return None
-    if any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY")):
-        return None
-    try:
-        import termios
-        import tty
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-    except Exception:
-        return None
-    try:
-        try:
-            tty.setcbreak(fd)
-        except Exception:
-            return None
-        try:
-            sys.stdout.write("\x1b]11;?\x1b\\")
-            sys.stdout.flush()
-        except Exception:
-            return None
-        # Read up to ~50ms for the response
-        import select
-        deadline = time.monotonic() + 0.1
-        buf = b""
-        while time.monotonic() < deadline:
-            r, _, _ = select.select([fd], [], [], deadline - time.monotonic())
-            if not r:
-                continue
-            try:
-                chunk = os.read(fd, 64)
-            except OSError:
-                break
-            if not chunk:
-                break
-            buf += chunk
-            if b"\x1b\\" in buf or b"\x07" in buf:
-                break
-        # Parse: \x1b]11;rgb:RRRR/GGGG/BBBB\x1b\\
-        m = re.search(rb"rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)", buf)
-        if not m:
-            return None
-        # Each component is 1-4 hex digits — normalize to 8-bit
-        def norm(h: bytes) -> int:
-            v = int(h, 16)
-            # Scale to 0-255 based on hex length
-            bits = len(h) * 4
-            return (v * 255) // ((1 << bits) - 1) if bits else 0
-        r, g, b = norm(m.group(1)), norm(m.group(2)), norm(m.group(3))
-        return f"#{r:02X}{g:02X}{b:02X}"
-    finally:
-        # TCSAFLUSH discards any unread input as it restores the original
-        # attributes — scrubs a slow/partial OSC 11 reply out of the tty
-        # buffer before prompt_toolkit can read it as keystrokes.
-        try:
-            termios.tcsetattr(fd, termios.TCSAFLUSH, old)
-        except Exception:
-            pass
-
-
-def _detect_light_mode() -> bool:
-    global _LIGHT_MODE_CACHE
-    if _LIGHT_MODE_CACHE is not None:
-        return _LIGHT_MODE_CACHE
-    result = False
-    try:
-        # 1. Explicit env override
-        for var in ("PROSTOR_LIGHT", "PROSTOR_TUI_LIGHT"):
-            v = (os.environ.get(var) or "").strip().lower()
-            if _TRUE_RE.match(v):
-                result = True
-                _LIGHT_MODE_CACHE = result
-                return result
-            if _FALSE_RE.match(v):
-                _LIGHT_MODE_CACHE = result
-                return result
-        # 2. Theme hint
-        theme = (os.environ.get("PROSTOR_TUI_THEME") or "").strip().lower()
-        if theme == "light":
-            result = True
-            _LIGHT_MODE_CACHE = result
-            return result
-        if theme == "dark":
-            _LIGHT_MODE_CACHE = result
-            return result
-        # 3. Explicit bg hex
-        bg_hint = os.environ.get("PROSTOR_TUI_BACKGROUND") or ""
-        bg_lum = _luminance_from_hex(bg_hint)
-        if bg_lum is not None:
-            result = bg_lum >= 0.5
-            _LIGHT_MODE_CACHE = result
-            return result
-        # 4. COLORFGBG (xterm/Konsole/urxvt)
-        cfgbg = (os.environ.get("COLORFGBG") or "").strip()
-        if cfgbg:
-            last = cfgbg.split(";")[-1] if ";" in cfgbg else cfgbg
-            if last.isdigit():
-                bg = int(last)
-                if bg in {7, 15}:
-                    result = True
-                    _LIGHT_MODE_CACHE = result
-                    return result
-                if 0 <= bg < 16:
-                    _LIGHT_MODE_CACHE = result
-                    return result
-        # 5. OSC 11 query (best-effort, only when stdin/stdout are TTY)
-        bg_color = _query_osc11_background()
-        if bg_color:
-            lum = _luminance_from_hex(bg_color)
-            if lum is not None:
-                result = lum >= 0.5
-                _LIGHT_MODE_CACHE = result
-                return result
-        # 6. TERM_PROGRAM allow-list (currently empty)
-        tp = (os.environ.get("TERM_PROGRAM") or "").strip()
-        if tp in _LIGHT_DEFAULT_TERM_PROGRAMS:
-            result = True
-    except Exception:
-        result = False
-    _LIGHT_MODE_CACHE = result
-    return result
+# Skin + light-mode helpers moved to prostor_cli.cli_skin. Re-imported
+# here as thin aliases so existing call sites inside cli.py keep working.
+from prostor_cli.cli_skin import (
+    hex_to_ansi as _hex_to_ansi,
+    luminance_from_hex as _luminance_from_hex,
+    query_osc11_background as _query_osc11_background,
+    detect_light_mode as _detect_light_mode,
+    maybe_remap_for_light_mode as _maybe_remap_for_light_mode,
+    install_skin_light_mode_hook as _install_skin_light_mode_hook,
+    SkinAwareAnsi as _SkinAwareAnsi,
+    b as _b,
+    d as _d,
+    accent_hex as _accent_hex,
+    ACCENT as _ACCENT,
+    DIM as _DIM,
+)
 
 
 # Light-mode equivalents of skin colors that are unreadable on cream
@@ -1848,6 +1709,7 @@ def _install_skin_light_mode_hook() -> None:
 
 
 _install_skin_light_mode_hook()
+_install_skin_light_mode_hook()
 
 
 # Prime the light-mode detection cache early (at module load) when
@@ -1860,77 +1722,8 @@ except Exception:
     pass
 
 
-
-class _SkinAwareAnsi:
-    """Lazy ANSI escape that resolves from the skin engine on first use.
-
-    Acts as a string in f-strings and concatenation.  Call ``.reset()`` to
-    force re-resolution after a ``/skin`` switch.
-    """
-
-    def __init__(self, skin_key: str, fallback_hex: str = "#FFD700", *, bold: bool = False):
-        self._skin_key = skin_key
-        self._fallback_hex = fallback_hex
-        self._bold = bold
-        self._cached: str | None = None
-
-    def __str__(self) -> str:
-        if self._cached is None:
-            try:
-                from prostor_cli.skin_engine import get_active_skin
-                self._cached = _hex_to_ansi(
-                    get_active_skin().get_color(self._skin_key, self._fallback_hex),
-                    bold=self._bold,
-                )
-            except Exception:
-                self._cached = _hex_to_ansi(self._fallback_hex, bold=self._bold)
-        return self._cached
-
-    def __add__(self, other: str) -> str:
-        return str(self) + other
-
-    def __radd__(self, other: str) -> str:
-        return other + str(self)
-
-    def reset(self) -> None:
-        """Clear cache so the next access re-reads the skin."""
-        self._cached = None
-
-
-_ACCENT = _SkinAwareAnsi("response_border", "#FFD700", bold=True)
-# Use ANSI dim+italic attributes (\x1b[2;3m) instead of a hardcoded
-# hex color so dim/thinking text inherits the terminal's default
-# foreground color and stays readable in both light and dark
-# Terminal.app modes.  Hardcoded skin colors like #B8860B
-# (dark goldenrod) become invisible against light cream backgrounds.
-_DIM = "\x1b[2;3m"
-
-
-def _b(s: str) -> str:
-    """Bold if stdout is a real TTY; plain text otherwise (slash-worker safe)."""
-    import sys as _sys
-    try:
-        return f"\x1b[1m{s}\x1b[0m" if _sys.stdout.isatty() else str(s)
-    except Exception:
-        return str(s)
-
-
-def _d(s: str) -> str:
-    """Dim-italic if stdout is a real TTY; plain text otherwise."""
-    import sys as _sys
-    try:
-        return f"\x1b[2;3m{s}\x1b[0m" if _sys.stdout.isatty() else str(s)
-    except Exception:
-        return str(s)
-
-
-def _accent_hex() -> str:
-    """Return the active skin accent color for legacy CLI output lines."""
-    try:
-        from prostor_cli.skin_engine import get_active_skin
-        return get_active_skin().get_color("ui_accent", "#FFBF00")
-    except Exception:
-        return "#FFBF00"
+# _SkinAwareAnsi class, _ACCENT, _DIM, _b, _d, _accent_hex, _hex_to_ansi
+# moved to prostor_cli.cli_skin — re-imported above as aliases.
 
 
 def _rich_text_from_ansi(text: str) -> _RichText:
