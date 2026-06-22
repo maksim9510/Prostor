@@ -203,7 +203,7 @@ Prostor работает с любым провайдером — это не и
 prostor setup --portal
 ```
 
-Это логинит вас через OAuth, устанавливает Nous как провайдера и включает Tool Gateway. Проверить подключение в любой момент: `prostor portal info`. Подробности — на странице документации [Tool Gateway](https://github.com/maksim9510/Prostor/docs/user-guide/features/tool-gateway).
+Это логинит вас через OAuth, устанавливает Nous как провайдера и включает Tool Gateway. Проверить подключение в любой момент: `prostor portal info`. Подробности — на странице документации [Tool Gateway](https://maksim9510.github.io/Prostor/docs/user-guide/features/tool-gateway).
 
 Вы можете использовать свои ключи для отдельных инструментов когда угодно — gateway настраивается по каждому бэкенду, а не «всё или ничего».
 
@@ -225,7 +225,7 @@ prostor setup --portal
 | Прервать текущую работу         | `Ctrl+C` или отправить новое сообщение        | `/stop` или отправить новое сообщение                                            |
 | Статус по платформам             | `/platforms`                                  | `/status`, `/sethome`                                                            |
 
-Полные списки команд — в [руководстве по CLI](https://github.com/maksim9510/Prostor/docs/user-guide/cli) и [руководстве по Messaging Gateway](https://github.com/maksim9510/Prostor/docs/user-guide/messaging).
+Полные списки команд — в [руководстве по CLI](https://maksim9510.github.io/Prostor/docs/user-guide/cli) и [руководстве по Messaging Gateway](https://maksim9510.github.io/Prostor/docs/user-guide/messaging).
 
 ---
 
@@ -236,16 +236,16 @@ prostor setup --portal
 | Раздел                                                                                             | Что покрыто                                                |
 | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | [Быстрый старт](https://github.com/maksim9510/Prostor/docs/getting-started/quickstart)                 | Установка → настройка → первый разговор за 2 минуты        |
-| [Использование CLI](https://github.com/maksim9510/Prostor/docs/user-guide/cli)                              | Команды, горячие клавиши, личности, сессии                  |
-| [Конфигурация](https://github.com/maksim9510/Prostor/docs/user-guide/configuration)                | Файл конфигурации, провайдеры, модели, все опции           |
-| [Messaging Gateway](https://github.com/maksim9510/Prostor/docs/user-guide/messaging)                | Telegram, Discord, Slack, WhatsApp, Signal, Home Assistant |
-| [Безопасность](https://github.com/maksim9510/Prostor/docs/user-guide/security)                          | Одобрение команд, DM-pairing, изоляция в контейнере       |
-| [Инструменты и наборы инструментов](https://github.com/maksim9510/Prostor/docs/user-guide/features/tools)            | 40+ инструментов, система toolset, терминальные бэкенды    |
-| [Система навыков](https://github.com/maksim9510/Prostor/docs/user-guide/features/skills)              | Процедурная память, Skills Hub, создание навыков           |
-| [Память](https://github.com/maksim9510/Prostor/docs/user-guide/features/memory)                     | Персистентная память, профили пользователей, best practices |
-| [Интеграция MCP](https://github.com/maksim9510/Prostor/docs/user-guide/features/mcp)               | Подключение любого MCP-сервера для расширенных возможностей |
-| [Cron-планировщик](https://github.com/maksim9510/Prostor/docs/user-guide/features/cron)              | Запланированные задачи с доставкой на платформы           |
-| [Контекстные файлы](https://github.com/maksim9510/Prostor/docs/user-guide/features/context-files)       | Контекст проекта, влияющий на каждый разговор             |
+| [Использование CLI](https://maksim9510.github.io/Prostor/docs/user-guide/cli)                              | Команды, горячие клавиши, личности, сессии                  |
+| [Конфигурация](https://maksim9510.github.io/Prostor/docs/user-guide/configuration)                | Файл конфигурации, провайдеры, модели, все опции           |
+| [Messaging Gateway](https://maksim9510.github.io/Prostor/docs/user-guide/messaging)                | Telegram, Discord, Slack, WhatsApp, Signal, Home Assistant |
+| [Безопасность](https://maksim9510.github.io/Prostor/docs/user-guide/security)                          | Одобрение команд, DM-pairing, изоляция в контейнере       |
+| [Инструменты и наборы инструментов](https://maksim9510.github.io/Prostor/docs/user-guide/features/tools)            | 40+ инструментов, система toolset, терминальные бэкенды    |
+| [Система навыков](https://maksim9510.github.io/Prostor/docs/user-guide/features/skills)              | Процедурная память, Skills Hub, создание навыков           |
+| [Память](https://maksim9510.github.io/Prostor/docs/user-guide/features/memory)                     | Персистентная память, профили пользователей, best practices |
+| [Интеграция MCP](https://maksim9510.github.io/Prostor/docs/user-guide/features/mcp)               | Подключение любого MCP-сервера для расширенных возможностей |
+| [Cron-планировщик](https://maksim9510.github.io/Prostor/docs/user-guide/features/cron)              | Запланированные задачи с доставкой на платформы           |
+| [Контекстные файлы](https://maksim9510.github.io/Prostor/docs/user-guide/features/context-files)       | Контекст проекта, влияющий на каждый разговор             |
 | [Архитектура](https://github.com/maksim9510/Prostor/docs/developer-guide/architecture)             | Структура проекта, цикл агента, ключевые классы           |
 | [Контрибуция](https://github.com/maksim9510/Prostor/docs/developer-guide/contributing)             | Настройка разработки, процесс PR, стиль кода              |
 | [Справочник CLI](https://github.com/maksim9510/Prostor/docs/reference/cli-commands)                  | Все команды и флаги                                       |
