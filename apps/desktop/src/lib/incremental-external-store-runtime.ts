@@ -135,10 +135,21 @@ class IncrementalExternalStoreThreadRuntimeCore extends ExternalStoreThreadRunti
     }
 
     if (hasUpcomingMessage(isRunning, messages)) {
-      self._assistantOptimisticId = this.repository.appendOptimisticMessage(messages.at(-1)?.id ?? null, {
+      const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      this.repository.addOrUpdateMessage(messages.at(-1)?.id ?? null, {
+        id: optimisticId,
         role: 'assistant',
-        content: []
-      })
+        content: [],
+        status: { type: 'running' },
+        metadata: {
+          unstable_state: null,
+          unstable_annotations: [],
+          unstable_data: [],
+          steps: [],
+          custom: { isOptimistic: true },
+        },
+      } as any)
+      self._assistantOptimisticId = optimisticId
     }
 
     this.repository.resetHead(self._assistantOptimisticId ?? messages.at(-1)?.id ?? null)
