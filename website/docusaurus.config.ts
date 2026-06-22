@@ -7,8 +7,8 @@ const config: Config = {
   tagline: 'The self-improving AI agent',
   favicon: 'img/favicon.ico',
 
-  url: 'https://github.com/maksim9510/Prostor',
-  baseUrl: '/docs/',
+  url: 'https://maksim9510.github.io',
+  baseUrl: '/Prostor/docs/',
 
   organizationName: 'maksim9510',
   projectName: 'prostor-agent',
