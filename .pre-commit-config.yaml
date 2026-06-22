@@ -1,0 +1,38 @@
+repos:
+  # ── Ruff: fast linter + formatter ───────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.10
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: \.(py)$
+      - id: ruff-format
+        files: \.(py)$
+
+  # ── Basic checks ─────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$|\.txt$|\.lock$|\.json$
+      - id: end-of-file-fixer
+        exclude: \.md$|\.lock$|\.json$
+      - id: check-yaml
+        exclude: ^website/|^.github/discussion-templates/
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+        exclude: ^dist/|^apps/desktop/release/|\.deb$|\.exe$|\.msi$
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        exclude: \.ps1$|\.bat$
+
+  # ── Ty: type checker (Astral's mypy alternative) ─────────────
+  # Commented out until type hints coverage is >50%
+  # - repo: https://github.com/astral-sh/ty-pre-commit
+  #   rev: v0.0.21
+  #   hooks:
+  #     - id: ty
+  #       args: [--check]
+  #       files: \.(py)$

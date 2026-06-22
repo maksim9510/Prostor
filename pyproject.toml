@@ -363,16 +363,27 @@ redundant-cast = "ignore"
 
 [tool.ruff]
 preview = true  # required for PLW1514 (unspecified-encoding) — preview rule
+line-length = 120
+target-version = "py311"
 
 [tool.ruff.lint]
-# All other lints are intentionally disabled (see comment history on this
-# file) while we wrangle typechecks — but PLW1514 is too load-bearing to
-# keep off.  Bare open()/read_text()/write_text() in text mode defaults to
-# the system locale encoding on Windows (cp1252 on US-locale installs),
-# which silently corrupts any non-ASCII file content.  We had three
-# separate Windows sandbox regressions in one debug session before
-# adding the explicit encoding.  This rule keeps new code honest.
-select = ["PLW1514"]
+# Базовый набор правил — расширяется постепенно
+# PLW1514 (unspecified-encoding): bare open()/read_text()/write_text()
+# defaults to system locale on Windows (cp1252), silently corrupting
+# non-ASCII. Three Windows sandbox regressions before adding this rule.
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "PLW1514", # unspecified-encoding (load-bearing for Windows safety)
+]
+ignore = [
+    "E501",  # line too long (ruff-format handles this)
+    "B008",  # do not perform function call in argument defaults (Click uses this)
+]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can intentionally exercise locale-encoding edge cases.
