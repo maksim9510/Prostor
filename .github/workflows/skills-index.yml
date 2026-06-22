@@ -33,6 +33,10 @@ jobs:
       - name: Build skills index
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Per-source soft timeout (seconds). Bounded so one hung external
+          # source cannot stall the entire cron run.
+          SKILLS_INDEX_TIMEOUT: "120"
+          SKILLS_INDEX_PARALLEL: "4"
         run: python scripts/build_skills_index.py
 
       - name: Upload index artifact

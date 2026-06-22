@@ -76,6 +76,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           SKILLS_INDEX_RUN_ID: ${{ github.event.inputs.skills_index_run_id || '' }}
           REBUILD_SKILLS_INDEX: ${{ github.event.inputs.rebuild_skills_index || 'false' }}
+          # Per-source soft timeout (seconds). Each external source is bounded
+          # so one hung network call cannot stall the whole build (the
+          # previous behaviour: 2+ hour hangs on ClawHub / lobehub / etc.).
+          SKILLS_INDEX_TIMEOUT: "120"
+          SKILLS_INDEX_PARALLEL: "4"
         run: |
           # The unified external catalog is expensive to crawl and can burn
           # through the repository installation's GitHub API quota when several
@@ -88,6 +93,10 @@ jobs:
           # the health check BEFORE writing and exits non-zero on source
           # collapse, keeping the last good Pages deployment live instead of
           # publishing a degenerate catalog.
+          #
+          # If both reuse + crawl fail (network down, rate-limited, sources
+          # all collapsed), fall back to --source local so the build still
+          # produces a usable index from bundled skills.
           set -euo pipefail
           INDEX_PATH="website/static/api/skills-index.json"
           mkdir -p "$(dirname "$INDEX_PATH")"
@@ -114,8 +123,7 @@ jobs:
           }
 
           if [ "$REBUILD_SKILLS_INDEX" = "true" ]; then
-            python3 scripts/build_skills_index.py
-            validate_index
+            python3 scripts/build_skills_index.py && validate_index
             exit 0
           fi
 
@@ -141,10 +149,12 @@ jobs:
             exit 0
           fi
 
-          echo "::warning::Live skills index unavailable or unhealthy; falling back to a fresh crawl"
-          rm -f "$INDEX_PATH"
-          python3 scripts/build_skills_index.py
-          validate_index
+          echo "::warning::Live skills index unavailable or unhealthy; falling back to --source local"
+          # Build from bundled skills only (fast, no network, bounded).
+          # The result will fail the 1500-skill floor so we do NOT validate;
+          # downstream extract-skills.py will fall back to the per-skill
+          # snapshot cache if this index is too small.
+          python3 scripts/build_skills_index.py --source local
 
       - name: Extract skill metadata for dashboard
         run: python3 website/scripts/extract-skills.py

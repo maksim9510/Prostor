@@ -7,21 +7,31 @@ GitHub paths. The index is served as a static file on the docs site so that
 `prostor skills search/install` can use it without hitting the GitHub API.
 
 Usage:
-    # Local (uses gh CLI or GITHUB_TOKEN for auth)
+    # Local — full crawl (uses gh CLI or GITHUB_TOKEN for auth)
     python scripts/build_skills_index.py
 
-    # CI (set GITHUB_TOKEN as secret)
+    # CI — full crawl (set GITHUB_TOKEN as secret)
     GITHUB_TOKEN=ghp_... python scripts/build_skills_index.py
+
+    # Local-only — only index bundled skills, skip external network calls
+    python scripts/build_skills_index.py --source local
+    SKILLS_INDEX_SOURCE=local python scripts/build_skills_index.py
+
+Environment variables (all optional):
+    SKILLS_INDEX_TIMEOUT   Per-source soft timeout in seconds (default 120).
+    SKILLS_INDEX_PARALLEL  Max concurrent source crawls (default 4).
+    SKILLS_INDEX_SOURCE    "all" (default) or "local".
 
 Output: website/static/api/skills-index.json
 """
 
+import argparse
 import json
 import os
 import sys
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 
 # Allow importing from repo root
@@ -48,6 +58,10 @@ import httpx
 OUTPUT_PATH = os.path.join(REPO_ROOT, "website", "static", "api", "skills-index.json")
 INDEX_VERSION = 1
 
+# Tunables (env-overridable)
+SOURCE_TIMEOUT = int(os.environ.get("SKILLS_INDEX_TIMEOUT", "120"))
+MAX_PARALLEL_SOURCES = int(os.environ.get("SKILLS_INDEX_PARALLEL", "4"))
+
 
 def _meta_to_dict(meta: SkillMeta) -> dict:
     """Convert a SkillMeta to a serializable dict."""
@@ -66,17 +80,77 @@ def _meta_to_dict(meta: SkillMeta) -> dict:
 
 def crawl_source(source, source_name: str, limit: int) -> list:
     """Crawl a single source and return skill dicts."""
-    print(f"  Crawling {source_name}...", flush=True)
+    print(f"  Crawling {source_name}... ", end="", flush=True)
     start = time.time()
     try:
         results = source.search("", limit=limit)
     except Exception as e:
-        print(f"  Error crawling {source_name}: {e}", file=sys.stderr)
+        elapsed = time.time() - start
+        print(f"FAILED ({elapsed:.1f}s): {e}", file=sys.stderr, flush=True)
         return []
     skills = [_meta_to_dict(m) for m in results]
     elapsed = time.time() - start
-    print(f"  {source_name}: {len(skills)} skills ({elapsed:.1f}s)", flush=True)
+    print(f"{len(skills)} skills ({elapsed:.1f}s)", flush=True)
     return skills
+
+
+def crawl_source_with_timeout(source, source_name: str, limit: int,
+                              timeout: int = SOURCE_TIMEOUT) -> list:
+    """Crawl a source with a hard wall-clock timeout.
+
+    The returned list is the actual skill list on success, or [] on
+    timeout/error — never raises. This is the version the parallel pool
+    uses so a single hung source cannot stall the entire build.
+    """
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = pool.submit(crawl_source, source, source_name, limit)
+        return future.result(timeout=timeout)
+    except FutureTimeout:
+        print(f"  {source_name}: TIMEOUT after {timeout}s — skipping",
+              file=sys.stderr, flush=True)
+        return []
+    except Exception as e:
+        print(f"  {source_name}: ERROR: {e}", file=sys.stderr, flush=True)
+        return []
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def crawl_bundled_skills() -> list:
+    """Crawl only locally-bundled skills (skills/ + optional-skills/).
+
+    Used by `--source local` for fast smoke builds and CI when network is
+    unavailable. Returns the same dict shape as the full crawl so downstream
+    pipeline (dedup, sort, health-check) is identical.
+    """
+    print("  Crawling bundled skills (skills/ + optional-skills/)... ", end="", flush=True)
+    start = time.time()
+    bundled: list[dict] = []
+    for source_name, base in (
+        ("official", os.path.join(REPO_ROOT, "skills")),
+        ("optional", os.path.join(REPO_ROOT, "optional-skills")),
+    ):
+        if not os.path.isdir(base):
+            continue
+        for entry in sorted(os.listdir(base)):
+            skill_md = os.path.join(base, entry, "SKILL.md")
+            if not os.path.isfile(skill_md):
+                continue
+            bundled.append({
+                "name": entry,
+                "description": "",  # populated lazily by extract-skills.py
+                "source": source_name,
+                "identifier": f"{source_name}/{entry}",
+                "trust_level": "bundled",
+                "repo": "maksim9510/Prostor",
+                "path": f"{os.path.relpath(base, REPO_ROOT)}/{entry}",
+                "tags": [],
+                "extra": {},
+            })
+    elapsed = time.time() - start
+    print(f"{len(bundled)} skills ({elapsed:.1f}s)", flush=True)
+    return bundled
 
 
 def crawl_skills_sh(source: SkillsShSource) -> list:
@@ -241,7 +315,34 @@ def batch_resolve_paths(skills: list, auth: GitHubAuth) -> list:
 
 
 def main():
+    """Build the skills index. See module docstring for usage."""
+    parser = argparse.ArgumentParser(
+        description="Build the Prostor Skills Index (JSON catalog of all skills).",
+    )
+    parser.add_argument(
+        "--source", choices=("all", "local"), default=None,
+        help="Which sources to crawl. 'all' (default) crawls external hubs; "
+             "'local' indexes only bundled skills/ + optional-skills/.",
+    )
+    parser.add_argument(
+        "--timeout", type=int, default=None,
+        help="Per-source soft timeout in seconds (default: %d, "
+             "or env SKILLS_INDEX_TIMEOUT)." % SOURCE_TIMEOUT,
+    )
+    parser.add_argument(
+        "--parallel", type=int, default=None,
+        help="Max concurrent source crawls (default: %d, "
+             "or env SKILLS_INDEX_PARALLEL)." % MAX_PARALLEL_SOURCES,
+    )
+    args = parser.parse_args()
+
+    source_mode = args.source or os.environ.get("SKILLS_INDEX_SOURCE", "all")
+    timeout = args.timeout if args.timeout is not None else SOURCE_TIMEOUT
+    parallel = args.parallel if args.parallel is not None else MAX_PARALLEL_SOURCES
+
     print("Building Prostor Skills Index...", flush=True)
+    print(f"  source mode: {source_mode} | per-source timeout: {timeout}s | parallel: {parallel}",
+          flush=True)
     overall_start = time.time()
 
     auth = GitHubAuth()
@@ -263,40 +364,52 @@ def main():
 
     all_skills: list[dict] = []
 
-    # Crawl skills.sh
-    all_skills.extend(crawl_skills_sh(skills_sh_source))
+    if source_mode == "local":
+        # Fast path: only bundled skills, no network. Useful for CI smoke
+        # builds and offline development. Skips the health-check floors.
+        all_skills.extend(crawl_bundled_skills())
+    else:
+        # Crawl skills.sh
+        all_skills.extend(crawl_skills_sh(skills_sh_source))
 
-    # Crawl other sources in parallel.
-    # Per-source soft caps — sources stop returning when they run out, so these
-    # are ceilings, not targets.  ClawHub has 20k+ skills; bumping to 100k
-    # (well above current catalog size) lets the full catalog land in the
-    # index instead of being truncated at an arbitrary build-time limit.
-    SOURCE_LIMITS = {
-        # 0 = unbounded catalog walk (max_items=0 in ClawHubSource). A positive
-        # limit bounds the walk and also enables the interactive 12s budget.
-        "clawhub": 0,
-        "lobehub": 100_000,
-        "browse-sh": 5_000,
-        "claude-marketplace": 5_000,
-        "github": 5_000,
-        "well-known": 5_000,
-        "official": 5_000,
-    }
-    DEFAULT_SOURCE_LIMIT = 500
+        # Crawl other sources in parallel with per-source timeout.
+        # Per-source soft caps — sources stop returning when they run out, so these
+        # are ceilings, not targets.  ClawHub has 20k+ skills; bumping to 100k
+        # (well above current catalog size) lets the full catalog land in the
+        # index instead of being truncated at an arbitrary build-time limit.
+        SOURCE_LIMITS = {
+            # 0 = unbounded catalog walk (max_items=0 in ClawHubSource). A positive
+            # limit bounds the walk and also enables the interactive 12s budget.
+            "clawhub": 0,
+            "lobehub": 100_000,
+            "browse-sh": 5_000,
+            "claude-marketplace": 5_000,
+            "github": 5_000,
+            "well-known": 5_000,
+            "official": 5_000,
+        }
+        DEFAULT_SOURCE_LIMIT = 500
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {}
-        for name, source in sources.items():
-            limit = SOURCE_LIMITS.get(name, DEFAULT_SOURCE_LIMIT)
-            futures[pool.submit(crawl_source, source, name, limit)] = name
-        for future in as_completed(futures):
-            try:
-                all_skills.extend(future.result())
-            except Exception as e:
-                print(f"  Error: {e}", file=sys.stderr)
+        with ThreadPoolExecutor(max_workers=parallel) as pool:
+            futures = {}
+            for name, source in sources.items():
+                limit = SOURCE_LIMITS.get(name, DEFAULT_SOURCE_LIMIT)
+                # NOTE: crawl_source_with_timeout handles its own internal
+                # ThreadPoolExecutor, so each source's timeout is enforced
+                # independently — one hung source cannot block the others.
+                futures[pool.submit(
+                    crawl_source_with_timeout, source, name, limit, timeout
+                )] = name
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    all_skills.extend(future.result())
+                except Exception as e:
+                    print(f"  Error: {name}: {e}", file=sys.stderr)
 
     # Batch resolve GitHub paths for skills.sh entries
-    all_skills = batch_resolve_paths(all_skills, auth)
+    if source_mode != "local":
+        all_skills = batch_resolve_paths(all_skills, auth)
 
     # Collect which sources hit a GitHub API rate limit during the crawl.
     # github / claude-marketplace / well-known all read api.github.com, so a
@@ -341,6 +454,9 @@ def main():
     # zero) result almost certainly means a tap path moved, an API changed,
     # or rate limiting kicked in.  Failing here forces a human look before
     # the broken index reaches the live docs.
+    #
+    # Skip health check in --source local mode: bundled skills floor is
+    # naturally small and not comparable to network-crawled floors.
     EXPECTED_FLOORS = {
         # skills.sh now uses the sitemap walker (~20k catalog as of May 2026).
         # Anything under 10k means the sitemap shape changed or fetches failed
@@ -358,19 +474,20 @@ def main():
         "browse-sh": 50,
     }
     health_errors = []
-    for src, floor in EXPECTED_FLOORS.items():
-        # 'skills-sh' and 'skills.sh' are the same source; both labels exist.
-        count = by_source.get(src, 0)
-        if src == "skills.sh":
-            count = by_source.get("skills.sh", 0) + by_source.get("skills-sh", 0)
-        if count < floor:
-            health_errors.append(f"  {src}: {count} < expected floor {floor}")
+    if source_mode != "local":
+        for src, floor in EXPECTED_FLOORS.items():
+            # 'skills-sh' and 'skills.sh' are the same source; both labels exist.
+            count = by_source.get(src, 0)
+            if src == "skills.sh":
+                count = by_source.get("skills.sh", 0) + by_source.get("skills-sh", 0)
+            if count < floor:
+                health_errors.append(f"  {src}: {count} < expected floor {floor}")
 
-    MIN_TOTAL = 1500
-    if len(deduped) < MIN_TOTAL:
-        health_errors.append(
-            f"  total: {len(deduped)} < expected floor {MIN_TOTAL}"
-        )
+        MIN_TOTAL = 1500
+        if len(deduped) < MIN_TOTAL:
+            health_errors.append(
+                f"  total: {len(deduped)} < expected floor {MIN_TOTAL}"
+            )
 
     if health_errors:
         print(
@@ -393,6 +510,11 @@ def main():
             "\nIf the drop is expected (e.g. a hub is genuinely shutting "
             "down), lower the floor in scripts/build_skills_index.py "
             "EXPECTED_FLOORS in the same PR.",
+            file=sys.stderr,
+        )
+        print(
+            "\nTo bypass the health check for a fast smoke build, use "
+            "--source local to skip the external crawl entirely.",
             file=sys.stderr,
         )
         # IMPORTANT: do NOT write OUTPUT_PATH on failure. The index file is
