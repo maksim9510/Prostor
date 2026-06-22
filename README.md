@@ -31,6 +31,7 @@
   <a href="https://github.com/maksim9510/Prostor/graphs/contributors"><img src="https://img.shields.io/github/contributors/maksim9510/Prostor?style=flat-square&logo=github" alt="Contributors"/></a>
   <a href="https://github.com/maksim9510/Prostor"><img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+"/></a>
   <a href="https://github.com/maksim9510/Prostor"><img src="https://img.shields.io/badge/node-20%2B-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node 20+"/></a>
+  <a href="https://codecov.io/gh/maksim9510/Prostor"><img src="https://img.shields.io/codecov/c/github/maksim9510/Prostor?style=flat-square&logo=codecov&logoColor=white" alt="Coverage"/></a>
 </p>
 
 **Самообучающийся AI-агент на русском языке, созданный на базе [Nous Research](https://nousresearch.com).** Prostor — единственный агент со встроенным циклом обучения: он создаёт навыки из опыта, улучшает их во время использования, напоминает себе сохранять знания, ищет в истории прошлых разговоров и формирует всё более глубокую модель пользователя от сессии к сессии. Запускайте его на VPS за $5, на GPU-кластере или в serverless-инфраструктуре, которая в простое стоит практически ничего. Он не привязан к вашему ноутбуку — общайтесь с ним из Telegram, пока он работает на облачной VM.
