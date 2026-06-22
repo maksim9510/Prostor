@@ -854,11 +854,98 @@ test(tools): add unit tests for file_operations
 
 ---
 
-## Сообщество
+## 🔧 Разрешение конфликтов при merge
 
-- **Discord**: [discord.gg/NousResearch](https://discord.gg/NousResearch) — для вопросов, демонстрации проектов и обмена skills
-- **GitHub Discussions**: Для design proposals и архитектурных обсуждений
-- **Skills Hub**: Загружайте специализированные skills в реестр и делитесь с сообществом
+Конфликты — это нормальная часть жизни в активном репо. Вот как их быстро решать.
+
+### A. Когда ваш PR конфликтует с main
+
+**Симптом**: GitHub показывает "This branch has conflicts that must be resolved".
+
+**Решение 1 — rebase (рекомендуется для коротких feature-веток)**:
+
+```bash
+# Из вашей feature-ветки
+git fetch origin
+git rebase origin/main
+
+# Если конфликт — Git покажет файлы. Для каждого:
+# 1. Откройте файл, найдите маркеры:
+#    <<<<<<< HEAD
+#    ваши изменения
+#    =======
+#    изменения из main
+#    >>>>>>> origin/main
+# 2. Оставьте правильную версию, удалите маркеры
+# 3. Продолжите rebase:
+git add <file>
+git rebase --continue
+
+# Когда все конфликты решены:
+git push --force-with-lease origin <ваша-ветка>
+```
+
+**Решение 2 — merge main в feature (если rebase пугает)**:
+
+```bash
+git fetch origin
+git merge origin/main
+# разрешите конфликты, затем:
+git add .
+git commit -m "Merge main into <ветка>"
+git push origin <ваша-ветка>
+```
+
+⚠️ **НИКОГДА** не используйте `git push --force` — только `--force-with-lease` (защищает от случайного удаления чужих коммитов).
+
+### B. Конфликты в lock-файлах (uv.lock / package-lock.json)
+
+Lock-файлы часто конфликтуют потому что оба PR добавили зависимости.
+
+**Решение**:
+```bash
+# После разрешения конфликта в pyproject.toml / package.json:
+uv lock                        # перегенерирует uv.lock
+# или для npm:
+npm install                    # в apps/desktop/
+
+git add uv.lock package-lock.json
+git rebase --continue          # или git commit (если merge)
+```
+
+Lock-файлы **никогда** не редактируйте вручную — только регенерация.
+
+### C. Конфликты в CHANGELOG.md / README.md
+
+Просто откройте файл, объедините обе версии вручную. Это быстро.
+
+### D. Конфликты в workflow-файлах (.github/workflows/*.yml)
+
+Если вы меняли тот же step что и другой PR — объедините оба изменения. Workflow-файлы маленькие, обычно видно сразу что правильно.
+
+### E. Стратегия "merge latest main first"
+
+Лучшая защита от конфликтов — **обновлять свою feature-ветку часто**:
+
+```bash
+# Каждый день или перед каждым коммитом в feature-ветку:
+git fetch origin
+git rebase origin/main    # или git merge origin/main
+```
+
+Чем дольше feature-ветка живёт без обновления main, тем больше конфликтов.
+
+### F. Когда конфликты слишком сложные
+
+Если rebase даёт > 50 конфликтов — скорее всего feature-ветка делает слишком много. Рассмотрите:
+
+1. **Разбить PR на несколько маленьких** — каждый делает одну вещь, мержится независимо
+2. **Feature flag** — новый код за флагом, merge в main включается поэтапно
+3. **Договориться с мейнтейнером** о порядке merge — если два PR трогают один файл, мерджим один раньше другого
+
+### G. Автоматизация
+
+Можно настроить GitHub Actions авто-resolve для простых случаев (например, "всегда бери main для lock-файлов"). Но это специфично — спрашивайте мейнтейнера перед добавлением.
 
 ---
 
