@@ -5,6 +5,125 @@
 
 ---
 
+## 📊 Dependency Graph (взаимосвязи модулей)
+
+```mermaid
+graph TB
+    subgraph "Layer 1 — Core (план: prostor_core/)"
+        config["prostor_cli/config.py<br/>6997 LOC — конфигурация"]
+        auth["prostor_cli/auth.py<br/>8323 LOC — авторизация"]
+        models["prostor_cli/models.py<br/>4095 LOC — модели"]
+    end
+
+    subgraph "Layer 2 — Agent Core"
+        conv["agent/conversation_loop.py<br/>4561 LOC — главный цикл"]
+        aux["agent/auxiliary_client.py<br/>6082 LOC — LLM клиент"]
+        adapters["agent/transports/<br/>anthropic, bedrock, openai"]
+        curator["agent/curator.py<br/>1916 LOC — skill curator"]
+        prompt["agent/prompt_builder.py<br/>1798 LOC"]
+    end
+
+    subgraph "Layer 3 — Tools (10 оптимизаций)"
+        hashline["tools/hashline.py<br/>31 KB — O(1) matching"]
+        batch["tools/batch_patch_tool.py<br/>14.7 KB — 1 LLM round-trip"]
+        mcp["tools/mcp_tool.py<br/>4716 LOC — MCP protocol"]
+        browser["tools/browser_tool.py<br/>3891 LOC — Playwright"]
+        delegate["tools/delegate_tool.py<br/>3151 LOC — субагенты"]
+    end
+
+    subgraph "Layer 4 — Gateway (16+ платформ)"
+        runner["gateway/run.py<br/>17561 LOC ← GOD-FILE"]
+        platforms["gateway/platforms/<br/>telegram, discord, slack,<br/>whatsapp, signal, matrix,<br/>feishu, qqbot, yuanbao, ..."]
+    end
+
+    subgraph "Layer 5 — CLI + UI"
+        main["prostor_cli/main.py<br/>12649 LOC ← GOD-FILE"]
+        webserver["prostor_cli/web_server.py<br/>12901 LOC, 62 класса"]
+        gateway_cli["prostor_cli/gateway.py<br/>6415 LOC"]
+        cli_legacy["cli.py<br/>14874 LOC ← LEGACY"]
+    end
+
+    subgraph "Layer 6 — Plugins (18 плагинов)"
+        plugins["plugins/platforms/<br/>+ memory, kanban, spotify, ..."]
+    end
+
+    subgraph "Layer 7 — Desktop + TUI"
+        desktop["apps/desktop/<br/>Electron 40 + React"]
+        tui["ui-tui/<br/>TypeScript TUI"]
+    end
+
+    subgraph "Layer 8 — State"
+        state["prostor_state.py<br/>5017 LOC — persistent state"]
+        run_agent["run_agent.py<br/>5550 LOC — entry point"]
+    end
+
+    %% Dependency arrows (красные = циклические)
+    main -->|"uses"| config
+    main -->|uses| auth
+    main -->|uses| gateway_cli
+    main -->|uses| webserver
+
+    conv -->|uses| aux
+    conv -->|uses| adapters
+    conv -->|uses| prompt
+    conv -->|uses| curator
+
+    aux -->|uses| config
+    adapters -->|uses| auth
+
+    hashline -->|uses| config
+    batch -->|uses| config
+    mcp -->|uses| config
+    browser -->|uses| config
+
+    runner -->|uses| conv
+    runner -->|uses| platforms
+    runner -->|uses| state
+
+    plugins -->|uses| config
+    plugins -->|uses| state
+
+    desktop -->|uses| webserver
+    tui -->|uses| gateway_cli
+
+    %% ЦИКЛИЧЕСКИЕ ЗАВИСИМОСТИ (красные пунктирные)
+    aux -.->|⚠️ CYCLE| main
+    curator -.->|⚠️ CYCLE| auth
+    hashline -.->|⚠️ CYCLE| main
+    mcp -.->|⚠️ CYCLE| main
+    main -.->|⚠️ CYCLE| runner
+
+    classDef godfile fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px
+    classDef core fill:#74c0fc,stroke:#1971c2
+    classDef cycle stroke:#e03131,stroke-dasharray:5 5
+
+    class runner,main,webserver,cli_legacy godfile
+    class config,auth,models core
+```
+
+### 🔴 Циклические зависимости (4 пары, Issue #25)
+
+| Цикл | Импортов | Проблема |
+|---|---|---|
+| `agent → prostor_cli` | 134 | Ядро зависит от CLI |
+| `tools → prostor_cli` | 97 | Инструменты зависят от CLI |
+| `prostor_cli → gateway` | 96 | CLI зависит от gateway |
+| `prostor_cli → agent` | 170 | CLI зависит от ядра (нормально, но создаёт цикл) |
+
+**Решение:** вынести `config.py`, `auth.py`, `models.py` в `prostor_core/` (см. Issue #25).
+
+### 🔴 God-файлы (5 файлов >10K строк)
+
+| Файл | Строк | Issue |
+|---|---|---|
+| `gateway/run.py` | 17,561 | #23 |
+| `cli.py` | 14,874 | #22 |
+| `prostor_cli/web_server.py` | 12,901 | #24 |
+| `prostor_cli/main.py` | 12,649 | — |
+| `tui_gateway/server.py` | 10,958 | — |
+
+---
+
 ## 🏛️ Два архитектурных принципа
 
 Проstor вырос из Hermes Agent, и в коде сохранились **два неизменных принципа**,
