@@ -1,3 +1,5 @@
+from prostor_cli.web_server_models import *  # noqa: F401,F403
+
 """
 Prostor Agent — Web UI server.
 
@@ -668,75 +670,6 @@ for _k, _v in CONFIG_SCHEMA.items():
 CONFIG_SCHEMA = _ordered_schema
 
 
-class ConfigUpdate(BaseModel):
-    config: dict
-    profile: Optional[str] = None
-
-
-class EnvVarUpdate(BaseModel):
-    key: str
-    value: str
-    profile: Optional[str] = None
-    # Optional bearer key for the connectivity probe of a custom/local endpoint
-    # (``key == "OPENAI_BASE_URL"``). Self-hosted endpoints that gate
-    # ``/v1/models`` behind auth otherwise look "reachable but empty"; sending
-    # the key lets the probe enumerate the served models. Ignored for the
-    # regular PUT /api/env path (which only reads key/value).
-    api_key: str = ""
-
-
-class EnvVarDelete(BaseModel):
-    key: str
-    profile: Optional[str] = None
-
-
-class EnvVarReveal(BaseModel):
-    key: str
-    profile: Optional[str] = None
-
-
-class MemoryProviderConfigUpdate(BaseModel):
-    values: Dict[str, str] = {}
-
-
-class MessagingPlatformUpdate(BaseModel):
-    enabled: Optional[bool] = None
-    env: Dict[str, str] = {}
-    clear_env: List[str] = []
-    # Explicit body profile beats the query param injected by the global
-    # dashboard profile switcher (same precedence as other scoped writes).
-    profile: Optional[str] = None
-
-
-class TelegramOnboardingStart(BaseModel):
-    bot_name: Optional[str] = None
-
-
-class TelegramOnboardingApply(BaseModel):
-    allowed_user_ids: List[str]
-    profile: Optional[str] = None
-
-
-class AudioTranscriptionRequest(BaseModel):
-    data_url: str
-    mime_type: Optional[str] = None
-
-
-class ManagedFileUpload(BaseModel):
-    path: str
-    data_url: str
-    overwrite: bool = True
-
-
-class ManagedDirectoryCreate(BaseModel):
-    path: str
-
-
-class ManagedFileDelete(BaseModel):
-    path: str
-    recursive: bool = False
-
-
 _AUDIO_MIME_EXTENSIONS: Dict[str, str] = {
     "audio/aac": ".aac",
     "audio/flac": ".flac",
@@ -758,34 +691,6 @@ _MAX_TRANSCRIPTION_UPLOAD_BYTES = 25 * 1024 * 1024
 def _audio_extension_for_mime(mime_type: str) -> str:
     normalized = (mime_type or "").split(";", 1)[0].strip().lower()
     return _AUDIO_MIME_EXTENSIONS.get(normalized, ".webm")
-
-
-class ModelAssignment(BaseModel):
-    """Payload for POST /api/model/set — assign a provider/model to a slot.
-
-    scope="main"        → writes model.provider + model.default
-    scope="auxiliary"   → writes auxiliary.<task>.provider + auxiliary.<task>.model
-    scope="auxiliary" with task=""  → applied to every auxiliary.* slot
-    scope="auxiliary" with task="__reset__"  → resets every slot to provider="auto"
-    """
-    scope: str
-    provider: str
-    model: str
-    task: str = ""
-    # Optional OpenAI-compatible endpoint URL. Only honored for custom/local
-    # providers on the main slot — lets the GUI configure a self-hosted endpoint
-    # (vLLM, llama.cpp, Ollama, …) that needs no API key. The runtime resolver
-    # reads model.base_url from config (it ignores OPENAI_BASE_URL), so this is
-    # the path that actually wires a local endpoint into resolution.
-    base_url: str = ""
-    # Optional API key for a custom/local endpoint. Persisted to
-    # ``model.api_key`` (where the runtime resolver reads it) so a self-hosted
-    # endpoint that requires auth works from the GUI — mirrors the key the
-    # ``prostor model`` custom flow collects. Honored only on the main slot for
-    # custom/local providers.
-    api_key: str = ""
-    confirm_expensive_model: bool = False
-    profile: Optional[str] = None
 
 
 def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, str]:
@@ -2047,10 +1952,6 @@ async def get_curator_status():
     }
 
 
-class CuratorPause(BaseModel):
-    paused: bool
-
-
 @app.put("/api/curator/paused")
 async def set_curator_paused(body: CuratorPause):
     from agent import curator
@@ -2155,15 +2056,6 @@ async def run_config_migrate():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "config-migrate"}
-
-
-class DebugShareRequest(BaseModel):
-    # Redaction is ON by default — force-mode scrubs credential-shaped tokens
-    # out of log content before it leaves the machine. The toggle exists so an
-    # operator who knows the logs are clean can opt out for fuller fidelity.
-    redact: bool = True
-    # Recent log lines included in the summary tail (full logs are separate).
-    lines: int = 200
 
 
 @app.post("/api/ops/debug-share")
@@ -2677,10 +2569,6 @@ async def transcribe_audio_upload(payload: AudioTranscriptionRequest):
         "transcript": str(result.get("transcript") or "").strip(),
         "provider": result.get("provider"),
     }
-
-
-class TTSSpeakRequest(BaseModel):
-    text: str
 
 
 def _elevenlabs_voice_label(voice: Dict[str, Any]) -> str:
@@ -6992,11 +6880,6 @@ async def start_oauth_login(
     raise HTTPException(status_code=400, detail="Unsupported flow")
 
 
-class OAuthSubmitBody(BaseModel):
-    session_id: str
-    code: str
-
-
 @app.post("/api/providers/oauth/{provider_id}/submit")
 async def submit_oauth_code(
     provider_id: str,
@@ -7175,11 +7058,6 @@ def _session_latest_descendant(session_id: str):
 # succeed and delete the wrong row). Same story as the older
 # ``/api/sessions/search`` endpoint up at line ~1191. If you split or
 # reorder this block, move every route in it together.
-class BulkDeleteSessions(BaseModel):
-    ids: List[str]
-    profile: Optional[str] = None
-
-
 @app.post("/api/sessions/bulk-delete")
 async def bulk_delete_sessions_endpoint(body: BulkDeleteSessions):
     """Delete every session in ``body.ids`` in a single DB transaction.
@@ -7386,14 +7264,6 @@ async def delete_session_endpoint(session_id: str, profile: Optional[str] = None
         db.close()
 
 
-class SessionRename(BaseModel):
-    title: Optional[str] = None
-    archived: Optional[bool] = None
-    # Mutate a session belonging to another profile (opens its state.db). Omit
-    # for the current/default profile.
-    profile: Optional[str] = None
-
-
 @app.patch("/api/sessions/{session_id}")
 async def rename_session_endpoint(session_id: str, body: SessionRename):
     """Update a session: rename (or clear its title) and/or archive it.
@@ -7442,12 +7312,6 @@ async def export_session_endpoint(session_id: str, profile: Optional[str] = None
         return data
     finally:
         db.close()
-
-
-class SessionPrune(BaseModel):
-    older_than_days: int = 90
-    source: Optional[str] = None
-    profile: Optional[str] = None
 
 
 @app.post("/api/sessions/prune")
@@ -7530,18 +7394,6 @@ async def get_logs(
 # ---------------------------------------------------------------------------
 # Cron job management endpoints
 # ---------------------------------------------------------------------------
-
-
-class CronJobCreate(BaseModel):
-    prompt: str
-    schedule: str
-    name: str = ""
-    deliver: str = "local"
-    skills: Optional[List[str]] = None
-
-
-class CronJobUpdate(BaseModel):
-    updates: dict
 
 
 _CRON_PROFILE_LOCK = threading.RLock()
@@ -7897,11 +7749,6 @@ async def cron_fire_webhook(request: Request):
 # slot schema as a form; submitting instantiates a real cron job via the same
 # create_job path. See cron/blueprint_catalog.py for the single source of truth.
 # ---------------------------------------------------------------------------
-class AutomationBlueprintInstantiate(BaseModel):
-    blueprint: str                      # blueprint key, e.g. "morning-brief"
-    values: Dict[str, Any] = {}      # filled slot values from the form
-
-
 @app.get("/api/cron/blueprints")
 async def list_cron_blueprints():
     """Return the blueprint catalog as form schemas for the dashboard gallery.
@@ -7969,18 +7816,6 @@ async def instantiate_blueprint(body: AutomationBlueprintInstantiate, profile: s
 # in stdio `env` blocks are redacted on read; the agent picks them up from
 # config.yaml at session start exactly as with CLI-added servers.
 # ---------------------------------------------------------------------------
-
-
-class MCPServerCreate(BaseModel):
-    name: str
-    url: Optional[str] = None
-    command: Optional[str] = None
-    args: List[str] = []
-    # env: KEY=VALUE map for stdio servers (API keys, etc.)
-    env: Dict[str, str] = {}
-    # auth: "oauth" | "header" | None
-    auth: Optional[str] = None
-    profile: Optional[str] = None
 
 
 def _redact_mcp_env(env: Dict[str, Any]) -> Dict[str, str]:
@@ -8119,11 +7954,6 @@ async def test_mcp_server(name: str, profile: Optional[str] = None):
     }
 
 
-class MCPEnabledToggle(BaseModel):
-    enabled: bool
-    profile: Optional[str] = None
-
-
 @app.put("/api/mcp/servers/{name}/enabled")
 async def set_mcp_server_enabled(
     name: str, body: MCPEnabledToggle, profile: Optional[str] = None
@@ -8223,14 +8053,6 @@ async def list_mcp_catalog(profile: Optional[str] = None):
     return {"entries": entries, "diagnostics": diagnostics}
 
 
-class MCPCatalogInstall(BaseModel):
-    name: str
-    # env: KEY=VALUE map for catalog entries that declare required env vars.
-    env: Dict[str, str] = {}
-    enable: bool = True
-    profile: Optional[str] = None
-
-
 @app.post("/api/mcp/catalog/install")
 async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[str] = None):
     """Install a catalog MCP into config.yaml.
@@ -8303,16 +8125,6 @@ _ACTION_LOG_FILES.setdefault("mcp-install", "action-mcp-install.log")
 # ---------------------------------------------------------------------------
 
 
-class PairingApprove(BaseModel):
-    platform: str
-    code: str
-
-
-class PairingRevoke(BaseModel):
-    platform: str
-    user_id: str
-
-
 def _pairing_store():
     from gateway.pairing import PairingStore
 
@@ -8378,19 +8190,6 @@ async def clear_pending_pairing():
 # adapter hot-reloads it without a gateway restart.  Per-route HMAC secrets
 # are redacted on read and surfaced once on create.
 # ---------------------------------------------------------------------------
-
-
-class WebhookCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    events: List[str] = []
-    prompt: Optional[str] = None
-    skills: List[str] = []
-    deliver: str = "log"
-    deliver_only: bool = False
-    deliver_chat_id: Optional[str] = None
-    # secret: omit to auto-generate
-    secret: Optional[str] = None
 
 
 def _webhook_route_summary(name: str, route: Dict[str, Any], base_url: str) -> Dict[str, Any]:
@@ -8513,10 +8312,6 @@ async def delete_webhook(name: str):
     return {"ok": True}
 
 
-class WebhookEnabledToggle(BaseModel):
-    enabled: bool
-
-
 @app.put("/api/webhooks/{name}/enabled")
 async def set_webhook_enabled(name: str, body: WebhookEnabledToggle):
     """Enable or disable a webhook route.
@@ -8578,14 +8373,6 @@ async def stop_gateway(profile: Optional[str] = None):
 # rotating API keys the agent round-robins through.  Secrets are redacted on
 # read; only the agent ever sees the raw values at session start.
 # ---------------------------------------------------------------------------
-
-
-class CredentialPoolAdd(BaseModel):
-    provider: str
-    # api_key for API-key providers; OAuth pooling stays CLI-only (it needs
-    # an interactive browser flow that doesn't belong in a single POST).
-    api_key: str
-    label: Optional[str] = None
 
 
 def _pool_entry_summary(entry: Any, index: int) -> Dict[str, Any]:
@@ -8695,16 +8482,6 @@ async def remove_credential_pool_entry(provider: str, index: int):
 # see which provider is active, switch the built-in store on/off, and wipe
 # built-in memory files.
 # ---------------------------------------------------------------------------
-
-
-class MemoryProviderSelect(BaseModel):
-    # "" or "built-in" disables the external provider (built-in only).
-    provider: str
-
-
-class MemoryReset(BaseModel):
-    # "all" | "memory" | "user"
-    target: str = "all"
 
 
 @app.get("/api/memory")
@@ -8823,11 +8600,6 @@ async def run_security_audit():
     return {"ok": True, "pid": proc.pid, "name": "security-audit"}
 
 
-class BackupRequest(BaseModel):
-    # Optional output path; defaults to a timestamped zip in the home dir.
-    output: Optional[str] = None
-
-
 @app.post("/api/ops/backup")
 async def run_backup(body: BackupRequest):
     args = ["backup"]
@@ -8839,18 +8611,6 @@ async def run_backup(body: BackupRequest):
         _log.exception("Failed to spawn backup")
         raise HTTPException(status_code=500, detail=f"Failed to run backup: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "backup"}
-
-
-class ImportRequest(BaseModel):
-    archive: str
-    # Pass --force to `prostor import`. The spawned action runs with
-    # stdin=DEVNULL, so the CLI's interactive "Continue? [y/N]" overwrite
-    # prompt hits EOF and auto-aborts ("Aborted.", exit 1) whenever the
-    # target already has a config — which it always does when the dashboard
-    # itself is running from it. The dashboard shows its own confirm modal
-    # before calling this endpoint, then sends force=True so the restore
-    # proceeds non-interactively.
-    force: bool = False
 
 
 @app.post("/api/ops/import")
@@ -8919,17 +8679,6 @@ async def list_hooks():
     return {"hooks": out, "valid_events": valid_events}
 
 
-class HookCreate(BaseModel):
-    event: str
-    command: str
-    matcher: Optional[str] = None
-    timeout: Optional[int] = None
-    # approve: write the consent allowlist entry too (the operator using the
-    # authenticated dashboard is giving consent). Without it the hook is
-    # configured but won't fire until approved.
-    approve: bool = True
-
-
 @app.post("/api/ops/hooks")
 async def create_hook(body: HookCreate):
     """Add a shell hook to config.yaml (and optionally approve it).
@@ -8985,11 +8734,6 @@ async def create_hook(body: HookCreate):
             _log.exception("hook consent record failed")
 
     return {"ok": True, "event": event, "command": command, "approved": approved}
-
-
-class HookDelete(BaseModel):
-    event: str
-    command: str
 
 
 @app.delete("/api/ops/hooks")
@@ -9081,11 +8825,6 @@ async def prune_checkpoints():
 # ---------------------------------------------------------------------------
 
 
-class SkillInstallRequest(BaseModel):
-    identifier: str
-    profile: Optional[str] = None
-
-
 def _profile_cli_args(profile: Optional[str]) -> List[str]:
     """Return ``["-p", <name>]`` for a validated non-default profile.
 
@@ -9122,11 +8861,6 @@ async def install_skill_hub(body: SkillInstallRequest, profile: Optional[str] = 
     return {"ok": True, "pid": proc.pid, "name": "skills-install"}
 
 
-class SkillUninstallRequest(BaseModel):
-    name: str
-    profile: Optional[str] = None
-
-
 @app.post("/api/skills/hub/uninstall")
 async def uninstall_skill_hub(body: SkillUninstallRequest, profile: Optional[str] = None):
     name = (body.name or "").strip()
@@ -9143,10 +8877,6 @@ async def uninstall_skill_hub(body: SkillUninstallRequest, profile: Optional[str
         _log.exception("Failed to spawn skills uninstall")
         raise HTTPException(status_code=500, detail=f"Failed to uninstall skill: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "skills-uninstall"}
-
-
-class SkillsUpdateRequest(BaseModel):
-    profile: Optional[str] = None
 
 
 @app.post("/api/skills/hub/update")
@@ -9491,59 +9221,6 @@ async def scan_skill_hub(identifier: str = ""):
 # ---------------------------------------------------------------------------
 # Profile management endpoints (minimal — list/create/rename/delete + SOUL.md)
 # ---------------------------------------------------------------------------
-
-
-class ProfileCreate(BaseModel):
-    name: str
-    clone_from: Optional[str] = None
-    # Backward compatibility for older dashboard/desktop clients. New clients
-    # send clone_from="default" (or another profile name) explicitly.
-    clone_from_default: bool = False
-    clone_all: bool = False
-    no_skills: bool = False
-    description: Optional[str] = None
-    provider: Optional[str] = None
-    model: Optional[str] = None
-    # Profile-builder additions — all optional, all applied best-effort AFTER
-    # the profile directory exists, so a hiccup in any of them never 500s the
-    # create (the user can fix it from the relevant dashboard page afterward).
-    # MCP servers to write into the new profile's config.yaml.
-    mcp_servers: List["MCPServerCreate"] = []
-    # Built-in / optional skills to KEEP active. When this list is non-empty,
-    # the builder uses "replace" semantics: the bundle is seeded, then every
-    # seeded skill NOT in this list is added to the profile's disabled list.
-    # Empty list = leave the seeded bundle untouched (legacy behaviour).
-    keep_skills: List[str] = []
-    # Skills-hub identifiers to install into the new profile. Installed async
-    # via a subprocess scoped to the profile (`prostor -p <name> skills install`)
-    # because skills_hub.SKILLS_DIR is import-time-bound and the PROSTOR_HOME
-    # override can't redirect it. Returns spawned PIDs for the UI to poll.
-    hub_skills: List[str] = []
-
-
-class ProfileRename(BaseModel):
-    new_name: str
-
-
-class ProfileSoulUpdate(BaseModel):
-    content: str
-
-
-class ProfileActiveUpdate(BaseModel):
-    name: str
-
-
-class ProfileDescriptionUpdate(BaseModel):
-    description: str = ""
-
-
-class ProfileModelUpdate(BaseModel):
-    provider: str
-    model: str
-
-
-class ProfileDescribeAuto(BaseModel):
-    overwrite: bool = False
 
 
 def _profile_attr(info, name: str, default: Any = None) -> Any:
@@ -10216,12 +9893,6 @@ def _config_profile_scope(profile: Optional[str]):
         reset_prostor_home_override(token)
 
 
-class SkillToggle(BaseModel):
-    name: str
-    enabled: bool
-    profile: Optional[str] = None
-
-
 @app.get("/api/skills")
 async def get_skills(profile: Optional[str] = None):
     from tools.skills_tool import _find_all_skills
@@ -10247,19 +9918,6 @@ async def toggle_skill(body: SkillToggle, profile: Optional[str] = None):
             disabled.add(body.name)
         save_disabled_skills(config, disabled)
     return {"ok": True, "name": body.name, "enabled": body.enabled}
-
-
-class SkillCreate(BaseModel):
-    name: str
-    content: str
-    category: Optional[str] = None
-    profile: Optional[str] = None
-
-
-class SkillContentUpdate(BaseModel):
-    name: str
-    content: str
-    profile: Optional[str] = None
 
 
 def _clear_skills_prompt_cache() -> None:
@@ -10364,11 +10022,6 @@ async def get_toolsets(profile: Optional[str] = None):
     return result
 
 
-class ToolsetToggle(BaseModel):
-    enabled: bool
-    profile: Optional[str] = None
-
-
 @app.put("/api/tools/toolsets/{name}")
 async def toggle_toolset(name: str, body: ToolsetToggle, profile: Optional[str] = None):
     """Enable/disable a configurable toolset for the desktop (cli) platform.
@@ -10464,11 +10117,6 @@ async def get_toolset_config(name: str, profile: Optional[str] = None):
     }
 
 
-class ToolsetProviderSelect(BaseModel):
-    provider: str
-    profile: Optional[str] = None
-
-
 @app.put("/api/tools/toolsets/{name}/provider")
 async def select_toolset_provider(
     name: str, body: ToolsetProviderSelect, profile: Optional[str] = None
@@ -10498,11 +10146,6 @@ async def select_toolset_provider(
             raise HTTPException(status_code=400, detail=str(exc).strip('"'))
         save_config(config)
     return {"ok": True, "name": name, "provider": body.provider}
-
-
-class ToolsetEnvUpdate(BaseModel):
-    env: Dict[str, str]
-    profile: Optional[str] = None
 
 
 @app.put("/api/tools/toolsets/{name}/env")
@@ -10560,11 +10203,6 @@ async def save_toolset_env(name: str, body: ToolsetEnvUpdate, profile: Optional[
     return {"ok": True, "name": name, "saved": saved, "skipped": skipped, "is_set": status}
 
 
-class ToolsetPostSetup(BaseModel):
-    key: str
-    profile: Optional[str] = None
-
-
 @app.post("/api/tools/toolsets/{name}/post-setup")
 async def run_toolset_post_setup(
     name: str, body: ToolsetPostSetup, profile: Optional[str] = None
@@ -10618,11 +10256,6 @@ async def run_toolset_post_setup(
 # ---------------------------------------------------------------------------
 # Raw YAML config endpoint
 # ---------------------------------------------------------------------------
-
-
-class RawConfigUpdate(BaseModel):
-    yaml_text: str
-    profile: Optional[str] = None
 
 
 @app.get("/api/config/raw")
@@ -12038,10 +11671,6 @@ async def get_dashboard_themes():
     return {"themes": themes, "active": active}
 
 
-class ThemeSetBody(BaseModel):
-    name: str
-
-
 @app.put("/api/dashboard/theme")
 async def set_dashboard_theme(body: ThemeSetBody):
     """Set the active dashboard theme (persists to config.yaml)."""
@@ -12075,10 +11704,6 @@ async def get_dashboard_font():
     if font not in _FONT_CHOICES:
         font = _FONT_DEFAULT_ID
     return {"font": font}
-
-
-class FontSetBody(BaseModel):
-    font: str
 
 
 @app.put("/api/dashboard/font")
@@ -12278,12 +11903,6 @@ async def rescan_dashboard_plugins():
     """Force re-scan of dashboard plugins."""
     plugins = _get_dashboard_plugins(force_rescan=True)
     return {"ok": True, "count": len(plugins)}
-
-
-class _AgentPluginInstallBody(BaseModel):
-    identifier: str
-    force: bool = False
-    enable: bool = True
 
 
 def _strip_dashboard_manifest(p: Dict[str, Any]) -> Dict[str, Any]:
@@ -12501,11 +12120,6 @@ async def delete_agent_plugin(request: Request, name: str):
     return result
 
 
-class _PluginProvidersPutBody(BaseModel):
-    memory_provider: Optional[str] = None
-    context_engine: Optional[str] = None
-
-
 @app.put("/api/dashboard/plugin-providers")
 async def put_plugin_providers(request: Request, body: _PluginProvidersPutBody):
     """Persist memory provider / context engine selection (writes config.yaml)."""
@@ -12520,10 +12134,6 @@ async def put_plugin_providers(request: Request, body: _PluginProvidersPutBody):
     if body.context_engine is not None:
         _save_context_engine(body.context_engine)
     return {"ok": True}
-
-
-class _PluginVisibilityBody(BaseModel):
-    hidden: bool
 
 
 @app.post("/api/dashboard/plugins/{name:path}/visibility")
