@@ -30,7 +30,6 @@ import threading
 import time
 from pathlib import Path
 
-from agent.memory_manager import sanitize_context
 from prostor_constants import get_prostor_home
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
@@ -3107,6 +3106,7 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
         for row in rows:
             content = self._decode_content(row["content"])
             if row["role"] in {"user", "assistant"} and isinstance(content, str):
+                from agent.memory_manager import sanitize_context
                 content = sanitize_context(content).strip()
             msg = {"role": row["role"], "content": content}
             if row["timestamp"]:

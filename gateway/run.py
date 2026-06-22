@@ -116,13 +116,11 @@ import logging
 import os
 import re
 import shlex
-import site
 import sys
 import signal
 import tempfile
 import threading
 import time
-import sqlite3
 from collections import OrderedDict
 from contextvars import copy_context
 from pathlib import Path
