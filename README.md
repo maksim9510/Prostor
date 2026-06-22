@@ -355,6 +355,24 @@ scripts/run_tests.sh
 
 ---
 
+## Contributors
+
+Спасибо всем, кто делает Prostor лучше! 🎉
+
+<!-- ALL-CONTRIBUTORS-LIST:START -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<!-- Здесь будут контрибьюторы — генерируются all-contributors bot -->
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+Хотите попасть сюда? См. [`.all-contributorsrc`](.all-contributorsrc) для списка типов контрибуций (код, документация, баг-репорты, ревью, тесты, переводы, инфра).
+
+Этот список автоматически обновляется через [all-contributors bot](https://allcontributors.org) — после первого контрибьютора бот появится в PR как авто-update.
+
+---
+
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE).

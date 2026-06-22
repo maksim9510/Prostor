@@ -1,0 +1,78 @@
+{
+  "projectName": "Prostor Agent",
+  "projectOwner": "maksim9510",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "repoName": "Prostor",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributors": [],
+  "contributorsPerLine": 7,
+  "skipCi": true,
+  "contributorsSortAlphabetically": false,
+  "types": {
+    "doc": {
+      "symbol": "📖",
+      "description": "Documentation, guides, and translations",
+      "link": "https://github.com/maksim9510/Prostor/commits?author={user}"
+    },
+    "bug": {
+      "symbol": "🐛",
+      "description": "Bug reports and reproducible test cases",
+      "link": "https://github.com/maksim9510/Prostor/issues?q=author%3A{user}+label%3Abug"
+    },
+    "code": {
+      "symbol": "💻",
+      "description": "Code, refactors, optimizations",
+      "link": "https://github.com/maksim9510/Prostor/commits?author={user}"
+    },
+    "ideas": {
+      "symbol": "🤔",
+      "description": "Ideas and feature requests",
+      "link": "https://github.com/maksim9510/Prostor/issues?q=author%3A{user}+label%3Aenhancement"
+    },
+    "review": {
+      "symbol": "👀",
+      "description": "Pull request reviews",
+      "link": "https://github.com/maksim9510/Prostor/pulls?q=reviewed-by%3A{user}"
+    },
+    "test": {
+      "symbol": "⚠️",
+      "description": "Tests, CI, and coverage improvements",
+      "link": "https://github.com/maksim9510/Prostor/commits?author={user}"
+    },
+    "tool": {
+      "symbol": "🔧",
+      "description": "Tools, scripts, and infrastructure",
+      "link": "https://github.com/maksim9510/Prostor/commits?author={user}"
+    },
+    "infra": {
+      "symbol": "🚇",
+      "description": "Packaging, Docker, CI/CD, deployment",
+      "link": "https://github.com/maksim9510/Prostor/commits?author={user}"
+    },
+    "translation": {
+      "symbol": "🌍",
+      "description": "Translations and i18n",
+      "link": "https://github.com/maksim9510/Prostor/commits?author={user}"
+    },
+    "docfix": {
+      "symbol": "📝",
+      "description": "Typos and small documentation fixes",
+      "link": "https://github.com/maksim9510/Prostor/commits?author={user}"
+    },
+    "example": {
+      "symbol": "💡",
+      "description": "Examples, tutorials, and demos",
+      "link": "https://github.com/maksim9510/Prostor/tree/main/examples"
+    }
+  },
+  "contributorTemplate": "<a href=\"https://github.com/{login}\"><img src=\"https://avatars.githubusercontent.com/{login}?s=100\" width=\"100px;\" alt=\"{login}\"/><br /><sub><b>{name}</b></sub></a>",
+  "badgeTemplate": "[![All Contributors](https://img.shields.io/github/all-contributors/maksim9510/Prostor?color=blue)](#contributors)",
+  "skipUnknownTypes": true,
+  "linkToUsage": false
+}
