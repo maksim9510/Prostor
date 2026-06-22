@@ -13,6 +13,26 @@
   <a href="https://nousresearch.com"><img src="https://img.shields.io/badge/Создано%20в-Nous%20Research-blueviolet?style=for-the-badge" alt="Built by Nous Research"></a>
 </p>
 
+  <a href="https://nousresearch.com"><img src="https://img.shields.io/badge/Создано%20в-Nous%20Research-blueviolet?style=for-the-badge" alt="Built by Nous Research"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/maksim9510/Prostor/releases/latest"><img src="https://img.shields.io/github/v/release/maksim9510/Prostor?style=flat-square&logo=github&logoColor=white&color=blue" alt="Latest Release"/></a>
+  <a href="https://github.com/maksim9510/Prostor/blob/main/LICENSE"><img src="https://img.shields.io/github/license/maksim9510/Prostor?style=flat-square&color=green" alt="License"/></a>
+  <a href="https://github.com/maksim9510/Prostor/stargazers"><img src="https://img.shields.io/github/stars/maksim9510/Prostor?style=flat-square&logo=github" alt="Stars"/></a>
+  <a href="https://github.com/maksim9510/Prostor/network/members"><img src="https://img.shields.io/github/forks/maksim9510/Prostor?style=flat-square&logo=github" alt="Forks"/></a>
+  <a href="https://github.com/maksim9510/Prostor/issues"><img src="https://img.shields.io/github/issues/maksim9510/Prostor?style=flat-square&logo=github" alt="Open Issues"/></a>
+  <a href="https://github.com/maksim9510/Prostor/pulls"><img src="https://img.shields.io/github/issues-pr/maksim9510/Prostor?style=flat-square&logo=github" alt="Open PRs"/></a>
+  <br>
+  <a href="https://github.com/maksim9510/Prostor/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow-status/maksim9510/Prostor/tests.yml?branch=main&style=flat-square&logo=github-actions&logoColor=white&label=tests" alt="Tests"/></a>
+  <a href="https://github.com/maksim9510/Prostor/actions/workflows/lint.yml"><img src="https://img.shields.io/github/actions/workflow-status/maksim9510/Prostor/lint.yml?branch=main&style=flat-square&logo=github-actions&logoColor=white&label=lint" alt="Lint"/></a>
+  <a href="https://github.com/maksim9510/Prostor/actions/workflows/typecheck.yml"><img src="https://img.shields.io/github/actions/workflow-status/maksim9510/Prostor/typecheck.yml?branch=main&style=flat-square&logo=github-actions&logoColor=white&label=typecheck" alt="Typecheck"/></a>
+  <a href="https://github.com/maksim9510/Prostor/commits/main"><img src="https://img.shields.io/github/last-commit/maksim9510/Prostor?style=flat-square&logo=github" alt="Last Commit"/></a>
+  <a href="https://github.com/maksim9510/Prostor/graphs/contributors"><img src="https://img.shields.io/github/contributors/maksim9510/Prostor?style=flat-square&logo=github" alt="Contributors"/></a>
+  <a href="https://github.com/maksim9510/Prostor"><img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+"/></a>
+  <a href="https://github.com/maksim9510/Prostor"><img src="https://img.shields.io/badge/node-20%2B-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node 20+"/></a>
+</p>
+
 **Самообучающийся AI-агент на русском языке, созданный на базе [Nous Research](https://nousresearch.com).** Prostor — единственный агент со встроенным циклом обучения: он создаёт навыки из опыта, улучшает их во время использования, напоминает себе сохранять знания, ищет в истории прошлых разговоров и формирует всё более глубокую модель пользователя от сессии к сессии. Запускайте его на VPS за $5, на GPU-кластере или в serverless-инфраструктуре, которая в простое стоит практически ничего. Он не привязан к вашему ноутбуку — общайтесь с ним из Telegram, пока он работает на облачной VM.
 
 Используйте любую модель — [Nous Portal](https://portal.nousresearch.com), [OpenRouter](https://openrouter.ai) (200+ моделей), [NovitaAI](https://novita.ai), [NVIDIA NIM](https://build.nvidia.com), [Xiaomi MiMo](https://platform.xiaomimimo.com), [z.ai/GLM](https://z.ai), [Kimi/Moonshot](https://platform.moonshot.ai), [MiniMax](https://www.minimax.io), [Hugging Face](https://huggingface.co), OpenAI или свой собственный endpoint. Переключайтесь командой `prostor model` — без изменения кода и без привязки к провайдеру.

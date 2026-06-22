@@ -1,0 +1,48 @@
+title: "🎉 Show & Tell: "
+labels: ["show-and-tell"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Поделитесь, как вы используете Prostor! Реальные use case'ы и workflow'ы
+        помогают другим пользователям и нам в развитии продукта.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Что вы сделали с Prostor?
+      description: Коротко (1-3 предложения)
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Подробности
+      description: Workflow, какие skills/tools/каналы используете, что понравилось
+    validations:
+      required: false
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Код / Конфигурация / Skills
+      description: Можно вставить YAML/JSON/Python/shell
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: links
+    attributes:
+      label: Ссылки (репо, скриншоты, видео)
+      placeholder: "https://..."
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия Prostor
+    validations:
+      required: false

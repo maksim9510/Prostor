@@ -1,0 +1,52 @@
+title: "❓ Q&A: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Задайте вопрос о Prostor Agent. Для багов используйте
+        [Bug Report](https://github.com/maksim9510/Prostor/issues/new?template=bug_report.yml),
+        для предложений — [Feature Request](https://github.com/maksim9510/Prostor/issues/new?template=feature_request.yml).
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Тема
+      options:
+        - Установка / Setup
+        - Конфигурация
+        - CLI / TUI
+        - Desktop-приложение
+        - Telegram / Discord / другой канал
+        - Skills
+        - Провайдеры / Модели
+        - Self-learning loop
+        - MCP
+        - Другое
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Вопрос
+      description: Сформулируйте максимально конкретно
+      placeholder: "Как сделать X в Prostor?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Контекст
+      description: Что вы уже попробовали, что получилось, что нет
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия Prostor
+      placeholder: "0.17.0"
+    validations:
+      required: false

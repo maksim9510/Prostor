@@ -1,0 +1,49 @@
+title: "💡 Idea: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Предложите идею для Prostor. Для конкретных фич с готовым дизайном лучше
+        использовать [Feature Request issue](https://github.com/maksim9510/Prostor/issues/new?template=feature_request.yml).
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Область
+      options:
+        - area:agents
+        - area:tools
+        - area:gateway
+        - area:ui
+        - area:cli
+        - area:skills
+        - area:docs
+        - area:i18n
+        - area:release
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Идея
+      description: Что бы вы хотели увидеть в Prostor?
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Зачем это нужно?
+      description: Какой use case решает? Кому это поможет?
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы
+      description: Workaround'ы, которые вы сейчас используете
+    validations:
+      required: false
