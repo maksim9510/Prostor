@@ -107,11 +107,40 @@ Prostor — единственный open-source агент с **полным н
 
 ## Быстрая установка
 
-### Linux, macOS, WSL2, Termux
+### Linux (Debian, Ubuntu, Astra, RedOS, Fedora, Arch, Manjaro, Alpine, NixOS)
+
+Установщик **автоматически определяет** дистрибутив и ставит все нужные пакеты
+через `apt` / `dnf` / `pacman` / `apk` / `nix` соответственно.
 
 ```bash
-curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/maksim9510/Prostor/main/install.sh | bash
 ```
+
+**Режимы:**
+
+```bash
+./install.sh                         # стандартная установка с sudo
+./install.sh --user                  # без sudo, в ~/.local
+./install.sh --minimal               # без Docker и ffmpeg extras
+./install.sh --no-system             # только Python пакет, без системных deps
+./install.sh --no-systemd            # без создания service user
+PROSTOR_VERSION=v0.18.0 ./install.sh # конкретная версия
+./install.sh --verbose               # подробный вывод
+./install.sh --help                  # все опции
+```
+
+Подробнее: [`install.sh`](install.sh) — поддерживает Debian/Ubuntu, **Astra Linux 1.8 (Smolensk)**,
+RHEL/CentOS/**RedOS**, Fedora, **Arch/Manjaro**, Alpine, NixOS.
+
+### macOS, WSL2, Termux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maksim9510/Prostor/main/install.sh | bash
+```
+
+> macOS: требуется [Homebrew](https://brew.sh). Prostor работает через `uv` (brew install uv).
+> WSL2: работает как обычный Linux. Prostor автоматически определит WSL.
+> Termux: используется специальный bundle `.[termux]` — см. [гайд](docs/getting-started/termux).
 
 ### Windows (нативно, PowerShell)
 
