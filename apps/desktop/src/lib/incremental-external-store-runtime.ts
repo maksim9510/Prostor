@@ -3,6 +3,7 @@ import {
   BaseAssistantRuntimeCore,
   ExternalStoreThreadListRuntimeCore,
   ExternalStoreThreadRuntimeCore,
+  generateId,
   hasUpcomingMessage
 } from '@assistant-ui/core/internal'
 import {
@@ -135,10 +136,14 @@ class IncrementalExternalStoreThreadRuntimeCore extends ExternalStoreThreadRunti
     }
 
     if (hasUpcomingMessage(isRunning, messages)) {
-      self._assistantOptimisticId = this.repository.appendOptimisticMessage(messages.at(-1)?.id ?? null, {
+      const optimisticId = generateId()
+      this.repository.addOrUpdateMessage(messages.at(-1)?.id ?? null, {
+        id: optimisticId,
         role: 'assistant',
-        content: []
-      })
+        content: [],
+        metadata: {},
+      } as any)
+      self._assistantOptimisticId = optimisticId
     }
 
     this.repository.resetHead(self._assistantOptimisticId ?? messages.at(-1)?.id ?? null)

@@ -50,7 +50,7 @@ export const ru: Translations = {
       loadingSettings: 'Загрузка настроек Prostor',
       loadingSessions: 'Загрузка недавних сессий',
       startingDesktopConnection: 'Запуск подключения десктопа',
-      startingHermesDesktop: 'Запуск Prostor Desktop…'
+      startingProstorDesktop: 'Запуск Prostor Desktop…'
     },
     errors: {
       backgroundExited: 'Фоновый процесс Prostor завершился.',
@@ -1379,9 +1379,9 @@ export const ru: Translations = {
     manualTitle: 'Обновление из терминала',
     manualBody: 'Вы установили Prostor из командной строки, поэтому обновления выполняются там же. Вставьте это в терминал:',
     manualPickedUp: 'Prostor подхватит новую версию при следующем запуске.',
-    guiSkewTitle: 'Обновить приложение',
+    guiSkewTitle: 'Обновите приложение для рабочего стола',
     guiSkewBody:
-      'Бэкенд был обновлён, но пакет этого приложения не изменился. Обновите или переустановите приложение Prostor (AppImage / .deb / .rpm), чтобы он соответствовал.',
+      'Бэкенд был обновлён, но пакет приложения для рабочего стола не изменился. Обновите или переустановите приложение Prostor для рабочего стола (AppImage / .deb / .rpm) для совместимости.',
     copy: 'Копировать',
     copied: 'Скопировано',
     done: 'Готово',
