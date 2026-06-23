@@ -65,7 +65,7 @@ export interface Translations {
       loadingSettings: string
       loadingSessions: string
       startingDesktopConnection: string
-      startingProstorDesktop: string
+      startingHermesDesktop: string
     }
     errors: {
       backgroundExited: string

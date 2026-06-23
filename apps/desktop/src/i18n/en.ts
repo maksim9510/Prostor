@@ -50,7 +50,7 @@ export const en: Translations = {
       loadingSettings: 'Loading Prostor settings',
       loadingSessions: 'Loading recent sessions',
       startingDesktopConnection: 'Starting desktop connection',
-      startingProstorDesktop: 'Starting Prostor Desktop…'
+      startingHermesDesktop: 'Starting Prostor Desktop…'
     },
     errors: {
       backgroundExited: 'Prostor background process exited.',

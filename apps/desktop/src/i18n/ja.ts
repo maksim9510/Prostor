@@ -50,7 +50,7 @@ export const ja = defineLocale({
       loadingSettings: 'Prostor の設定を読み込み中',
       loadingSessions: '最近のセッションを読み込み中',
       startingDesktopConnection: 'デスクトップ接続を開始中',
-      startingProstorDesktop: 'Prostor Desktop を起動中…'
+      startingHermesDesktop: 'Prostor Desktop を起動中…'
     },
     errors: {
       backgroundExited: 'Prostor バックグラウンドプロセスが終了しました。',
