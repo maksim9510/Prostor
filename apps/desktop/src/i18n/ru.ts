@@ -769,7 +769,7 @@ export const ru: Translations = {
     noSessions: 'Сессий пока нет.',
     gatewayRunning: 'Мессенджер-gateway запущен',
     gatewayStopped: 'Мессенджер-gateway остановлен',
-    hermesActiveSessions: (version: string, count: number) => `Prostor ${version} · Активных сессий ${count}`,
+    prostorActiveSessions: (version: string, count: number) => `Prostor ${version} · Активных сессий ${count}`,
     restartGateway: 'Перезапустить gateway',
     gatewayRestartFailed: 'Не удалось перезапустить gateway.',
     updateProstor: 'Обновить Prostor',
