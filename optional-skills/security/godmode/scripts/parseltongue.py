@@ -344,43 +344,43 @@ def _apply_triplelayer(word):
 
 TECHNIQUES = [
     # TIER 1: CORE OBFUSCATION (1-11)
-    {'name': 'raw',          'label': 'Raw',         'tier': 1, 'fn': _apply_raw},
-    {'name': 'leetspeak',    'label': 'L33t',        'tier': 1, 'fn': _apply_leetspeak},
-    {'name': 'unicode',      'label': 'Unicode',     'tier': 1, 'fn': _apply_unicode},
-    {'name': 'bubble',       'label': 'Bubble',      'tier': 1, 'fn': _apply_bubble},
-    {'name': 'spaced',       'label': 'Spaced',      'tier': 1, 'fn': _apply_spaced},
-    {'name': 'fullwidth',    'label': 'Fullwidth',    'tier': 1, 'fn': _apply_fullwidth},
-    {'name': 'zwj',          'label': 'ZeroWidth',   'tier': 1, 'fn': _apply_zwj},
-    {'name': 'mixedcase',    'label': 'MiXeD',       'tier': 1, 'fn': _apply_mixedcase},
-    {'name': 'semantic',     'label': 'Semantic',     'tier': 1, 'fn': _apply_semantic},
-    {'name': 'dotted',       'label': 'Dotted',      'tier': 1, 'fn': _apply_dotted},
-    {'name': 'underscored',  'label': 'Under_score', 'tier': 1, 'fn': _apply_underscored},
+    {'name': 'raw', 'label': 'Raw', 'tier': 1, 'fn': _apply_raw},
+    {'name': 'leetspeak', 'label': 'L33t', 'tier': 1, 'fn': _apply_leetspeak},
+    {'name': 'unicode', 'label': 'Unicode', 'tier': 1, 'fn': _apply_unicode},
+    {'name': 'bubble', 'label': 'Bubble', 'tier': 1, 'fn': _apply_bubble},
+    {'name': 'spaced', 'label': 'Spaced', 'tier': 1, 'fn': _apply_spaced},
+    {'name': 'fullwidth', 'label': 'Fullwidth', 'tier': 1, 'fn': _apply_fullwidth},
+    {'name': 'zwj', 'label': 'ZeroWidth', 'tier': 1, 'fn': _apply_zwj},
+    {'name': 'mixedcase', 'label': 'MiXeD', 'tier': 1, 'fn': _apply_mixedcase},
+    {'name': 'semantic', 'label': 'Semantic', 'tier': 1, 'fn': _apply_semantic},
+    {'name': 'dotted', 'label': 'Dotted', 'tier': 1, 'fn': _apply_dotted},
+    {'name': 'underscored', 'label': 'Under_score', 'tier': 1, 'fn': _apply_underscored},
 
     # TIER 2: ENCODING + FRAMING (12-22)
-    {'name': 'reversed',     'label': 'Reversed',    'tier': 2, 'fn': _apply_reversed},
-    {'name': 'superscript',  'label': 'Superscript', 'tier': 2, 'fn': _apply_superscript},
-    {'name': 'smallcaps',    'label': 'SmallCaps',   'tier': 2, 'fn': _apply_smallcaps},
-    {'name': 'morse',        'label': 'Morse',       'tier': 2, 'fn': _apply_morse},
-    {'name': 'piglatin',     'label': 'PigLatin',    'tier': 2, 'fn': _apply_piglatin},
-    {'name': 'brackets',     'label': '[B.r.a.c.k]', 'tier': 2, 'fn': _apply_brackets},
-    {'name': 'mathbold',     'label': 'MathBold',    'tier': 2, 'fn': _apply_mathbold},
-    {'name': 'mathitalic',   'label': 'MathItalic',  'tier': 2, 'fn': _apply_mathitalic},
-    {'name': 'strikethrough','label': 'Strike',      'tier': 2, 'fn': _apply_strikethrough},
-    {'name': 'leetheavy',    'label': 'L33t+',       'tier': 2, 'fn': _apply_leetheavy},
-    {'name': 'hyphenated',   'label': 'Hyphen',      'tier': 2, 'fn': _apply_hyphenated},
+    {'name': 'reversed', 'label': 'Reversed', 'tier': 2, 'fn': _apply_reversed},
+    {'name': 'superscript', 'label': 'Superscript', 'tier': 2, 'fn': _apply_superscript},
+    {'name': 'smallcaps', 'label': 'SmallCaps', 'tier': 2, 'fn': _apply_smallcaps},
+    {'name': 'morse', 'label': 'Morse', 'tier': 2, 'fn': _apply_morse},
+    {'name': 'piglatin', 'label': 'PigLatin', 'tier': 2, 'fn': _apply_piglatin},
+    {'name': 'brackets', 'label': '[B.r.a.c.k]', 'tier': 2, 'fn': _apply_brackets},
+    {'name': 'mathbold', 'label': 'MathBold', 'tier': 2, 'fn': _apply_mathbold},
+    {'name': 'mathitalic', 'label': 'MathItalic', 'tier': 2, 'fn': _apply_mathitalic},
+    {'name': 'strikethrough', 'label': 'Strike', 'tier': 2, 'fn': _apply_strikethrough},
+    {'name': 'leetheavy', 'label': 'L33t+', 'tier': 2, 'fn': _apply_leetheavy},
+    {'name': 'hyphenated', 'label': 'Hyphen', 'tier': 2, 'fn': _apply_hyphenated},
 
     # TIER 3: MULTI-LAYER COMBOS (23-33)
-    {'name': 'leetunicode',     'label': 'L33t+Uni',  'tier': 3, 'fn': _apply_leetunicode},
-    {'name': 'spacedmixed',     'label': 'S p A c E d','tier': 3, 'fn': _apply_spacedmixed},
-    {'name': 'reversedleet',    'label': 'Rev+L33t',  'tier': 3, 'fn': _apply_reversedleet},
-    {'name': 'bubblespaced',    'label': 'Bub Spcd',  'tier': 3, 'fn': _apply_bubblespaced},
-    {'name': 'unicodezwj',      'label': 'Uni+ZWJ',   'tier': 3, 'fn': _apply_unicodezwj},
-    {'name': 'base64hint',      'label': 'Base64',    'tier': 3, 'fn': _apply_base64hint},
-    {'name': 'hexencode',       'label': 'Hex',       'tier': 3, 'fn': _apply_hexencode},
-    {'name': 'acrostic',        'label': 'Acrostic',  'tier': 3, 'fn': _apply_acrostic},
-    {'name': 'dottedunicode',   'label': 'Dot+Uni',   'tier': 3, 'fn': _apply_dottedunicode},
-    {'name': 'fullwidthmixed',  'label': 'FW MiX',    'tier': 3, 'fn': _apply_fullwidthmixed},
-    {'name': 'triplelayer',     'label': 'Triple',    'tier': 3, 'fn': _apply_triplelayer},
+    {'name': 'leetunicode', 'label': 'L33t+Uni', 'tier': 3, 'fn': _apply_leetunicode},
+    {'name': 'spacedmixed', 'label': 'S p A c E d', 'tier': 3, 'fn': _apply_spacedmixed},
+    {'name': 'reversedleet', 'label': 'Rev+L33t', 'tier': 3, 'fn': _apply_reversedleet},
+    {'name': 'bubblespaced', 'label': 'Bub Spcd', 'tier': 3, 'fn': _apply_bubblespaced},
+    {'name': 'unicodezwj', 'label': 'Uni+ZWJ', 'tier': 3, 'fn': _apply_unicodezwj},
+    {'name': 'base64hint', 'label': 'Base64', 'tier': 3, 'fn': _apply_base64hint},
+    {'name': 'hexencode', 'label': 'Hex', 'tier': 3, 'fn': _apply_hexencode},
+    {'name': 'acrostic', 'label': 'Acrostic', 'tier': 3, 'fn': _apply_acrostic},
+    {'name': 'dottedunicode', 'label': 'Dot+Uni', 'tier': 3, 'fn': _apply_dottedunicode},
+    {'name': 'fullwidthmixed', 'label': 'FW MiX', 'tier': 3, 'fn': _apply_fullwidthmixed},
+    {'name': 'triplelayer', 'label': 'Triple', 'tier': 3, 'fn': _apply_triplelayer},
 ]
 
 TIER_SIZES = {'light': 11, 'standard': 22, 'heavy': 33}
@@ -422,11 +422,11 @@ def to_morse(text):
     return ' '.join(morse.get(c.lower(), c) for c in text)
 
 ENCODING_ESCALATION = [
-    {'name': 'plain',     'label': 'PLAIN',   'fn': lambda q: q},
-    {'name': 'leetspeak', 'label': 'L33T',    'fn': to_leetspeak},
-    {'name': 'bubble',    'label': 'BUBBLE',  'fn': to_bubble},
-    {'name': 'braille',   'label': 'BRAILLE', 'fn': to_braille},
-    {'name': 'morse',     'label': 'MORSE',   'fn': to_morse},
+    {'name': 'plain', 'label': 'PLAIN', 'fn': lambda q: q},
+    {'name': 'leetspeak', 'label': 'L33T', 'fn': to_leetspeak},
+    {'name': 'bubble', 'label': 'BUBBLE', 'fn': to_bubble},
+    {'name': 'braille', 'label': 'BRAILLE', 'fn': to_braille},
+    {'name': 'morse', 'label': 'MORSE', 'fn': to_morse},
 ]
 
 
@@ -459,22 +459,22 @@ def obfuscate_query(query, technique_name, triggers=None):
     """
     if triggers is None:
         triggers = detect_triggers(query)
-    
+
     if not triggers or technique_name == 'raw':
         return query
-    
+
     # Find the technique function
     tech = next((t for t in TECHNIQUES if t['name'] == technique_name), None)
     if not tech:
         return query
-    
+
     result = query
     # Sort longest-first to avoid partial replacements
     sorted_triggers = sorted(triggers, key=len, reverse=True)
     for trigger in sorted_triggers:
         pattern = re.compile(r'\b(' + re.escape(trigger) + r')\b', re.IGNORECASE)
         result = pattern.sub(lambda m: tech['fn'](m.group()), result)
-    
+
     return result
 
 
@@ -491,7 +491,7 @@ def generate_variants(query, tier="standard", custom_triggers=None):
     """
     triggers = detect_triggers(query, custom_triggers)
     max_variants = TIER_SIZES.get(tier, TIER_SIZES['standard'])
-    
+
     variants = []
     for i, tech in enumerate(TECHNIQUES[:max_variants]):
         variants.append({
@@ -500,7 +500,7 @@ def generate_variants(query, tier="standard", custom_triggers=None):
             'label': tech['label'],
             'tier': tech['tier'],
         })
-    
+
     return variants
 
 

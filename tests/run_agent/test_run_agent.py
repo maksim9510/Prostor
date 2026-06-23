@@ -1766,7 +1766,6 @@ class TestBuildApiKwargs:
         kwargs = agent._build_api_kwargs(messages)
         assert kwargs["max_tokens"] == 4096
 
-
     def test_qwen_portal_formats_messages_and_metadata(self, agent):
         agent.provider = "qwen-oauth"
         agent.base_url = "https://portal.qwen.ai/v1"
@@ -1865,7 +1864,6 @@ class TestBuildApiKwargs:
         messages = [{"role": "user", "content": "hi"}]
         kwargs = agent._build_api_kwargs(messages)
         assert kwargs.get("extra_body", {}).get("think") is None
-
 
 
 class TestBuildAssistantMessage:
@@ -2892,6 +2890,7 @@ class TestConcurrentToolExecution:
         messages = []
 
         call_count = {"n": 0}
+
         def block_first_only(*args, **kwargs):
             call_count["n"] += 1
             return "Blocked" if call_count["n"] == 1 else None
@@ -4941,7 +4940,6 @@ class TestCredentialPoolRecovery:
         assert retry_same is False
         agent._swap_credential.assert_called_once_with(next_entry)
 
-
     def test_recover_with_pool_refreshes_on_401(self, agent):
         """401 with successful refresh should swap to refreshed credential."""
         refreshed_entry = SimpleNamespace(label="refreshed-primary", id="abc")
@@ -5426,8 +5424,6 @@ class TestSafeWriter:
         # Still just one layer
         wrapped.write("test")
         assert inner.getvalue() == "test"
-
-
 
 
 # ===================================================================
@@ -6204,7 +6200,7 @@ class TestInterruptVprintForceTrue:
                 if "force=True" not in stripped:
                     violations.append(f"line {i}: {stripped}")
         assert not violations, (
-            f"Interrupt _vprint calls missing force=True:\n"
+            "Interrupt _vprint calls missing force=True:\n"
             + "\n".join(violations)
         )
 

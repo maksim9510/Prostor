@@ -125,7 +125,6 @@ class TestMcpEndpoints:
         assert r.status_code == 404
 
 
-
 class TestCredentialPoolEndpoints:
     @pytest.fixture(autouse=True)
     def _setup(self, _isolate_prostor_home):
@@ -667,8 +666,6 @@ class TestSkillsHubScanEndpoint:
         assert r.status_code == 404
 
 
-
-
 class TestWebhookToggleEndpoint:
     @pytest.fixture(autouse=True)
     def _setup(self, _isolate_prostor_home):
@@ -695,7 +692,6 @@ class TestWebhookToggleEndpoint:
         assert self.client.put(
             "/api/webhooks/nope/enabled", json={"enabled": True}
         ).status_code == 404
-
 
 
 class TestAdminEndpointsAuthGate:

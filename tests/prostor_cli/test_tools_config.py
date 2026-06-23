@@ -1098,6 +1098,7 @@ class TestImagegenModelPicker:
 
         # Only ONE picker call is expected (for model) — not two (model + quality).
         call_count = {"n": 0}
+
         def fake_prompt(*a, **kw):
             call_count["n"] += 1
             return gpt_idx
@@ -1540,5 +1541,3 @@ def test_real_configurable_changes_still_reported_in_diff():
     # User adds 'vision' (configurable) — must still report as added.
     new_enabled2 = (current - {"kanban"}) | {"vision"}
     assert ((new_enabled2 - current) & universe) == {"vision"}
-
-

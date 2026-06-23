@@ -396,6 +396,7 @@ def test_visibility_hide_helper_zeroes_perms(adapter):
 def test_visibility_hide_tolerates_unsetable_command(adapter, caplog):
     class _Frozen:
         __slots__ = ("name",)
+
         def __init__(self, name):
             self.name = name
 

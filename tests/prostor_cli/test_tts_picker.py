@@ -99,6 +99,7 @@ class TestPluginTTSProviders:
 
         class _NoName:
             display_name = "Bogus"
+
             def get_setup_schema(self):
                 return {"name": "Bogus"}
 

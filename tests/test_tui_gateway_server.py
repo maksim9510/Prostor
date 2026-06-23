@@ -3083,7 +3083,6 @@ def test_config_set_verbose_updates_session_mode_and_agent(tmp_path, monkeypatch
     assert agent.verbose_logging is True
 
 
-
 def test_config_set_model_waits_for_lazy_agent_before_switch(monkeypatch):
     """A model switch against a lazy-created live session must apply to the
     real agent, not just process env, before the prompt is dispatched.
@@ -5855,7 +5854,6 @@ def test_session_active_list_excludes_finalized_sessions(monkeypatch):
     assert [row["id"] for row in session_rows] == ["sid-live"]
 
 
-
 def test_session_activate_returns_inflight_stream_before_completion(monkeypatch):
     """Switching into a still-running live session must hydrate partial output.
 
@@ -6988,6 +6986,7 @@ def test_notification_poller_delivers_completion(monkeypatch):
     class _ImmediateThread:
         def __init__(self, target=None, daemon=None):
             self._target = target
+
         def start(self):
             self._target()
 
@@ -7056,6 +7055,7 @@ def test_notification_poller_skips_consumed(monkeypatch):
     class _ImmediateThread:
         def __init__(self, target=None, daemon=None):
             self._target = target
+
         def start(self):
             self._target()
 

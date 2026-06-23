@@ -221,6 +221,7 @@ def test_stop_signals_process_and_clears_pointer(tmp_path):
     })
 
     alive_seq = iter([True, True, False])  # alive at first, gone after SIGTERM
+
     def _alive(pid):
         try:
             return next(alive_seq)
@@ -228,6 +229,7 @@ def test_stop_signals_process_and_clears_pointer(tmp_path):
             return False
 
     sent = []
+
     def _kill(pid, sig):
         sent.append((pid, sig))
 
@@ -442,6 +444,7 @@ def test_start_realtime_env_vars_threaded_through():
         def __init__(self, pid): self.pid = pid
 
     captured_env = {}
+
     def _fake_popen(argv, **kwargs):
         captured_env.update(kwargs.get("env") or {})
         return _FakeProc(11111)
@@ -766,6 +769,7 @@ def test_cmd_install_runs_pip_and_playwright(capsys):
     from plugins.google_meet.cli import _cmd_install
 
     calls = []
+
     class _FakeRes:
         def __init__(self, rc=0): self.returncode = rc
 
@@ -794,6 +798,7 @@ def test_cmd_install_realtime_skips_when_deps_present(capsys):
     from plugins.google_meet.cli import _cmd_install
 
     calls = []
+
     class _FakeRes:
         def __init__(self, rc=0): self.returncode = rc
 

@@ -31,10 +31,10 @@ def kanban_home(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ("scratch",              ("scratch", None)),
-        ("worktree",              ("worktree", None)),
-        ("worktree:/tmp/wt",       ("worktree", "/tmp/wt")),
-        ("dir:/tmp/work",         ("dir", "/tmp/work")),
+        ("scratch", ("scratch", None)),
+        ("worktree", ("worktree", None)),
+        ("worktree:/tmp/wt", ("worktree", "/tmp/wt")),
+        ("dir:/tmp/work", ("dir", "/tmp/work")),
     ],
 )
 def test_parse_workspace_flag_valid(value, expected):

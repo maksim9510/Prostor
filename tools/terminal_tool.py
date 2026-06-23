@@ -59,8 +59,6 @@ from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — r
 # display_prostor_home imported lazily at call site (stale-module safety during prostor update)
 
 
-
-
 # =============================================================================
 # Custom Singularity Environment with more space
 # =============================================================================
@@ -135,14 +133,14 @@ def _check_disk_usage_warning():
                         total_bytes += f.stat().st_size
                     except OSError as e:
                         logger.debug("Could not stat file %s: %s", f, e)
-        
+
         total_gb = total_bytes / (1024 ** 3)
-        
+
         if total_gb > DISK_USAGE_WARNING_THRESHOLD_GB:
             logger.warning("Disk usage (%.1fGB) exceeds threshold (%.0fGB). Consider running cleanup_all_environments().",
                            total_gb, DISK_USAGE_WARNING_THRESHOLD_GB)
             return True
-        
+
         return False
     except Exception as e:
         logger.debug("Disk usage warning check failed: %s", e, exc_info=True)
@@ -299,22 +297,22 @@ def _handle_sudo_failure(output: str, env_type: str) -> str:
     Returns enhanced output if sudo failed in messaging context, else original.
     """
     is_gateway = env_var_enabled("PROSTOR_GATEWAY_SESSION")
-    
+
     if not is_gateway:
         return output
-    
+
     # Check for sudo failure indicators
     sudo_failures = [
         "sudo: a password is required",
         "sudo: no tty present",
         "sudo: a terminal is required",
     ]
-    
+
     for failure in sudo_failures:
         if failure in output:
             from prostor_constants import display_prostor_home as _dhh
             return output + f"\n\n💡 Tip: To enable sudo over messaging, add SUDO_PASSWORD to {_dhh()}/.env on the agent machine."
-    
+
     return output
 
 
@@ -333,7 +331,7 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
     directly from /dev/tty with echo disabled.
     """
     import sys
-    
+
     # Use the registered callback when available (prompt_toolkit-compatible)
     _sudo_cb = _get_sudo_password_callback()
     if _sudo_cb is not None:
@@ -343,7 +341,7 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
             return ""
 
     result = {"password": None, "done": False}
-    
+
     def read_password_thread():
         """Read password with echo disabled. Uses msvcrt on Windows, /dev/tty on Unix."""
         tty_fd = None
@@ -391,11 +389,11 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
                 except Exception as e:
                     logger.debug("Failed to close tty fd: %s", e)
             result["done"] = True
-    
+
     try:
         os.environ["PROSTOR_SPINNER_PAUSE"] = "1"
         time.sleep(0.2)
-        
+
         print()
         print("┌" + "─" * 58 + "┐")
         print("│  🔐 SUDO PASSWORD REQUIRED" + " " * 30 + "│")
@@ -406,11 +404,11 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
         print("└" + "─" * 58 + "┘")
         print()
         print("  Password (hidden): ", end="", flush=True)
-        
+
         password_thread = threading.Thread(target=read_password_thread, daemon=True)
         password_thread.start()
         password_thread.join(timeout=timeout_seconds)
-        
+
         if result["done"]:
             password = result["password"] or ""
             print()  # newline after hidden input
@@ -427,7 +425,7 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
             print()
             sys.stdout.flush()
             return ""
-            
+
     except (EOFError, KeyboardInterrupt):
         print()
         print("  ⏭ Cancelled - continuing without sudo")
@@ -1091,7 +1089,7 @@ def _get_env_config() -> Dict[str, Any]:
     # Default image with Python and Node.js for maximum compatibility
     default_image = "nikolaik/python-nodejs:python3.11-nodejs20"
     env_type = os.getenv("TERMINAL_ENV", "local")
-    
+
     mount_docker_cwd = os.getenv("TERMINAL_DOCKER_MOUNT_CWD_TO_WORKSPACE", "false").lower() in {"true", "1", "yes"}
     container_backend = env_type in {"docker", "singularity", "modal", "daytona"}
     docker_backend = env_type == "docker"
@@ -1256,7 +1254,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
 
     if env_type == "local":
         return _LocalEnvironment(cwd=cwd, timeout=timeout)
-    
+
     elif env_type == "docker":
         # One-shot orphan reaper: clean up labeled containers left behind by
         # prior Prostor processes that hit SIGKILL / OOM / a closed terminal
@@ -1278,14 +1276,14 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
             extra_args=docker_extra_args,
             persist_across_processes=cc.get("docker_persist_across_processes", True),
         )
-    
+
     elif env_type == "singularity":
         return _SingularityEnvironment(
             image=image, cwd=cwd, timeout=timeout,
             cpu=cpu, memory=memory, disk=disk,
             persistent_filesystem=persistent, task_id=task_id,
         )
-    
+
     elif env_type == "modal":
         sandbox_kwargs = {}
         if cpu > 0:
@@ -1343,7 +1341,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
             modal_sandbox_kwargs=sandbox_kwargs,
             persistent_filesystem=persistent, task_id=task_id,
         )
-    
+
     elif env_type == "daytona":
         # Lazy import so daytona SDK is only required when backend is selected.
         from tools.environments.daytona import DaytonaEnvironment as _DaytonaEnvironment
@@ -1495,20 +1493,18 @@ def is_persistent_env(task_id: str) -> bool:
     return bool(getattr(env, "_persistent", False))
 
 
-
-
 def cleanup_all_environments():
     """Clean up ALL active environments. Use with caution."""
     task_ids = list(_active_environments.keys())
     cleaned = 0
-    
+
     for task_id in task_ids:
         try:
             cleanup_vm(task_id)
             cleaned += 1
         except Exception as e:
             logger.error("Error cleaning %s: %s", task_id, e, exc_info=True)
-    
+
     # Also clean any orphaned directories
     scratch_dir = _get_scratch_dir()
     import glob
@@ -1518,7 +1514,7 @@ def cleanup_all_environments():
             logger.info("Removed orphaned: %s", path)
         except OSError as e:
             logger.debug("Failed to remove orphaned path %s: %s", path, e)
-    
+
     if cleaned > 0:
         logger.info("Cleaned %d environments", cleaned)
     return cleaned
@@ -1911,7 +1907,7 @@ def terminal_tool(
         # ``"default"``) is still found under its originating session id while
         # isolation-keyed RL/benchmark overrides keep resolving as before.
         overrides = resolve_task_overrides(task_id)
-        
+
         # Select image based on env type, with per-task override support
         if env_type == "docker":
             image = overrides.get("docker_image") or config["docker_image"]
@@ -2368,7 +2364,7 @@ def terminal_tool(
             max_retries = 3
             retry_count = 0
             result = None
-            
+
             while retry_count <= max_retries:
                 try:
                     execute_kwargs = {
@@ -2388,7 +2384,7 @@ def terminal_tool(
                             "exit_code": 124,
                             "error": f"Command timed out after {effective_timeout} seconds"
                         }, ensure_ascii=False)
-                    
+
                     # Retry on transient errors
                     if retry_count < max_retries:
                         retry_count += 1
@@ -2397,7 +2393,7 @@ def terminal_tool(
                                        wait_time, retry_count, max_retries, _safe_command_preview(command), type(e).__name__, e, effective_task_id, env_type)
                         time.sleep(wait_time)
                         continue
-                    
+
                     logger.error("Execution failed after %d retries - Command: %s - Error: %s: %s - Task: %s, Backend: %s",
                                  max_retries, _safe_command_preview(command), type(e).__name__, e, effective_task_id, env_type)
                     return json.dumps({
@@ -2405,10 +2401,10 @@ def terminal_tool(
                         "exit_code": -1,
                         "error": f"Command execution failed: {type(e).__name__}: {str(e)}"
                     }, ensure_ascii=False)
-                
+
                 # Got a result
                 break
-            
+
             # Extract output
             output = result.get("output", "")
             returncode = result.get("returncode", 0)
@@ -2436,7 +2432,7 @@ def terminal_tool(
                         break
             except Exception:
                 pass
-            
+
             # Truncate output if too long, keeping both head and tail
             from tools.tool_output_limits import get_max_bytes
             MAX_OUTPUT_CHARS = get_max_bytes()
@@ -2602,7 +2598,7 @@ if __name__ == "__main__":
     # Simple test when run directly
     print("Terminal Tool Module")
     print("=" * 50)
-    
+
     config = _get_env_config()
     print("\nCurrent Configuration:")
     print(f"  Environment type: {config['env_type']}")

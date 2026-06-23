@@ -217,6 +217,7 @@ class TestRunConversationCodexPath:
         )
         # Make the fake session report 10 tool iterations in one turn
         # (matching the default skill threshold).
+
         def fake_run_turn(self, user_input: str, **kwargs):
             return TurnResult(
                 final_text=f"echo: {user_input}",

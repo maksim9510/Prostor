@@ -52,7 +52,7 @@ FAKE_MCP_TOOLS: List[Dict[str, Any]] = [
         "params": {"repo": ("string", "Repository in owner/name form"),
                    "title": ("string", "Issue title"),
                    "body": ("string", "Issue body in Markdown")},
-        "returns": lambda args: {"ok": True, "issue_url": f"https://github.com/{args.get('repo','x/y')}/issues/42"},
+        "returns": lambda args: {"ok": True, "issue_url": f"https://github.com/{args.get('repo', 'x/y')}/issues/42"},
     },
     {
         "name": "github_search_repos",
@@ -472,7 +472,7 @@ def _trim_args(args: Any, max_chars: int = 300) -> Any:
     out = {}
     for k, v in args.items():
         if isinstance(v, str) and len(v) > max_chars:
-            out[k] = v[:max_chars] + f"...[{len(v)-max_chars} chars trimmed]"
+            out[k] = v[:max_chars] + f"...[{len(v) - max_chars} chars trimmed]"
         else:
             out[k] = v
     return out
@@ -514,7 +514,7 @@ def main():
     for scenario in SCENARIOS:
         for enabled in (True, False):
             label = "enabled" if enabled else "disabled"
-            print(f"\n{'='*72}\nScenario {scenario['id']} (tool_search={label})\n{'='*72}")
+            print(f"\n{'=' * 72}\nScenario {scenario['id']} (tool_search={label})\n{'=' * 72}")
             record = run_one_scenario(scenario, enabled, out_dir)
             n_bridge = len(record["bridge_calls"])
             n_under = len(record["underlying_tool_calls"])

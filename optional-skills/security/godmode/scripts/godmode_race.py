@@ -319,33 +319,33 @@ def race_models(query, tier="standard", api_key=None, system_prompt=None,
     """
     if OpenAI is None:
         raise ImportError("openai package required. Install with: pip install openai")
-    
+
     api_key = api_key or os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("No API key. Set OPENROUTER_API_KEY or pass api_key=")
-    
+
     client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
-    
+
     # Select models for tier
     model_count = TIER_SIZES.get(tier, TIER_SIZES['standard'])
     models = ULTRAPLINIAN_MODELS[:model_count]
-    
+
     # Build messages
     effective_query = query
     if append_directive:
         effective_query = query + DEPTH_DIRECTIVE
-    
+
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     elif jailbreak_system:
         messages.append({"role": "system", "content": jailbreak_system})
-    
+
     if prefill:
         messages.extend(prefill)
-    
+
     messages.append({"role": "user", "content": effective_query})
-    
+
     # Race all models in parallel
     results = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -368,14 +368,14 @@ def race_models(query, tier="standard", api_key=None, system_prompt=None,
                     'is_refusal': scored['is_refusal'],
                     'hedge_count': scored['hedge_count'], 'error': None
                 })
-    
+
     # Sort by score descending
     results.sort(key=lambda r: r['score'], reverse=True)
-    
+
     # Pick winner (best non-refusal)
     non_refusals = [r for r in results if not r['is_refusal'] and r['content']]
     refusal_count = sum(1 for r in results if r['is_refusal'])
-    
+
     if non_refusals:
         winner = non_refusals[0]
     else:
@@ -383,7 +383,7 @@ def race_models(query, tier="standard", api_key=None, system_prompt=None,
             'model': 'none', 'content': 'All models refused.', 'score': -9999,
             'latency': 0, 'is_refusal': True, 'hedge_count': 0
         }
-    
+
     return {
         'model': winner['model'],
         'content': winner['content'],
@@ -403,7 +403,7 @@ def race_godmode_classic(query, api_key=None, timeout=60):
     Each combo uses a different model paired with its best-performing jailbreak prompt.
     Returns the best result across all combos.
     """
-    
+
     HALL_OF_FAME = [
         {
             'id': 'sonnet-35',
@@ -441,16 +441,16 @@ def race_godmode_classic(query, api_key=None, timeout=60):
             'user_template': '{QUERY}',
         },
     ]
-    
+
     if OpenAI is None:
         raise ImportError("openai package required. Install with: pip install openai")
-    
+
     api_key = api_key or os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("No API key. Set OPENROUTER_API_KEY or pass api_key=")
-    
+
     client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
-    
+
     def _run_combo(combo):
         system = combo['system']  # {QUERY} stays literal in system prompt
         user_msg = combo['user_template'].replace('{QUERY}', query)
@@ -459,7 +459,7 @@ def race_godmode_classic(query, api_key=None, timeout=60):
             {"role": "user", "content": user_msg},
         ]
         return _query_model(client, combo['model'], messages, timeout)
-    
+
     results = []
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(_run_combo, combo): combo for combo in HALL_OF_FAME}
@@ -480,11 +480,11 @@ def race_godmode_classic(query, api_key=None, timeout=60):
                     'latency': latency, 'is_refusal': scored['is_refusal'],
                     'hedge_count': scored['hedge_count'], 'error': None
                 })
-    
+
     results.sort(key=lambda r: r['score'], reverse=True)
     non_refusals = [r for r in results if not r['is_refusal'] and r['content']]
     winner = non_refusals[0] if non_refusals else results[0]
-    
+
     return {
         'model': winner['model'],
         'codename': winner.get('codename', ''),
@@ -511,20 +511,20 @@ if __name__ == '__main__':
 
     if args.mode == 'classic':
         result = race_godmode_classic(args.query, timeout=args.timeout)
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"WINNER: {result['codename']} ({result['model']})")
         print(f"Score: {result['score']} | Latency: {result['latency']:.1f}s")
         print(f"Refusals: {result['refusal_count']}/5")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
         if result['content']:
             print(result['content'])
     else:
         result = race_models(args.query, tier=args.tier,
                              max_workers=args.workers, timeout=args.timeout)
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"WINNER: {result['model']}")
         print(f"Score: {result['score']} | Latency: {result['latency']:.1f}s")
         print(f"Refusals: {result['refusal_count']}/{result['total_models']}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
         if result['content']:
             print(result['content'][:2000])

@@ -266,6 +266,7 @@ class TestPermissionErrorHandling:
         restricted = tmp_path / "restricted"
         restricted.mkdir()
         original_is_file = Path.is_file
+
         def patched_is_file(self):
             if "restricted" in str(self):
                 raise PermissionError("Permission denied")
@@ -278,6 +279,7 @@ class TestPermissionErrorHandling:
         """Full check_tool_call should not crash when a path is inaccessible."""
         tracker = SubdirectoryHintTracker(working_dir=str(project))
         original_is_dir = Path.is_dir
+
         def patched_is_dir(self):
             if "backend" in str(self) and "src" not in str(self):
                 raise PermissionError("Permission denied")

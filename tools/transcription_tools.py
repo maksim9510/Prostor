@@ -116,7 +116,6 @@ _local_model_name: Optional[str] = None
 # ---------------------------------------------------------------------------
 
 
-
 def _load_stt_config() -> dict:
     """Load the ``stt`` section from user config, falling back to defaults."""
     try:
@@ -1040,7 +1039,7 @@ def _validate_audio_file(file_path: str) -> Optional[Dict[str, Any]]:
             return {
                 "success": False,
                 "transcript": "",
-                "error": f"File too large: {file_size / (1024*1024):.1f}MB (max {MAX_FILE_SIZE / (1024*1024):.0f}MB)",
+                "error": f"File too large: {file_size / (1024 * 1024):.1f}MB (max {MAX_FILE_SIZE / (1024 * 1024):.0f}MB)",
             }
     except OSError as e:
         return {"success": False, "transcript": "", "error": f"Failed to access file: {e}"}
@@ -1236,7 +1235,6 @@ def _transcribe_local_command(file_path: str, model_name: str) -> Dict[str, Any]
                 subprocess.run(command, shell=True, check=True, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL)
             else:
                 subprocess.run(shlex.split(command), check=True, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL)
-            
 
             txt_files = sorted(Path(output_dir).glob("*.txt"))
             if not txt_files:

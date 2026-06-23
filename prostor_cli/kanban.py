@@ -37,7 +37,7 @@ _STATUS_ICONS = {
     "todo":     "◻",
     "ready":    "▶",
     "running":  "●",
-    "scheduled":"⏱",
+    "scheduled": "⏱",
     "blocked":  "⊘",
     "done":     "✓",
     "archived": "—",

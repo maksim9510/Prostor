@@ -475,7 +475,7 @@ async def _handle_yb_send_dm(args, **kw):
     media_files = BasePlatformAdapter.filter_media_delivery_paths(media_files)
 
     return tool_result(await send_dm(
-        group_code=group_code,        name=args.get("name", ""),
+        group_code=group_code, name=args.get("name", ""),
         message=message,
         user_id=args.get("user_id", ""),
         media_files=media_files or None,

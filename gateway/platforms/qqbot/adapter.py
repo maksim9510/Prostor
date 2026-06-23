@@ -694,7 +694,7 @@ class QQAdapter(BasePlatformAdapter):
                 payload = self._parse_json(msg.data)
                 if payload:
                     self._dispatch_payload(payload)
-            elif msg.type in {aiohttp.WSMsgType.PING,}:
+            elif msg.type in {aiohttp.WSMsgType.PING, }:
                 # aiohttp auto-replies with PONG
                 pass
             elif msg.type == aiohttp.WSMsgType.CLOSE:
@@ -941,7 +941,7 @@ class QQAdapter(BasePlatformAdapter):
         # Route by event type
         if event_type == "C2C_MESSAGE_CREATE":
             await self._handle_c2c_message(d, msg_id, content, author, timestamp)
-        elif event_type in {"GROUP_AT_MESSAGE_CREATE",}:
+        elif event_type in {"GROUP_AT_MESSAGE_CREATE", }:
             await self._handle_group_message(d, msg_id, content, author, timestamp)
         elif event_type in {"GUILD_MESSAGE_CREATE", "GUILD_AT_MESSAGE_CREATE"}:
             await self._handle_guild_message(d, msg_id, content, author, timestamp)
@@ -2677,7 +2677,7 @@ class QQAdapter(BasePlatformAdapter):
 
         req = ApprovalRequest(
             session_key=session_key,
-            title=f"Execute this command?",
+            title="Execute this command?",
             description=description,
             command_preview=command,
             timeout_sec=self._APPROVAL_TIMEOUT_SECONDS,

@@ -260,6 +260,7 @@ class TestRestoreSessionCwdMarkup:
 
         # Patch os.chdir to raise OSError for our target path.
         original_chdir = os.chdir
+
         def fake_chdir(path):
             if str(path) == str(target):
                 raise OSError("Permission denied")

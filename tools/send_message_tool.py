@@ -412,6 +412,7 @@ def _handle_send(args):
     if platform_name == "slack" and chat_id and chat_id.startswith("U"):
         try:
             import aiohttp
+
             async def _open_slack_dm(token, user_id):
                 url = "https://slack.com/api/conversations.open"
                 headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -1605,7 +1606,7 @@ async def _send_qqbot(pconfig, chat_id, message):
             token_data = token_resp.json()
             access_token = token_data.get("access_token")
             if not access_token:
-                return _error(f"QQBot: no access_token in response")
+                return _error("QQBot: no access_token in response")
 
             # Step 2: Send message via REST
             # QQ Bot API has separate endpoints for channels, C2C, and groups.

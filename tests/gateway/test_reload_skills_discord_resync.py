@@ -206,6 +206,7 @@ class TestHandleReloadSkillsCallsRefreshSkillGroup:
 
         class AsyncAdapter:
             name = "async-platform"
+
             async def refresh_skill_group(self):
                 async_called["flag"] = True
                 return (3, 0)

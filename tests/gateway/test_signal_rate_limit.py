@@ -25,6 +25,7 @@ def _patch_sleep_and_time(monkeypatch, capture: list):
     actually wait and advances time.monotonic to simulate time passing.
     Captures the requested duration per call."""
     offset = 0.0
+
     async def _fake_sleep(seconds):
         capture.append(seconds)
         nonlocal offset

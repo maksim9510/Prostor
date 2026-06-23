@@ -125,6 +125,7 @@ def test_gate_on_choice_always_persists_and_returns_always():
     self_ = _make_self(prompt_response="2")
 
     saves = []
+
     def _fake_save(key, value):
         saves.append((key, value))
         return True

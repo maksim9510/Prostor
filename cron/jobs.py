@@ -278,10 +278,10 @@ def parse_duration(s: str) -> int:
     match = re.match(r'^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$', s)
     if not match:
         raise ValueError(f"Invalid duration: '{s}'. Use format like '30m', '2h', or '1d'")
-    
+
     value = int(match.group(1))
     unit = match.group(2)[0]  # First char: m, h, or d
-    
+
     multipliers = {'m': 1, 'h': 60, 'd': 1440}
     return value * multipliers[unit]
 
@@ -307,7 +307,7 @@ def parse_schedule(schedule: str) -> Dict[str, Any]:
     schedule = schedule.strip()
     original = schedule
     schedule_lower = schedule.lower()
-    
+
     # "every X" pattern → recurring interval
     if schedule_lower.startswith("every "):
         duration_str = schedule[6:].strip()
@@ -317,7 +317,7 @@ def parse_schedule(schedule: str) -> Dict[str, Any]:
             "minutes": minutes,
             "display": f"every {minutes}m"
         }
-    
+
     # Check for cron expression (5 or 6 space-separated fields)
     # Cron fields: minute hour day month weekday [year]
     parts = schedule.split()
@@ -336,7 +336,7 @@ def parse_schedule(schedule: str) -> Dict[str, Any]:
             "expr": schedule,
             "display": schedule
         }
-    
+
     # ISO timestamp (contains T or looks like date)
     if 'T' in schedule or re.match(r'^\d{4}-\d{2}-\d{2}', schedule):
         try:
@@ -353,7 +353,7 @@ def parse_schedule(schedule: str) -> Dict[str, Any]:
             }
         except ValueError as e:
             raise ValueError(f"Invalid timestamp '{schedule}': {e}")
-    
+
     # Duration like "30m", "2h", "1d" → one-shot from now
     try:
         minutes = parse_duration(schedule)
@@ -365,7 +365,7 @@ def parse_schedule(schedule: str) -> Dict[str, Any]:
         }
     except ValueError:
         pass
-    
+
     raise ValueError(
         f"Invalid schedule '{original}'. Use:\n"
         f"  - Duration: '30m', '2h', '1d' (one-shot)\n"
@@ -979,11 +979,11 @@ def mark_job_run(job_id: str, success: bool, error: Optional[str] = None,
                 # Clear any external-fire claim so a re-armed recurring job can
                 # be claimed again on its next fire (Phase 4C CAS).
                 job["fire_claim"] = None
-                
+
                 # Increment completed count
                 if job.get("repeat"):
                     job["repeat"]["completed"] = job["repeat"].get("completed", 0) + 1
-                    
+
                     # Check if we've hit the repeat limit
                     times = job["repeat"].get("times")
                     completed = job["repeat"]["completed"]
@@ -992,7 +992,7 @@ def mark_job_run(job_id: str, success: bool, error: Optional[str] = None,
                         jobs.pop(i)
                         save_jobs(jobs)
                         return
-                
+
                 # Compute next run
                 job["next_run_at"] = compute_next_run(job["schedule"], now)
 
@@ -1233,10 +1233,10 @@ def save_job_output(job_id: str, output: str):
     job_output_dir = _job_output_dir(job_id)
     job_output_dir.mkdir(parents=True, exist_ok=True)
     _secure_dir(job_output_dir)
-    
+
     timestamp = _prostor_now().strftime("%Y-%m-%d_%H-%M-%S")
     output_file = job_output_dir / f"{timestamp}.md"
-    
+
     fd, tmp_path = tempfile.mkstemp(dir=str(job_output_dir), suffix='.tmp', prefix='.output_')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -1251,7 +1251,7 @@ def save_job_output(job_id: str, output: str):
         except OSError:
             pass
         raise
-    
+
     return output_file
 
 

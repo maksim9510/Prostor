@@ -38,7 +38,7 @@ def _read_single_file(op: Dict[str, Any], task_id: str) -> Dict[str, Any]:
     path = op.get("path", "")
     offset = op.get("offset", 1)
     limit = op.get("limit", 500)
-    
+
     if not path:
         return {"path": "", "success": False, "error": "path required"}
 
@@ -77,19 +77,19 @@ def _read_single_file(op: Dict[str, Any], task_id: str) -> Dict[str, Any]:
                     "error": str(result["error"])[:500],
                     "ms": round(elapsed, 2),
                 }
-            
+
             content = result.get("content", "")
             total_lines = result.get("total_lines")
             actual_offset = result.get("offset", offset)
             actual_limit = result.get("limit", limit)
-            
+
             # Auto-truncate content if too large
             max_chars = 50000  # ~12K tokens per file
             truncated = False
             if len(content) > max_chars:
                 content = content[:max_chars] + "\n... [truncated]"
                 truncated = True
-            
+
             return {
                 "path": path,
                 "success": True,
@@ -146,7 +146,7 @@ def batch_read_tool(files: List[Dict[str, Any]],
             return json.dumps({"success": False, "error": f"file {i}: path required"})
 
     num_ops = len(files)
-    
+
     # Compute workers
     if _compute_workers:
         workers, hw_info = _compute_workers(num_ops)
@@ -185,7 +185,7 @@ def batch_read_tool(files: List[Dict[str, Any]],
     failed = num_ops - succeeded
     total_ms = sum(r.get("ms", 0) for r in results if r)
     speedup = total_ms / elapsed_total if elapsed_total > 0 else 1.0
-    
+
     # Total content size for token estimation
     total_chars = sum(len(r.get("content", "")) for r in results if r and r.get("success"))
     est_tokens = total_chars // 4  # rough: 4 chars ≈ 1 token

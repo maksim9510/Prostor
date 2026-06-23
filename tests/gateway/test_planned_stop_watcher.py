@@ -253,6 +253,7 @@ def test_watcher_tolerates_marker_path_resolution_errors(tmp_path, monkeypatch, 
     from gateway import status as status_mod
 
     call_count = [0]
+
     def explode():
         call_count[0] += 1
         # First call (the one outside the loop, at thread start) is fine —

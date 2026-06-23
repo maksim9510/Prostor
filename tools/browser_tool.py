@@ -1034,7 +1034,7 @@ def _url_is_private(url: str) -> bool:
         # Hostname — must resolve to confirm it's private (bare "localhost"
         # resolves to 127.0.0.1 via /etc/hosts).  Short-circuit on obvious
         # names to avoid a DNS hop.
-        if hostname in {"localhost",} or hostname.endswith(".localhost"):
+        if hostname in {"localhost", } or hostname.endswith(".localhost"):
             return True
         if hostname.endswith(".local") or hostname.endswith(".lan") or hostname.endswith(".internal"):
             return True
@@ -1765,7 +1765,6 @@ def _get_session_info(task_id: Optional[str] = None) -> Dict[str, str]:
         _ensure_cdp_supervisor(task_id)
 
     return session_info
-
 
 
 def _find_agent_browser() -> str:
@@ -2771,9 +2770,6 @@ def browser_press(key: str, task_id: Optional[str] = None) -> str:
             "error": result.get("error", f"Failed to press {key}")
         }
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
-
-
-
 
 
 def browser_console(clear: bool = False, expression: Optional[str] = None, task_id: Optional[str] = None) -> str:

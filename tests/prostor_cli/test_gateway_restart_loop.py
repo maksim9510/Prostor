@@ -269,6 +269,7 @@ class TestTerminalToolGatewayLifecycleGuard:
     def _make_fake_env(self):
         class _FakeEnv:
             env = {}
+
             def execute(self, command, **kwargs):  # pragma: no cover
                 raise AssertionError("execute must not be reached")
         return _FakeEnv()
@@ -324,6 +325,7 @@ class TestTerminalToolGatewayLifecycleGuard:
 
         class _FakeEnv:
             env = {}
+
             def execute(self, command, **kwargs):
                 calls.append(command)
                 return {"output": "Active: running", "returncode": 0}
@@ -344,6 +346,7 @@ class TestTerminalToolGatewayLifecycleGuard:
 
         class _FakeEnv:
             env = {}
+
             def execute(self, command, **kwargs):
                 calls.append(command)
                 return {"output": "restarting...", "returncode": 0}

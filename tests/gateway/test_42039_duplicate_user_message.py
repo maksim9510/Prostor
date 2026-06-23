@@ -110,7 +110,7 @@ def _assert_user_call_has_skip_db(calls, expected_skip_db: bool):
                 user_calls.append(call)
     assert len(user_calls) >= 1, (
         f"Expected at least one user-role append_to_transcript call, "
-        f"got calls: {[c.args for c in calls if len(c.args)>=2]}"
+        f"got calls: {[c.args for c in calls if len(c.args) >= 2]}"
     )
     for call in user_calls:
         actual = call.kwargs.get("skip_db", False)

@@ -107,7 +107,7 @@ class AudioBridge:
                     "load-module",
                     "module-null-sink",
                     f"sink_name={sink_name}",
-                    f"sink_properties=device.description=ProstorMeetSink",
+                    "sink_properties=device.description=ProstorMeetSink",
                 ],
                 check=True,
                 capture_output=True,

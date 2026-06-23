@@ -613,6 +613,7 @@ class TestApprovalPromptEnrichment:
             turn={"id": "tu1", "status": "completed", "error": None},
         )
         captured = {}
+
         def cb(command, description, *, allow_permanent=True):
             captured["description"] = description
             return "once"
@@ -647,6 +648,7 @@ class TestApprovalPromptEnrichment:
             turn={"id": "tu1", "status": "completed", "error": None},
         )
         captured = {}
+
         def cb(command, description, *, allow_permanent=True):
             captured["command"] = command
             captured["description"] = description
@@ -675,6 +677,7 @@ class TestApprovalPromptEnrichment:
             turn={"id": "tu1", "status": "completed", "error": None},
         )
         captured = {}
+
         def cb(command, description, *, allow_permanent=True):
             captured["command"] = command
             return "once"

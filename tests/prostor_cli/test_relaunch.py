@@ -168,6 +168,7 @@ class TestRelaunch:
 
         def fake_subprocess_run(argv, **kwargs):
             captured_argv.append(list(argv))
+
             class _Result:
                 returncode = 0
             return _Result()

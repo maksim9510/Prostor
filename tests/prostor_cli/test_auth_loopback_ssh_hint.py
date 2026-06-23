@@ -137,6 +137,7 @@ class TestSshUserAtHost:
 
     def test_placeholder_when_socket_raises(self, monkeypatch):
         monkeypatch.setenv("USER", "charlie")
+
         def _raise():
             raise OSError("no network")
         monkeypatch.setattr(socket, "gethostname", _raise)

@@ -421,7 +421,7 @@ class TestBuildToolComplete:
             "tc-read",
             "read_file",
             '{"content":"1|hello\\n2|world","total_lines":2}',
-            function_args={"path":"README.md","offset":1,"limit":20},
+            function_args={"path": "README.md", "offset": 1, "limit": 20},
         )
         text = result.content[0].content.text
         assert "Read README.md" in text
@@ -447,7 +447,7 @@ class TestBuildToolComplete:
             "tc-process",
             "process",
             '{"processes":[{"session_id":"p1","status":"running","pid":123,"command":"npm run dev"}]}',
-            function_args={"action":"list"},
+            function_args={"action": "list"},
         )
         text = result.content[0].content.text
         assert "Processes: 1" in text
@@ -485,7 +485,7 @@ class TestBuildToolComplete:
             "tc-memory",
             "memory",
             '{"success":true,"target":"user","entries":["private long memory"],"usage":"1% — 19/2000 chars","entry_count":1,"message":"Entry added."}',
-            function_args={"action":"add","target":"user","content":"User likes concise ACP rendering."},
+            function_args={"action": "add", "target": "user", "content": "User likes concise ACP rendering."},
         )
         text = result.content[0].content.text
         assert "Memory add saved" in text

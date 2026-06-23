@@ -318,6 +318,7 @@ class TestTelegramClarifyCallback:
         class _DenyRunner:
             async def _handle_message(self, event):
                 return None
+
             def _is_user_authorized(self, source):
                 return False
 
@@ -405,9 +406,11 @@ class TestBaseAdapterClarifyFallback:
 
             async def connect(self): pass
             async def disconnect(self): pass
+
             async def send(self, chat_id, content, **kw):
                 self.sent.append({"chat_id": chat_id, "content": content})
                 return SendResult(success=True, message_id="1")
+
             async def edit(self, *a, **k): return SendResult(success=False)
             async def get_history(self, *a, **k): return []
             async def get_chat_info(self, *a, **k): return {}
@@ -434,13 +437,17 @@ class TestBaseAdapterClarifyFallback:
 
         class _Stub(BasePlatformAdapter):
             name = "stub"
+
             def __init__(self):
                 self.sent: list = []
+
             async def connect(self): pass
             async def disconnect(self): pass
+
             async def send(self, chat_id, content, **kw):
                 self.sent.append(content)
                 return SendResult(success=True, message_id="1")
+
             async def edit(self, *a, **k): return SendResult(success=False)
             async def get_history(self, *a, **k): return []
             async def get_chat_info(self, *a, **k): return {}

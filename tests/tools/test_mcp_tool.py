@@ -606,6 +606,7 @@ class TestToolHandler:
 
         try:
             handler = _make_tool_handler("test_srv", "greet", 120)
+
             def _interrupting_run(coro_or_factory, timeout=30):
                 coro = coro_or_factory() if callable(coro_or_factory) else coro_or_factory
                 coro.close()
@@ -1320,6 +1321,7 @@ class TestShutdown:
         for i in range(3):
             mock_server = MagicMock()
             mock_server.name = f"srv_{i}"
+
             async def slow_shutdown():
                 await asyncio.sleep(1)
             mock_server.shutdown = slow_shutdown

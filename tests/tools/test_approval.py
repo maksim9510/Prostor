@@ -176,8 +176,6 @@ class TestSessionKeyContext:
         assert "reset_current_session_key" in called_names
 
 
-
-
 class TestRmFalsePositiveFix:
     """Regression tests: filenames starting with 'r' must NOT trigger recursive delete."""
 
@@ -935,7 +933,7 @@ class TestNormalizationBypass:
         """ANSI CSI color codes wrapping 'rm' must be stripped and caught."""
         cmd = "\x1b[31mrm\x1b[0m -rf /"
         dangerous, key, desc = detect_dangerous_command(cmd)
-        assert dangerous is True, f"ANSI-wrapped 'rm -rf /' was not detected"
+        assert dangerous is True, "ANSI-wrapped 'rm -rf /' was not detected"
 
     def test_ansi_osc_embedded_rm(self):
         """ANSI OSC sequences embedded in command must be stripped."""
@@ -1663,6 +1661,7 @@ class TestApprovalTimeoutIsNotConsent:
 
         # Spawn the approval wait in a thread, then resolve it with "deny".
         result_holder = {}
+
         def _check():
             result_holder["r"] = mod.check_all_command_guards("rm -rf .git", "local")
         t = threading.Thread(target=_check)

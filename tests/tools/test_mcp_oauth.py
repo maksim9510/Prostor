@@ -620,7 +620,6 @@ def test_build_oauth_auth_preserves_server_url_path():
     assert captured["server_url"] == "https://mcp.notion.com/mcp"
 
 
-
 class TestPasteCallbackReader:
     """_paste_callback_reader parses redirect URLs / query strings from stdin."""
 
@@ -709,6 +708,7 @@ class TestPasteCallbackReader:
     def test_swallows_stdin_errors(self, monkeypatch):
         """OSError / interrupt on readline must not propagate."""
         result = self._empty_result()
+
         def raise_oserror():
             raise OSError("stdin closed")
         monkeypatch.setattr("sys.stdin", MagicMock(readline=raise_oserror))
@@ -725,6 +725,7 @@ class TestWaitForCallbackPasteIntegration:
         monkeypatch.setattr(mod, "_is_interactive", lambda: True)
         # Make stdin readline block forever so HTTP listener path drives the test;
         # we just want to verify the prompt was printed and the thread spawned.
+
         def block_forever():
             import threading
             threading.Event().wait()

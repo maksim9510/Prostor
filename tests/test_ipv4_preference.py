@@ -4,7 +4,6 @@ import importlib
 import socket
 
 
-
 def _reload_constants():
     """Reload prostor_constants to get a fresh apply_ipv4_preference."""
     import prostor_constants

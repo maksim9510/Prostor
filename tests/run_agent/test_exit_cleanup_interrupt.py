@@ -18,6 +18,7 @@ def _mock_runtime_provider(monkeypatch):
     since these tests don't care about provider resolution — the agent
     is mocked too."""
     import prostor_cli.runtime_provider as rp
+
     def _fake_resolve(*args, **kwargs):
         return {
             "provider": "openrouter",

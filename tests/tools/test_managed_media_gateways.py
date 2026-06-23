@@ -186,7 +186,7 @@ def test_managed_fal_submit_uses_gateway_origin_and_nous_token(monkeypatch):
         "image_generation_tool.py",
     )
     monkeypatch.setattr(image_generation_tool.uuid, "uuid4", lambda: "fal-submit-123")
-    
+
     image_generation_tool._submit_fal_request(
         "fal-ai/flux-2-pro",
         {"prompt": "test prompt", "num_images": 1},
@@ -404,6 +404,7 @@ def test_video_gen_direct_mode_when_fal_key_set(monkeypatch):
         direct_captured["arguments"] = arguments
         direct_captured["headers"] = headers
         # Return a mock handle
+
         class FakeHandle:
             def get(self):
                 return {"video": {"url": "https://fal.media/result.mp4"}}

@@ -344,6 +344,7 @@ class TestCaptureResponse:
             def start(self): pass
             def stop(self): pass
             def is_available(self): return True
+
             def capture(self, mode="som", app=None):
                 return CaptureResult(
                     mode=mode, width=1024, height=768,
@@ -352,6 +353,7 @@ class TestCaptureResponse:
                     png_bytes_len=100,
                 )
             # unused
+
             def click(self, **kw): ...
             def drag(self, **kw): ...
             def scroll(self, **kw): ...
@@ -412,6 +414,7 @@ class TestCaptureResponse:
             def start(self): pass
             def stop(self): pass
             def is_available(self): return True
+
             def capture(self, mode="som", app=None):
                 return CaptureResult(
                     mode=mode, width=800, height=600,
@@ -422,6 +425,7 @@ class TestCaptureResponse:
                     ],
                     app="Safari",
                 )
+
             def click(self, **kw): ...
             def drag(self, **kw): ...
             def scroll(self, **kw): ...
@@ -454,6 +458,7 @@ class TestCaptureResponse:
             def start(self): pass
             def stop(self): pass
             def is_available(self): return True
+
             def capture(self, mode="som", app=None):
                 return CaptureResult(
                     mode=mode, width=800, height=600,
@@ -461,6 +466,7 @@ class TestCaptureResponse:
                     elements=list(elements),
                     app="Obsidian",
                 )
+
             def click(self, **kw): ...
             def drag(self, **kw): ...
             def scroll(self, **kw): ...
@@ -470,7 +476,6 @@ class TestCaptureResponse:
             def focus_app(self, app, raise_window=False): ...
 
         return FakeBackend()
-
 
     def test_capture_ax_caps_elements_at_default_for_dense_trees(self):
         """Regression for #22865: an Electron-style 600-element AX tree must
@@ -603,12 +608,14 @@ class TestCaptureResponse:
             def start(self): pass
             def stop(self): pass
             def is_available(self): return True
+
             def capture(self, mode="som", app=None):
                 return CaptureResult(
                     mode=mode, width=800, height=600,
                     png_b64=fake_png, elements=list(elements),
                     app="Obsidian",
                 )
+
             def click(self, **kw): ...
             def drag(self, **kw): ...
             def scroll(self, **kw): ...

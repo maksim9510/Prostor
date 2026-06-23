@@ -1335,6 +1335,7 @@ class TestProcessQuotedContext:
     async def test_quote_with_text_only(self):
         adapter = self._make_adapter()
         # Stub out _process_attachments since there are no attachments anyway.
+
         async def fake_process(_a):
             return {"image_urls": [], "image_media_types": [],
                     "voice_transcripts": [], "attachment_info": ""}
@@ -1623,7 +1624,6 @@ class TestDefaultInteractionDispatch:
             tools.approval.resolve_gateway_approval = orig
 
         assert resolve_calls == [("agent:main:qqbot:c2c:u", "deny", False)]
-
 
     @pytest.mark.asyncio
     async def test_approval_click_rejects_unauthorized_operator(self):

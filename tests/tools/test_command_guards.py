@@ -127,7 +127,6 @@ class TestTirithBlock:
         assert result["approved"] is False
 
 
-
 # ---------------------------------------------------------------------------
 # tirith allow + dangerous command (existing behavior preserved)
 # ---------------------------------------------------------------------------
@@ -341,7 +340,6 @@ class TestWarnEmptyFindings:
         cb.assert_called_once()
         desc = cb.call_args[0][1]
         assert "Security scan" in desc
-
 
 
 # ---------------------------------------------------------------------------

@@ -248,6 +248,7 @@ class TestFallbackChainDedup:
         # Stub out resolve_provider_client so we can assert which entry was
         # actually used — return a MagicMock client tagged with the provider.
         called = []
+
         def _resolve(provider, model=None, raw_codex=False, **kwargs):
             called.append((provider, model))
             return _mock_client(), model
@@ -277,6 +278,7 @@ class TestFallbackChainDedup:
         agent.base_url = "http://127.0.0.1:7891/v1"
 
         called = []
+
         def _resolve(provider, model=None, raw_codex=False, **kwargs):
             called.append((provider, model))
             return _mock_client(), model

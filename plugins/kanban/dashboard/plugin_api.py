@@ -1322,6 +1322,7 @@ def list_diagnostics(
         # Sort: highest severity first, then most recent.
         from prostor_cli.kanban_diagnostics import SEVERITY_ORDER
         sev_idx = {s: i for i, s in enumerate(SEVERITY_ORDER)}
+
         def _sort_key(row):
             top = row["diagnostics"][0]
             return (
@@ -1336,7 +1337,6 @@ def list_diagnostics(
         }
     finally:
         conn.close()
-
 
 
 # ---------------------------------------------------------------------------

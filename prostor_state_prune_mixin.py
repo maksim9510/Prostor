@@ -208,4 +208,3 @@ class SessionPruneMixin:
             result["error"] = str(exc)
 
         return result
-

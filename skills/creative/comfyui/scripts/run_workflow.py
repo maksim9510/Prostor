@@ -204,7 +204,7 @@ class ComfyRunner:
                     s = data.get("status")
                     if s == "completed":
                         return {"status": "success", "data": data}
-                    if s in {"failed",}:
+                    if s in {"failed", }:
                         return {"status": "error", "data": data}
                     if s == "cancelled":
                         return {"status": "cancelled", "data": data}

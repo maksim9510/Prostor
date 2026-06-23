@@ -229,4 +229,3 @@ class SessionFtsMixin:
                         "FTS optimize failed for %s: %s", tbl, exc
                     )
         return optimized
-

@@ -1301,7 +1301,6 @@ class WhatsAppCloudAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
 
         return str(out_path), mime or None
 
-
     # ------------------------------------------------------------------ inbound
     async def _handle_health(self, request: "web.Request") -> "web.Response":
         return web.json_response(

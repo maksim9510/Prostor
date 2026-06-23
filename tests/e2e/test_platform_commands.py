@@ -146,6 +146,7 @@ class TestSlashCommands:
         runner.config.quick_commands = {
             "s": {"type": "alias", "target": "/status extra-arg"}
         }
+
         async def _handle_status(event):
             assert event.get_command_args() == "extra-arg"
             return "status via alias"
@@ -159,7 +160,6 @@ class TestSlashCommands:
         assert response_text == "status via alias"
         runner._handle_status_command.assert_awaited_once()
         runner._handle_message_with_agent.assert_not_awaited()
-
 
 
 class TestSessionLifecycle:
@@ -227,7 +227,7 @@ class TestSendFailureResilience:
     async def test_send_failure_does_not_crash_pipeline(self, adapter, platform):
         """If send() returns failure, the pipeline should not raise."""
         adapter.send = AsyncMock(return_value=SendResult(success=False, error="network timeout"))
-        adapter.set_message_handler(adapter._message_handler) # re-wire with same handler
+        adapter.set_message_handler(adapter._message_handler)  # re-wire with same handler
 
         event = make_event(platform, "/help")
         # Should not raise — pipeline handles send failures internally

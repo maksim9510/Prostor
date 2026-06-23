@@ -2801,7 +2801,6 @@ def test_latest_summaries_batch_omits_tasks_without_summary(kanban_home):
         assert kb.latest_summaries(conn, []) == {}
 
 
-
 # ---------------------------------------------------------------------------
 # NFS / network-filesystem fallback (see prostor_state.apply_wal_with_fallback)
 # ---------------------------------------------------------------------------
@@ -4147,7 +4146,6 @@ def test_connect_pragmas_applied_on_reconnect(tmp_path):
         assert conn.execute("PRAGMA synchronous").fetchone()[0] == 2
 
 
-
 def test_pragmas_not_accidentally_disabled_by_migrate_path(tmp_path):
     """Migration path must not reset connection pragmas."""
     db_path = tmp_path / "legacy.db"
@@ -4474,7 +4472,6 @@ def test_dispatch_once_still_reaps_via_extracted_fn(kanban_home):
                 pids = kb.reap_worker_zombies()
 
     assert pids == [99999]
-
 
 
 # ---------------------------------------------------------------------------

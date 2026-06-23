@@ -589,8 +589,6 @@ def test_run_doctor_accepts_vendor_slugs_for_named_custom_provider(monkeypatch, 
     assert "Either set model.provider to 'openrouter', or drop the vendor prefix." not in out
 
 
-
-
 def test_run_doctor_accepts_kimi_coding_cn_provider(monkeypatch, tmp_path):
     home = tmp_path / ".prostor"
     home.mkdir(parents=True, exist_ok=True)
@@ -880,11 +878,13 @@ class TestGitHubTokenCheck:
         # Mock gh to return success
         import shutil
         real_which = shutil.which
+
         def mock_which(cmd):
             return "/usr/local/bin/gh" if cmd == "gh" else real_which(cmd)
         monkeypatch.setattr(shutil, "which", mock_which)
 
         call_log = []
+
         def mock_run(cmd, **kwargs):
             call_log.append(cmd)
             if cmd[:2] == ["gh", "auth"]:

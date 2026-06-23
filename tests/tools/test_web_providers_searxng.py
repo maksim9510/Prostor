@@ -90,9 +90,9 @@ class TestSearXNGSearchProviderSearch:
         from plugins.web.searxng.provider import SearXNGWebSearchProvider
         unordered = {
             "results": [
-                {"title": "Low",  "url": "https://low.example.com",  "content": "", "score": 0.1},
+                {"title": "Low", "url": "https://low.example.com", "content": "", "score": 0.1},
                 {"title": "High", "url": "https://high.example.com", "content": "", "score": 0.99},
-                {"title": "Mid",  "url": "https://mid.example.com",  "content": "", "score": 0.5},
+                {"title": "Mid", "url": "https://mid.example.com", "content": "", "score": 0.5},
             ]
         }
         mock_resp = self._make_mock_response(unordered)
@@ -198,6 +198,7 @@ class TestSearXNGSearchProviderSearch:
         mock_resp = self._make_mock_response({"results": []})
 
         calls = []
+
         def capture_get(url, **kwargs):
             calls.append(url)
             return mock_resp
@@ -352,6 +353,7 @@ class TestSearXNGOnlyExtractCrawlErrors:
         monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": "searxng"})
         monkeypatch.setenv("SEARXNG_URL", "http://localhost:8080")
         monkeypatch.setattr(web_tools, "_is_tool_gateway_ready", lambda: False)
+
         async def _allow_ssrf(_url: str) -> bool:
             return True
 

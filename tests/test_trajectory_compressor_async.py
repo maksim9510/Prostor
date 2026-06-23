@@ -100,10 +100,10 @@ class TestSourceLineVerification:
         # should not exist — only self.async_client = None
         lines = src.split("\n")
         for i, line in enumerate(lines, 1):
-            if "self.async_client = AsyncOpenAI(" in line and "_get_async_client" not in lines[max(0,i-3):i+1]:
+            if "self.async_client = AsyncOpenAI(" in line and "_get_async_client" not in lines[max(0, i - 3):i + 1]:
                 # Allow it inside _get_async_client method
                 # Check if we're inside _get_async_client by looking at context
-                context = "\n".join(lines[max(0,i-20):i+1])
+                context = "\n".join(lines[max(0, i - 20):i + 1])
                 if "_get_async_client" not in context:
                     pytest.fail(
                         f"Line {i}: AsyncOpenAI created eagerly outside _get_async_client()"

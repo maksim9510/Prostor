@@ -129,6 +129,7 @@ def test_successful_spawn_does_not_reset_failure_counter(kanban_home, all_assign
     complete_task reset for the replacement point.)
     """
     calls = [0]
+
     def _flaky_spawn(task, ws):
         calls[0] += 1
         if calls[0] <= 2:
@@ -466,6 +467,7 @@ def test_daemon_keeps_going_after_tick_exception(kanban_home, monkeypatch):
     monkeypatch.setattr(kb, "dispatch_once", _boom)
 
     stop = threading.Event()
+
     def _runner():
         kb.run_daemon(interval=0.05, stop_event=stop)
 
@@ -939,6 +941,7 @@ def test_max_runtime_terminates_overrun_worker(kanban_home):
     """A running task whose elapsed time exceeds max_runtime_seconds gets
     SIGTERM'd, emits a ``timed_out`` event, and goes back to ready."""
     killed = []
+
     def _signal_fn(pid, sig):
         killed.append((pid, sig))
 
@@ -976,7 +979,7 @@ def test_max_runtime_terminates_overrun_worker(kanban_home):
             assert killed and killed[0][0] == os.getpid()
 
             task = kb.get_task(conn, tid)
-            assert task.status == "ready",                 f"timed-out task should reset to ready, got {task.status}"
+            assert task.status == "ready", f"timed-out task should reset to ready, got {task.status}"
             assert task.worker_pid is None
             assert task.last_heartbeat_at is None
 
@@ -1074,8 +1077,10 @@ def test_enforce_max_runtime_integrates_with_dispatch(kanban_home, monkeypatch):
     # before timeout enforcement runs. After SIGTERM in enforce_max_runtime,
     # pretend the worker died so the grace wait exits fast.
     state = {"sent_term": False}
+
     def _alive(pid):
         return not state["sent_term"]
+
     def _signal(pid, sig):
         import signal as _sig
         if sig == _sig.SIGTERM:
@@ -2876,7 +2881,6 @@ def test_build_worker_context_includes_runtime_timeout_budget(kanban_home, monke
     assert "Terminal timeout: 3570s" in ctx
 
 
-
 # ---------------------------------------------------------------------------
 # Per-task force-loaded skills
 # ---------------------------------------------------------------------------
@@ -3419,6 +3423,7 @@ def test_check_dispatcher_presence_warns_when_flag_off(monkeypatch):
 def test_check_dispatcher_presence_silent_on_probe_error(monkeypatch):
     """If the probe itself errors, we stay silent."""
     from prostor_cli import kanban as kb_cli
+
     def _raise():
         raise RuntimeError("boom")
     monkeypatch.setattr("gateway.status.get_running_pid", _raise)
@@ -4199,8 +4204,10 @@ def test_enforce_max_runtime_increments_consecutive_failures(kanban_home, monkey
     infinite-respawn gap before unification)."""
     import prostor_cli.kanban_db as _kb
     state = {"sent_term": False}
+
     def _alive(pid):
         return not state["sent_term"]
+
     def _signal(pid, sig):
         import signal as _sig
         if sig == _sig.SIGTERM:
@@ -4252,8 +4259,10 @@ def test_repeated_timeouts_trip_the_circuit_breaker(kanban_home, monkeypatch):
     """
     import prostor_cli.kanban_db as _kb
     state = {"sent_term": False}
+
     def _alive(pid):
         return not state["sent_term"]
+
     def _signal(pid, sig):
         import signal as _sig
         if sig == _sig.SIGTERM:

@@ -595,6 +595,7 @@ class TestInstalledAtStamp:
         # update writes a NEW stamp (installs within the same second otherwise
         # collide at iso-8601 seconds resolution).
         import datetime as _dt
+
         class _FakeDT(_dt.datetime):
             @classmethod
             def now(cls, tz=None):

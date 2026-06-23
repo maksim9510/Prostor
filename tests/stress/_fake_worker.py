@@ -26,7 +26,7 @@ def main():
     for i in range(3):
         time.sleep(0.3)
         subprocess.run(
-            ["prostor", "kanban", "heartbeat", tid, "--note", f"progress {i+1}/3"],
+            ["prostor", "kanban", "heartbeat", tid, "--note", f"progress {i + 1}/3"],
             check=True, capture_output=True,
         )
 

@@ -72,7 +72,7 @@ _TERMINAL_AUTH_REASONS = frozenset({
     "invalid_token",        # RFC 6750: bearer token is malformed/expired/revoked
     "invalid_grant",        # RFC 6749: refresh_token rejected during refresh
     "unauthorized_client",  # RFC 6749: client no longer authorized
-    "refresh_token_reused", # Single-use refresh token consumed by another process
+    "refresh_token_reused",  # Single-use refresh token consumed by another process
 })
 
 # How long a DEAD manual credential is preserved before being pruned.

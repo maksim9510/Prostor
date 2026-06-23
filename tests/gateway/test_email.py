@@ -1023,6 +1023,7 @@ class TestSendEmailStandalone(unittest.TestCase):
         import ssl
         from plugins.platforms.email.adapter import _standalone_send as _email_send
         from types import SimpleNamespace
+
         async def _send_email(extra, chat_id, message):
             return await _email_send(SimpleNamespace(token=None, api_key=None, extra=extra or {}), chat_id, message)
 
@@ -1054,6 +1055,7 @@ class TestSendEmailStandalone(unittest.TestCase):
         import asyncio
         from plugins.platforms.email.adapter import _standalone_send as _email_send
         from types import SimpleNamespace
+
         async def _send_email(extra, chat_id, message):
             return await _email_send(SimpleNamespace(token=None, api_key=None, extra=extra or {}), chat_id, message)
 
@@ -1071,6 +1073,7 @@ class TestSendEmailStandalone(unittest.TestCase):
         import asyncio
         from plugins.platforms.email.adapter import _standalone_send as _email_send
         from types import SimpleNamespace
+
         async def _send_email(extra, chat_id, message):
             return await _email_send(SimpleNamespace(token=None, api_key=None, extra=extra or {}), chat_id, message)
 

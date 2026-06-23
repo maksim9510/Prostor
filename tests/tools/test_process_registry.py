@@ -952,8 +952,10 @@ class TestKillProcess:
         class FakeProcess:
             def __init__(self, pid):
                 self.pid = pid
+
             def children(self, recursive=False):
                 return []
+
             def terminate(self):
                 terminate_calls.append(("terminate", self.pid))
 

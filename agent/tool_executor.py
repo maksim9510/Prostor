@@ -705,11 +705,11 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         elif not agent.quiet_mode and getattr(agent, "tool_progress_mode", "all") != "off":
             _preview_str = _multimodal_text_summary(function_result)
             if agent.verbose_logging:
-                print(f"  ✅ Tool {i+1} completed in {tool_duration:.2f}s")
+                print(f"  ✅ Tool {i + 1} completed in {tool_duration:.2f}s")
                 print(agent._wrap_verbose("Result: ", _preview_str))
             else:
                 response_preview = _preview_str[:agent.log_prefix_chars] + "..." if len(_preview_str) > agent.log_prefix_chars else _preview_str
-                print(f"  ✅ Tool {i+1} completed in {tool_duration:.2f}s - {response_preview}")
+                print(f"  ✅ Tool {i + 1} completed in {tool_duration:.2f}s - {response_preview}")
 
         agent._current_tool = None
         agent._touch_activity(f"tool completed: {name} ({tool_duration:.1f}s)")
@@ -766,7 +766,6 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         agent._apply_pending_steer_to_tool_results(messages, num_tools)
 
 
-
 def execute_tool_calls_sequential(agent, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
     """Execute tool calls sequentially (original behavior). Used for single calls or interactive tools."""
     for i, tool_call in enumerate(assistant_message.tool_calls, 1):
@@ -774,7 +773,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         # If the user sent "stop" during a previous tool's execution,
         # do NOT start any more tools -- skip them all immediately.
         if agent._interrupt_requested:
-            remaining_calls = assistant_message.tool_calls[i-1:]
+            remaining_calls = assistant_message.tool_calls[i - 1:]
             if remaining_calls:
                 agent._vprint(f"{agent.log_prefix}⚡ Interrupt: skipping {len(remaining_calls)} tool call(s)", force=True)
             for skipped_tc in remaining_calls:
@@ -1432,8 +1431,6 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
     # applied to sequential execution as well.
     if num_tools_seq > 0:
         agent._apply_pending_steer_to_tool_results(messages, num_tools_seq)
-
-
 
 
 __all__ = [

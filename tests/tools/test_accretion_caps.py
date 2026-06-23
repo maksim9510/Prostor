@@ -19,7 +19,6 @@ These tests pin the new caps + prune hooks.
 """
 
 
-
 class TestReadTrackerCaps:
     def setup_method(self):
         from tools import file_tools
@@ -142,6 +141,7 @@ class TestCompletionConsumedPrune:
 
         reg = ProcessRegistry()
         # Fake a finished session whose started_at is older than the TTL.
+
         class _FakeSess:
             def __init__(self, sid):
                 self.id = sid

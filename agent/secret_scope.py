@@ -202,4 +202,3 @@ def build_profile_secret_scope(prostor_home: Path) -> Dict[str, str]:
     from ``os.environ`` directly, so the scope holds only profile secrets.
     """
     return load_env_file(Path(prostor_home) / ".env")
-

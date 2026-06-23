@@ -555,6 +555,7 @@ class TestGetSectionConfigSummary:
             # Some platforms require a specific value shape (e.g. WhatsApp
             # needs the literal "true"). Use a sentinel that satisfies every
             # real validator _platform_status() currently checks.
+
             def env_side(key, _target=env_var):
                 if key != _target:
                     return ""

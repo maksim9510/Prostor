@@ -388,6 +388,7 @@ class TestEnsureDirectAliases:
 
         call_count = [0]
         original_load = ms._load_direct_aliases
+
         def counting_load():
             call_count[0] += 1
             return original_load()

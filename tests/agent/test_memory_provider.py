@@ -1269,6 +1269,7 @@ class TestHonchoCadenceTracking:
         p._recall_mode = "context"
         p._session_key = "test-session"
         # Simulate a manager that records prefetch calls
+
         class FakeManager:
             def prefetch_context(self, key, query=None):
                 pass

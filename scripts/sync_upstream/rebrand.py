@@ -371,7 +371,7 @@ def main() -> int:
 
     manifest.save(manifest_path)
 
-    print(f"Rebrand complete:")
+    print("Rebrand complete:")
     print(f"  Rebranded:       {reb_count}")
     print(f"  Skipped (post):  {skipped_count}")
     print(f"  Skipped (protected): {protected_count}")

@@ -35,7 +35,7 @@ def make_spawn_fn(home: str):
             "PYTHONPATH": WT,
             "PROSTOR_KANBAN_TASK": task.id,
             "PROSTOR_KANBAN_WORKSPACE": workspace,
-            "PATH": f"{os.path.dirname(PY)}:{os.environ.get('PATH','')}",
+            "PATH": f"{os.path.dirname(PY)}:{os.environ.get('PATH', '')}",
         }
         log_f = open(log_path, "ab")
         proc = subprocess.Popen(
@@ -68,7 +68,7 @@ def main():
 exec {PY} -m prostor_cli.main "$@"
 """)
     os.chmod(shim_path, 0o755)
-    os.environ["PATH"] = f"{shim_dir}:{os.environ.get('PATH','')}"
+    os.environ["PATH"] = f"{shim_dir}:{os.environ.get('PATH', '')}"
 
     kb.init_db()
     conn = kb.connect()

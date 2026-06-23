@@ -1344,10 +1344,11 @@ def _dump_subagent_timeout_diagnostic(
         dump_path = logs_dir / f"subagent-timeout-{subagent_id}-{ts}.log"
 
         lines: List[str] = []
+
         def _w(line: str = "") -> None:
             lines.append(line)
 
-        _w(f"# Subagent timeout diagnostic — issue #14726")
+        _w("# Subagent timeout diagnostic — issue #14726")
         _w(f"# Generated: {_dt.datetime.now().isoformat()}")
         _w("")
         _w("## Timeout")
@@ -2357,7 +2358,7 @@ def delegate_task(
                         status = entry.get("status", "?")
                         icon = "✓" if status == "completed" else "✗"
                         remaining = n_tasks - completed_count
-                        completion_line = f"{icon} [{idx+1}/{n_tasks}] {label}  ({dur}s)"
+                        completion_line = f"{icon} [{idx + 1}/{n_tasks}] {label}  ({dur}s)"
                         if spinner_ref:
                             try:
                                 spinner_ref.print_above(completion_line)

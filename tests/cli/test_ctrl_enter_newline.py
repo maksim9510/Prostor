@@ -81,6 +81,7 @@ def test_proc_version_microsoft_marker_preserves_newline():
     with patch.object(sys, "platform", "linux"):
         with patch.dict(os.environ, {}, clear=True):
             real_open = open
+
             def _fake_open(path, *args, **kwargs):
                 if "/proc/version" in str(path) or "/proc/sys/kernel/osrelease" in str(path):
                     return StringIO("Linux version 5.15.167.4-microsoft-standard-WSL2")

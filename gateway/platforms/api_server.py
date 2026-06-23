@@ -3420,7 +3420,6 @@ class APIServerAdapter(BasePlatformAdapter):
 
         return web.json_response({"status": "accepted", "job_id": job_id}, status=202)
 
-
     # ------------------------------------------------------------------
     # Output extraction helper
     # ------------------------------------------------------------------
@@ -4066,7 +4065,6 @@ class APIServerAdapter(BasePlatformAdapter):
             self._run_streams_created.pop(run_id, None)
 
         return response
-
 
     async def _handle_run_approval(self, request: "web.Request") -> "web.Response":
         """POST /v1/runs/{run_id}/approval — resolve a pending run approval."""

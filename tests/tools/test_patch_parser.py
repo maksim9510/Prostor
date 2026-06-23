@@ -211,11 +211,13 @@ class TestAdditionOnlyHunks:
         # Apply to a file that contains the context hint
         class FakeFileOps:
             written = None
+
             def read_file_raw(self, path):
                 return SimpleNamespace(
                     content="def main():\n    pass\n",
                     error=None,
                 )
+
             def write_file(self, path, content):
                 self.written = content
                 return SimpleNamespace(error=None)
@@ -239,11 +241,13 @@ class TestAdditionOnlyHunks:
 
         class FakeFileOps:
             written = None
+
             def read_file_raw(self, path):
                 return SimpleNamespace(
                     content="existing = True\n",
                     error=None,
                 )
+
             def write_file(self, path, content):
                 self.written = content
                 return SimpleNamespace(error=None)
@@ -279,8 +283,10 @@ class TestReadFileRaw:
 
         class FakeFileOps:
             written = None
+
             def read_file_raw(self, path):
                 return SimpleNamespace(content=file_content, error=None)
+
             def write_file(self, path, content):
                 self.written = content
                 return SimpleNamespace(error=None)
@@ -313,8 +319,10 @@ class TestReadFileRaw:
 
         class FakeFileOps:
             written = None
+
             def read_file_raw(self, path):
                 return SimpleNamespace(content=file_content, error=None)
+
             def write_file(self, path, content):
                 self.written = content
                 return SimpleNamespace(error=None)

@@ -2191,7 +2191,6 @@ class TestAzureAnthropicEnvVarHint:
 
         assert resolved["api_key"] == "fallback-works"
 
-
     def test_no_key_anywhere_raises_helpful_error(self, monkeypatch):
         """When nothing resolves, the error message mentions key_env as an option."""
         monkeypatch.delenv("AZURE_ANTHROPIC_KEY", raising=False)
@@ -2215,6 +2214,7 @@ class TestAzureAnthropicEnvVarHint:
         })
         monkeypatch.setattr(rp, "load_pool", lambda provider: None)
         called = {"resolve_anthropic_token": False}
+
         def _fake_resolve():
             called["resolve_anthropic_token"] = True
             return "token-from-resolver"

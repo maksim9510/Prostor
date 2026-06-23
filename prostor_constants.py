@@ -601,7 +601,6 @@ def get_skills_dir() -> Path:
     return get_prostor_home() / "skills"
 
 
-
 def get_env_path() -> Path:
     """Return the path to the ``.env`` file under PROSTOR_HOME."""
     return get_prostor_home() / ".env"

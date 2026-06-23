@@ -14,7 +14,6 @@ import types
 from unittest.mock import MagicMock, patch
 
 
-
 # ===========================================================================
 # Helpers
 # ===========================================================================
@@ -174,6 +173,7 @@ class TestSyncSessionKeyAfterAutoCompress:
         class _ImmediateThread:
             def __init__(self, target=None, daemon=None, **kw):
                 self._target = target
+
             def start(self):
                 self._target()
 
@@ -219,6 +219,7 @@ class TestPendingTitleValueError:
         class _Agent:
             session_id = "test-session"
             _cached_system_prompt = ""
+
             def run_conversation(self, prompt, **kw):
                 return {
                     "final_response": "ok",
@@ -242,6 +243,7 @@ class TestPendingTitleValueError:
         class _ImmediateThread:
             def __init__(self, target=None, daemon=None, **kw):
                 self._target = target
+
             def start(self):
                 self._target()
 
@@ -273,6 +275,7 @@ class TestPendingTitleValueError:
         class _Agent:
             session_id = "test-session"
             _cached_system_prompt = ""
+
             def run_conversation(self, prompt, **kw):
                 return {
                     "final_response": "ok",
@@ -296,6 +299,7 @@ class TestPendingTitleValueError:
         class _ImmediateThread:
             def __init__(self, target=None, daemon=None, **kw):
                 self._target = target
+
             def start(self):
                 self._target()
 

@@ -106,6 +106,7 @@ class TestClient:
     def test_add_memory_tries_fallback(self):
         c = self._make_client()
         call_count = 0
+
         def fake_request(method, path, **kwargs):
             nonlocal call_count
             call_count += 1
@@ -121,6 +122,7 @@ class TestClient:
     def test_delete_memory_tries_fallback(self):
         c = self._make_client()
         call_count = 0
+
         def fake_request(method, path, **kwargs):
             nonlocal call_count
             call_count += 1

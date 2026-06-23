@@ -58,9 +58,9 @@ def main():
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     scenarios = sorted({row["scenario"] for row in summary})
 
-    print(f"{'='*78}")
-    print(f"  Live test results: tool_search ENABLED vs DISABLED")
-    print(f"{'='*78}\n")
+    print(f"{'=' * 78}")
+    print("  Live test results: tool_search ENABLED vs DISABLED")
+    print(f"{'=' * 78}\n")
 
     fails = 0
     for sid in scenarios:
@@ -73,7 +73,7 @@ def main():
         print(f"┌─ {sid}  ({en['scenario_description']})")
         print(f"│  Prompt: {en['prompt'][:120]}")
         print(f"│  Expected underlying tools: {sorted(expected) or '(none)'}")
-        print(f"│")
+        print("│")
 
         for label, rec in [("ENABLED ", en), ("DISABLED", di)]:
             called_under = [c["name"] for c in rec["underlying_tool_calls"]]
@@ -104,10 +104,10 @@ def main():
         print(f"│  Δ round-trip cost: enabled used {en_bridges + en_underlying} calls vs disabled {di_underlying}  →  +{overhead}")
         print(f"│  Final (enabled):  {(en.get('final_response') or '')[:140]}")
         print(f"│  Final (disabled): {(di.get('final_response') or '')[:140]}")
-        print(f"└──")
+        print("└──")
         print()
 
-    print(f"\nFails: {fails}/{2*len(scenarios)}")
+    print(f"\nFails: {fails}/{2 * len(scenarios)}")
 
 
 if __name__ == "__main__":

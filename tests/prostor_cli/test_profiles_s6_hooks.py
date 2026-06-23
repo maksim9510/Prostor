@@ -161,6 +161,7 @@ def test_register_swallows_no_backend_runtime_error(
     """When `get_service_manager()` raises RuntimeError (no backend
     detected), the hook must silently no-op."""
     _patch_detect_s6(monkeypatch)
+
     def _no_backend() -> None:
         raise RuntimeError("no supported service manager detected")
     monkeypatch.setattr(

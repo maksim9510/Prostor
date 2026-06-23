@@ -1900,7 +1900,7 @@ class TestUtf16OverflowDetection:
         )
         # truncate_message: emit two halves so we can assert the split fired
         adapter.truncate_message = MagicMock(
-            side_effect=lambda text, limit, **kw: [text[:len(text)//2], text[len(text)//2:]],
+            side_effect=lambda text, limit, **kw: [text[:len(text) // 2], text[len(text) // 2:]],
         )
 
         config = StreamConsumerConfig(edit_interval=0.01, buffer_threshold=5)
@@ -1947,4 +1947,3 @@ class TestUtf16OverflowDetection:
         # auto-attr mock. Verified indirectly by all the other tests in
         # this file passing — they all use MagicMock adapters.
         assert consumer is not None
-

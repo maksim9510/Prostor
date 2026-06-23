@@ -21,16 +21,20 @@ def _make_httpx_mock():
 
     class MockResp:
         status_code = 200
+
         def json(self):
             return {"timestamp": 1234567890}
+
         def raise_for_status(self):
             pass
 
     class MockClient:
         async def __aenter__(self):
             return self
+
         async def __aexit__(self, *a):
             pass
+
         async def post(self, *args, **kwargs):
             return MockResp()
 

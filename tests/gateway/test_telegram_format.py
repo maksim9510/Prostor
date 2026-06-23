@@ -851,6 +851,7 @@ class TestEditMessageStreamingSafety:
         adapter._bot.edit_message_text = AsyncMock()
         # Continuation sends return monotonically increasing message ids.
         _next_id = [1000]
+
         async def _fake_send(**kwargs):
             _next_id[0] += 1
             return SimpleNamespace(message_id=_next_id[0])

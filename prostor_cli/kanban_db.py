@@ -222,10 +222,10 @@ def _resolve_rate_limit_cooldown_seconds() -> int:
 # plenty of headroom. Each constant is tuned independently so users
 # who need to relax one don't have to relax all of them.
 _CTX_MAX_PRIOR_ATTEMPTS = 10      # most recent N prior runs shown in full
-_CTX_MAX_COMMENTS       = 30      # most recent N comments shown in full
-_CTX_MAX_FIELD_BYTES    = 4 * 1024   # 4 KB per summary/error/metadata/result
-_CTX_MAX_BODY_BYTES     = 8 * 1024   # 8 KB per task.body (opening post)
-_CTX_MAX_COMMENT_BYTES  = 2 * 1024   # 2 KB per comment
+_CTX_MAX_COMMENTS = 30      # most recent N comments shown in full
+_CTX_MAX_FIELD_BYTES = 4 * 1024   # 4 KB per summary/error/metadata/result
+_CTX_MAX_BODY_BYTES = 8 * 1024   # 8 KB per task.body (opening post)
+_CTX_MAX_COMMENT_BYTES = 2 * 1024   # 2 KB per comment
 
 
 # ---------------------------------------------------------------------------
@@ -1804,8 +1804,8 @@ def _migrate_add_optional_columns(conn: sqlite3.Connection) -> None:
     # per DB because after the UPDATE no rows match the old kinds.
     _EVENT_RENAMES = (
         # (old, new)
-        ("ready",              "promoted"),
-        ("priority",           "reprioritized"),
+        ("ready", "promoted"),
+        ("priority", "reprioritized"),
         ("spawn_auto_blocked", "gave_up"),
     )
     for old, new in _EVENT_RENAMES:
@@ -4182,7 +4182,6 @@ def block_task(
         return True
 
 
-
 def promote_task(
     conn: sqlite3.Connection,
     task_id: str,
@@ -5418,7 +5417,6 @@ def detect_stale_running(
     """
     if stale_timeout_seconds <= 0:
         return []
-
 
     now = int(time.time())
     host_prefix = f"{_claimer_id().split(':', 1)[0]}:"

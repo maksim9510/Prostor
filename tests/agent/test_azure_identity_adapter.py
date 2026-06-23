@@ -463,6 +463,7 @@ class TestRequireAzureIdentityMissing:
 
         # Force the import path to fail.
         original_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __import__
+
         def _fake_import(name, *args, **kwargs):
             if name == "azure.identity" or name.startswith("azure.identity."):
                 raise ImportError("simulated missing azure-identity")

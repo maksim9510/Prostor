@@ -114,7 +114,7 @@ class TestSlashCommandPrefixMatching:
         fake_skill = {"/help-extra": {"name": "Help Extra", "description": "test"}}
 
         import cli as cli_mod
-        with patch.object(cli_mod, '_skill_commands', fake_skill),              patch.object(cli_obj, 'show_help') as mock_help:
+        with patch.object(cli_mod, '_skill_commands', fake_skill), patch.object(cli_obj, 'show_help') as mock_help:
             cli_obj.process_command("/help")
 
         # /help is an exact match so should work normally, not show ambiguous

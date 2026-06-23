@@ -175,7 +175,6 @@ class TestIsWriteDenied:
         assert _is_write_denied(str(root / "pairing")) is True
 
 
-
 # =========================================================================
 # Result dataclasses
 # =========================================================================
@@ -627,6 +626,7 @@ class TestSearchPathValidation:
     def test_search_rg_error_exit_code(self, mock_env):
         """search() should report error when rg returns exit code 2."""
         call_count = {"n": 0}
+
         def side_effect(command, **kwargs):
             call_count["n"] += 1
             if "test -e" in command:

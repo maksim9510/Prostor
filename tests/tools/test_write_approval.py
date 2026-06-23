@@ -290,6 +290,7 @@ def test_memory_inline_approve_writes(prostor_home, approval_callback_cleanup):
     _set_approval("memory", True)
 
     calls = []
+
     def approve_cb(command, description, **kw):
         calls.append((command, description))
         return "once"
@@ -327,6 +328,7 @@ def test_memory_inline_callback_error_stages(prostor_home, approval_callback_cle
     from tools.terminal_tool import set_approval_callback
     from tools import write_approval as wa
     _set_approval("memory", True)
+
     def broken_cb(command, description, **kw):
         raise RuntimeError("boom")
     set_approval_callback(broken_cb)

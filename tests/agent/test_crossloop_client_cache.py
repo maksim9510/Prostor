@@ -134,6 +134,7 @@ class TestCrossLoopCacheIsolation:
 
         # Simulate: _run_async spawns a thread with asyncio.run()
         worker_client_id = [None]
+
         def _worker():
             async def _inner():
                 with patch("agent.auxiliary_client.resolve_provider_client",

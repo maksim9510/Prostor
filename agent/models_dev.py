@@ -183,7 +183,6 @@ PROVIDER_TO_MODELS_DEV: Dict[str, str] = {
 _MODELS_DEV_TO_PROVIDER: Optional[Dict[str, str]] = None
 
 
-
 def _get_cache_path() -> Path:
     """Return path to disk cache file."""
     from prostor_core import get_prostor_home
@@ -515,7 +514,7 @@ def list_provider_models(provider: str) -> List[str]:
     """
     from prostor_cli.models import normalize_provider
     provider = normalize_provider(provider) or provider
-    
+
     models = _get_provider_models(provider)
     if models is None:
         return []
@@ -595,7 +594,6 @@ def list_agentic_models(provider: str) -> List[str]:
             continue
         result.append(mid)
     return result
-
 
 
 # ---------------------------------------------------------------------------

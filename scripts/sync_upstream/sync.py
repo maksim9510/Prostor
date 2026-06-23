@@ -244,7 +244,7 @@ def main() -> int:
     pr_url = open_or_update_pr(sync_sha, files_changed)
 
     print("=" * 60)
-    print(f"Sync complete:")
+    print("Sync complete:")
     print(f"  Upstream SHA: {upstream_sha[:10]}")
     print(f"  Sync SHA: {sync_sha[:10]}")
     print(f"  Files changed: {files_changed}")

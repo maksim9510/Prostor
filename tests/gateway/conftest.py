@@ -121,9 +121,11 @@ def _ensure_discord_mock() -> None:
             self.color = color
             self.fields = []
             self.footer = None
+
         def add_field(self, *, name=None, value=None, inline=False, **_):
             self.fields.append({"name": name, "value": value, "inline": inline})
             return self
+
         def set_footer(self, *, text=None, icon_url=None, **_):
             self.footer = {"text": text, "icon_url": icon_url}
             return self
@@ -136,8 +138,10 @@ def _ensure_discord_mock() -> None:
         def __init__(self, timeout=None):
             self.timeout = timeout
             self.children = []
+
         def add_item(self, item):
             self.children.append(item)
+
         def clear_items(self):
             self.children.clear()
 
@@ -423,6 +427,7 @@ def pytest_configure(config):
         class _NoLock:
             def __enter__(self):
                 return self
+
             def __exit__(self, *a):
                 pass
         lock = _NoLock()
@@ -448,4 +453,3 @@ def pytest_configure(config):
             raise pytest.UsageError(msg)
         else:
             cache_file.write_text("clean", encoding="utf-8")
-

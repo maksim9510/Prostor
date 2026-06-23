@@ -92,7 +92,6 @@ class TestSessionLifecycle:
         assert session["model"] == "test-model"
         assert session["ended_at"] is None
 
-
     def test_get_nonexistent_session(self, db):
         assert db.get_session("nonexistent") is None
 
@@ -3874,6 +3873,7 @@ class TestFTS5ToolCallIndexing:
         )
         # end_session + end-time prune path would exercise DELETE; hit the
         # row directly through the write helper to keep the regression focused.
+
         def _delete(conn):
             conn.execute("DELETE FROM messages WHERE session_id = ?", ("s1",))
         db._execute_write(_delete)  # must not raise
@@ -4259,7 +4259,6 @@ class TestSessionArchive:
         both = {s["id"] for s in db.list_sessions_rich(include_archived=True)}
         assert both == {"live", "hidden"}
         assert db.session_count(include_archived=True) == 2
-
 
 
 class TestSessionIdSearch:

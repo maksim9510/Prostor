@@ -74,7 +74,6 @@ def _fire_approval_hook(hook_name: str, **kwargs) -> None:
         logger.debug("Approval hook %s dispatch failed: %s", hook_name, exc)
 
 
-
 def set_current_session_key(session_key: str) -> contextvars.Token[str]:
     """Bind the active approval session key to the current context."""
     return _approval_session_key.set(session_key or "")
@@ -878,7 +877,6 @@ def _command_matches_permanent_allowlist(command: str) -> bool:
         if any(ch in pattern for ch in "*?[") and fnmatch.fnmatchcase(command, pattern):
             return True
     return False
-
 
 
 # =========================================================================

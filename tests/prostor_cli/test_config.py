@@ -629,6 +629,7 @@ class TestConfigMigrationSecretPrompts:
             if required_only
             else [],
         )
+
         def fake_masked_secret_prompt(prompt):
             saved["prompt"] = prompt
             return "secret"

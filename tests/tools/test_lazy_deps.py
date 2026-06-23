@@ -393,6 +393,7 @@ class TestRefreshActiveFeatures:
         monkeypatch.setitem(ld.LAZY_DEPS, "b.fail", ("pkgb==1.0",))
         # a.ok: already satisfied → "current"
         # b.fail: missing + install fails → "failed:"
+
         def fake_satisfied(spec):
             return ld._pkg_name_from_spec(spec) == "pkga"
         monkeypatch.setattr(ld, "_is_satisfied", fake_satisfied)

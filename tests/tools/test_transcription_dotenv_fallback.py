@@ -160,6 +160,7 @@ class TestTranscribeCallSitesReadDotenv:
                 seen_keys.append(api_key)
                 self.audio = MagicMock()
                 self.audio.transcriptions.create.return_value = "hello"
+
             def close(self):
                 pass
 
@@ -190,6 +191,7 @@ class TestTranscribeCallSitesReadDotenv:
                 completion = MagicMock()
                 completion.text = "hi"
                 self.audio.transcriptions.complete.return_value = completion
+
             def __enter__(self): return self
             def __exit__(self, *a): return False
 

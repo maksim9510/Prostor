@@ -29,7 +29,6 @@ class TestWriteDenyExactPaths:
         path = os.path.join(str(Path.home()), ".ssh", "id_ed25519")
         assert _is_write_denied(path) is True
 
-
     def test_prostor_env(self):
         # ``.env`` under the active PROSTOR_HOME (profile-aware, not just
         # ``~/.prostor``) must be write-denied. The hermetic test conftest
@@ -107,6 +106,7 @@ class TestWriteDenyPrefixes:
         import agent.file_safety as _fs
         _orig = _fs.build_write_denied_prefixes
         _extra_prefix = str(tmp_path / "etc" / "systemd") + os.sep
+
         def _patched(home):
             return _orig(home) + [_extra_prefix]
         with patch.object(_fs, "build_write_denied_prefixes", _patched):

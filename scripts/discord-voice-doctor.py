@@ -137,7 +137,7 @@ def check_system_tools():
                         "/opt/homebrew/lib/libopus.dylib",   # macOS Apple Silicon
                         "/usr/local/lib/libopus.dylib",      # macOS Intel
                         "/usr/lib/x86_64-linux-gnu/libopus.so.0",  # Debian/Ubuntu x86
-                        "/usr/lib/aarch64-linux-gnu/libopus.so.0", # Debian/Ubuntu ARM
+                        "/usr/lib/aarch64-linux-gnu/libopus.so.0",  # Debian/Ubuntu ARM
                         "/usr/lib/libopus.so",               # Arch Linux
                         "/usr/lib64/libopus.so",             # RHEL/Fedora
                     ]

@@ -326,7 +326,7 @@ class TestDecodeInboundPush:
         buf += _encode_field(2, WT_LEN, _encode_string(from_account))   # from_account
         buf += _encode_field(3, WT_LEN, _encode_string(to_account))     # to_account
         if group_code:
-            buf += _encode_field(6, WT_LEN, _encode_string(group_code)) # group_code
+            buf += _encode_field(6, WT_LEN, _encode_string(group_code))  # group_code
         buf += _encode_field(8, WT_VARINT, _encode_varint(msg_seq))     # msg_seq
         buf += _encode_field(11, WT_LEN, _encode_string(msg_key))       # msg_key
         buf += _encode_field(13, WT_LEN, _encode_message(el_bytes))     # msg_body[0]

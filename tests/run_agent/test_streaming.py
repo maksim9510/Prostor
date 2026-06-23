@@ -795,6 +795,7 @@ class TestCodexStreamCallbacks:
         class _FakeCreateStream:
             def __iter__(self_inner):
                 return iter(events)
+
             def close(self_inner):
                 return None
 
@@ -833,6 +834,7 @@ class TestCodexStreamCallbacks:
         class _FakeCreateStream:
             def __iter__(self_inner):
                 return iter(events)
+
             def close(self_inner):
                 return None
 

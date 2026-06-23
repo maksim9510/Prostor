@@ -85,13 +85,13 @@ def test_loopback_host_header_validation_still_enforced(client_loopback):
 
 @pytest.mark.parametrize("host,allow_public,expected", [
     ("127.0.0.1", False, False),
-    ("127.0.0.1", True,  False),
+    ("127.0.0.1", True, False),
     ("localhost", False, False),
-    ("::1",       False, False),
-    ("0.0.0.0",   True,  False),    # --insecure escape hatch
-    ("0.0.0.0",   False, True),
+    ("::1", False, False),
+    ("0.0.0.0", True, False),    # --insecure escape hatch
+    ("0.0.0.0", False, True),
     ("192.168.1.5", False, True),
-    ("10.0.0.1",  True,  False),
+    ("10.0.0.1", True, False),
     ("100.64.0.1", False, True),    # Tailscale CGNAT — treated as public
     ("prostor-agent-prod-abc.fly.dev", False, True),
 ])

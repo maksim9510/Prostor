@@ -154,6 +154,7 @@ async def test_underscored_alias_for_hyphenated_builtin_not_flagged(monkeypatch)
 
     runner = _make_runner()
     # Prevent real MCP work; we only care that the unknown guard doesn't fire.
+
     async def _noop_reload(*_a, **_kw):
         return "mcp reloaded"
 

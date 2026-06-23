@@ -1041,7 +1041,7 @@ class DiscordAdapter(BasePlatformAdapter):
                     ):
                         return
                     _role_authorized = bool(getattr(self, "_allowed_role_ids", set()))
-                
+
                 # Multi-agent filtering: if the message mentions specific bots
                 # but NOT this bot, the sender is talking to another agent —
                 # stay silent.  Messages with no bot mentions (general chat)
@@ -2207,7 +2207,7 @@ class DiscordAdapter(BasePlatformAdapter):
         """
         defaults: Dict[str, Any] = {
             "enabled": False,        # master switch for the mixer subsystem
-            "ambient_enabled": True, # idle "thinking" bed while tools run
+            "ambient_enabled": True,  # idle "thinking" bed while tools run
             "ambient_path": "",      # optional custom loop file; "" = synthesised
             "ambient_gain": 0.18,    # idle bed loudness (0..1)
             "duck_gain": 0.06,       # ambient loudness while speech plays
@@ -6378,7 +6378,6 @@ def _define_discord_view_classes() -> None:
                     await msg.edit(embed=embed, view=self)
                 except Exception:
                     pass
-
 
     class ClarifyChoiceView(discord.ui.View):
         """Interactive button view for the clarify tool's multiple-choice prompts.

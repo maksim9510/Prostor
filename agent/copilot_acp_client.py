@@ -249,7 +249,7 @@ def _extract_tool_calls_from_text(text: str) -> tuple[list[SimpleNamespace], str
             fn_args = json.dumps(fn_args, ensure_ascii=False)
         call_id = obj.get("id")
         if not isinstance(call_id, str) or not call_id.strip():
-            call_id = f"acp_call_{len(extracted)+1}"
+            call_id = f"acp_call_{len(extracted) + 1}"
 
         extracted.append(
             SimpleNamespace(
@@ -295,7 +295,6 @@ def _extract_tool_calls_from_text(text: str) -> tuple[list[SimpleNamespace], str
 
     cleaned = "\n".join(p.strip() for p in parts if p and p.strip()).strip()
     return extracted, cleaned
-
 
 
 def _ensure_path_within_cwd(path_text: str, cwd: str) -> Path:

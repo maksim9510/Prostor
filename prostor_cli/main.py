@@ -1057,10 +1057,10 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
                 stdscr.refresh()
                 key = stdscr.getch()
 
-                if key in {curses.KEY_UP,}:
+                if key in {curses.KEY_UP, }:
                     if filtered:
                         cursor = (cursor - 1) % len(filtered)
-                elif key in {curses.KEY_DOWN,}:
+                elif key in {curses.KEY_DOWN, }:
                     if filtered:
                         cursor = (cursor + 1) % len(filtered)
                 elif key in {curses.KEY_ENTER, 10, 13}:
@@ -2704,6 +2704,7 @@ def select_provider_and_model(args=None):
         config_provider or os.getenv("PROSTOR_INFERENCE_PROVIDER") or "auto"
     )
     compatible_custom_providers = get_compatible_custom_providers(config)
+
     def _named_custom_provider_map(cfg) -> dict[str, dict[str, str]]:
         from prostor_cli.config import read_raw_config
 
@@ -3528,26 +3529,10 @@ def _prompt_provider_choice(choices, *, default=0, title="Select provider:"):
             return None
 
 
-
-
-
-
-
-
-
-
 _DEFAULT_QWEN_PORTAL_MODELS = [
     "qwen3-coder-plus",
     "qwen3-coder",
 ]
-
-
-
-
-
-
-
-
 
 
 def _prompt_custom_api_mode_selection(base_url: str, current_api_mode: str = "") -> Optional[str]:
@@ -3726,8 +3711,6 @@ def _save_custom_provider(
     print(f'  💾 Saved to custom providers as "{name}" (edit in config.yaml)')
 
 
-
-
 def _remove_custom_provider(config):
     """Let the user remove a saved custom provider from config.yaml."""
     from prostor_cli.config import load_config, save_config
@@ -3784,8 +3767,6 @@ def _remove_custom_provider(config):
         removed.get("name", "unnamed") if isinstance(removed, dict) else str(removed)
     )
     print(f'✅ Removed "{removed_name}" from custom providers.')
-
-
 
 
 # Lazy-export the model catalog at module level. Tests and a handful of
@@ -3906,10 +3887,6 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
             return None
 
 
-
-
-
-
 def _prompt_api_key(pconfig, existing_key: str, provider_id: str = "") -> tuple:
     """Shared API-key entry point for ``prostor setup`` / ``prostor model``.
 
@@ -3993,8 +3970,6 @@ def _prompt_api_key(pconfig, existing_key: str, provider_id: str = "") -> tuple:
     return existing_key, False
 
 
-
-
 def _infer_stepfun_region(base_url: str) -> str:
     """Infer the current StepFun region from the configured endpoint."""
     normalized = (base_url or "").strip().lower()
@@ -4014,14 +3989,6 @@ def _stepfun_base_url_for_region(region: str) -> str:
         if region == "china"
         else STEPFUN_STEP_PLAN_INTL_BASE_URL
     )
-
-
-
-
-
-
-
-
 
 
 def _run_anthropic_oauth_flow(save_env_value):
@@ -4115,8 +4082,6 @@ def _run_anthropic_oauth_flow(save_env_value):
             return True
         print("  Cancelled — install Claude Code and try again.")
         return False
-
-
 
 
 def cmd_login(args):
@@ -4918,7 +4883,6 @@ def _compute_desktop_content_hash(project_root: Path) -> str:
         except (OSError, IOError):
             pass
         h.update(b"\0")
-
 
     from pathspec import PathSpec
 
@@ -8218,8 +8182,8 @@ def _run_pre_update_backup(args) -> None:
 
     print(f"  Saved:    {display_path} ({size_str}, {elapsed:.1f}s)")
     print(f"  Restore:  prostor import {out_path}")
-    print(f"  Disable:  omit --backup (backups are off by default)")
-    print(f"            set updates.pre_update_backup: false in config.yaml")
+    print("  Disable:  omit --backup (backups are off by default)")
+    print("            set updates.pre_update_backup: false in config.yaml")
     print()
 
 
@@ -8713,7 +8677,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     "✗ Authentication failed — check your git credentials or SSH key."
                 )
             else:
-                print(f"✗ Failed to fetch updates from origin.")
+                print("✗ Failed to fetch updates from origin.")
                 if stderr:
                     print(f"  {stderr.splitlines()[0]}")
             sys.exit(1)
@@ -8927,7 +8891,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     print(
                         f"  ℹ️  Local changes preserved in stash (ref: {auto_stash_ref})"
                     )
-                    print(f"  Restore manually with: git stash apply")
+                    print("  Restore manually with: git stash apply")
                 elif discard_local_changes:
                     # Non-interactive update + user opted into discarding local
                     # source edits (updates.non_interactive_local_changes:
@@ -9223,6 +9187,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             print()
             # Show WHAT changed, not just a count, so the user can make an
             # informed yes/no decision (previously the prompt named nothing).
+
             def _print_items(items, label, key, fallback_key=None):
                 if not items:
                     return
@@ -10240,7 +10205,7 @@ def cmd_profile(args):
         try:
             set_active_profile(name)
             if name == "default":
-                print(f"Switched to: default (~/.prostor)")
+                print("Switched to: default (~/.prostor)")
             else:
                 print(f"Switched to: {name}")
         except (ValueError, FileNotFoundError) as e:
@@ -10329,9 +10294,9 @@ def cmd_profile(args):
                         if not _is_wrapper_dir_in_path():
                             print(f"\n⚠ {_get_wrapper_dir()} is not in your PATH.")
                             print(
-                                f"  Add to your shell config (~/.bashrc or ~/.zshrc):"
+                                "  Add to your shell config (~/.bashrc or ~/.zshrc):"
                             )
-                            print(f'    export PATH="$HOME/.local/bin:$PATH"')
+                            print('    export PATH="$HOME/.local/bin:$PATH"')
 
             # Profile dir for display
             try:
@@ -10340,7 +10305,7 @@ def cmd_profile(args):
                 profile_dir_display = str(profile_dir)
 
             # Next steps
-            print(f"\nNext steps:")
+            print("\nNext steps:")
             print(f"  {name} setup              Configure API keys and model")
             print(f"  {name} chat               Start chatting")
             print(f"  {name} gateway start      Start the messaging gateway")
@@ -10351,7 +10316,7 @@ def cmd_profile(args):
                 print(
                     f"\n  ⚠ This profile has no API keys yet. Run '{name} setup' first,"
                 )
-                print(f"    or it will inherit keys from your shell environment.")
+                print("    or it will inherit keys from your shell environment.")
                 print(f"  Edit {profile_dir_display}/SOUL.md to customize personality")
             print()
 
@@ -11468,7 +11433,7 @@ def cmd_memory(args):
             )
             return
 
-        print(f"\n  This will permanently erase the following memory files:")
+        print("\n  This will permanently erase the following memory files:")
         for f, desc in existing:
             path = mem_dir / f
             size = path.stat().st_size
@@ -11489,7 +11454,7 @@ def cmd_memory(args):
             print(f"  ✓ Deleted {f} ({desc})")
 
         print(
-            f"\n  Memory reset complete. New sessions will start with a blank slate."
+            "\n  Memory reset complete. New sessions will start with a blank slate."
         )
         print(f"  Files were in: {display_prostor_home()}/memories/\n")
     else:
@@ -12491,7 +12456,6 @@ def main():
         cmd_dashboard=cmd_dashboard,
         cmd_dashboard_register=cmd_dashboard_register,
     )
-
 
     # =========================================================================
     # desktop (a.k.a. gui) command

@@ -459,8 +459,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     volatile_parts.append(timestamp_line)
 
     return {
-        "stable":   "\n\n".join(p.strip() for p in stable_parts   if p and p.strip()),
-        "context":  "\n\n".join(p.strip() for p in context_parts  if p and p.strip()),
+        "stable":   "\n\n".join(p.strip() for p in stable_parts if p and p.strip()),
+        "context":  "\n\n".join(p.strip() for p in context_parts if p and p.strip()),
         "volatile": "\n\n".join(p.strip() for p in volatile_parts if p and p.strip()),
     }
 

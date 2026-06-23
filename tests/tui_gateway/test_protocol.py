@@ -109,6 +109,7 @@ def test_write_json_unicode_encode_error_re_raises(server):
     class _AsciiOnly:
         def write(self, line):
             line.encode("ascii")  # raises UnicodeEncodeError on non-ascii
+
         def flush(self): pass
 
     server._real_stdout = _AsciiOnly()

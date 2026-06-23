@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
                 results.append(r)
                 if r["status"] != "success":
                     failures += 1
-                    log(f"  run {i} → {r['status']}: {r.get('error','?')}")
+                    log(f"  run {i} → {r['status']}: {r.get('error', '?')}")
                     if not args.continue_on_error:
                         log("  --continue-on-error not set; aborting batch")
                         break
@@ -220,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             results.append(r)
             if r["status"] != "success":
                 failures += 1
-                log(f"  run {i} → {r['status']}: {r.get('error','?')}")
+                log(f"  run {i} → {r['status']}: {r.get('error', '?')}")
                 if not args.continue_on_error:
                     log("  --continue-on-error not set; aborting batch")
                     break

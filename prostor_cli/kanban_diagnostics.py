@@ -355,11 +355,11 @@ def _rule_hallucinated_cards(task, events, runs, now, cfg) -> list[Diagnostic]:
         severity="error",
         title="Worker claimed cards that don't exist",
         detail=(
-            f"The completing worker declared created_cards that either didn't "
-            f"exist or weren't created by its profile. The completion was "
-            f"blocked and the task stayed in its prior state. "
-            f"Usually means the worker hallucinated ids instead of capturing "
-            f"return values from kanban_create."
+            "The completing worker declared created_cards that either didn't "
+            "exist or weren't created by its profile. The completion was "
+            "blocked and the task stayed in its prior state. "
+            "Usually means the worker hallucinated ids instead of capturing "
+            "return values from kanban_create."
         ),
         actions=actions,
         first_seen_at=first,
@@ -832,7 +832,7 @@ def _rule_block_unblock_cycling(task, events, runs, now, cfg) -> list[Diagnostic
     return [Diagnostic(
         kind="block_unblock_cycling",
         severity="warning",
-        title=f"Task block→unblock cycled {cycles}x in {int(window_seconds/3600)}h",
+        title=f"Task block→unblock cycled {cycles}x in {int(window_seconds / 3600)}h",
         detail=(
             f"This task has been blocked {cycles} times after being "
             "unblocked, suggesting the unblock is not addressing the "

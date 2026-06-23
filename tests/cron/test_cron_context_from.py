@@ -216,6 +216,7 @@ class TestBuildJobPromptContextFrom:
 
         # Simulate file deleted between glob() and read_text()
         original_read = Path.read_text
+
         def mock_read_text(self, *args, **kwargs):
             if self.suffix == ".md":
                 raise FileNotFoundError("file deleted mid-read")
@@ -244,6 +245,7 @@ class TestBuildJobPromptContextFrom:
 
         # Simulate permission error on read
         original_read = Path.read_text
+
         def mock_read_text(self, *args, **kwargs):
             if self.suffix == ".md":
                 raise PermissionError("permission denied")
@@ -296,7 +298,6 @@ class TestBuildJobPromptContextFrom:
         assert "suspicious-chain" in message
         assert "203.0.113.10" in message
         assert "198.51.100.7" in message
-
 
 
 class TestUpdateContextFrom:

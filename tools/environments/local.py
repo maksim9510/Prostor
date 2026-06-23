@@ -262,7 +262,7 @@ def _find_bash() -> str:
     if _prostor_portable_git:
         for candidate in (
             os.path.join(_prostor_portable_git, "bin", "bash.exe"),        # PortableGit (primary)
-            os.path.join(_prostor_portable_git, "usr", "bin", "bash.exe"), # MinGit fallback
+            os.path.join(_prostor_portable_git, "usr", "bin", "bash.exe"),  # MinGit fallback
         ):
             if os.path.isfile(candidate):
                 return candidate

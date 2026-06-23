@@ -816,7 +816,6 @@ class TestPipelineIntegration:
         assert isinstance(adapter._inbound_pipeline, InboundPipeline)
 
 
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
@@ -832,6 +831,7 @@ class TestInboundMiddlewareABC:
         """Subclass with handle() can be instantiated."""
         class GoodMiddleware(InboundMiddleware):
             name = "good"
+
             async def handle(self, ctx, next_fn):
                 await next_fn()
         mw = GoodMiddleware()
@@ -842,6 +842,7 @@ class TestInboundMiddlewareABC:
         """Middleware instances are callable via __call__."""
         class TestMW(InboundMiddleware):
             name = "test"
+
             async def handle(self, ctx, next_fn):
                 ctx.raw_text = "called"
                 await next_fn()
@@ -892,6 +893,7 @@ class TestPipelineOOPRegistration:
         """pipeline.use(SomeMiddleware()) auto-extracts name."""
         class TestMW(InboundMiddleware):
             name = "test-mw"
+
             async def handle(self, ctx, next_fn):
                 ctx.raw_text = "oop-works"
                 await next_fn()
@@ -910,6 +912,7 @@ class TestPipelineOOPRegistration:
 
         class OopMW(InboundMiddleware):
             name = "oop"
+
             async def handle(self, ctx, next_fn):
                 order.append("oop")
                 await next_fn()

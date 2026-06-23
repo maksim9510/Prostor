@@ -55,6 +55,7 @@ class TestDashboardStatus:
         process-table scan only.  We prove this by making fastapi import
         fail and confirming --status still succeeds."""
         orig_import = __import__
+
         def fake_import(name, *a, **kw):
             if name == "fastapi":
                 raise ImportError("fastapi missing")
@@ -110,6 +111,7 @@ class TestDashboardStop:
     def test_stop_does_not_try_to_import_fastapi(self):
         """Like --status, --stop must work without dashboard runtime deps."""
         orig_import = __import__
+
         def fake_import(name, *a, **kw):
             if name == "fastapi":
                 raise ImportError("fastapi missing")
@@ -143,6 +145,7 @@ class TestLifecycleFlagsTakePrecedence:
         """Covers the worst-case regression: if --stop ever stopped exiting
         early, the user would start the dashboard they just asked to stop."""
         called = {"start": False}
+
         def fake_start_server(**kw):
             called["start"] = True
 

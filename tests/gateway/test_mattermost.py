@@ -355,7 +355,6 @@ class TestMattermostSend:
         payload = self.adapter._session.post.call_args[1]["json"]
         assert "root_id" not in payload
 
-
     @pytest.mark.asyncio
     async def test_send_uses_metadata_thread_id_for_progress_messages(self):
         """Progress/status messages pass Mattermost thread context via metadata."""
@@ -972,7 +971,6 @@ class TestMattermostMediaTypes:
         assert msg.media_types == ["application/pdf"]
         assert not msg.media_types[0].startswith("image/")
         assert not msg.media_types[0].startswith("audio/")
-
 
 
 @pytest.mark.asyncio

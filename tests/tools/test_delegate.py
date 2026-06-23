@@ -39,7 +39,7 @@ def _make_mock_parent(depth=0):
     """Create a mock parent agent with the fields delegate_task expects."""
     parent = MagicMock()
     parent.base_url = "https://openrouter.ai/api/v1"
-    parent.api_key="***"
+    parent.api_key = "***"
     parent.provider = "openrouter"
     parent.api_mode = "chat_completions"
     parent.model = "anthropic/claude-sonnet-4"
@@ -348,7 +348,7 @@ class TestDelegateTask(unittest.TestCase):
     def test_child_inherits_runtime_credentials(self):
         parent = _make_mock_parent(depth=0)
         parent.base_url = "https://chatgpt.com/backend-api/codex"
-        parent.api_key="***"
+        parent.api_key = "***"
         parent.provider = "openai-codex"
         parent.api_mode = "codex_responses"
 
@@ -937,8 +937,6 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         self.assertIsNone(creds["base_url"])
         self.assertIsNone(creds["api_key"])
 
-
-
     def test_direct_endpoint_uses_configured_base_url_and_api_key(self):
         parent = _make_mock_parent(depth=0)
         cfg = {
@@ -1042,7 +1040,6 @@ class TestDelegationCredentialResolution(unittest.TestCase):
             creds = _resolve_delegation_credentials(cfg, parent)
         self.assertIsNone(creds["api_key"])
         self.assertEqual(creds["provider"], "custom")
-
 
     @patch("prostor_cli.runtime_provider.resolve_runtime_provider")
     def test_provider_resolution_failure_raises_valueerror(self, mock_resolve):
@@ -1922,7 +1919,6 @@ class TestDelegateHeartbeat(unittest.TestCase):
             f"Heartbeat stopped too early while child was inside a tool; "
             f"got {len(touch_calls)} touches over 0.4s at 0.05s interval",
         )
-
 
 
 class TestDelegationReasoningEffort(unittest.TestCase):

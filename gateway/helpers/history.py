@@ -114,7 +114,7 @@ def _build_gateway_agent_history(
 
         # Skip metadata entries (tool definitions, session info) -- these are
         # for transcript logging, not for the LLM.
-        if role in {"session_meta",}:
+        if role in {"session_meta", }:
             continue
 
         # Skip system messages -- the agent rebuilds its own system prompt.

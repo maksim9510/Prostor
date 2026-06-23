@@ -504,7 +504,7 @@ class GoalManager:
 
     def status_line(self) -> str:
         s = self._state
-        if s is None or s.status in {"cleared",}:
+        if s is None or s.status in {"cleared", }:
             return "No active goal. Set one with /goal <text>."
         turns = f"{s.turns_used}/{s.max_turns} turns"
         sub = f", {len(s.subgoals)} subgoal{'s' if len(s.subgoals) != 1 else ''}" if s.subgoals else ""

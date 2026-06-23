@@ -1234,7 +1234,6 @@ class TestPluginManagerList:
         )
 
 
-
 class TestPreLlmCallTargetRouting:
     """Tests for pre_llm_call hook return format with target-aware routing.
 

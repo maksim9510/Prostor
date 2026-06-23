@@ -613,8 +613,10 @@ class TestBlueBubblesWebhookRegistration:
         async def mock_get(*args, **kwargs):
             class R:
                 status_code = 200
+
                 def raise_for_status(self):
                     pass
+
                 def json(self):
                     return get_response or {"status": 200, "data": []}
             return R()
@@ -622,8 +624,10 @@ class TestBlueBubblesWebhookRegistration:
         async def mock_post(*args, **kwargs):
             class R:
                 status_code = 200
+
                 def raise_for_status(self):
                     pass
+
                 def json(self):
                     return post_response or {"status": 200, "data": {}}
             return R()
@@ -631,6 +635,7 @@ class TestBlueBubblesWebhookRegistration:
         async def mock_delete(*args, **kwargs):
             class R:
                 status_code = 200 if delete_ok else 500
+
                 def raise_for_status(self_inner):
                     if not delete_ok:
                         raise Exception("delete failed")
@@ -727,6 +732,7 @@ class TestBlueBubblesWebhookRegistration:
         # Track whether POST was called
         post_called = False
         orig_api_post = adapter._api_post
+
         async def tracking_post(path, payload):
             nonlocal post_called
             post_called = True
@@ -787,8 +793,10 @@ class TestBlueBubblesWebhookRegistration:
             # Extract ID from URL
             url_str = args[0] if args else ""
             deleted_ids.append(url_str)
+
             class R:
                 status_code = 200
+
                 def raise_for_status(self):
                     pass
             return R()

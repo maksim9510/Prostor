@@ -319,7 +319,6 @@ def test_list_dedupes_dict_model_matching_singular_default(monkeypatch):
     assert ds_rows[0]["models"] == ["deepseek-chat", "deepseek-reasoner"]
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # #9210: group custom_providers by (base_url, api_key) in /model picker
 # ─────────────────────────────────────────────────────────────────────────────
@@ -337,7 +336,7 @@ def test_list_authenticated_providers_groups_same_endpoint(monkeypatch):
         custom_providers=[
             {"name": "Ollama — MiniMax M2.7", "base_url": "http://localhost:11434/v1",
              "api_key": "ollama", "model": "minimax-m2.7"},
-            {"name": "Ollama — GLM 5.1",      "base_url": "http://localhost:11434/v1",
+            {"name": "Ollama — GLM 5.1", "base_url": "http://localhost:11434/v1",
              "api_key": "ollama", "model": "glm-5.1"},
             {"name": "Ollama — Qwen3-coder", "base_url": "http://localhost:11434/v1",
              "api_key": "ollama", "model": "qwen3-coder"},

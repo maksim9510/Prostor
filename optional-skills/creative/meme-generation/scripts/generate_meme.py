@@ -68,7 +68,7 @@ def _default_fields(box_count: int) -> list:
     for i in range(box_count):
         y = 0.08 + (0.84 * i / (box_count - 1)) if box_count > 1 else 0.5
         fields.append({
-            "name": f"text{i+1}",
+            "name": f"text{i + 1}",
             "x_pct": 0.5,
             "y_pct": round(y, 2),
             "w_pct": 0.90,

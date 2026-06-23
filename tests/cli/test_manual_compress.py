@@ -93,6 +93,7 @@ def test_manual_compress_syncs_session_id_after_split():
     shell.agent._cached_system_prompt = ""
     shell.agent.tools = None
     # Simulate _compress_context mutating agent.session_id as a side effect.
+
     def _fake_compress(*args, **kwargs):
         shell.agent.session_id = new_child_id
         return (compressed, "")

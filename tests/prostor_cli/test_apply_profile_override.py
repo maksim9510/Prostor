@@ -17,7 +17,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-
 def _run_apply_profile_override(
     tmp_path, monkeypatch, *, prostor_home: str | None, active_profile: str | None,
     argv: list[str] | None = None,
@@ -322,4 +321,3 @@ class TestSupervisedChildIgnoresStickyProfile:
         result = os.environ.get("PROSTOR_HOME")
         assert result is not None
         assert result.endswith("coder")
-

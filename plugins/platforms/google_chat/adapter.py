@@ -583,7 +583,7 @@ class GoogleChatAdapter(BasePlatformAdapter):
                 )
             if not os.path.exists(sa_path):
                 raise FileNotFoundError(
-                    f"Service Account JSON file not found at configured path."
+                    "Service Account JSON file not found at configured path."
                 )
             # Validate file parses before handing to google-auth for nicer error.
             try:
@@ -1964,7 +1964,7 @@ class GoogleChatAdapter(BasePlatformAdapter):
         update_mask = ",".join(update_mask_fields) or "text"
 
         # Patch body cannot carry thread (immutable).
-        patch_body = {k: v for k, v in body.items() if k not in {"thread",}}
+        patch_body = {k: v for k, v in body.items() if k not in {"thread", }}
 
         def _do_patch() -> Dict[str, Any]:
             return (

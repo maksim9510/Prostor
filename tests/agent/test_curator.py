@@ -514,6 +514,7 @@ def test_dry_run_injects_report_only_banner(curator_env, monkeypatch):
     u.mark_agent_created("a")
 
     captured = {}
+
     def _stub(prompt):
         captured["prompt"] = prompt
         return {"final": "", "summary": "s", "model": "", "provider": "",
@@ -536,6 +537,7 @@ def test_dry_run_skips_automatic_transitions(curator_env, monkeypatch):
     u.mark_agent_created("a")
 
     called = {"n": 0}
+
     def _explode(*_a, **_kw):
         called["n"] += 1
         return {"checked": 0, "marked_stale": 0, "archived": 0, "reactivated": 0}
@@ -558,6 +560,7 @@ def test_run_review_synchronous_invokes_llm_stub(curator_env, monkeypatch):
     u.mark_agent_created("a")
 
     calls = []
+
     def _stub(prompt):
         calls.append(prompt)
         return {
@@ -841,7 +844,6 @@ def test_curator_review_prompt_preserves_skill_package_integrity():
         assert dirname in CURATOR_REVIEW_PROMPT
 
 
-
 def test_curator_review_prompt_offers_support_file_actions():
     """Support-file demotion (references/templates/scripts) must be one of
     the three consolidation methods, alongside merge-into-existing and
@@ -853,7 +855,6 @@ def test_curator_review_prompt_offers_support_file_actions():
     assert "write_file" in CURATOR_REVIEW_PROMPT
     # Must offer creating a brand-new umbrella when no existing one fits
     assert "action=create" in CURATOR_REVIEW_PROMPT or "create a new umbrella" in CURATOR_REVIEW_PROMPT.lower()
-
 
 
 def test_cli_unpin_refuses_bundled_skill(curator_env, capsys):

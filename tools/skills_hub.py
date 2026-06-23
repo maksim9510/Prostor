@@ -728,7 +728,6 @@ class GitHubSource(SkillSource):
 
         return last_resp
 
-
     def _download_directory(self, repo: str, path: str) -> Dict[str, str]:
         """Recursively download all text files from a GitHub directory.
 
@@ -1698,8 +1697,8 @@ class SkillsShSource(SkillSource):
 
         default_repo = f"{parts[0]}/{parts[1]}"
         repo = detail.get("repo", default_repo) if isinstance(detail, dict) else default_repo
-        skill_token=parts[2].split("/")[-1]
-        tokens=[skill_token]
+        skill_token = parts[2].split("/")[-1]
+        tokens = [skill_token]
         if isinstance(detail, dict):
             tokens.extend([
                 detail.get("install_skill", ""),
@@ -3746,7 +3745,7 @@ def create_source_router(auth: Optional[GitHubAuth] = None) -> List[SkillSource]
 
     sources: List[SkillSource] = [
         OptionalSkillSource(),        # Official optional skills (highest priority)
-        ProstorIndexSource(auth=auth), # Centralized index (search + resolved install paths)
+        ProstorIndexSource(auth=auth),  # Centralized index (search + resolved install paths)
         SkillsShSource(auth=auth),
         WellKnownSkillSource(),
         UrlSource(),                  # Direct HTTP(S) URL to a SKILL.md file

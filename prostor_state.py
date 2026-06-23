@@ -1676,6 +1676,7 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
             api_call_count,
             session_id,
         )
+
         def _do(conn):
             conn.execute(sql, params)
         self._execute_write(_do)
@@ -1889,6 +1890,7 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
         Empty/whitespace-only strings are normalized to None (clearing the title).
         """
         title = self.sanitize_title(title)
+
         def _do(conn):
             if title:
                 # Check uniqueness (allow the same session to keep its own title)
@@ -2755,7 +2757,6 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
 
         return self._execute_write(_do)
 
-
     def get_messages(
         self, session_id: str, include_inactive: bool = False
     ) -> List[Dict[str, Any]]:
@@ -3429,7 +3430,6 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
             sanitized = sanitized.replace(f"\x00Q{i}\x00", quoted)
 
         return sanitized.strip()
-
 
     @staticmethod
     def _is_cjk_codepoint(cp: int) -> bool:

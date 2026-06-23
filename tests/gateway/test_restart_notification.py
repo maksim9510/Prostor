@@ -285,6 +285,7 @@ async def test_send_home_channel_startup_notification_preserves_thread_metadata(
     # so a MagicMock auto-attribute (instance-level) is intentionally ignored;
     # a real adapter exposes the method on its class. Mirrors the fake-adapter
     # pattern in test_telegram_topic_mode.py.
+
     class _DmTopicAdapter(type(adapter)):
         def _get_dm_topic_info(self, chat_id, thread_id):
             return {"name": "Ops Topic"}

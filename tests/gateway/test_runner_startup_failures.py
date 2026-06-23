@@ -196,8 +196,10 @@ async def test_start_gateway_replace_force_uses_terminate_pid(monkeypatch, tmp_p
     # get_running_pid returns 42 before we kill the old gateway, then None
     # after remove_pid_file() clears the record (reflects real behavior).
     _pid_state = {"alive": True}
+
     def _mock_get_running_pid():
         return 42 if _pid_state["alive"] else None
+
     def _mock_remove_pid_file():
         _pid_state["alive"] = False
     monkeypatch.setattr("gateway.status.get_running_pid", _mock_get_running_pid)
@@ -209,6 +211,7 @@ async def test_start_gateway_replace_force_uses_terminate_pid(monkeypatch, tmp_p
     # force-kill reaps the process: terminate_pid(force=True) flips it dead,
     # and the post-kill re-poll via _pid_exists then sees it gone so the
     # replacement proceeds.
+
     def _mock_terminate_pid(pid, force=False):
         calls.append((pid, force))
         if force:
@@ -342,8 +345,10 @@ async def test_start_gateway_replace_writes_takeover_marker_before_sigterm(
             return None
 
     _pid_state = {"alive": True}
+
     def _mock_get_running_pid():
         return 42 if _pid_state["alive"] else None
+
     def _mock_remove_pid_file():
         _pid_state["alive"] = False
     monkeypatch.setattr("gateway.status.get_running_pid", _mock_get_running_pid)

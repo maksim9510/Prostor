@@ -65,10 +65,10 @@ def _diff_ansi() -> dict[str, str]:
         if err_h and len(err_h) == 7:
             er, eg, eb = int(err_h[1:3], 16), int(err_h[3:5], 16), int(err_h[5:7], 16)
             # Use a dark tinted version as background
-            minus = f"\033[38;2;255;255;255;48;2;{max(er//2,20)};{max(eg//4,10)};{max(eb//4,10)}m"
+            minus = f"\033[38;2;255;255;255;48;2;{max(er // 2, 20)};{max(eg // 4, 10)};{max(eb // 4, 10)}m"
         if ok_h and len(ok_h) == 7:
             or_, og, ob = int(ok_h[1:3], 16), int(ok_h[3:5], 16), int(ok_h[5:7], 16)
-            plus = f"\033[38;2;255;255;255;48;2;{max(or_//4,10)};{max(og//2,20)};{max(ob//4,10)}m"
+            plus = f"\033[38;2;255;255;255;48;2;{max(or_ // 4, 10)};{max(og // 2, 20)};{max(ob // 4, 10)}m"
     except Exception:
         pass
 
@@ -80,11 +80,11 @@ def _diff_ansi() -> dict[str, str]:
 
 
 # Module-level helpers — each call resolves from the active skin lazily.
-def _diff_dim():   return _diff_ansi()["dim"]
-def _diff_file():  return _diff_ansi()["file"]
-def _diff_hunk():  return _diff_ansi()["hunk"]
+def _diff_dim(): return _diff_ansi()["dim"]
+def _diff_file(): return _diff_ansi()["file"]
+def _diff_hunk(): return _diff_ansi()["hunk"]
 def _diff_minus(): return _diff_ansi()["minus"]
-def _diff_plus():  return _diff_ansi()["plus"]
+def _diff_plus(): return _diff_ansi()["plus"]
 _MAX_INLINE_DIFF_FILES = 6
 _MAX_INLINE_DIFF_LINES = 80
 
@@ -915,14 +915,14 @@ def get_cute_tool_message(
         if _tool_preview_max_len == 0:
             return s  # no limit
         limit = _tool_preview_max_len
-        return (s[:limit-3] + "...") if len(s) > limit else s
+        return (s[:limit - 3] + "...") if len(s) > limit else s
 
     def _path(p, n=35):
         p = str(p)
         if _tool_preview_max_len == 0:
             return p  # no limit
         limit = _tool_preview_max_len
-        return ("..." + p[-(limit-3):]) if len(p) > limit else p
+        return ("..." + p[-(limit - 3):]) if len(p) > limit else p
 
     def _wrap(line: str) -> str:
         """Apply skin tool prefix and failure suffix."""
@@ -939,7 +939,7 @@ def get_cute_tool_message(
         if urls:
             url = urls[0] if isinstance(urls, list) else str(urls)
             domain = url.replace("https://", "").replace("http://", "").split("/")[0]
-            extra = f" +{len(urls)-1}" if len(urls) > 1 else ""
+            extra = f" +{len(urls) - 1}" if len(urls) > 1 else ""
             return _wrap(f"┊ 📄 fetch     {_trunc(domain, 35)}{extra}  {dur}")
         return _wrap(f"┊ 📄 fetch     pages  {dur}")
     if tool_name == "terminal":
@@ -1070,5 +1070,3 @@ def get_cute_tool_message(
 # =========================================================================
 # Honcho session line (one-liner with clickable OSC 8 hyperlink)
 # =========================================================================
-
-

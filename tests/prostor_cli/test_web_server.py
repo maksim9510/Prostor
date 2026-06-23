@@ -1164,7 +1164,6 @@ class TestWebServerEndpoints:
             "pid": 99,
         }
 
-
     def test_get_status_filters_unconfigured_gateway_platforms(self, monkeypatch):
         import gateway.config as gateway_config
         import prostor_cli.web_server as web_server
@@ -1508,7 +1507,6 @@ class TestWebServerEndpoints:
         )
         assert resp.status_code == 200
         assert captured["args"] == ["import", str(archive)]
-
 
     def test_reveal_env_var(self, tmp_path):
         """POST /api/env/reveal should return the real unredacted value."""
@@ -2821,7 +2819,7 @@ class TestConfigRoundTrip:
                 mismatches.append(f"{key}: expected bool, got {type(val).__name__}")
             elif expected == "list" and not isinstance(val, list):
                 mismatches.append(f"{key}: expected list, got {type(val).__name__}")
-        assert not mismatches, f"Type mismatches:\n" + "\n".join(mismatches)
+        assert not mismatches, "Type mismatches:\n" + "\n".join(mismatches)
 
 
 # ---------------------------------------------------------------------------

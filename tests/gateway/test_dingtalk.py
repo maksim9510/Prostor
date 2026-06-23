@@ -940,10 +940,6 @@ class TestMessageContextIsolation:
         assert adapter._message_contexts["chat-B"] is msg_b
 
 
-
-
-
-
 # ---------------------------------------------------------------------------
 # Card lifecycle: finalize via metadata["streaming"]
 # ---------------------------------------------------------------------------
@@ -1089,6 +1085,7 @@ class TestCardLifecycle:
     def test_fire_done_reaction_is_idempotent(self, adapter_with_card):
         a = adapter_with_card
         captured = []
+
         def _capture(coro):
             captured.append(coro)
         a._spawn_bg = _capture
@@ -1097,7 +1094,6 @@ class TestCardLifecycle:
         a._fire_done_reaction("chat-1")
         assert len(captured) == 1
         captured[0].close()
-
 
 
 # ---------------------------------------------------------------------------

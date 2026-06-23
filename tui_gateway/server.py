@@ -492,7 +492,6 @@ def _close_session_by_id(sid: str, *, end_reason: str = "tui_close") -> bool:
     return True
 
 
-
 def _ws_session_is_orphaned(session: dict | None) -> bool:
     """True if a WS session has no live transport and no in-flight turn.
 

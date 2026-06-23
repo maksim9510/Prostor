@@ -545,7 +545,7 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
                 return None
 
     config = load_config()
-    
+
     # First check providers: dict (new-style user-defined providers)
     providers = config.get("providers")
     if isinstance(providers, dict):
@@ -833,13 +833,13 @@ def _resolve_named_custom_runtime(
         if pool_result:
             pool_result["source"] = "direct-alias"
             return pool_result
-        _da_is_openai_url   = base_url_host_matches(base_url, "openai.com") or base_url_host_matches(base_url, "openai.azure.com")
-        _da_is_openrouter   = base_url_host_matches(base_url, "openrouter.ai")
+        _da_is_openai_url = base_url_host_matches(base_url, "openai.com") or base_url_host_matches(base_url, "openai.azure.com")
+        _da_is_openrouter = base_url_host_matches(base_url, "openrouter.ai")
         api_key_candidates = [
             (explicit_api_key or "").strip(),
             # Gate env key fallbacks on authoritative hosts (#28660)
-            (_getenv("OPENAI_API_KEY", "").strip()     if _da_is_openai_url else ""),
-            (_getenv("OPENROUTER_API_KEY", "").strip() if _da_is_openrouter  else ""),
+            (_getenv("OPENAI_API_KEY", "").strip() if _da_is_openai_url else ""),
+            (_getenv("OPENROUTER_API_KEY", "").strip() if _da_is_openrouter else ""),
             # Bonus (#28660): derive `<VENDOR>_API_KEY` from the host so users
             # who set DEEPSEEK_API_KEY / GROQ_API_KEY / MISTRAL_API_KEY get the
             # intuitive match without configuring `custom_providers` first.
@@ -887,16 +887,16 @@ def _resolve_named_custom_runtime(
             }
         return pool_result
 
-    _cp_is_openai_url   = base_url_host_matches(base_url, "openai.com") or base_url_host_matches(base_url, "openai.azure.com")
-    _cp_is_openrouter   = base_url_host_matches(base_url, "openrouter.ai")
+    _cp_is_openai_url = base_url_host_matches(base_url, "openai.com") or base_url_host_matches(base_url, "openai.azure.com")
+    _cp_is_openrouter = base_url_host_matches(base_url, "openrouter.ai")
     api_key_candidates = [
         (explicit_api_key or "").strip(),
         str(custom_provider.get("api_key", "") or "").strip(),
         _getenv(str(custom_provider.get("key_env", "") or "").strip(), "").strip(),
         # Gate provider env keys on their authoritative hosts — sending
         # OPENAI_API_KEY to a local-llm endpoint leaks credentials (#28660).
-        (_getenv("OPENAI_API_KEY", "").strip()     if _cp_is_openai_url  else ""),
-        (_getenv("OPENROUTER_API_KEY", "").strip() if _cp_is_openrouter  else ""),
+        (_getenv("OPENAI_API_KEY", "").strip() if _cp_is_openai_url else ""),
+        (_getenv("OPENROUTER_API_KEY", "").strip() if _cp_is_openrouter else ""),
         # Bonus (#28660): derive `<VENDOR>_API_KEY` from the host as a final
         # fallback when key_env wasn't set explicitly.
         _host_derived_api_key(base_url),
@@ -1007,9 +1007,9 @@ def _resolve_openrouter_runtime(
         # "ollama.com" (e.g. http://127.0.0.1/ollama.com/v1) or whose
         # hostname is a look-alike (ollama.com.attacker.test) must not
         # receive the Ollama credential. See GHSA-76xc-57q6-vm5m.
-        _is_ollama_url    = base_url_host_matches(base_url, "ollama.com")
-        _is_openai_url    = base_url_host_matches(base_url, "openai.com")
-        _is_openai_azure  = base_url_host_matches(base_url, "openai.azure.com")
+        _is_ollama_url = base_url_host_matches(base_url, "ollama.com")
+        _is_openai_url = base_url_host_matches(base_url, "openai.com")
+        _is_openai_azure = base_url_host_matches(base_url, "openai.azure.com")
         # Gate each provider key on its own host — sending OPENAI_API_KEY or
         # OPENROUTER_API_KEY to an unrelated custom endpoint (DeepSeek, Groq,
         # Mistral, …) leaks credentials and causes 401s (issue #28660).
@@ -1017,9 +1017,9 @@ def _resolve_openrouter_runtime(
         api_key_candidates = [
             explicit_api_key,
             (cfg_api_key if use_config_base_url else ""),
-            (_getenv("OLLAMA_API_KEY")     if _is_ollama_url                       else ""),
-            (_getenv("OPENAI_API_KEY")     if (_is_openai_url or _is_openai_azure) else ""),
-            (_getenv("OPENROUTER_API_KEY") if _is_openrouter_url                   else ""),
+            (_getenv("OLLAMA_API_KEY") if _is_ollama_url else ""),
+            (_getenv("OPENAI_API_KEY") if (_is_openai_url or _is_openai_azure) else ""),
+            (_getenv("OPENROUTER_API_KEY") if _is_openrouter_url else ""),
             # Bonus (#28660): derive `<VENDOR>_API_KEY` from the host so users
             # who set DEEPSEEK_API_KEY / GROQ_API_KEY / MISTRAL_API_KEY get the
             # intuitive match. Helper returns "" for IPs/loopback and for env

@@ -381,6 +381,7 @@ async def _api_post(
     # Use asyncio.wait_for() instead of aiohttp ClientTimeout to avoid
     # "Timeout context manager should be used inside a task" errors when
     # invoked via asyncio.run_coroutine_threadsafe() from cron jobs.
+
     async def _do() -> Dict[str, Any]:
         async with session.post(url, data=body, headers=_headers(token, body)) as response:
             raw = await response.text()
@@ -405,6 +406,7 @@ async def _api_get(
     # Use asyncio.wait_for() instead of aiohttp ClientTimeout to avoid
     # "Timeout context manager should be used inside a task" errors when
     # invoked via asyncio.run_coroutine_threadsafe() from cron jobs.
+
     async def _do() -> Dict[str, Any]:
         async with session.get(url, headers=headers) as response:
             raw = await response.text()
@@ -1747,7 +1749,7 @@ class WeixinAdapter(BasePlatformAdapter):
                 if resp and isinstance(resp, dict):
                     ret = resp.get("ret")
                     errcode = resp.get("errcode")
-                    if (ret is not None and ret not in {0,}) or (errcode is not None and errcode not in {0,}):
+                    if (ret is not None and ret not in {0, }) or (errcode is not None and errcode not in {0, }):
                         is_session_expired = (
                             ret == SESSION_EXPIRED_ERRCODE
                             or errcode == SESSION_EXPIRED_ERRCODE
@@ -2070,6 +2072,7 @@ class WeixinAdapter(BasePlatformAdapter):
         assert self._send_session is not None
         # Use asyncio.wait_for() instead of aiohttp ClientTimeout to avoid
         # "Timeout context manager should be used inside a task" errors.
+
         async def _do_fetch():
             async with self._send_session.get(url) as response:
                 response.raise_for_status()

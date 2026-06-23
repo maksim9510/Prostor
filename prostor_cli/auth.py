@@ -537,7 +537,6 @@ def _resolve_kimi_base_url(api_key: str, default_url: str, env_override: str) ->
     return default_url
 
 
-
 _PLACEHOLDER_SECRET_VALUES = {
     "*",
     "**",
@@ -620,10 +619,10 @@ def _resolve_api_key_provider_secret(
 
 ZAI_ENDPOINTS = [
     # (id, base_url, probe_models, label)
-    ("global",        "https://api.z.ai/api/paas/v4",        ["glm-5"],   "Global"),
-    ("cn",            "https://open.bigmodel.cn/api/paas/v4", ["glm-5"],   "China"),
-    ("coding-global", "https://api.z.ai/api/coding/paas/v4",  ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "Global (Coding Plan)"),
-    ("coding-cn",     "https://open.bigmodel.cn/api/coding/paas/v4", ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "China (Coding Plan)"),
+    ("global", "https://api.z.ai/api/paas/v4", ["glm-5"], "Global"),
+    ("cn", "https://open.bigmodel.cn/api/paas/v4", ["glm-5"], "China"),
+    ("coding-global", "https://api.z.ai/api/coding/paas/v4", ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "Global (Coding Plan)"),
+    ("coding-cn", "https://open.bigmodel.cn/api/coding/paas/v4", ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "China (Coding Plan)"),
 ]
 
 
@@ -3125,7 +3124,7 @@ def _is_remote_session() -> bool:
         "CLOUD_SHELL",         # GCP Cloud Shell
         "CODESPACES",          # GitHub Codespaces
         "CODESPACE_NAME",      # GitHub Codespaces (alt)
-        "GITPOD_WORKSPACE_ID", # Gitpod
+        "GITPOD_WORKSPACE_ID",  # Gitpod
         "REPL_ID",             # Replit
         "STACKBLITZ",          # StackBlitz
     ):
@@ -6990,7 +6989,7 @@ def _xai_oauth_exchange_code_for_tokens(
         # key fallback.  See #26847.
         if response.status_code == 403:
             raise AuthError(
-                f"xAI token exchange failed (HTTP 403)."
+                "xAI token exchange failed (HTTP 403)."
                 + (f" Response: {body}" if body else "")
                 + " This OAuth account is not authorized for xAI API"
                   " access — xAI may be restricting API/OAuth use to"

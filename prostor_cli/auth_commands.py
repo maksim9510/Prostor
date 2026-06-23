@@ -131,7 +131,6 @@ def _classify_exhausted_status(entry) -> tuple[str, bool]:
     return "exhausted", True
 
 
-
 def _format_exhausted_status(entry) -> str:
     if entry.last_status != STATUS_EXHAUSTED:
         return ""
@@ -558,7 +557,7 @@ def _interactive_auth() -> None:
         if has_aws_credentials():
             auth_source = resolve_aws_auth_env_var() or "unknown"
             region = resolve_bedrock_region()
-            print(f"bedrock (AWS SDK credential chain):")
+            print("bedrock (AWS SDK credential chain):")
             print(f"  Auth: {auth_source}")
             print(f"  Region: {region}")
             try:
@@ -568,7 +567,7 @@ def _interactive_auth() -> None:
                 arn = identity.get("Arn", "unknown")
                 print(f"  Identity: {arn}")
             except Exception:
-                print(f"  Identity: (could not resolve — boto3 STS call failed)")
+                print("  Identity: (could not resolve — boto3 STS call failed)")
             print()
     except ImportError:
         pass  # boto3 or bedrock_adapter not available
@@ -596,7 +595,7 @@ def _interactive_auth() -> None:
                     str(_entra.get("scope") or "").strip()
                     or SCOPE_AI_AZURE_DEFAULT
                 )
-                print(f"azure-foundry (Microsoft Entra ID):")
+                print("azure-foundry (Microsoft Entra ID):")
                 print(f"  Endpoint: {_base_url or '(not configured)'}")
                 print(f"  Scope: {_scope}")
                 if not has_azure_identity_installed():

@@ -87,4 +87,3 @@ class SessionCrudMixin:
                 (model, session_id),
             )
         self._execute_write(_do)
-

@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
-
 # ---------------------------------------------------------------------------
 # _query_local_context_length — unit tests with mocked httpx
 # ---------------------------------------------------------------------------
@@ -195,6 +194,7 @@ class TestQueryLocalContextLengthModelsList:
         })
 
         call_count = [0]
+
         def side_effect(url, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -223,6 +223,7 @@ class TestQueryLocalContextLengthModelsList:
         })
 
         call_count = [0]
+
         def side_effect(url, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:

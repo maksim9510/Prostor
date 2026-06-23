@@ -294,14 +294,14 @@ class TestSyncExternalMemoryForTurn:
     # --- The specific matrix the reporter asked about ------------------
 
     @pytest.mark.parametrize("interrupted,final,user,expect_sync", [
-        (False, "resp", "user",  True),   # normal completed → sync
-        (True,  "resp", "user",  False),  # interrupted → skip (the fix)
-        (False, None,   "user",  False),  # no response → skip
-        (False, "resp", None,    False),  # no user msg → skip
-        (True,  None,   "user",  False),  # interrupted + no response → skip
-        (True,  "resp", None,    False),  # interrupted + no user → skip
-        (False, None,   None,    False),  # nothing → skip
-        (True,  None,   None,    False),  # interrupted + nothing → skip
+        (False, "resp", "user", True),   # normal completed → sync
+        (True, "resp", "user", False),  # interrupted → skip (the fix)
+        (False, None, "user", False),  # no response → skip
+        (False, "resp", None, False),  # no user msg → skip
+        (True, None, "user", False),  # interrupted + no response → skip
+        (True, "resp", None, False),  # interrupted + no user → skip
+        (False, None, None, False),  # nothing → skip
+        (True, None, None, False),  # interrupted + nothing → skip
     ])
     def test_sync_matrix(self, interrupted, final, user, expect_sync):
         agent = _bare_agent()

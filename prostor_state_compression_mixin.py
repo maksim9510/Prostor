@@ -229,4 +229,3 @@ class SessionCompressionMixin:
                 return current
             current = row["id"]
         return current
-

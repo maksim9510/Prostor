@@ -266,7 +266,7 @@ class AdaptiveToolRouter:
                     "batch_tool": batch_tool,
                     "count": count,
                     "savings": savings,
-                    "turns": f"{i+1}-{j}",
+                    "turns": f"{i + 1}-{j}",
                 })
 
             i = j

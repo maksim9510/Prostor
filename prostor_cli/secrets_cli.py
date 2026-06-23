@@ -302,23 +302,23 @@ def cmd_status(args: argparse.Namespace) -> int:
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("", style="bold")
     table.add_column("")
-    table.add_row("Enabled",         _yn(enabled))
-    table.add_row("Token env var",   token_env)
-    table.add_row("Token in env",    _yn(token_set))
-    table.add_row("Project ID",      project_id or "[dim](unset)[/dim]")
+    table.add_row("Enabled", _yn(enabled))
+    table.add_row("Token env var", token_env)
+    table.add_row("Token in env", _yn(token_set))
+    table.add_row("Project ID", project_id or "[dim](unset)[/dim]")
     table.add_row(
         "Server URL",
         server_url or "[dim]default (US Cloud, https://vault.bitwarden.com)[/dim]",
     )
     table.add_row("Override existing", _yn(bool(bw_cfg.get("override_existing", False))))
-    table.add_row("Cache TTL (s)",   str(bw_cfg.get("cache_ttl_seconds", 300)))
-    table.add_row("Auto-install",    _yn(bool(bw_cfg.get("auto_install", True))))
+    table.add_row("Cache TTL (s)", str(bw_cfg.get("cache_ttl_seconds", 300)))
+    table.add_row("Auto-install", _yn(bool(bw_cfg.get("auto_install", True))))
 
     binary = bw.find_bws(install_if_missing=False)
     if binary:
-        table.add_row("bws binary",  f"{binary} ({_bws_version(binary)})")
+        table.add_row("bws binary", f"{binary} ({_bws_version(binary)})")
     else:
-        table.add_row("bws binary",  "[yellow]not installed[/yellow]")
+        table.add_row("bws binary", "[yellow]not installed[/yellow]")
 
     console.print(Panel(table, title="Bitwarden Secrets Manager", border_style="cyan"))
 

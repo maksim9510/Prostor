@@ -2686,6 +2686,7 @@ class TestVoiceTTSPlayback:
         adapter._voice_text_channels[111] = 123
 
         played = []
+
         async def fake_play(gid, path):
             played.append((gid, path))
             return True

@@ -34,6 +34,7 @@ def mock_kittentts_module():
     # Stub soundfile — the real package isn't installed in CI venv, and
     # _generate_kittentts does `import soundfile as sf` at runtime.
     fake_sf = MagicMock()
+
     def _fake_write(path, audio, samplerate):
         # Emulate writing a real file so downstream path checks succeed.
         import pathlib

@@ -19,7 +19,6 @@ LIVE_OPENROUTER_MODELS = [
 ]
 
 
-
 class TestModelIds:
     def test_returns_non_empty_list(self):
         with patch("prostor_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
@@ -43,9 +42,6 @@ class TestModelIds:
         with patch("prostor_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             ids = model_ids()
         assert len(ids) == len(set(ids)), "Duplicate model IDs found"
-
-
-
 
 
 class TestOpenRouterModels:
@@ -299,7 +295,7 @@ class TestDetectProviderForModel:
         with patch("prostor_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             result = detect_provider_for_model("claude-opus-4-6", "openai-codex")
         assert result is not None
-        assert result[0] not in {"nous",}  # nous has claude models but shouldn't be suggested
+        assert result[0] not in {"nous", }  # nous has claude models but shouldn't be suggested
 
 
 class TestIsNousFreeTier:

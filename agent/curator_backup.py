@@ -535,7 +535,6 @@ def _restore_cron_skill_links(snapshot_dir: Path) -> Dict[str, Any]:
     return report
 
 
-
 def rollback(backup_id: Optional[str] = None) -> Tuple[bool, str, Optional[Path]]:
     """Restore ``~/.prostor/skills/`` from a snapshot.
 
@@ -556,7 +555,7 @@ def rollback(backup_id: Optional[str] = None) -> Tuple[bool, str, Optional[Path]
     if target is None:
         return (
             False,
-            f"no matching backup found"
+            "no matching backup found"
             + (f" for id '{backup_id}'" if backup_id else "")
             + " (use `prostor curator rollback --list` to see available snapshots)",
             None,
@@ -703,8 +702,8 @@ def summarize_backups() -> str:
     lines.append("─" * len(lines[0]))
     for r in rows:
         lines.append(
-            f"{r.get('id','?'):<24}  "
-            f"{(r.get('reason','?') or '?')[:40]:<40}  "
+            f"{r.get('id', '?'):<24}  "
+            f"{(r.get('reason', '?') or '?')[:40]:<40}  "
             f"{r.get('skill_files', 0):>6}  "
             f"{format_size(int(r.get('archive_bytes', 0))):>8}"
         )

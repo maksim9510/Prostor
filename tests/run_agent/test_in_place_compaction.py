@@ -34,6 +34,7 @@ def _make_agent(session_db, session_id, *, in_place):
     agent.compression_in_place = in_place
     # Mock the compressor to return a deterministic shrunk transcript so the
     # test exercises the DB-mutation path, not summarization quality.
+
     def _fake_compress(messages, current_tokens=None, focus_topic=None, force=False):
         return [
             {"role": "user", "content": "[CONTEXT COMPACTION] summary of prior turns"},
@@ -313,4 +314,3 @@ class TestCompactedTurnsStaySearchable:
                 "ZEBRAWORD", role_filter=["user", "assistant"], include_inactive=True
             )
             assert len(recovered) == 1
-

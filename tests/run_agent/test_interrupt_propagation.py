@@ -81,6 +81,7 @@ class TestInterruptPropagationToChild(unittest.TestCase):
 
         # Mock a slow API call
         mock_client = MagicMock()
+
         def slow_api_call(**kwargs):
             time.sleep(5)  # Would take 5s normally
             return MagicMock()
@@ -117,6 +118,7 @@ class TestInterruptPropagationToChild(unittest.TestCase):
 
         # Simulate child running (checking flag in a loop)
         child_detected = threading.Event()
+
         def simulate_child_loop():
             while not child._interrupt_requested:
                 time.sleep(0.05)

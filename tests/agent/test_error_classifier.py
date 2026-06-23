@@ -1593,7 +1593,6 @@ class TestRateLimitErrorWithoutStatusCode:
         assert result.reason != FailoverReason.rate_limit
 
 
-
 # ── Test: multimodal_tool_content_unsupported pattern ───────────────────
 
 class TestMultimodalToolContentUnsupported:

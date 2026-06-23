@@ -14,7 +14,6 @@ import io
 import sys
 
 
-
 def _build_parser():
     """Build a minimal replica of the prostor top-level parser."""
     parser = argparse.ArgumentParser(prog="prostor")
@@ -62,4 +61,3 @@ def _safe_parse(parser, subparsers, argv):
     else:
         subparsers.required = False
         return parser.parse_args(argv)
-

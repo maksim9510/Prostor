@@ -136,7 +136,7 @@ def main(root: Path) -> int:
             error_count += 1
             errors.append(f"{rel}: {e}")
 
-    print(f"Smart rebrand complete:")
+    print("Smart rebrand complete:")
     print(f"  Rebranded: {reb_count}")
     print(f"  Skipped:   {skipped_count}")
     print(f"  Errors:    {error_count}")

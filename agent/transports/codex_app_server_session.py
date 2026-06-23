@@ -841,7 +841,7 @@ def _approval_choice_to_codex_decision(choice: str) -> str:
     (verified against codex-rs/app-server-protocol/src/protocol/v2/item.rs
     on codex 0.130.0).
     """
-    if choice in {"once",}:
+    if choice in {"once", }:
         return "accept"
     if choice in {"session", "always"}:
         return "acceptForSession"

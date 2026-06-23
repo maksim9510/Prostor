@@ -36,7 +36,7 @@ EVIDENCE_TYPES = [
     "ioc",           # Indicator of Compromise (SHA, domain, IP, package name, etc.)
     "analysis",      # Derived analysis / cross-source correlation result
     "manual",        # Manually noted observation
-    "vendor_report", # External security vendor report excerpt
+    "vendor_report",  # External security vendor report excerpt
 ]
 
 VERIFICATION_STATES = ["unverified", "single_source", "multi_source_verified"]
@@ -172,8 +172,8 @@ class EvidenceStore:
             url = e.get("url") or ""
             url_display = f"[link]({url})" if url else ""
             lines.append(
-                f"| {e['id']} | {e.get('type','')} | {e.get('source','')} "
-                f"| {e.get('actor') or ''} | {e.get('verification','')} "
+                f"| {e['id']} | {e.get('type', '')} | {e.get('source', '')} "
+                f"| {e.get('actor') or ''} | {e.get('verification', '')} "
                 f"| {e.get('event_timestamp') or ''} | {url_display} |"
             )
         lines.append("")
@@ -183,8 +183,8 @@ class EvidenceStore:
         lines.append("|-------------|--------|-----------|--------|")
         for c in self.data["chain_of_custody"]:
             lines.append(
-                f"| {c.get('evidence_id','')} | {c.get('action','')} "
-                f"| {c.get('timestamp','')} | {c.get('source','')} |"
+                f"| {c.get('evidence_id', '')} | {c.get('action', '')} "
+                f"| {c.get('timestamp', '')} | {c.get('source', '')} |"
             )
         return "\n".join(lines)
 

@@ -72,7 +72,7 @@ _SKIP_PARTS = {"integration", "e2e", "docker"}
 
 # Per-file wall-clock cap. Override
 # via --file-timeout or PROSTOR_TEST_FILE_TIMEOUT.
-_DEFAULT_FILE_TIMEOUT_SECONDS = 140.0 # set by observing the slowest file at commit time was ~100s in CI and adding some leeway
+_DEFAULT_FILE_TIMEOUT_SECONDS = 140.0  # set by observing the slowest file at commit time was ~100s in CI and adding some leeway
 
 # Duration cache: maps relative file paths to last-observed subprocess
 # wall-clock seconds. Used by ``--slice`` to distribute files across
@@ -217,7 +217,7 @@ def _kill_tree(proc: "subprocess.Popen", pgid: int | None = None) -> None:
 
     if sys.platform == "win32":
         try:
-            
+
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                 stdout=subprocess.DEVNULL,
@@ -275,7 +275,7 @@ def _run_one_file(
     bound a pathologically slow or hung file as a whole.
     """
     cmd = [sys.executable, "-m", "pytest", str(file), *pytest_args]
-    
+
     subproc_start = time.monotonic()
     # launch the pytest process
     proc = subprocess.Popen(
@@ -486,9 +486,9 @@ def _print_inline_failure(
     print(f"  ╔╍ Failed: {rel} ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍", flush=True)
     for line in tail.splitlines():
         print(f"  ║ {line}", flush=True)
-    print(f"  ║", flush=True)
+    print("  ║", flush=True)
     print(f"  ║  Repro: {repro}", flush=True)
-    print(f"  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍", flush=True)
+    print("  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍", flush=True)
     print(flush=True)
 
 
@@ -624,7 +624,7 @@ def main() -> int:
         help=(
             "Per-file wall-clock cap in seconds. On timeout, the pytest "
             "subprocess and its full process tree are SIGKILL'd. "
-            f"Default: {_DEFAULT_FILE_TIMEOUT_SECONDS}s ({round(_DEFAULT_FILE_TIMEOUT_SECONDS/60)} min), env: PROSTOR_TEST_FILE_TIMEOUT."
+            f"Default: {_DEFAULT_FILE_TIMEOUT_SECONDS}s ({round(_DEFAULT_FILE_TIMEOUT_SECONDS / 60)} min), env: PROSTOR_TEST_FILE_TIMEOUT."
         ),
     )
     parser.add_argument(
@@ -814,14 +814,14 @@ def main() -> int:
         fast = sum(1 for t in times if t < 1.0)
         fast_2s = sum(1 for t in times if t < 2.0)
         print()
-        print(f"=== Per-file subprocess time distribution ===")
+        print("=== Per-file subprocess time distribution ===")
         print(f"  Files:   {len(times)}")
         print(f"  Total subprocess CPU-wall: {total_subproc:.1f}s  (runner wall: {elapsed:.1f}s, parallelism: {args.jobs}x)")
         print(f"  P50: {p50:.2f}s  P90: {p90:.2f}s  P95: {p95:.2f}s  P99: {p99:.2f}s  Max: {max_t:.2f}s")
-        print(f"  <1s: {fast} files ({fast/len(times)*100:.0f}%)  <2s: {fast_2s} files ({fast_2s/len(times)*100:.0f}%)")
+        print(f"  <1s: {fast} files ({fast / len(times) * 100:.0f}%)  <2s: {fast_2s} files ({fast_2s / len(times) * 100:.0f}%)")
         # Top 10 slowest files — likely the ones dragging the run.
         slowest = sorted(file_times, key=lambda x: x[1], reverse=True)[:10]
-        print(f"  Top 10 slowest:")
+        print("  Top 10 slowest:")
         for f, t in slowest:
             print(f"    {t:>6.2f}s  {_format_file(f, repo_root)}")
 

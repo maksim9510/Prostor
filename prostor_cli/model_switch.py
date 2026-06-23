@@ -1301,7 +1301,6 @@ def list_authenticated_providers(
         except Exception:
             pass
 
-
     results: List[dict] = []
     seen_slugs: set = set()  # lowercase-normalized to catch case variants (#9545)
     seen_mdev_ids: set = set()  # prevent duplicate entries for aliases (e.g. kimi-coding + kimi-coding-cn)
@@ -1412,7 +1411,7 @@ def list_authenticated_providers(
             live = fetch_lmstudio_models(
                 api_key=os.environ.get("LM_API_KEY", ""),
                 base_url=lm_base,
-                timeout=1.5, # Smaller timeout for picker
+                timeout=1.5,  # Smaller timeout for picker
             )
         except AuthError:
             live = []

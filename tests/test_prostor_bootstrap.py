@@ -222,6 +222,7 @@ class TestStdioReconfigureErrorHandling:
 
         class _BrokenStream:
             encoding = "utf-8"
+
             def reconfigure(self, **kwargs):
                 raise OSError("simulated: stream already closed")
 

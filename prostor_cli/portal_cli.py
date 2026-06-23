@@ -58,7 +58,7 @@ def _cmd_status(args) -> int:
     else:
         print(f"  Auth:    {color('not logged in', Colors.YELLOW)}")
         print(f"  Sign up: {SUBSCRIPTION_URL}")
-        print(f"  Login:   prostor portal")
+        print("  Login:   prostor portal")
 
     # Provider selection (independent of auth)
     model_cfg = config.get("model") if isinstance(config.get("model"), dict) else {}
@@ -131,11 +131,11 @@ def _cmd_tools(args) -> int:
 
     # Static catalog — the partners Tool Gateway routes to today.
     catalog = [
-        ("web",       "Web search & extract",  "Firecrawl"),
-        ("image_gen", "Image generation",      "FAL"),
-        ("tts",       "Text-to-speech",        "OpenAI TTS"),
-        ("browser",   "Browser automation",    "Browser Use"),
-        ("modal",     "Cloud terminal",        "Modal"),
+        ("web", "Web search & extract", "Firecrawl"),
+        ("image_gen", "Image generation", "FAL"),
+        ("tts", "Text-to-speech", "OpenAI TTS"),
+        ("browser", "Browser automation", "Browser Use"),
+        ("modal", "Cloud terminal", "Modal"),
     ]
 
     print()

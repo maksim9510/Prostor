@@ -30,12 +30,16 @@ class TestProviderTransportABC:
             @property
             def api_mode(self):
                 return "test_minimal"
+
             def convert_messages(self, messages, **kw):
                 return messages
+
             def convert_tools(self, tools):
                 return tools
+
             def build_kwargs(self, model, messages, tools=None, **params):
                 return {"model": model, "messages": messages}
+
             def normalize_response(self, response, **kw):
                 return NormalizedResponse(content="ok", tool_calls=None, finish_reason="stop")
 
@@ -71,12 +75,16 @@ class TestTransportRegistry:
             @property
             def api_mode(self):
                 return "dummy_test"
+
             def convert_messages(self, messages, **kw):
                 return messages
+
             def convert_tools(self, tools):
                 return tools
+
             def build_kwargs(self, model, messages, tools=None, **params):
                 return {}
+
             def normalize_response(self, response, **kw):
                 return NormalizedResponse(content=None, tool_calls=None, finish_reason="stop")
 

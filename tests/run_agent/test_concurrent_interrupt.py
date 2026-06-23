@@ -96,8 +96,6 @@ class _FakeAssistantMsg:
         self.tool_calls = tool_calls
 
 
-
-
 def test_concurrent_preflight_interrupt_skips_all(monkeypatch):
     """When _interrupt_requested is already set before concurrent execution,
     all tools are skipped with cancellation messages."""
@@ -116,8 +114,6 @@ def test_concurrent_preflight_interrupt_skips_all(monkeypatch):
     assert "skipped due to user interrupt" in messages[1]["content"]
     # _invoke_tool should never have been called
     agent._invoke_tool.assert_not_called()
-
-
 
 
 def test_clear_interrupt_clears_worker_tids(monkeypatch):
@@ -142,4 +138,3 @@ def test_clear_interrupt_clears_worker_tids(monkeypatch):
         "clear_interrupt() did not clear the interrupt bit for a tracked "
         "worker tid — stale interrupt can leak into the next turn"
     )
-

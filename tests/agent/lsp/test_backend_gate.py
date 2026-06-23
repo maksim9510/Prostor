@@ -77,6 +77,7 @@ def test_maybe_lsp_diagnostics_returns_empty_for_non_local(monkeypatch):
         def enabled_for(self, path):
             called.append(("enabled_for", path))
             return True
+
         def get_diagnostics_sync(self, path, **kw):
             called.append(("get_diagnostics_sync", path))
             return [{"severity": 1, "message": "should not see this"}]

@@ -447,4 +447,3 @@ class SessionSchemaMixin:
                     )
 
         self._conn.commit()
-

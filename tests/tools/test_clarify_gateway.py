@@ -13,7 +13,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 
-
 def _clear_clarify_state():
     """Reset module-level state between tests."""
     from tools import clarify_gateway as cm
@@ -221,6 +220,6 @@ class TestGatewayTextIntercept:
         pending = cm.get_pending_for_session("sk-tf")
         assert pending is not None
         assert pending.clarify_id == "id-tf"
-        
+
         # Clean up
         cm.clear_session("sk-tf")

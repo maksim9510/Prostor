@@ -131,9 +131,9 @@ KNOWN_TOKENS: Dict[str, Dict[str, str]] = {
         "WBNB":  "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
         "CAKE":  "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82",
         "XVS":   "0xcF6BB5389c92Bdda8a3747Ddb454cB7a64626C63",
-        "ALPACA":"0x8F0528cE5eF7B51152A59745bEfDD91D97091d2F",
+        "ALPACA": "0x8F0528cE5eF7B51152A59745bEfDD91D97091d2F",
         "BAKE":  "0xE02dF9e3e622DeBdD69fb838bB799E3F168902c5",
-        "BURGER":"0xAe9269f27437f0fcBC232d39Ec814844a51d6b8f",
+        "BURGER": "0xAe9269f27437f0fcBC232d39Ec814844a51d6b8f",
         "DOGE":  "0xbA2aE424d960c26247Dd6c32edC70B295c744C43",
     },
     "base": {
@@ -168,7 +168,7 @@ KNOWN_TOKENS: Dict[str, Dict[str, str]] = {
     "polygon": {
         "USDC":  "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
         "USDT":  "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
-        "WMATIC":"0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+        "WMATIC": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
         "WETH":  "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
         "DAI":   "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
     },
@@ -456,6 +456,7 @@ def _keccak256(data: bytes) -> bytes:
         [0, 36, 3, 41, 18], [1, 44, 10, 45, 2], [62, 6, 43, 15, 61],
         [28, 55, 25, 21, 56], [27, 20, 39, 8, 14],
     ]
+
     def rot64(x, n): return ((x << n) | (x >> (64 - n))) & 0xFFFFFFFFFFFFFFFF
     rate = 136  # 1088 bits for keccak-256
     # Padding
@@ -469,20 +470,20 @@ def _keccak256(data: bytes) -> bytes:
     for block_start in range(0, len(msg), rate):
         block = msg[block_start:block_start + rate]
         for i in range(rate // 8):
-            state[i] ^= int.from_bytes(block[i*8:(i+1)*8], "little")
+            state[i] ^= int.from_bytes(block[i * 8:(i + 1) * 8], "little")
         # Keccak-f[1600]
         for rnd in range(24):
             # Theta
-            C = [state[x] ^ state[x+5] ^ state[x+10] ^ state[x+15] ^ state[x+20] for x in range(5)]
-            D = [C[(x-1) % 5] ^ rot64(C[(x+1) % 5], 1) for x in range(5)]
+            C = [state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20] for x in range(5)]
+            D = [C[(x - 1) % 5] ^ rot64(C[(x + 1) % 5], 1) for x in range(5)]
             state = [state[i] ^ D[i % 5] for i in range(25)]
             # Rho + Pi
             B = [0] * 25
             for x in range(5):
                 for y in range(5):
-                    B[y*5 + ((2*x+3*y) % 5)] = rot64(state[x + 5*y], ROT[x][y])
+                    B[y * 5 + ((2 * x + 3 * y) % 5)] = rot64(state[x + 5 * y], ROT[x][y])
             # Chi
-            state = [B[i] ^ ((~B[(i//5)*5 + (i%5+1)%5]) & B[(i//5)*5 + (i%5+2)%5]) for i in range(25)]
+            state = [B[i] ^ ((~B[(i // 5) * 5 + (i%5 + 1)%5]) & B[(i // 5) * 5 + (i%5 + 2)%5]) for i in range(25)]
             # Iota
             state[0] ^= RC[rnd]
     # Squeeze
@@ -572,7 +573,7 @@ def cg_price_by_contract(chain: str, contract: str) -> Optional[float]:
         "arbitrum": "arbitrum-one",
         "polygon":  "polygon-pos",
         "optimism": "optimistic-ethereum",
-        "avalanche":"avalanche",
+        "avalanche": "avalanche",
         "zksync":   "zksync",
     }
     platform = cg_platform_map.get(chain)
@@ -607,7 +608,7 @@ def cmd_stats(args: argparse.Namespace) -> None:
     # Batch: blockNumber + gasPrice
     results = rpc_batch(chain, [
         ("eth_blockNumber", []),
-        ("eth_gasPrice",    []),
+        ("eth_gasPrice", []),
     ])
     block_num = hex_to_int(results[0] or "0x0")
     gas_price_wei = hex_to_int(results[1] or "0x0")
@@ -644,15 +645,15 @@ def cmd_stats(args: argparse.Namespace) -> None:
 
 def cmd_wallet(args: argparse.Namespace) -> None:
     address = require_address(args.address)
-    chain   = args.chain
-    limit   = args.limit
+    chain = args.chain
+    limit = args.limit
     no_prices = args.no_prices
-    cfg     = CHAINS[chain]
+    cfg = CHAINS[chain]
 
     # Native balance
     balance_hex = rpc_call(chain, "eth_getBalance", [address, "latest"])
-    native_wei  = hex_to_int(balance_hex or "0x0")
-    native_val  = wei_to_native(native_wei, cfg["decimals"])
+    native_wei = hex_to_int(balance_hex or "0x0")
+    native_val = wei_to_native(native_wei, cfg["decimals"])
 
     native_usd_price: Optional[float] = None
     native_usd: Optional[float] = None
@@ -721,14 +722,14 @@ def cmd_wallet(args: argparse.Namespace) -> None:
 
 def cmd_tx(args: argparse.Namespace) -> None:
     tx_hash = require_txhash(args.hash)
-    chain   = args.chain
-    cfg     = CHAINS[chain]
+    chain = args.chain
+    cfg = CHAINS[chain]
 
     results = rpc_batch(chain, [
-        ("eth_getTransactionByHash",       [tx_hash]),
-        ("eth_getTransactionReceipt",      [tx_hash]),
+        ("eth_getTransactionByHash", [tx_hash]),
+        ("eth_getTransactionReceipt", [tx_hash]),
     ])
-    tx      = results[0]
+    tx = results[0]
     receipt = results[1]
 
     if not tx:
@@ -744,12 +745,12 @@ def cmd_tx(args: argparse.Namespace) -> None:
     except Exception:
         pass
 
-    value_wei  = hex_to_int(tx.get("value", "0x0"))
-    value_eth  = wei_to_native(value_wei, cfg["decimals"])
-    gas_price  = hex_to_int(tx.get("gasPrice") or "0x0")
-    gas_limit  = hex_to_int(tx.get("gas", "0x0"))
-    gas_used   = hex_to_int((receipt or {}).get("gasUsed", "0x0")) if receipt else None
-    status     = None
+    value_wei = hex_to_int(tx.get("value", "0x0"))
+    value_eth = wei_to_native(value_wei, cfg["decimals"])
+    gas_price = hex_to_int(tx.get("gasPrice") or "0x0")
+    gas_limit = hex_to_int(tx.get("gas", "0x0"))
+    gas_used = hex_to_int((receipt or {}).get("gasUsed", "0x0")) if receipt else None
+    status = None
     if receipt:
         status = "success" if hex_to_int(receipt.get("status", "0x0")) == 1 else "failed"
 
@@ -790,21 +791,21 @@ def cmd_tx(args: argparse.Namespace) -> None:
 
 def cmd_token(args: argparse.Namespace) -> None:
     contract = require_address(args.contract, field="contract address")
-    chain    = args.chain
+    chain = args.chain
 
     # Batch all ERC-20 metadata calls
     calls = [
-        ("eth_call", [{"to": contract, "data": ERC20_SELECTORS["name()"]},        "latest"]),
-        ("eth_call", [{"to": contract, "data": ERC20_SELECTORS["symbol()"]},       "latest"]),
-        ("eth_call", [{"to": contract, "data": ERC20_SELECTORS["decimals()"]},     "latest"]),
-        ("eth_call", [{"to": contract, "data": ERC20_SELECTORS["totalSupply()"]},  "latest"]),
+        ("eth_call", [{"to": contract, "data": ERC20_SELECTORS["name()"]}, "latest"]),
+        ("eth_call", [{"to": contract, "data": ERC20_SELECTORS["symbol()"]}, "latest"]),
+        ("eth_call", [{"to": contract, "data": ERC20_SELECTORS["decimals()"]}, "latest"]),
+        ("eth_call", [{"to": contract, "data": ERC20_SELECTORS["totalSupply()"]}, "latest"]),
     ]
-    results  = rpc_batch(chain, calls)
-    name     = decode_string(results[0] or "0x")
-    symbol   = decode_string(results[1] or "0x")
+    results = rpc_batch(chain, calls)
+    name = decode_string(results[0] or "0x")
+    symbol = decode_string(results[1] or "0x")
     decimals = decode_uint8(results[2] or "0x0")
     supply_raw = decode_uint256(results[3] or "0x0")
-    supply   = wei_to_native(supply_raw, decimals)
+    supply = wei_to_native(supply_raw, decimals)
 
     price: Optional[float] = None
     market_cap: Optional[float] = None
@@ -832,13 +833,13 @@ def cmd_token(args: argparse.Namespace) -> None:
 
 def cmd_activity(args: argparse.Namespace) -> None:
     address = require_address(args.address)
-    chain   = args.chain
-    limit   = args.limit
-    cfg     = CHAINS[chain]
+    chain = args.chain
+    limit = args.limit
+    cfg = CHAINS[chain]
 
     # Get current block
     block_hex = rpc_call(chain, "eth_blockNumber", [])
-    latest    = hex_to_int(block_hex or "0x0")
+    latest = hex_to_int(block_hex or "0x0")
 
     txs_out: List[Dict[str, Any]] = []
     scan_range = min(200, latest)
@@ -859,7 +860,7 @@ def cmd_activity(args: argparse.Namespace) -> None:
             if len(txs_out) >= limit:
                 break
             frm = (tx.get("from") or "").lower()
-            to  = (tx.get("to")   or "").lower()
+            to = (tx.get("to") or "").lower()
             addr_lower = address.lower()
             if frm == addr_lower or to == addr_lower:
                 value_wei = hex_to_int(tx.get("value", "0x0"))
@@ -888,19 +889,19 @@ def cmd_activity(args: argparse.Namespace) -> None:
 
 def cmd_gas(args: argparse.Namespace) -> None:
     chain = args.chain
-    cfg   = CHAINS[chain]
+    cfg = CHAINS[chain]
 
     gas_price_hex = rpc_call(chain, "eth_gasPrice", [])
-    gas_wei       = hex_to_int(gas_price_hex or "0x0")
-    gas_gwei      = gwei_from_wei(gas_wei)
+    gas_wei = hex_to_int(gas_price_hex or "0x0")
+    gas_gwei = gwei_from_wei(gas_wei)
 
-    native_price  = get_native_price(chain)
+    native_price = get_native_price(chain)
 
     estimates: Dict[str, Any] = {}
     for op, gas_units in GAS_ESTIMATES.items():
-        cost_wei   = gas_wei * gas_units
+        cost_wei = gas_wei * gas_units
         cost_native = wei_to_native(cost_wei, cfg["decimals"])
-        cost_usd    = round(cost_native * native_price, 6) if native_price else None
+        cost_usd = round(cost_native * native_price, 6) if native_price else None
         estimates[op] = {
             "gas_units":   gas_units,
             "cost_native": round(cost_native, 8),
@@ -933,15 +934,15 @@ def cmd_price(args: argparse.Namespace) -> None:
             return
     else:
         symbol = token.upper()
-        cg_id  = COINGECKO_IDS.get(symbol)
+        cg_id = COINGECKO_IDS.get(symbol)
         if cg_id:
-            price  = cg_price_by_id(cg_id)
+            price = cg_price_by_id(cg_id)
             source = f"coingecko:{cg_id}"
         if price is None:
             # Try known tokens on given chain
             contract = (KNOWN_TOKENS.get(chain) or {}).get(symbol)
             if contract:
-                price  = cg_price_by_contract(chain, contract)
+                price = cg_price_by_contract(chain, contract)
                 source = f"coingecko_contract:{contract}"
         if price is None:
             print_json({"error": f"Could not find price for '{token}'. Try a contract address."})
@@ -970,7 +971,7 @@ def _fetch_chain_stats(chain: str) -> Dict[str, Any]:
     transfer_usd: Optional[float] = None
     if gas_gwei is not None and native_price is not None:
         gas_wei_val = int(gas_gwei * 1e9)
-        cost_wei    = gas_wei_val * GAS_ESTIMATES["transfer"]
+        cost_wei = gas_wei_val * GAS_ESTIMATES["transfer"]
         cost_native = wei_to_native(cost_wei, CHAINS[chain]["decimals"])
         transfer_usd = round(cost_native * native_price, 6)
 
@@ -1020,10 +1021,10 @@ def cmd_compare(_args: argparse.Namespace) -> None:
 
 
 def cmd_whale(args: argparse.Namespace) -> None:
-    chain    = args.chain
-    blocks   = args.blocks
-    min_usd  = args.min_usd
-    cfg      = CHAINS[chain]
+    chain = args.chain
+    blocks = args.blocks
+    min_usd = args.min_usd
+    cfg = CHAINS[chain]
 
     native_price = get_native_price(chain)
     if native_price is None:
@@ -1031,7 +1032,7 @@ def cmd_whale(args: argparse.Namespace) -> None:
         return
 
     block_hex = rpc_call(chain, "eth_blockNumber", [])
-    latest    = hex_to_int(block_hex or "0x0")
+    latest = hex_to_int(block_hex or "0x0")
 
     whales: List[Dict[str, Any]] = []
     blocks_scanned = 0
@@ -1051,7 +1052,7 @@ def cmd_whale(args: argparse.Namespace) -> None:
             if value_wei == 0:
                 continue
             value_native = wei_to_native(value_wei, cfg["decimals"])
-            value_usd    = value_native * native_price
+            value_usd = value_native * native_price
             if value_usd >= min_usd:
                 whales.append({
                     "hash":         tx.get("hash"),
@@ -1177,7 +1178,7 @@ def cmd_allowance(args: argparse.Namespace) -> None:
     for symbol, contract in known.items():
         for spender_addr, spender_name in KNOWN_SPENDERS.items():
             # allowance(owner, spender) = 0xdd62ed3e
-            owner_pad  = address.lower().replace("0x", "").zfill(64)
+            owner_pad = address.lower().replace("0x", "").zfill(64)
             spender_pad = spender_addr.lower().replace("0x", "").zfill(64)
             data = "0xdd62ed3e" + owner_pad + spender_pad
             raw = rpc_call(chain, "eth_call", [{"to": contract, "data": data}, "latest"])
@@ -1393,7 +1394,7 @@ def build_parser() -> argparse.ArgumentParser:
     # -- wallet --
     p_wallet = sub.add_parser("wallet", help="Wallet balance + ERC-20 portfolio")
     p_wallet.add_argument("address", help="Wallet address (0x...)")
-    p_wallet.add_argument("--limit",     type=int, default=20, metavar="N",
+    p_wallet.add_argument("--limit", type=int, default=20, metavar="N",
                           help="Max number of known tokens to check (default: 20)")
     p_wallet.add_argument("--no-prices", action="store_true",
                           help="Skip USD price lookups (faster)")
@@ -1430,7 +1431,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # -- whale --
     p_whale = sub.add_parser("whale", help="Scan for large value transfers in recent blocks")
-    p_whale.add_argument("--blocks",  type=int, default=20, metavar="N",
+    p_whale.add_argument("--blocks", type=int, default=20, metavar="N",
                          help="Number of recent blocks to scan (default: 20)")
     p_whale.add_argument("--min-usd", type=float, default=10_000.0, metavar="N",
                          help="Minimum USD value to report (default: 10000)")
@@ -1482,7 +1483,7 @@ DISPATCH = {
 
 def main() -> None:
     parser = build_parser()
-    args   = parser.parse_args()
+    args = parser.parse_args()
 
     # Validate chain exists (argparse choices already handles this, but for ENV override)
     if hasattr(args, "chain") and args.chain not in CHAINS:

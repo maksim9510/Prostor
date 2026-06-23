@@ -363,7 +363,6 @@ class TestHandleResumeCommand:
         db.close()
 
 
-
 class TestHandleSessionsCommand:
     """Tests for GatewayRunner._handle_sessions_command."""
 

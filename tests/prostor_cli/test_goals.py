@@ -653,10 +653,13 @@ class TestJudgeGoalWithSubgoals:
 
         class _FakeMsg:
             content = '{"done": true, "reason": "all done"}'
+
         class _FakeChoice:
             message = _FakeMsg()
+
         class _FakeResp:
             choices = [_FakeChoice()]
+
         class _FakeClient:
             class chat:
                 class completions:
@@ -696,10 +699,13 @@ class TestJudgeGoalWithSubgoals:
 
         class _FakeMsg:
             content = '{"done": true, "reason": "ok"}'
+
         class _FakeChoice:
             message = _FakeMsg()
+
         class _FakeResp:
             choices = [_FakeChoice()]
+
         class _FakeClient:
             class chat:
                 class completions:

@@ -626,7 +626,7 @@ def _build_schema_from_config(
         full_key = f"{prefix}.{key}" if prefix else key
 
         # Skip internal / version keys
-        if full_key in {"_config_version",}:
+        if full_key in {"_config_version", }:
             continue
 
         # Category is the first path component for nested keys, or "general"
@@ -3800,8 +3800,6 @@ def _apply_model_assignment_sync(
     }
 
 
-
-
 def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     """Reverse _normalize_config_for_web before saving.
 
@@ -6295,6 +6293,7 @@ async def _start_device_code_flow(
         portal_base_url = (
             os.getenv("MINIMAX_PORTAL_BASE_URL") or MINIMAX_OAUTH_GLOBAL_BASE
         ).rstrip("/")
+
         def _do_minimax_request():
             with httpx.Client(
                 timeout=httpx.Timeout(15.0),
@@ -6970,7 +6969,6 @@ async def cancel_oauth_session(
 # ---------------------------------------------------------------------------
 
 
-
 def _session_latest_descendant(session_id: str):
     """Resolve a session id to the newest child leaf session.
 
@@ -7210,7 +7208,6 @@ async def get_session_detail(session_id: str, profile: Optional[str] = None):
         return session
     finally:
         db.close()
-
 
 
 @app.get("/api/sessions/{session_id}/latest-descendant")
@@ -11071,7 +11068,6 @@ async def pty_ws(ws: WebSocket) -> None:
         await ws.close(code=1011)
         return
 
-
     try:
         bridge = PtyBridge.spawn(argv, cwd=cwd, env=env)
     except PtyUnavailableError as exc:
@@ -11393,14 +11389,14 @@ def mount_spa(application: FastAPI):
 # Built-in dashboard themes — label + description only.  The actual color
 # definitions live in the frontend (web/src/themes/presets.ts).
 _BUILTIN_DASHBOARD_THEMES = [
-    {"name": "default",       "label": "Prostor Teal",         "description": "Classic dark teal — the canonical Prostor look"},
+    {"name": "default", "label": "Prostor Teal", "description": "Classic dark teal — the canonical Prostor look"},
     {"name": "default-large", "label": "Prostor Teal (Large)", "description": "Prostor Teal with bigger fonts and roomier spacing"},
-    {"name": "nous-blue",     "label": "Nous Blue",           "description": "Light mode — vivid Nous-blue accents on cream canvas"},
-    {"name": "midnight",      "label": "Midnight",            "description": "Deep blue-violet with cool accents"},
-    {"name": "ember",     "label": "Ember",          "description": "Warm crimson and bronze — forge vibes"},
-    {"name": "mono",      "label": "Mono",           "description": "Clean grayscale — minimal and focused"},
-    {"name": "cyberpunk", "label": "Cyberpunk",      "description": "Neon green on black — matrix terminal"},
-    {"name": "rose",      "label": "Rosé",           "description": "Soft pink and warm ivory — easy on the eyes"},
+    {"name": "nous-blue", "label": "Nous Blue", "description": "Light mode — vivid Nous-blue accents on cream canvas"},
+    {"name": "midnight", "label": "Midnight", "description": "Deep blue-violet with cool accents"},
+    {"name": "ember", "label": "Ember", "description": "Warm crimson and bronze — forge vibes"},
+    {"name": "mono", "label": "Mono", "description": "Clean grayscale — minimal and focused"},
+    {"name": "cyberpunk", "label": "Cyberpunk", "description": "Neon green on black — matrix terminal"},
+    {"name": "rose", "label": "Rosé", "description": "Soft pink and warm ivory — easy on the eyes"},
 ]
 
 
@@ -12424,9 +12420,9 @@ def start_server(
                     f"Bundled providers reported these issues:\n"
                     + "\n".join(skip_reasons)
                     + "\n"
-                    f"\n"
-                    f"Or pass --insecure to skip the auth gate (NOT "
-                    f"recommended on untrusted networks)."
+                    "\n"
+                    "Or pass --insecure to skip the auth gate (NOT "
+                    "recommended on untrusted networks)."
                 )
             raise SystemExit(
                 f"Refusing to bind dashboard to {host} — the OAuth auth "

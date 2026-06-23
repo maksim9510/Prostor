@@ -2098,16 +2098,16 @@ def main():
         if not args.first_release:
             return
 
-    print(f"{'='*60}")
-    print(f"  Prostor Agent Release Preview")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
+    print("  Prostor Agent Release Preview")
+    print(f"{'=' * 60}")
     print(f"  CalVer tag:      {tag_name}")
     print(f"  SemVer:          v{current_version} → v{new_version}")
     print(f"  Previous tag:    {prev_tag or '(none — first release)'}")
     print(f"  Commits:         {len(commits)}")
     print(f"  Unique authors:  {len({c['github_author'] for c in commits})}")
     print(f"  Mode:            {'PUBLISH' if args.publish else 'DRY RUN'}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print()
 
     # Generate changelog
@@ -2124,9 +2124,9 @@ def main():
         print(changelog)
 
     if args.publish:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("  Publishing release...")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Update version files
         if args.bump:
@@ -2148,7 +2148,7 @@ def main():
             if commit_result.returncode != 0:
                 print(f"  ✗ Failed to commit version bump: {commit_result.stderr.strip()}")
                 return
-            print(f"  ✓ Committed version bump")
+            print("  ✓ Committed version bump")
 
         # Create annotated tag
         tag_result = git_result(
@@ -2163,7 +2163,7 @@ def main():
         # Push
         push_result = git_result("push", "origin", "HEAD", "--tags")
         if push_result.returncode == 0:
-            print(f"  ✓ Pushed to origin")
+            print("  ✓ Pushed to origin")
         else:
             print(f"  ✗ Failed to push to origin: {push_result.stderr.strip()}")
             print("    Continue manually after fixing access:")
@@ -2208,17 +2208,17 @@ def main():
             else:
                 print(f"  ✗ GitHub release failed: {result.stderr.strip()}")
             print(f"    Release notes kept at: {changelog_file}")
-            print(f"    Tag was created locally. Create the release manually:")
+            print("    Tag was created locally. Create the release manually:")
             print(
                 f"    gh release create {tag_name} --title 'Prostor Agent v{new_version} ({calver_date})' "
                 f"--notes-file .release_notes.md {' '.join(str(path) for path in artifacts)}"
             )
             print(f"\n  ✓ Release artifacts prepared for manual publish: v{new_version} ({tag_name})")
     else:
-        print(f"\n{'='*60}")
-        print(f"  Dry run complete. To publish, add --publish")
-        print(f"  Example: python scripts/release.py --bump minor --publish")
-        print(f"{'='*60}")
+        print(f"\n{'=' * 60}")
+        print("  Dry run complete. To publish, add --publish")
+        print("  Example: python scripts/release.py --bump minor --publish")
+        print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":

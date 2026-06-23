@@ -119,7 +119,7 @@ class ProcessSession:
     watch_patterns: List[str] = field(default_factory=list)
     _watch_hits: int = field(default=0, repr=False)          # total matches delivered
     _watch_suppressed: int = field(default=0, repr=False)    # matches dropped by rate limit
-    _watch_disabled: bool = field(default=False, repr=False) # permanently killed after strike limit
+    _watch_disabled: bool = field(default=False, repr=False)  # permanently killed after strike limit
     # Per-session rate limit state: at most one match every WATCH_MIN_INTERVAL_SECONDS.
     # When an emission happens, _watch_cooldown_until is set to now + interval and
     # _watch_strike_candidate becomes True. The next match to arrive before that
@@ -1438,7 +1438,7 @@ class ProcessRegistry:
                             "notify_on_complete": s.notify_on_complete,
                             "watch_patterns": s.watch_patterns,
                         })
-            
+
             # Atomic write to avoid corruption on crash
             from utils import atomic_json_write
             atomic_json_write(CHECKPOINT_PATH, entries)

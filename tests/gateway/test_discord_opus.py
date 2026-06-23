@@ -64,4 +64,4 @@ class TestOpusFindLibrary:
             if "except Exception" in line and i + 1 < len(lines):
                 next_line = lines[i + 1].strip()
                 assert next_line != "return", \
-                    f"_on_packet has bare 'except Exception: return' at line {i+1}"
+                    f"_on_packet has bare 'except Exception: return' at line {i + 1}"

@@ -33,7 +33,7 @@ SKILL_CATEGORY_DESCRIPTION = (
     "Skills migrated from an OpenClaw workspace."
 )
 SKILL_CONFLICT_MODES = {"skip", "overwrite", "rename"}
-SUPPORTED_SECRET_TARGETS={
+SUPPORTED_SECRET_TARGETS = {
     "TELEGRAM_BOT_TOKEN",
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
@@ -3043,16 +3043,16 @@ def main() -> int:
     total = sum(s.values())
 
     print()
-    print(f"  ╔══════════════════════════════════════════════════════╗")
+    print("  ╔══════════════════════════════════════════════════════╗")
     print(f"  ║   OpenClaw -> Prostor Migration   [{mode_label:>8s}]   ║")
-    print(f"  ╠══════════════════════════════════════════════════════╣")
+    print("  ╠══════════════════════════════════════════════════════╣")
     print(f"  ║  Source:  {str(report['source_root'])[:42]:<42s}  ║")
     print(f"  ║  Target:  {str(report['target_root'])[:42]:<42s}  ║")
-    print(f"  ╠══════════════════════════════════════════════════════╣")
+    print("  ╠══════════════════════════════════════════════════════╣")
     print(f"  ║  ✔ Migrated:  {s.get('migrated', 0):>3d}    ◆ Archived:  {s.get('archived', 0):>3d}        ║")
     print(f"  ║  ⊘ Skipped:   {s.get('skipped', 0):>3d}    ⚠ Conflicts: {s.get('conflict', 0):>3d}        ║")
     print(f"  ║  ✖ Errors:    {s.get('error', 0):>3d}    Total:       {total:>3d}        ║")
-    print(f"  ╚══════════════════════════════════════════════════════╝")
+    print("  ╚══════════════════════════════════════════════════════╝")
 
     # Show what was migrated
     migrated = [i for i in items if i["status"] == "migrated"]

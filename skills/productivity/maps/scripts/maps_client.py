@@ -31,7 +31,7 @@ import urllib.request
 USER_AGENT = "ProstorAgent/1.0 (contact: prostor@agent.ai)"
 DATA_SOURCE = "OpenStreetMap/Nominatim"
 
-NOMINATIM_SEARCH  = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse"
 # Public Overpass endpoints. We try them in order so a single server
 # outage doesn't break the skill — kumi.systems is a well-known mirror.
@@ -40,9 +40,9 @@ OVERPASS_URLS = [
     "https://overpass.kumi.systems/api/interpreter",
 ]
 # Backward-compat alias for any caller that imports OVERPASS_API directly.
-OVERPASS_API      = OVERPASS_URLS[0]
-OSRM_BASE         = "https://router.project-osrm.org/route/v1"
-TIMEAPI_BASE      = "https://timeapi.io/api/timezone/coordinate"
+OVERPASS_API = OVERPASS_URLS[0]
+OSRM_BASE = "https://router.project-osrm.org/route/v1"
+TIMEAPI_BASE = "https://timeapi.io/api/timezone/coordinate"
 
 # Seconds to sleep between Nominatim requests (ToS requirement)
 NOMINATIM_RATE_LIMIT = 1.0
@@ -60,7 +60,7 @@ CATEGORY_TAGS = {
     # bakery is tagged as shop=bakery in the OSM wiki, but some mappers use
     # amenity=bakery. Search both so small indie bakeries aren't missed.
     "bakery":            [("shop", "bakery"), ("amenity", "bakery")],
-    "convenience_store": ("shop",    "convenience"),
+    "convenience_store": ("shop", "convenience"),
     # Health
     "hospital":          ("amenity", "hospital"),
     "pharmacy":          ("amenity", "pharmacy"),
@@ -72,9 +72,9 @@ CATEGORY_TAGS = {
     "guest_house":       ("tourism", "guest_house"),
     "camp_site":         ("tourism", "camp_site"),
     # Shopping & Services
-    "supermarket":       ("shop",    "supermarket"),
-    "bookshop":          ("shop",    "books"),
-    "laundry":           ("shop",    "laundry"),
+    "supermarket":       ("shop", "supermarket"),
+    "bookshop":          ("shop", "books"),
+    "laundry":           ("shop", "laundry"),
     # Finance
     "atm":               ("amenity", "atm"),
     "bank":              ("amenity", "bank"),
@@ -466,10 +466,10 @@ def parse_overpass_elements(elements, ref_lat=None, ref_lon=None):
         # Promote commonly-useful tags to top-level fields so agents can
         # reference them without digging into the raw ``tags`` dict.
         for src_key, dst_key in (
-            ("cuisine",        "cuisine"),
-            ("opening_hours",  "hours"),
-            ("phone",          "phone"),
-            ("website",        "website"),
+            ("cuisine", "cuisine"),
+            ("opening_hours", "hours"),
+            ("phone", "phone"),
+            ("website", "website"),
         ):
             val = tags.get(src_key)
             if val:
@@ -501,7 +501,7 @@ def parse_overpass_elements(elements, ref_lat=None, ref_lon=None):
 def cmd_search(args):
     """Geocode a place name and return top results."""
     query = " ".join(args.query)
-    raw   = nominatim_search(query, limit=5)
+    raw = nominatim_search(query, limit=5)
 
     if not raw:
         print_json({
@@ -637,7 +637,7 @@ def cmd_nearby(args):
         )
 
     radius = int(args.radius)
-    limit  = int(args.limit)
+    limit = int(args.limit)
     if radius <= 0:
         error_exit("Radius must be a positive integer (metres).")
     if limit <= 0:
@@ -685,9 +685,9 @@ def cmd_nearby(args):
 
 def cmd_distance(args):
     """Calculate road distance and travel time between two places."""
-    origin_query      = " ".join(args.origin)
+    origin_query = " ".join(args.origin)
     destination_query = " ".join(args.to)
-    mode              = args.mode.lower()
+    mode = args.mode.lower()
 
     if mode not in OSRM_PROFILES:
         error_exit(f"Invalid mode '{mode}'. Choose from: {', '.join(OSRM_PROFILES)}")
@@ -715,10 +715,10 @@ def cmd_distance(args):
     if not routes:
         error_exit("No route found between the two locations.")
 
-    route        = routes[0]
-    distance_m   = route.get("distance", 0)
-    duration_s   = route.get("duration", 0)
-    distance_km  = round(distance_m / 1000, 3)
+    route = routes[0]
+    distance_m = route.get("distance", 0)
+    duration_s = route.get("duration", 0)
+    distance_km = round(distance_m / 1000, 3)
     duration_min = round(duration_s / 60, 2)
 
     # Straight-line distance for reference
@@ -772,9 +772,9 @@ def _format_distance(metres):
 
 def cmd_directions(args):
     """Get turn-by-turn directions between two places via OSRM."""
-    origin_query      = " ".join(args.origin)
+    origin_query = " ".join(args.origin)
     destination_query = " ".join(args.to)
-    mode              = args.mode.lower()
+    mode = args.mode.lower()
 
     if mode not in OSRM_PROFILES:
         error_exit(f"Invalid mode '{mode}'. Choose from: {', '.join(OSRM_PROFILES)}")
@@ -802,9 +802,9 @@ def cmd_directions(args):
     if not routes:
         error_exit("No route found between the two locations.")
 
-    route        = routes[0]
-    distance_m   = route.get("distance", 0)
-    duration_s   = route.get("duration", 0)
+    route = routes[0]
+    distance_m = route.get("distance", 0)
+    duration_s = route.get("duration", 0)
 
     # Extract steps from all legs
     steps = []
@@ -813,10 +813,10 @@ def cmd_directions(args):
         for step in leg.get("steps", []):
             maneuver = step.get("maneuver", {})
             step_dist = step.get("distance", 0)
-            step_dur  = step.get("duration", 0)
+            step_dur = step.get("duration", 0)
             step_name = step.get("name", "")
-            modifier  = maneuver.get("modifier", "")
-            m_type    = maneuver.get("type", "")
+            modifier = maneuver.get("modifier", "")
+            m_type = maneuver.get("type", "")
 
             # Build instruction text
             if m_type == "depart":
@@ -908,7 +908,7 @@ def cmd_timezone(args):
     timezone_str = None
     timezone_src = None
     current_time = None
-    utc_offset   = None
+    utc_offset = None
 
     # --- Strategy 1: TimeAPI.io coordinate lookup ---
     try:
@@ -979,8 +979,8 @@ def cmd_bbox(args):
     # Normalize: south/west < north/east
     south = min(lat1, lat2)
     north = max(lat1, lat2)
-    west  = min(lon1, lon2)
-    east  = max(lon1, lon2)
+    west = min(lon1, lon2)
+    east = max(lon1, lon2)
 
     category = args.category.lower()
     if category not in CATEGORY_TAGS:
@@ -1052,7 +1052,7 @@ def cmd_area(args):
     # Width in km at the average latitude
     avg_lat = (min_lat + max_lat) / 2
     height_km = haversine_m(min_lat, min_lon, max_lat, min_lon) / 1000
-    width_km  = haversine_m(avg_lat, min_lon, avg_lat, max_lon) / 1000
+    width_km = haversine_m(avg_lat, min_lon, avg_lat, max_lon) / 1000
     approx_area_km2 = round(height_km * width_km, 3)
 
     print_json({
@@ -1273,7 +1273,7 @@ def build_parser():
 
 def main():
     parser = build_parser()
-    args   = parser.parse_args()
+    args = parser.parse_args()
 
     dispatch = {
         "search":     cmd_search,

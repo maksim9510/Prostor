@@ -134,6 +134,7 @@ class TestFamilyRouting:
                 return {"video": {"url": "https://fake/out.mp4"}}
 
         fake = types.ModuleType("fal_client")
+
         def _submit(endpoint, arguments=None, headers=None):
             captured["endpoint"] = endpoint
             captured["arguments"] = arguments

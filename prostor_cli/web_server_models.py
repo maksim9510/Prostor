@@ -15,8 +15,6 @@ class ConfigUpdate(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class EnvVarUpdate(BaseModel):
     key: str
     value: str
@@ -29,13 +27,9 @@ class EnvVarUpdate(BaseModel):
     api_key: str = ""
 
 
-
-
 class EnvVarDelete(BaseModel):
     key: str
     profile: Optional[str] = None
-
-
 
 
 class EnvVarReveal(BaseModel):
@@ -43,12 +37,8 @@ class EnvVarReveal(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class MemoryProviderConfigUpdate(BaseModel):
     values: Dict[str, str] = {}
-
-
 
 
 class MessagingPlatformUpdate(BaseModel):
@@ -60,12 +50,8 @@ class MessagingPlatformUpdate(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class TelegramOnboardingStart(BaseModel):
     bot_name: Optional[str] = None
-
-
 
 
 class TelegramOnboardingApply(BaseModel):
@@ -73,13 +59,9 @@ class TelegramOnboardingApply(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class AudioTranscriptionRequest(BaseModel):
     data_url: str
     mime_type: Optional[str] = None
-
-
 
 
 class ManagedFileUpload(BaseModel):
@@ -88,19 +70,13 @@ class ManagedFileUpload(BaseModel):
     overwrite: bool = True
 
 
-
-
 class ManagedDirectoryCreate(BaseModel):
     path: str
-
-
 
 
 class ManagedFileDelete(BaseModel):
     path: str
     recursive: bool = False
-
-
 
 
 class ModelAssignment(BaseModel):
@@ -131,12 +107,8 @@ class ModelAssignment(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class CuratorPause(BaseModel):
     paused: bool
-
-
 
 
 class DebugShareRequest(BaseModel):
@@ -148,12 +120,8 @@ class DebugShareRequest(BaseModel):
     lines: int = 200
 
 
-
-
 class TTSSpeakRequest(BaseModel):
     text: str
-
-
 
 
 class OAuthSubmitBody(BaseModel):
@@ -161,13 +129,9 @@ class OAuthSubmitBody(BaseModel):
     code: str
 
 
-
-
 class BulkDeleteSessions(BaseModel):
     ids: List[str]
     profile: Optional[str] = None
-
-
 
 
 class SessionRename(BaseModel):
@@ -178,14 +142,10 @@ class SessionRename(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class SessionPrune(BaseModel):
     older_than_days: int = 90
     source: Optional[str] = None
     profile: Optional[str] = None
-
-
 
 
 class CronJobCreate(BaseModel):
@@ -196,19 +156,13 @@ class CronJobCreate(BaseModel):
     skills: Optional[List[str]] = None
 
 
-
-
 class CronJobUpdate(BaseModel):
     updates: dict
-
-
 
 
 class AutomationBlueprintInstantiate(BaseModel):
     blueprint: str                      # blueprint key, e.g. "morning-brief"
     values: Dict[str, Any] = {}      # filled slot values from the form
-
-
 
 
 class MCPServerCreate(BaseModel):
@@ -223,13 +177,9 @@ class MCPServerCreate(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class MCPEnabledToggle(BaseModel):
     enabled: bool
     profile: Optional[str] = None
-
-
 
 
 class MCPCatalogInstall(BaseModel):
@@ -240,20 +190,14 @@ class MCPCatalogInstall(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class PairingApprove(BaseModel):
     platform: str
     code: str
 
 
-
-
 class PairingRevoke(BaseModel):
     platform: str
     user_id: str
-
-
 
 
 class WebhookCreate(BaseModel):
@@ -269,12 +213,8 @@ class WebhookCreate(BaseModel):
     secret: Optional[str] = None
 
 
-
-
 class WebhookEnabledToggle(BaseModel):
     enabled: bool
-
-
 
 
 class CredentialPoolAdd(BaseModel):
@@ -285,13 +225,9 @@ class CredentialPoolAdd(BaseModel):
     label: Optional[str] = None
 
 
-
-
 class MemoryProviderSelect(BaseModel):
     # "" or "built-in" disables the external provider (built-in only).
     provider: str
-
-
 
 
 class MemoryReset(BaseModel):
@@ -299,13 +235,9 @@ class MemoryReset(BaseModel):
     target: str = "all"
 
 
-
-
 class BackupRequest(BaseModel):
     # Optional output path; defaults to a timestamped zip in the home dir.
     output: Optional[str] = None
-
-
 
 
 class ImportRequest(BaseModel):
@@ -320,8 +252,6 @@ class ImportRequest(BaseModel):
     force: bool = False
 
 
-
-
 class HookCreate(BaseModel):
     event: str
     command: str
@@ -333,13 +263,9 @@ class HookCreate(BaseModel):
     approve: bool = True
 
 
-
-
 class HookDelete(BaseModel):
     event: str
     command: str
-
-
 
 
 class SkillInstallRequest(BaseModel):
@@ -347,19 +273,13 @@ class SkillInstallRequest(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class SkillUninstallRequest(BaseModel):
     name: str
     profile: Optional[str] = None
 
 
-
-
 class SkillsUpdateRequest(BaseModel):
     profile: Optional[str] = None
-
-
 
 
 class ProfileCreate(BaseModel):
@@ -390,30 +310,20 @@ class ProfileCreate(BaseModel):
     hub_skills: List[str] = []
 
 
-
-
 class ProfileRename(BaseModel):
     new_name: str
-
-
 
 
 class ProfileSoulUpdate(BaseModel):
     content: str
 
 
-
-
 class ProfileActiveUpdate(BaseModel):
     name: str
 
 
-
-
 class ProfileDescriptionUpdate(BaseModel):
     description: str = ""
-
-
 
 
 class ProfileModelUpdate(BaseModel):
@@ -421,20 +331,14 @@ class ProfileModelUpdate(BaseModel):
     model: str
 
 
-
-
 class ProfileDescribeAuto(BaseModel):
     overwrite: bool = False
-
-
 
 
 class SkillToggle(BaseModel):
     name: str
     enabled: bool
     profile: Optional[str] = None
-
-
 
 
 class SkillCreate(BaseModel):
@@ -444,14 +348,10 @@ class SkillCreate(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class SkillContentUpdate(BaseModel):
     name: str
     content: str
     profile: Optional[str] = None
-
-
 
 
 class ToolsetToggle(BaseModel):
@@ -459,13 +359,9 @@ class ToolsetToggle(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class ToolsetProviderSelect(BaseModel):
     provider: str
     profile: Optional[str] = None
-
-
 
 
 class ToolsetEnvUpdate(BaseModel):
@@ -473,13 +369,9 @@ class ToolsetEnvUpdate(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class ToolsetPostSetup(BaseModel):
     key: str
     profile: Optional[str] = None
-
-
 
 
 class RawConfigUpdate(BaseModel):
@@ -487,18 +379,12 @@ class RawConfigUpdate(BaseModel):
     profile: Optional[str] = None
 
 
-
-
 class ThemeSetBody(BaseModel):
     name: str
 
 
-
-
 class FontSetBody(BaseModel):
     font: str
-
-
 
 
 class _AgentPluginInstallBody(BaseModel):
@@ -507,18 +393,10 @@ class _AgentPluginInstallBody(BaseModel):
     enable: bool = True
 
 
-
-
 class _PluginProvidersPutBody(BaseModel):
     memory_provider: Optional[str] = None
     context_engine: Optional[str] = None
 
 
-
-
 class _PluginVisibilityBody(BaseModel):
     hidden: bool
-
-
-
-

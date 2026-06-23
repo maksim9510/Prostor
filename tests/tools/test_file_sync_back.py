@@ -414,6 +414,7 @@ class TestSyncBackSIGINT:
         with patch("tools.environments.file_sync.signal.signal", side_effect=tracking_signal):
             # Run from a worker thread
             exc = []
+
             def run():
                 try:
                     mgr.sync_back(prostor_home=tmp_path / ".prostor")

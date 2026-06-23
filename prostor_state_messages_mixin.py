@@ -932,4 +932,3 @@ class SessionMessagesMixin:
                 (session_id,),
             )
         self._execute_write(_do)
-

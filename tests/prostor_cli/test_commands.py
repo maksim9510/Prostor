@@ -373,6 +373,7 @@ class TestSlackNativeSlashes:
         tg_names = {n for n, _d in telegram_bot_commands()}
         # Some Telegram names have underscores where Slack uses hyphens
         # (e.g. set_home vs sethome). Normalize both sides for comparison.
+
         def _norm(s: str) -> str:
             return s.replace("-", "_").replace("__", "_").strip("_")
 

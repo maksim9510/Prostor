@@ -132,7 +132,7 @@ class TestDefaultContextLengths:
 
         # Fake the provider/API/cache layers so the lookup falls through
         # to DEFAULT_CONTEXT_LENGTHS.
-        with mock_patch("agent.model_metadata.fetch_model_metadata", return_value={}),              mock_patch("agent.model_metadata.fetch_endpoint_model_metadata", return_value={}),              mock_patch("agent.model_metadata.get_cached_context_length", return_value=None):
+        with mock_patch("agent.model_metadata.fetch_model_metadata", return_value={}), mock_patch("agent.model_metadata.fetch_endpoint_model_metadata", return_value={}), mock_patch("agent.model_metadata.get_cached_context_length", return_value=None):
             cases = [
                 ("grok-4.20-0309-reasoning", 2000000),
                 ("grok-4.20-0309-non-reasoning", 2000000),

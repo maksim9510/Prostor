@@ -130,4 +130,3 @@ class GatewayVoiceMixin:
                 key[len(prefix):] for key, mode in self._voice_mode.items()
                 if mode in {"voice_only", "all"} and key.startswith(prefix)
             )
-

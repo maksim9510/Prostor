@@ -42,42 +42,50 @@ def matrix_env(tmp_path, monkeypatch):
 
     # fal_client stub
     fake_fal = types.ModuleType("fal_client")
+
     def _subscribe(endpoint, arguments=None, with_logs=False):
         fal_calls.append({"endpoint": endpoint, "arguments": arguments})
-        return {"video": {"url": f"https://fake-fal/{endpoint.replace('/','_')}.mp4"}}
+        return {"video": {"url": f"https://fake-fal/{endpoint.replace('/', '_')}.mp4"}}
     fake_fal.subscribe = _subscribe  # type: ignore
 
     class _FalHandle:
         def __init__(self, result):
             self._result = result
+
         def get(self):
             return self._result
 
     def _submit(endpoint, arguments=None, headers=None):
         fal_calls.append({"endpoint": endpoint, "arguments": arguments})
-        return _FalHandle({"video": {"url": f"https://fake-fal/{endpoint.replace('/','_')}.mp4"}})
+        return _FalHandle({"video": {"url": f"https://fake-fal/{endpoint.replace('/', '_')}.mp4"}})
     fake_fal.submit = _submit  # type: ignore
 
     monkeypatch.setitem(__import__("sys").modules, "fal_client", fake_fal)
 
     # httpx stub for xAI
     import httpx
+
     class _Resp:
         def __init__(self, p, s=200):
             self.status_code = s
             self._p = p
             self.text = json.dumps(p)
+
         def raise_for_status(self):
             if self.status_code >= 400:
                 raise httpx.HTTPStatusError("err", request=None, response=self)  # type: ignore
+
         def json(self):
             return self._p
+
     class _Client:
         async def __aenter__(self): return self
         async def __aexit__(self, *a): return None
+
         async def post(self, url, headers=None, json=None, timeout=None):
             xai_calls.append({"url": url, "json": json})
             return _Resp({"request_id": "req-1"})
+
         async def get(self, url, headers=None, timeout=None):
             return _Resp({
                 "status": "done",
@@ -86,6 +94,7 @@ def matrix_env(tmp_path, monkeypatch):
             })
     import plugins.video_gen.xai as xai_plugin
     monkeypatch.setattr(xai_plugin.httpx, "AsyncClient", lambda: _Client())
+
     async def _no_sleep(*a, **k): return None
     monkeypatch.setattr(asyncio, "sleep", _no_sleep)
 

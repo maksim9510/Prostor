@@ -105,7 +105,7 @@ def _summarize_large(text: str) -> str:
         + f"\n\n... [{total - 40} lines omitted] ...\n"
         + "\n=== LAST 20 LINES ===\n"
         + "\n".join(tail)
-        + f"\n[/SUMMARY]"
+        + "\n[/SUMMARY]"
     )
     return summary
 

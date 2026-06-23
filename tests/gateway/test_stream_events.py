@@ -175,6 +175,7 @@ def test_gateway_notice_routes_to_hook():
 def test_dispatch_swallows_render_errors():
     """A render error must never propagate into the agent worker thread."""
     adapter = _base_adapter()
+
     def _boom(event, sink):
         raise RuntimeError("render blew up")
     adapter.render_message_event = _boom

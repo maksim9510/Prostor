@@ -459,7 +459,7 @@ class TestTokenCounting:
         tc = _make_compressor()
         trajectory = [
             {"from": "system", "value": "12345678"},   # 2 tokens
-            {"from": "human", "value": "1234567890ab"}, # 3 tokens
+            {"from": "human", "value": "1234567890ab"},  # 3 tokens
         ]
         assert tc.count_trajectory_tokens(trajectory) == 5
 

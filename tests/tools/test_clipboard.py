@@ -85,6 +85,7 @@ class TestSaveClipboardImage:
 class TestMacosPngpaste:
     def test_success_writes_file(self, tmp_path):
         dest = tmp_path / "out.png"
+
         def fake_run(cmd, **kw):
             dest.write_bytes(FAKE_PNG)
             return MagicMock(returncode=0)
@@ -105,6 +106,7 @@ class TestMacosPngpaste:
 
     def test_empty_file_rejected(self, tmp_path):
         dest = tmp_path / "out.png"
+
         def fake_run(cmd, **kw):
             dest.write_bytes(b"")
             return MagicMock(returncode=0)
@@ -156,6 +158,7 @@ class TestMacosOsascript:
     def test_success_with_png(self, tmp_path):
         dest = tmp_path / "out.png"
         calls = []
+
         def fake_run(cmd, **kw):
             calls.append(cmd)
             if len(calls) == 1:
@@ -169,6 +172,7 @@ class TestMacosOsascript:
     def test_success_with_tiff(self, tmp_path):
         dest = tmp_path / "out.png"
         calls = []
+
         def fake_run(cmd, **kw):
             calls.append(cmd)
             if len(calls) == 1:
@@ -181,6 +185,7 @@ class TestMacosOsascript:
     def test_extraction_returns_fail(self, tmp_path):
         dest = tmp_path / "out.png"
         calls = []
+
         def fake_run(cmd, **kw):
             calls.append(cmd)
             if len(calls) == 1:
@@ -192,6 +197,7 @@ class TestMacosOsascript:
     def test_extraction_writes_empty_file(self, tmp_path):
         dest = tmp_path / "out.png"
         calls = []
+
         def fake_run(cmd, **kw):
             calls.append(cmd)
             if len(calls) == 1:
@@ -372,6 +378,7 @@ class TestWaylandSave:
     def test_png_extraction(self, tmp_path):
         dest = tmp_path / "out.png"
         calls = []
+
         def fake_run(cmd, **kw):
             calls.append(cmd)
             if "--list-types" in cmd:
@@ -387,6 +394,7 @@ class TestWaylandSave:
     def test_bmp_extraction_with_pillow_convert(self, tmp_path):
         dest = tmp_path / "out.png"
         calls = []
+
         def fake_run(cmd, **kw):
             calls.append(cmd)
             if "--list-types" in cmd:
@@ -465,6 +473,7 @@ class TestWaylandSave:
         """When both PNG and BMP are available, PNG should be preferred."""
         dest = tmp_path / "out.png"
         calls = []
+
         def fake_run(cmd, **kw):
             calls.append(cmd)
             if "--list-types" in cmd:
@@ -515,6 +524,7 @@ class TestXclipSave:
 
     def test_image_extraction_success(self, tmp_path):
         dest = tmp_path / "out.png"
+
         def fake_run(cmd, **kw):
             if "TARGETS" in cmd:
                 return MagicMock(stdout="image/png\ntext/plain\n", returncode=0)
@@ -527,6 +537,7 @@ class TestXclipSave:
 
     def test_extraction_fails_cleans_up(self, tmp_path):
         dest = tmp_path / "out.png"
+
         def fake_run(cmd, **kw):
             if "TARGETS" in cmd:
                 return MagicMock(stdout="image/png\n", returncode=0)
@@ -911,6 +922,7 @@ class TestPreprocessImagesWithVision:
     def _mock_vision_success(self, description="A test image with colored pixels."):
         """Return an async mock that simulates a successful vision_analyze_tool call."""
         import json
+
         async def _fake_vision(**kwargs):
             return json.dumps({"success": True, "analysis": description})
         return _fake_vision
@@ -918,6 +930,7 @@ class TestPreprocessImagesWithVision:
     def _mock_vision_failure(self):
         """Return an async mock that simulates a failed vision_analyze_tool call."""
         import json
+
         async def _fake_vision(**kwargs):
             return json.dumps({"success": False, "analysis": "Error"})
         return _fake_vision
@@ -977,6 +990,7 @@ class TestPreprocessImagesWithVision:
 
     def test_vision_exception_includes_path(self, cli, tmp_path):
         img = self._make_image(tmp_path)
+
         async def _explode(**kwargs):
             raise RuntimeError("API down")
         with patch("tools.vision_tools.vision_analyze_tool", side_effect=_explode):

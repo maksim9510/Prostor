@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # Lazy imports -- MCP SDK with OAuth support is optional
 # ---------------------------------------------------------------------------
 
-_OAUTH_AVAILABLE=False
+_OAUTH_AVAILABLE = False
 try:
     from mcp.client.auth import OAuthClientProvider
     from mcp.shared.auth import (
@@ -66,7 +66,7 @@ try:
         OAuthToken,
     )
 
-    _OAUTH_AVAILABLE=True
+    _OAUTH_AVAILABLE = True
 except ImportError:
     logger.debug("MCP OAuth types not available -- OAuth MCP auth disabled")
 

@@ -4,7 +4,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-
 def _make_cli_stub():
     """Create a minimal ProstorCLI-like object with stream state."""
     from cli import ProstorCLI
@@ -32,6 +31,7 @@ def _make_cli_stub():
 
     # Mock _stream_reasoning_delta
     cli._reasoning_emitted = []
+
     def mock_reasoning(text):
         cli._reasoning_emitted.append(text)
     cli._stream_reasoning_delta = mock_reasoning

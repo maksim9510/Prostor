@@ -37,12 +37,12 @@ def _make_chain(db: SessionDB, ids_with_parent):
 def test_redirects_from_empty_head_to_descendant_with_messages(db):
     # Reproducer shape from #15000: 6 sessions, only the 5th holds messages.
     _make_chain(db, [
-        ("head",   None),
-        ("mid1",   "head"),
-        ("mid2",   "mid1"),
-        ("mid3",   "mid2"),
-        ("bulk",   "mid3"),    # has messages
-        ("tail",   "bulk"),    # empty tail after another compression
+        ("head", None),
+        ("mid1", "head"),
+        ("mid2", "mid1"),
+        ("mid3", "mid2"),
+        ("bulk", "mid3"),    # has messages
+        ("tail", "bulk"),    # empty tail after another compression
     ])
     for i in range(5):
         db.append_message("bulk", role="user", content=f"msg {i}")

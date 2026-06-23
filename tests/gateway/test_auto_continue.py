@@ -7,7 +7,6 @@ does not re-execute stale interrupted tool calls before addressing new input.
 """
 
 
-
 def _simulate_auto_continue(agent_history: list, user_message: str) -> str:
     """Reproduce the auto-continue injection logic from _run_agent().
 
