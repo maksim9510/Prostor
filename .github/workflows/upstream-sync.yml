@@ -1,0 +1,61 @@
+# .github/workflows/upstream-sync.yml
+name: Upstream Sync (NousResearch/hermes-agent)
+
+# Weekly auto-sync from upstream. Opens PR with auto-merge label.
+# .github/workflows/auto-merge.yml then merges when CI passes.
+# No human approval needed for safe changes.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC = before Tuesday's pip dependabot
+    - cron: "0 6 * * 1"
+  workflow_dispatch:  # manual trigger from Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Fetch + rebrand + merge + PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@e3f0bc8c8a95283c904f88611d1d23755245e93c # v6.4.0
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system pytest
+          uv sync --frozen 2>&1 | tail -5 || true
+
+      - name: Configure git
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+      - name: Run sync
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m sync_upstream.sync 2>&1 | tee sync-output.log
+        continue-on-error: false
+
+      - name: Upload sync log
+        if: always()
+        uses: actions/upload-artifact@de65e23aa2b7e23d7139f76d6a7ef36f406ec559 # v7.0.0
+        with:
+          name: sync-output
+          path: sync-output.log
+          retention-days: 30

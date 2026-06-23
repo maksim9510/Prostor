@@ -297,6 +297,7 @@ all = [
 prostor = "prostor_cli.main:main"
 prostor-agent = "run_agent:main"
 prostor-acp = "acp_adapter.entry:main"
+prostor-sync-upstream = "sync_upstream.sync:main"
 
 [tool.setuptools]
 py-modules = ["run_agent", "model_tools", "toolsets", "batch_runner", "trajectory_compressor", "toolset_distributions", "cli", "prostor_bootstrap", "prostor_constants", "prostor_state", "prostor_time", "prostor_logging", "utils", "mcp_serve"]
@@ -343,10 +344,10 @@ plugins = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["agent", "agent.*", "tools", "tools.*", "prostor_cli", "prostor_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*"]
+include = ["agent", "agent.*", "tools", "tools.*", "prostor_cli", "prostor_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*", "scripts", "scripts.*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "scripts/sync_upstream/tests"]
 markers = [
     "integration: marks tests requiring external services (API keys, Modal, etc.)",
     "real_concurrent_gate: opt out of the autouse stub that disables _detect_concurrent_prostor_instances",

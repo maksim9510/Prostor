@@ -1,0 +1,35 @@
+# .github/workflows/auto-merge.yml
+name: Auto-merge upstream sync PRs
+
+# Auto-merge PRs with label `auto-merge` when all required checks pass.
+# Used by upstream-sync.yml to merge upstream changes without human review.
+# Safety: only PRs with `auto-merge` label AND authored by github-actions bot
+# are eligible. Manual PRs (even with the label) are NOT auto-merged.
+
+on:
+  pull_request:
+    types: [labeled, unlabeled, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge when CI passes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: |
+      github.event.pull_request.labels
+        .map(l => l.name)
+        .includes('auto-merge')
+      && github.event.pull_request.user.login == 'github-actions[bot]'
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+        run: |
+          gh pr merge "$PR_NODE_ID" \
+            --auto --squash \
+            --delete-branch false
