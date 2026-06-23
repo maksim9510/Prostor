@@ -1,5 +1,5 @@
-import { type ScrollBoxHandle, useApp, useHasSelection, useSelection, useStdout, useTerminalTitle } from '@prostor/ink'
 import { useStore } from '@nanostores/react'
+import { type ScrollBoxHandle, useApp, useHasSelection, useSelection, useStdout, useTerminalTitle } from '@prostor/ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { STARTUP_RESUME_ID } from '../config/env.js'

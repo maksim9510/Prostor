@@ -13,9 +13,9 @@ import type {
   DesktopUpdateStatus,
   DesktopVersionInfo
 } from '@/global'
-import { checkProstorUpdate, getActionStatus, updateProstor } from '@/prostor'
 import { translateNow } from '@/i18n'
 import { persistString, storedString } from '@/lib/storage'
+import { checkProstorUpdate, getActionStatus, updateProstor } from '@/prostor'
 import { dismissNotification, notify } from '@/store/notifications'
 import { $connection } from '@/store/session'
 import type { BackendUpdateCheckResponse } from '@/types/prostor'
@@ -57,11 +57,13 @@ export type UpdateTarget = 'client' | 'backend'
 export const $updateOverlayTarget = atom<UpdateTarget>('client')
 
 export const setUpdateOverlayOpen = (open: boolean) => $updateOverlayOpen.set(open)
+
 export const openUpdateOverlayFor = (target: UpdateTarget) => {
   $updateOverlayTarget.set(target)
   $updateOverlayOpen.set(true)
   void (target === 'backend' ? checkBackendUpdates() : checkUpdates())
 }
+
 export const resetUpdateApplyState = () => {
   $updateApply.set(IDLE)
   $backendUpdateApply.set(IDLE)
@@ -345,6 +347,7 @@ const BACKEND_RETURN_MAX_ATTEMPTS = 40
 async function waitForBackendReturn(): Promise<boolean> {
   for (let attempt = 0; attempt < BACKEND_RETURN_MAX_ATTEMPTS; attempt += 1) {
     await new Promise(resolve => globalThis.setTimeout(resolve, BACKEND_RETURN_POLL_MS))
+
     try {
       await checkProstorUpdate()
 
@@ -395,8 +398,10 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
     $backendUpdateApply.set({ ...IDLE, applying: true, stage: 'pull', message: translateNow('updates.applyStatus.pulling') })
 
     let last: Awaited<ReturnType<typeof getActionStatus>> | null = null
+
     for (let attempt = 0; attempt < 30; attempt += 1) {
       await new Promise(resolve => globalThis.setTimeout(resolve, 1500))
+
       try {
         last = await getActionStatus(started.name, 200)
       } catch {
@@ -417,6 +422,7 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
     }
 
     const ok = !!last && (last.exit_code ?? 1) === 0
+
     if (ok) {
       $backendUpdateApply.set({ ...$backendUpdateApply.get(), applying: true, stage: 'restart', message: translateNow('updates.applyStatus.restarting') })
 
@@ -488,7 +494,9 @@ export function startUpdatePoller(): void {
     if (conn?.mode === lastConnectionMode) {
       return
     }
+
     lastConnectionMode = conn?.mode
+
     if (conn?.mode === 'remote') {
       void checkBackendUpdates()
     }

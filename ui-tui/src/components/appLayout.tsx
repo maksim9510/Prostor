@@ -1,5 +1,5 @@
-import { AlternateScreen, Box, NoSelect, ScrollBox, Text } from '@prostor/ink'
 import { useStore } from '@nanostores/react'
+import { AlternateScreen, Box, NoSelect, ScrollBox, Text } from '@prostor/ink'
 import { Fragment, memo, useMemo, useRef } from 'react'
 
 import { useGateway } from '../app/gatewayContext.js'

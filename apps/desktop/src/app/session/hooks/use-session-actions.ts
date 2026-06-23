@@ -2,12 +2,12 @@ import type { MutableRefObject } from 'react'
 import { useCallback, useRef } from 'react'
 import type { NavigateFunction } from 'react-router-dom'
 
-import { deleteSession, getSession, getSessionMessages, setSessionArchived } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { normalizePersonalityValue } from '@/lib/chat-runtime'
 import { embeddedImageUrls, textWithoutEmbeddedImages } from '@/lib/embedded-images'
 import { setSessionYolo } from '@/lib/yolo-session'
+import { deleteSession, getSession, getSessionMessages, setSessionArchived } from '@/prostor'
 import { clearQueuedPrompts } from '@/store/composer-queue'
 import { $pinnedSessionIds } from '@/store/layout'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
@@ -709,6 +709,7 @@ export function useSessionActions({
           ...(watchWindow ? { lazy: true } : {}),
           ...(sessionProfile ? { profile: sessionProfile } : {})
         })
+
         // The rejection is consumed by the `await` below; this guard only
         // keeps it from surfacing as unhandled while the prefetch settles.
         resumePromise.catch(() => undefined)

@@ -9,8 +9,8 @@ import type {
   GatewaySkin,
   SessionMostRecentResponse
 } from '../gatewayTypes.js'
-import { rpcErrorMessage } from '../lib/rpc.js'
 import { openExternalUrl } from '../lib/openExternalUrl.js'
+import { rpcErrorMessage } from '../lib/rpc.js'
 import { topLevelSubagents } from '../lib/subagentTree.js'
 import { formatAbandonedClarify, formatToolCall, stripAnsi } from '../lib/text.js'
 import { fromSkin } from '../theme.js'
@@ -550,13 +550,16 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
 
         sys('💳 Open this link to grant terminal billing access:')
         sys(url)
+
         if (code) {
           sys(`If prompted, enter code: ${code}`)
         }
+
         void openExternalUrl(url)
 
         return
       }
+
       case 'gateway.stderr': {
         const line = String(ev.payload.line).slice(0, 120)
 

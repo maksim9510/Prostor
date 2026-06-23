@@ -2,7 +2,6 @@ import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
-import { getProfiles, transcribeAudio } from '@/prostor'
 import { translateNow, type Translations, useI18n } from '@/i18n'
 import { stripAnsi } from '@/lib/ansi'
 import { branchGroupForUser, type ChatMessage, chatMessageText, textPart } from '@/lib/chat-messages'
@@ -27,6 +26,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { setMutableRef } from '@/lib/mutable-ref'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { setSessionYolo } from '@/lib/yolo-session'
+import { getProfiles, transcribeAudio } from '@/prostor'
 import {
   $composerAttachments,
   clearComposerAttachments,
@@ -58,8 +58,8 @@ import { clearSessionSubagents } from '@/store/subagents'
 import { clearSessionTodos } from '@/store/todos'
 
 import type {
-  ClientSessionState,
   BrowserManageResponse,
+  ClientSessionState,
   FileAttachResponse,
   HandoffFailResponse,
   HandoffRequestResponse,
@@ -1391,6 +1391,7 @@ export function usePromptActions({
 
   const cancelRun = useCallback(async () => {
     const sessionId = activeSessionId || activeSessionIdRef.current
+
     const releaseBusy = () => {
       setMutableRef(busyRef, false)
       setBusy(false)

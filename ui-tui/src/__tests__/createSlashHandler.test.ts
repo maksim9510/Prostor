@@ -4,6 +4,7 @@ import { createSlashHandler } from '../app/createSlashHandler.js'
 import { getOverlayState, resetOverlayState } from '../app/overlayStore.js'
 import { DASHBOARD_EXIT_DISABLED_MESSAGE, DASHBOARD_UPDATE_DISABLED_MESSAGE } from '../app/slash/commands/core.js'
 import { getUiState, patchUiState, resetUiState } from '../app/uiStore.js'
+import type * as EnvModuleNS from '../config/env.js'
 import { TUI_SESSION_MODEL_FLAG } from '../domain/slash.js'
 
 // DASHBOARD_TUI_MODE resolves once at module load from PROSTOR_TUI_DASHBOARD,
@@ -11,7 +12,7 @@ import { TUI_SESSION_MODEL_FLAG } from '../domain/slash.js'
 // export (everything else stays real) and flip the holder per test.
 const envState = { dashboardTuiMode: false }
 vi.mock('../config/env.js', async importActual => {
-  const actual = await importActual<typeof import('../config/env.js')>()
+  const actual = (await importActual()) as typeof EnvModuleNS
 
   return {
     ...actual,
@@ -202,6 +203,7 @@ describe('createSlashHandler', () => {
 
   it('applies /reasoning hide to the thinking section immediately', async () => {
     patchUiState({ sections: { thinking: 'expanded' }, showReasoning: true, sid: 'sid-abc' })
+
     const ctx = buildCtx({
       gateway: {
         ...buildGateway(),
@@ -224,6 +226,7 @@ describe('createSlashHandler', () => {
 
   it('applies /reasoning show to the thinking section immediately', async () => {
     patchUiState({ sections: { thinking: 'hidden' }, showReasoning: false, sid: 'sid-abc' })
+
     const ctx = buildCtx({
       gateway: {
         ...buildGateway(),
@@ -330,11 +333,14 @@ describe('createSlashHandler', () => {
       if (method === 'skills.reload') {
         return Promise.resolve({ output: '42 skill(s) available' })
       }
+
       if (method === 'commands.catalog') {
         return Promise.resolve({ canon: { '/new-skill': '/new-skill' }, pairs: [['/new-skill', 'demo']] })
       }
+
       return Promise.resolve({})
     })
+
     const ctx = buildCtx({ gateway: { ...buildGateway(), rpc } })
 
     createSlashHandler(ctx)('/reload-skills')

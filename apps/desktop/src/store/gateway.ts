@@ -1,8 +1,8 @@
 import type { ConnectionState, GatewayEvent } from '@prostor/shared'
 import { atom } from 'nanostores'
 
-import { ProstorGateway } from '@/prostor'
 import { resolveGatewayWsUrl } from '@/lib/gateway-ws-url'
+import { ProstorGateway } from '@/prostor'
 import { setGatewayState } from '@/store/session'
 
 // ── Multi-profile gateway routing ──────────────────────────────────────────

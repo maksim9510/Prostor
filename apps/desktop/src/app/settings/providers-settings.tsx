@@ -13,10 +13,10 @@ import {
 } from '@/components/desktop-onboarding-overlay'
 import { Button } from '@/components/ui/button'
 import { SearchField } from '@/components/ui/search-field'
-import { disconnectOAuthProvider, listOAuthProviders } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronRight, KeyRound, Loader2, Terminal, Trash2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { disconnectOAuthProvider, listOAuthProviders } from '@/prostor'
 import { notify, notifyError } from '@/store/notifications'
 import { $desktopOnboarding, startManualProviderOAuth } from '@/store/onboarding'
 import type { EnvVarInfo, OAuthProvider } from '@/types/prostor'
@@ -391,6 +391,7 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
 
   if (showApiKeys) {
     const q = keyQuery.trim().toLowerCase()
+
     const visibleGroups = q
       ? keyGroups.filter(group => {
           const haystack = [

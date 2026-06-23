@@ -5,9 +5,9 @@ import { useI18n } from '@/i18n'
 import { currentPickerSelection } from '@/lib/model-status-label'
 import type { ModelOptionProvider, ModelOptionsResponse, ModelPricing } from '@/types/prostor'
 
+import { cn } from '../lib/utils'
 import type { ProstorGateway } from '../prostor'
 import { getGlobalModelOptions } from '../prostor'
-import { cn } from '../lib/utils'
 import { startManualOnboarding } from '../store/onboarding'
 
 import { InlineNotice } from './notifications'

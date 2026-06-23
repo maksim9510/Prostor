@@ -1,8 +1,8 @@
 import { type QueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
-import { getGlobalModelInfo } from '@/prostor'
 import { useI18n } from '@/i18n'
+import { getGlobalModelInfo } from '@/prostor'
 import { notifyError } from '@/store/notifications'
 import {
   $activeSessionId,

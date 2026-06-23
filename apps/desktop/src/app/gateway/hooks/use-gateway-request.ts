@@ -1,8 +1,8 @@
 import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useRef } from 'react'
 
-import type { ProstorGateway } from '@/prostor'
 import { isGatewayReauthRequired, resolveGatewayWsUrl } from '@/lib/gateway-ws-url'
+import type { ProstorGateway } from '@/prostor'
 import { $gateway, ensureActiveGatewayOpen, isActivePrimary } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $gatewayState, setConnection } from '@/store/session'

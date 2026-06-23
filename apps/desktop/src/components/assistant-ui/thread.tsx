@@ -55,9 +55,9 @@ import { detectTrigger, textBeforeCaret, type TriggerState } from '@/app/chat/co
 import { ComposerTriggerPopover } from '@/app/chat/composer/trigger-popover'
 import {
   extractDroppedFiles,
-  PROSTOR_PATHS_MIME,
   isImagePath,
-  partitionDroppedFiles
+  partitionDroppedFiles,
+  PROSTOR_PATHS_MIME
 } from '@/app/chat/hooks/use-composer-actions'
 import { uploadComposerAttachment } from '@/app/session/hooks/use-prompt-actions'
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
@@ -84,7 +84,6 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Loader } from '@/components/ui/loader'
-import type { ProstorGateway } from '@/prostor'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
 import { attachmentDisplayText, attachmentId, pathLabel } from '@/lib/chat-runtime'
@@ -96,6 +95,7 @@ import { extractPreviewTargets } from '@/lib/preview-targets'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { playSpeechText, stopVoicePlayback } from '@/lib/voice-playback'
+import type { ProstorGateway } from '@/prostor'
 import { $compactionActive } from '@/store/compaction'
 import type { ComposerAttachment } from '@/store/composer'
 import { notifyError } from '@/store/notifications'

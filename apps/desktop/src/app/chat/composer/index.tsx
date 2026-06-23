@@ -59,7 +59,7 @@ import { $threadScrolledUp } from '@/store/thread-scroll'
 import { isSecondaryWindow } from '@/store/windows'
 import { useTheme } from '@/themes'
 
-import { extractDroppedFiles, PROSTOR_PATHS_MIME, partitionDroppedFiles } from '../hooks/use-composer-actions'
+import { extractDroppedFiles, partitionDroppedFiles, PROSTOR_PATHS_MIME } from '../hooks/use-composer-actions'
 
 import { AttachmentList } from './attachments'
 import { ContextMenu } from './context-menu'

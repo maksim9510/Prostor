@@ -8,7 +8,6 @@ import { Codicon } from '@/components/ui/codicon'
 import { ErrorIcon } from '@/components/ui/error-state'
 import { Input } from '@/components/ui/input'
 import { Loader } from '@/components/ui/loader'
-import { getGlobalModelOptions } from '@/prostor'
 import { useI18n } from '@/i18n'
 import {
   Check,
@@ -22,6 +21,7 @@ import {
 } from '@/lib/icons'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { cn } from '@/lib/utils'
+import { getGlobalModelOptions } from '@/prostor'
 import { $desktopBoot, type DesktopBootState } from '@/store/boot'
 import {
   $desktopOnboarding,

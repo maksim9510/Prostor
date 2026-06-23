@@ -1,7 +1,7 @@
 import ignore from 'ignore'
 
-import { desktopFsCacheKey, desktopGitRoot, readDesktopDir, readDesktopFileDataUrl } from '@/lib/desktop-fs'
 import type { ProstorReadDirEntry, ProstorReadDirResult } from '@/global'
+import { desktopFsCacheKey, desktopGitRoot, readDesktopDir, readDesktopFileDataUrl } from '@/lib/desktop-fs'
 
 export type ProjectTreeEntry = ProstorReadDirEntry
 

@@ -74,6 +74,7 @@ function dockProximityOf(rect: DOMRect) {
   const verticalGap = window.innerHeight - DOCK_ZONE_BOTTOM_PX - rect.bottom
 
   const v = verticalGap <= 0 ? 1 : Math.max(0, 1 - verticalGap / DOCK_VERTICAL_FALLOFF_PX)
+
   const h =
     horizontalDist <= DOCK_ZONE_CENTER_TOLERANCE_PX
       ? 1
@@ -155,6 +156,7 @@ export function useComposerPopoutGestures({
       const rect = composer.getBoundingClientRect()
       const boxWidth = POPOUT_WIDTH_REM * rem
       const grabY = Math.min(Math.max(0, state.startY - rect.top), rect.height)
+
       const next: PopoutPosition = {
         bottom: window.innerHeight - (clientY - grabY + rect.height),
         right: window.innerWidth - clientX - boxWidth / 2

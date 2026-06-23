@@ -15,11 +15,11 @@ import {
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { ProstorGateway } from '@/prostor'
-import { getGlobalModelOptions } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { currentPickerSelection, displayModelName, modelDisplayParts, reasoningEffortLabel } from '@/lib/model-status-label'
 import { cn } from '@/lib/utils'
+import type { ProstorGateway } from '@/prostor'
+import { getGlobalModelOptions } from '@/prostor'
 import { $modelPresets, applyModelPreset, modelPresetKey } from '@/store/model-presets'
 import {
   $visibleModels,

@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
 
 import type { ProstorConnection } from '@/global'
-import { ProstorGateway } from '@/prostor'
 import { translateNow } from '@/i18n'
 import { desktopDefaultCwd } from '@/lib/desktop-fs'
 import { isGatewayReauthRequired, resolveGatewayWsUrl } from '@/lib/gateway-ws-url'
+import { ProstorGateway } from '@/prostor'
 import {
   $desktopBoot,
   applyDesktopBootProgress,
@@ -359,10 +359,12 @@ export function useGatewayBoot({
         })
         await ensureDefaultWorkspaceCwd()
         const remoteDefault = await desktopDefaultCwd().catch(() => null)
+
         if (remoteDefault?.cwd && !$activeSessionId.get() && !$currentCwd.get()) {
           setCurrentCwd(remoteDefault.cwd)
           setCurrentBranch(remoteDefault.branch || '')
         }
+
         await callbacksRef.current.refreshProstorConfig()
 
         if (cancelled) {

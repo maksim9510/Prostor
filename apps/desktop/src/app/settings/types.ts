@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 
-import type { ProstorGateway } from '@/prostor'
 import type { IconComponent } from '@/lib/icons'
+import type { ProstorGateway } from '@/prostor'
 import type { EnvVarInfo } from '@/types/prostor'
 
 export type SettingsView =
