@@ -13,13 +13,14 @@ import {
   $updateStatus,
   checkUpdates,
   openUpdatesWindow,
-  refreshDesktopVersion
+  refreshDesktopVersion,
+  startActiveUpdate
 } from '@/store/updates'
 
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
 
-const RELEASE_NOTES_URL = 'https://github.com/maksim9510/Prostor/releases'
+const RELEASE_NOTES_URL = 'https://github.com/NousResearch/prostor-agent/releases'
 
 function relativeTime(ms: number | undefined, a: Translations['settings']['about']) {
   if (!ms) {
@@ -141,9 +142,14 @@ export function AboutSettings() {
             </Button>
 
             {behind > 0 && supported && !applying && (
-              <Button onClick={() => openUpdatesWindow()} size="sm">
-                {a.seeWhatsNew}
-              </Button>
+              <>
+                <Button onClick={() => startActiveUpdate()} size="sm">
+                  {a.updateNow}
+                </Button>
+                <Button onClick={() => openUpdatesWindow()} size="sm" variant="textStrong">
+                  {a.seeWhatsNew}
+                </Button>
+              </>
             )}
 
             <Button asChild className="ml-auto" size="sm" variant="text">
@@ -151,7 +157,7 @@ export function AboutSettings() {
                 href={RELEASE_NOTES_URL}
                 onClick={event => {
                   event.preventDefault()
-                  void window.prostorDesktop?.openExternal?.(RELEASE_NOTES_URL)
+                  void window.hermesDesktop?.openExternal?.(RELEASE_NOTES_URL)
                 }}
                 rel="noreferrer"
                 target="_blank"

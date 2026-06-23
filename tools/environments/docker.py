@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from tools.environments.base import BaseEnvironment, _popen_bash
-from tools.environments.local import _PROSTOR_PROVIDER_ENV_BLOCKLIST
+from tools.environments.local import _HERMES_PROVIDER_ENV_BLOCKLIST
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +90,10 @@ def _normalize_env_dict(env: dict | None) -> dict[str, str]:
     return normalized
 
 
-def _load_prostor_env_vars() -> dict[str, str]:
+def _load_hermes_env_vars() -> dict[str, str]:
     """Load ~/.prostor/.env values without failing Docker command execution."""
     try:
-        from prostor_cli.config import load_env
+        from hermes_cli.config import load_env
 
         return load_env() or {}
     except Exception:
@@ -128,7 +128,7 @@ def _get_active_profile_name() -> str:
     same process don't retroactively relabel running containers.
     """
     try:
-        from prostor_cli.profiles import get_active_profile_name
+        from hermes_cli.profiles import get_active_profile_name
 
         return get_active_profile_name() or "default"
     except Exception:
@@ -926,12 +926,12 @@ class DockerEnvironment(BaseEnvironment):
         # Explicit docker_forward_env entries are an intentional opt-in and must
         # win over the generic Prostor secret blocklist. Only implicit passthrough
         # keys are filtered.
-        forward_keys = explicit_forward_keys | (passthrough_keys - _PROSTOR_PROVIDER_ENV_BLOCKLIST)
-        prostor_env = _load_prostor_env_vars() if forward_keys else {}
+        forward_keys = explicit_forward_keys | (passthrough_keys - _HERMES_PROVIDER_ENV_BLOCKLIST)
+        hermes_env = _load_hermes_env_vars() if forward_keys else {}
         for key in sorted(forward_keys):
             value = os.getenv(key)
             if not value:
-                value = prostor_env.get(key)
+                value = hermes_env.get(key)
             if value:
                 exec_env[key] = value
 

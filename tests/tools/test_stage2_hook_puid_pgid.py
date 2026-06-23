@@ -69,11 +69,11 @@ def _resolve(stage2_text: str, env: dict[str, str]) -> str:
     return proc.stdout.strip()
 
 
-def test_puid_pgid_populate_prostor_uid_gid(stage2_text: str) -> None:
+def test_puid_pgid_populate_hermes_uid_gid(stage2_text: str) -> None:
     assert _resolve(stage2_text, {"PUID": "1000", "PGID": "10"}) == "1000:10"
 
 
-def test_prostor_uid_gid_take_precedence_over_aliases(stage2_text: str) -> None:
+def test_hermes_uid_gid_take_precedence_over_aliases(stage2_text: str) -> None:
     resolved = _resolve(
         stage2_text,
         {"PROSTOR_UID": "2000", "PROSTOR_GID": "2001", "PUID": "1000", "PGID": "10"},
@@ -101,7 +101,7 @@ def test_stage2_hook_creates_s6_envdir_before_writing_browser_path(stage2_text: 
     assert stage2_text.index(mkdir_line) < stage2_text.index(write_line)
 
 
-def test_stage2_hook_runs_config_migration_as_prostor(stage2_text: str) -> None:
+def test_stage2_hook_runs_config_migration_as_hermes(stage2_text: str) -> None:
     assert "scripts/docker_config_migrate.py" in stage2_text
     assert 's6-setuidgid prostor "$INSTALL_DIR/.venv/bin/python"' in stage2_text
 

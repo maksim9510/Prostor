@@ -30,12 +30,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from plugins.google_meet.node import protocol as _proto
 
 
 def _default_token_path() -> Path:
-    return Path(get_prostor_home()) / "workspace" / "meetings" / "node_token.json"
+    return Path(get_hermes_home()) / "workspace" / "meetings" / "node_token.json"
 
 
 class NodeServer:

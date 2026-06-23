@@ -13,15 +13,15 @@ from dataclasses import dataclass, fields, replace
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from prostor_constants import OPENROUTER_BASE_URL
-from prostor_cli.config import load_env
+from hermes_constants import OPENROUTER_BASE_URL
+from hermes_cli.config import load_env
 from agent.secret_scope import get_secret as _get_secret
 from agent.credential_persistence import (
     is_borrowed_credential_source,
     sanitize_borrowed_credential_payload,
 )
-import prostor_cli.auth as auth_mod
-from prostor_cli.auth import (
+import hermes_cli.auth as auth_mod
+from hermes_cli.auth import (
     CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
     PROVIDER_REGISTRY,
     _auth_store_lock,
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 def _load_config_safe() -> Optional[dict]:
     """Load config.yaml, returning None on any error."""
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         return load_config()
     except Exception:
@@ -360,7 +360,7 @@ def _iter_custom_providers(config: Optional[dict] = None):
     if not isinstance(custom_providers, list):
         # Fall back to the v12+ providers dict via the compatibility layer
         try:
-            from prostor_cli.config import get_compatible_custom_providers
+            from hermes_cli.config import get_compatible_custom_providers
 
             custom_providers = get_compatible_custom_providers(config)
         except Exception:
@@ -870,7 +870,7 @@ class CredentialPool:
 
                 refreshed = refresh_anthropic_oauth_pure(
                     entry.refresh_token,
-                    use_json=entry.source.endswith("prostor_pkce"),
+                    use_json=entry.source.endswith("hermes_pkce"),
                 )
                 updated = replace(
                     entry,
@@ -951,7 +951,7 @@ class CredentialPool:
                         from agent.anthropic_adapter import refresh_anthropic_oauth_pure
                         refreshed = refresh_anthropic_oauth_pure(
                             synced.refresh_token,
-                            use_json=synced.source.endswith("prostor_pkce"),
+                            use_json=synced.source.endswith("hermes_pkce"),
                         )
                         updated = replace(
                             synced,
@@ -1596,7 +1596,7 @@ def _normalize_pool_priorities(provider: str, entries: List[PooledCredential]) -
     source_rank = {
         "env:ANTHROPIC_TOKEN": 0,
         "env:CLAUDE_CODE_OAUTH_TOKEN": 1,
-        "prostor_pkce": 2,
+        "hermes_pkce": 2,
         "claude_code": 3,
         "env:ANTHROPIC_API_KEY": 4,
     }
@@ -1631,7 +1631,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
     # Shared suppression gate — used at every upsert site so
     # `prostor auth remove <provider> <N>` is stable across all source types.
     try:
-        from prostor_cli.auth import is_source_suppressed as _is_suppressed
+        from hermes_cli.auth import is_source_suppressed as _is_suppressed
     except ImportError:
         def _is_suppressed(_p, _s):  # type: ignore[misc]
             return False
@@ -1642,7 +1642,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
         # Without this gate, auxiliary client fallback chains silently read
         # ~/.claude/.credentials.json without user consent.  See PR #4210.
         try:
-            from prostor_cli.auth import is_provider_explicitly_configured
+            from hermes_cli.auth import is_provider_explicitly_configured
             if not is_provider_explicitly_configured("anthropic"):
                 return changed, active_sources
         except ImportError:
@@ -1655,7 +1655,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
         # API key and zeros ANTHROPIC_TOKEN; `save_anthropic_oauth_token()`
         # does the inverse.  When that signal is present we MUST NOT seed
         # autodiscovered OAuth tokens (~/.claude/.credentials.json from the
-        # Claude Code CLI, prostor_pkce creds from a previous OAuth login)
+        # Claude Code CLI, hermes_pkce creds from a previous OAuth login)
         # into the anthropic pool — otherwise rotation on a 401/429 silently
         # flips the session onto an OAuth credential, which forces the Claude
         # Code identity injection, `mcp_` tool-name rewrite, and claude-cli
@@ -1683,17 +1683,17 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
             # transient 401 could revive them.
             retained = [
                 entry for entry in entries
-                if entry.source not in {"prostor_pkce", "claude_code"}
+                if entry.source not in {"hermes_pkce", "claude_code"}
             ]
             if len(retained) != len(entries):
                 entries[:] = retained
                 changed = True
             return changed, active_sources
 
-        from agent.anthropic_adapter import read_claude_code_credentials, read_prostor_oauth_credentials
+        from agent.anthropic_adapter import read_claude_code_credentials, read_hermes_oauth_credentials
 
         for source_name, creds in (
-            ("prostor_pkce", read_prostor_oauth_credentials()),
+            ("hermes_pkce", read_hermes_oauth_credentials()),
             ("claude_code", read_claude_code_credentials()),
         ):
             if creds and creds.get("accessToken"):
@@ -1780,7 +1780,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
         # env vars (COPILOT_GITHUB_TOKEN / GH_TOKEN).  They don't live in
         # the auth store or credential pool, so we resolve them here.
         try:
-            from prostor_cli.copilot_auth import resolve_copilot_token, get_copilot_api_token
+            from hermes_cli.copilot_auth import resolve_copilot_token, get_copilot_api_token
             token, source = resolve_copilot_token()
             if token:
                 api_token = get_copilot_api_token(token)
@@ -1810,7 +1810,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
         # Use refresh_if_expiring=False to avoid network calls during
         # pool loading / provider discovery.
         try:
-            from prostor_cli.auth import resolve_qwen_runtime_credentials
+            from hermes_cli.auth import resolve_qwen_runtime_credentials
             creds = resolve_qwen_runtime_credentials(refresh_if_expiring=False)
             token = creds.get("api_key", "")
             if token:
@@ -1841,7 +1841,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
         # always refreshes on expiry, so instead read raw state here to avoid
         # surprise network calls during provider discovery.
         try:
-            from prostor_cli.auth import get_provider_auth_state
+            from hermes_cli.auth import get_provider_auth_state
             state = get_provider_auth_state("minimax-oauth")
             if state and state.get("access_token"):
                 source_name = "oauth"
@@ -1922,7 +1922,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
         tokens = state.get("tokens") if isinstance(state, dict) else None
         if isinstance(tokens, dict) and tokens.get("access_token"):
             active_sources.add("loopback_pkce")
-            from prostor_cli.auth import DEFAULT_XAI_OAUTH_BASE_URL
+            from hermes_cli.auth import DEFAULT_XAI_OAUTH_BASE_URL
 
             base_url = DEFAULT_XAI_OAUTH_BASE_URL
             changed |= _upsert_entry(
@@ -1962,14 +1962,14 @@ def _seed_from_env(provider: str, entries: List[PooledCredential]) -> Tuple[bool
     # Without this gate the removal is silently undone on the next
     # load_pool() call whenever the var is still exported by the shell.
     try:
-        from prostor_cli.auth import is_source_suppressed as _is_source_suppressed
+        from hermes_cli.auth import is_source_suppressed as _is_source_suppressed
     except ImportError:
         def _is_source_suppressed(_p, _s):  # type: ignore[misc]
             return False
 
     def _secret_source_for_env(env_var: str) -> Optional[str]:
         try:
-            from prostor_cli.env_loader import get_secret_source
+            from hermes_cli.env_loader import get_secret_source
             source_label = get_secret_source(env_var)
         except Exception:
             source_label = None
@@ -2062,19 +2062,34 @@ def _seed_from_env(provider: str, entries: List[PooledCredential]) -> Tuple[bool
     return changed, active_sources
 
 
-def _prune_stale_seeded_entries(entries: List[PooledCredential], active_sources: Set[str]) -> bool:
+def _prune_stale_seeded_entries(
+    entries: List[PooledCredential],
+    active_sources: Set[str],
+    *,
+    prune_env_sources: bool = True,
+) -> bool:
+    def _is_prunable(entry: PooledCredential) -> bool:
+        # ``env:*`` entries are persisted references that get re-hydrated from
+        # the environment on every load. A process that merely lacks the env
+        # var this call must NOT delete the on-disk entry for every other
+        # process — that destructive read is the bug behind #9331. Only prune
+        # an env source when ``prune_env_sources`` is explicitly requested
+        # (e.g. an `prostor auth` command that confirmed the source is gone).
+        if entry.source.startswith("env:"):
+            return prune_env_sources
+        # File-backed singletons (device-code OAuth, claude_code) and Prostor
+        # PKCE should disappear from the pool when their backing file is gone.
+        return (
+            is_borrowed_credential_source(entry.source, entry.provider)
+            or entry.source == "hermes_pkce"
+        )
+
     retained = [
         entry
         for entry in entries
         if _is_manual_source(entry.source)
         or entry.source in active_sources
-        or not (
-            is_borrowed_credential_source(entry.source, entry.provider)
-            # Prostor PKCE is Prostor-owned/persistable while present, but it is
-            # still a file-backed singleton and should disappear from the pool
-            # when the backing OAuth file is gone.
-            or entry.source == "prostor_pkce"
-        )
+        or not _is_prunable(entry)
     ]
     if len(retained) == len(entries):
         return False
@@ -2089,7 +2104,7 @@ def _seed_custom_pool(pool_key: str, entries: List[PooledCredential]) -> Tuple[b
 
     # Shared suppression gate — same pattern as _seed_from_env/_seed_from_singletons.
     try:
-        from prostor_cli.auth import is_source_suppressed as _is_suppressed
+        from hermes_cli.auth import is_source_suppressed as _is_suppressed
     except ImportError:
         def _is_suppressed(_p, _s):  # type: ignore[misc]
             return False
@@ -2174,7 +2189,15 @@ def load_pool(provider: str) -> CredentialPool:
         singleton_changed, singleton_sources = _seed_from_singletons(provider, entries)
         env_changed, env_sources = _seed_from_env(provider, entries)
         changed = raw_needs_sanitization or singleton_changed or env_changed
-        changed |= _prune_stale_seeded_entries(entries, singleton_sources | env_sources)
+        # ``load_pool()`` is a non-destructive read for env-seeded entries: a
+        # process missing a provider env var must not delete the persisted
+        # pool entry for every other process (#9331). File-backed singletons
+        # still prune when their backing file is gone.
+        changed |= _prune_stale_seeded_entries(
+            entries,
+            singleton_sources | env_sources,
+            prune_env_sources=False,
+        )
         changed |= _normalize_pool_priorities(provider, entries)
 
     if changed:

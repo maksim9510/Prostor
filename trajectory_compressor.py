@@ -45,15 +45,15 @@ from utils import base_url_host_matches, base_url_hostname
 import fire
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
 from rich.console import Console
-from prostor_constants import OPENROUTER_BASE_URL, get_prostor_home
+from hermes_constants import OPENROUTER_BASE_URL, get_hermes_home
 from agent.retry_utils import jittered_backoff
 
 # Load .env from PROSTOR_HOME first, then project root as a dev fallback.
-from prostor_cli.env_loader import load_prostor_dotenv
+from hermes_cli.env_loader import load_hermes_dotenv
 
-_prostor_home = get_prostor_home()
+_hermes_home = get_hermes_home()
 _project_env = Path(__file__).parent / ".env"
-load_prostor_dotenv(prostor_home=_prostor_home, project_env=_project_env)
+load_hermes_dotenv(hermes_home=_hermes_home, project_env=_project_env)
 
 
 def _effective_temperature_for_model(
@@ -352,11 +352,6 @@ class TrajectoryCompressor:
         # Initialize OpenRouter client
         self._init_summarizer()
         
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%H:%M:%S'
-        )
         self.logger = logging.getLogger(__name__)
     
     def _init_tokenizer(self):

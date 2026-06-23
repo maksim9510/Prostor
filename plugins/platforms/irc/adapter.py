@@ -413,7 +413,7 @@ class IRCAdapter(BasePlatformAdapter):
 
         # ERR_NICKNAMEINUSE (433) — nick collision during registration
         if command == "433":
-            # Retry with incrementing suffix: prostor_, prostor_1, prostor_2...
+            # Retry with incrementing suffix: hermes_, hermes_1, hermes_2...
             base = self.nickname.rstrip("_0123456789")
             suffix_match = re.search(r"_(\d+)$", self._current_nick)
             if suffix_match:
@@ -538,10 +538,10 @@ def validate_config(config) -> bool:
 def interactive_setup() -> None:
     """Interactive `prostor gateway setup` flow for the IRC platform.
 
-    Lazy-imports ``prostor_cli.setup`` helpers so the plugin stays importable
+    Lazy-imports ``hermes_cli.setup`` helpers so the plugin stays importable
     in non-CLI contexts (gateway runtime, tests).
     """
-    from prostor_cli.setup import (
+    from hermes_cli.setup import (
         prompt,
         prompt_yes_no,
         save_env_value,

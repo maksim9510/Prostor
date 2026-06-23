@@ -165,7 +165,7 @@ def _resolve_matrix_bang_command(name: str) -> str | None:
         candidates.append(hyphenated)
 
     try:
-        from prostor_cli.commands import is_gateway_known_command
+        from hermes_cli.commands import is_gateway_known_command
 
         for candidate in candidates:
             if is_gateway_known_command(candidate):
@@ -341,10 +341,10 @@ class _MatrixModelPickerPrompt:
 MAX_MESSAGE_LENGTH = 4000
 
 # Store directory for E2EE keys and sync state.
-# Uses get_prostor_home() so each profile gets its own Matrix store.
-from prostor_constants import get_prostor_dir as _get_prostor_dir
+# Uses get_hermes_home() so each profile gets its own Matrix store.
+from hermes_constants import get_hermes_dir as _get_hermes_dir
 
-_STORE_DIR = _get_prostor_dir("platforms/matrix/store", "matrix/store")
+_STORE_DIR = _get_hermes_dir("platforms/matrix/store", "matrix/store")
 _CRYPTO_DB_PATH = _STORE_DIR / "crypto.db"
 
 # Grace period: ignore messages older than this many seconds before startup.
@@ -775,6 +775,7 @@ class MatrixAdapter(BasePlatformAdapter):
     """Gateway adapter for Matrix (any homeserver)."""
 
     supports_code_blocks = True  # Matrix renders fenced code blocks (HTML/markdown)
+    splits_long_messages = True  # send() chunks via truncate_message(MAX_MESSAGE_LENGTH)
 
     # Matrix clients commonly reserve typed "/" for client-local commands;
     # the adapter accepts "!command" as the alias that always reaches Prostor
@@ -1993,7 +1994,7 @@ class MatrixAdapter(BasePlatformAdapter):
             )
 
         try:
-            from prostor_cli.providers import get_label
+            from hermes_cli.providers import get_label
             provider_label = get_label(current_provider)
         except Exception:
             provider_label = current_provider
@@ -4116,7 +4117,7 @@ class MatrixAdapter(BasePlatformAdapter):
 # register(ctx) entry point plus hook implementations that replace the
 # per-platform core touchpoints (the Platform.MATRIX elif in gateway/run.py,
 # the matrix_cfg YAML→env block in gateway/config.py, the _setup_matrix wizard
-# + _PLATFORMS["matrix"] static dict in prostor_cli/{setup,gateway}.py, and the
+# + _PLATFORMS["matrix"] static dict in hermes_cli/{setup,gateway}.py, and the
 # _send_matrix dispatch in tools/send_message_tool.py).  Matrix uses the
 # generic token/api_key connected check, so no is_connected override is needed.
 # ──────────────────────────────────────────────────────────────────────────
@@ -4149,7 +4150,7 @@ async def _standalone_send(
         token = token or os.getenv("MATRIX_ACCESS_TOKEN", "")
         if not homeserver or not token:
             return {"error": "Matrix not configured (MATRIX_HOMESERVER, MATRIX_ACCESS_TOKEN required)"}
-        txn_id = f"prostor_{int(time.time() * 1000)}_{os.urandom(4).hex()}"
+        txn_id = f"hermes_{int(time.time() * 1000)}_{os.urandom(4).hex()}"
         from urllib.parse import quote
         encoded_room = quote(chat_id, safe="")
         url = f"{homeserver}/_matrix/client/v3/rooms/{encoded_room}/send/m.room.message/{txn_id}"
@@ -4177,12 +4178,12 @@ async def _standalone_send(
 
 
 def interactive_setup() -> None:
-    """Configure Matrix credentials. Replaces prostor_cli/setup.py::_setup_matrix
+    """Configure Matrix credentials. Replaces hermes_cli/setup.py::_setup_matrix
     and the static _PLATFORMS["matrix"] dict. CLI helpers are lazy-imported."""
     import shutil
     import sys as _sys
-    from prostor_cli.config import get_env_value, save_env_value
-    from prostor_cli.cli_output import (
+    from hermes_cli.config import get_env_value, save_env_value
+    from hermes_cli.cli_output import (
         prompt,
         prompt_yes_no,
         print_header,
@@ -4327,7 +4328,7 @@ def _apply_yaml_config(yaml_cfg: dict, matrix_cfg: dict) -> dict | None:
 
 def _is_connected(config) -> bool:
     """Matrix is connected when a homeserver + access token (or password) are
-    configured. Read via prostor_cli.gateway.get_env_value so setup-status
+    configured. Read via hermes_cli.gateway.get_env_value so setup-status
     callers that patch get_env_value observe the same value, and PlatformConfig
     extras (homeserver) are honored too. As a built-in, Matrix used the generic
     token check; as a plugin it needs an explicit is_connected so
@@ -4335,7 +4336,7 @@ def _is_connected(config) -> bool:
     rather than mere SDK presence. #41112.
     """
     extra = getattr(config, "extra", {}) or {}
-    import prostor_cli.gateway as gateway_mod
+    import hermes_cli.gateway as gateway_mod
     homeserver = extra.get("homeserver") or gateway_mod.get_env_value("MATRIX_HOMESERVER") or ""
     token = (
         getattr(config, "token", None)

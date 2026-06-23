@@ -11,9 +11,9 @@ import pytest
 
 
 def _write_auth_store(tmp_path, payload: dict) -> None:
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    (prostor_home / "auth.json").write_text(json.dumps(payload, indent=2))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    (hermes_home / "auth.json").write_text(json.dumps(payload, indent=2))
 
 
 def _jwt_with_claims(claims: dict) -> str:
@@ -300,7 +300,7 @@ def test_explicit_reset_timestamp_overrides_default_429_ttl(tmp_path, monkeypatc
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
     # Prevent auto-seeding from Codex CLI tokens on the host
     monkeypatch.setattr(
-        "prostor_cli.auth._import_codex_cli_tokens",
+        "hermes_cli.auth._import_codex_cli_tokens",
         lambda: None,
     )
     _write_auth_store(
@@ -838,7 +838,7 @@ def test_load_pool_persists_bitwarden_origin_metadata_without_secret(tmp_path, m
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
     monkeypatch.setenv("OPENROUTER_API_KEY", sentinel)
     monkeypatch.setattr(
-        "prostor_cli.env_loader.get_secret_source",
+        "hermes_cli.env_loader.get_secret_source",
         lambda env_var: "bitwarden" if env_var == "OPENROUTER_API_KEY" else None,
     )
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
@@ -1029,7 +1029,7 @@ def test_write_credential_pool_sanitizes_borrowed_payload_at_disk_boundary(tmp_p
     manual_secret = "MANUAL_SECRET_STAYS_PERSISTABLE"
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
 
-    from prostor_cli.auth import write_credential_pool
+    from hermes_cli.auth import write_credential_pool
 
     write_credential_pool("openrouter", [
         {
@@ -1072,7 +1072,7 @@ def test_write_credential_pool_treats_unowned_oauth_source_as_borrowed(tmp_path,
     sentinel = "S3NTINEL_DO_NOT_PERSIST_UNOWNED_OAUTH"
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
 
-    from prostor_cli.auth import write_credential_pool
+    from hermes_cli.auth import write_credential_pool
 
     write_credential_pool("openrouter", [
         {
@@ -1100,7 +1100,7 @@ def test_write_credential_pool_preserves_known_provider_owned_oauth_state(tmp_pa
     sentinel = "PROVIDER_OWNED_DEVICE_CODE_STAYS_PERSISTABLE"
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
 
-    from prostor_cli.auth import write_credential_pool
+    from hermes_cli.auth import write_credential_pool
 
     write_credential_pool("nous", [
         {
@@ -1129,15 +1129,15 @@ def test_load_pool_prefers_dotenv_over_stale_os_environ(tmp_path, monkeypatch):
     os.environ and silently wrote the stale value into auth.json, causing
     persistent 401 errors after key rotation.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
     # Simulate the bug: parent shell exported a stale test key
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-STALE-from-shell")
 
     # User edited ~/.prostor/.env with the fresh key
-    (prostor_home / ".env").write_text(
+    (hermes_home / ".env").write_text(
         "OPENROUTER_API_KEY=sk-or-FRESH-from-dotenv\n"
     )
 
@@ -1161,13 +1161,13 @@ def test_load_pool_falls_back_to_os_environ_when_dotenv_empty(tmp_path, monkeypa
     os.environ. Guards against regressions that would break production
     deployments relying on runtime-injected env vars.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-from-runtime-env")
 
     # .env exists but does not define OPENROUTER_API_KEY
-    (prostor_home / ".env").write_text("SOME_OTHER_VAR=unrelated\n")
+    (hermes_home / ".env").write_text("SOME_OTHER_VAR=unrelated\n")
 
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
 
@@ -1179,7 +1179,10 @@ def test_load_pool_falls_back_to_os_environ_when_dotenv_empty(tmp_path, monkeypa
     assert entry.access_token == "sk-or-from-runtime-env"
 
 
-def test_load_pool_removes_stale_seeded_env_entry(tmp_path, monkeypatch):
+def test_load_pool_preserves_env_seeded_entry_when_env_is_missing(tmp_path, monkeypatch):
+    # Regression for #9331: load_pool() is a non-destructive read. A process
+    # that lacks the seeding env var must NOT delete the persisted pool entry
+    # that another process correctly seeded.
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     _write_auth_store(
@@ -1206,10 +1209,54 @@ def test_load_pool_removes_stale_seeded_env_entry(tmp_path, monkeypatch):
 
     pool = load_pool("openrouter")
 
-    assert pool.entries() == []
+    entries = pool.entries()
+    assert len(entries) == 1
+    assert entries[0].source == "env:OPENROUTER_API_KEY"
 
     auth_payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
-    assert auth_payload["credential_pool"]["openrouter"] == []
+    persisted = auth_payload["credential_pool"]["openrouter"]
+    assert len(persisted) == 1
+    assert persisted[0]["source"] == "env:OPENROUTER_API_KEY"
+
+
+def test_load_pool_missing_env_does_not_overwrite_other_process_seed(tmp_path, monkeypatch):
+    # The exact cross-process oscillation described in #9331: a process without
+    # MINIMAX_API_KEY must leave the on-disk entry intact for processes that
+    # do have it.
+    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+    _write_auth_store(
+        tmp_path,
+        {
+            "version": 1,
+            "credential_pool": {
+                "minimax": [
+                    {
+                        "id": "minimax-env",
+                        "label": "MINIMAX_API_KEY",
+                        "auth_type": "api_key",
+                        "priority": 0,
+                        "source": "env:MINIMAX_API_KEY",
+                        "access_token": "seeded-by-other-process",
+                        "base_url": "https://api.minimaxi.chat/v1",
+                    }
+                ]
+            },
+        },
+    )
+
+    from agent.credential_pool import load_pool
+
+    pool = load_pool("minimax")
+
+    assert pool.has_credentials()
+    assert len(pool.entries()) == 1
+    assert pool.entries()[0].source == "env:MINIMAX_API_KEY"
+
+    auth_payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    persisted = auth_payload["credential_pool"]["minimax"]
+    assert len(persisted) == 1
+    assert persisted[0]["source"] == "env:MINIMAX_API_KEY"
 
 
 def test_load_pool_migrates_nous_provider_state(tmp_path, monkeypatch):
@@ -1342,8 +1389,8 @@ def test_nous_pool_terminal_refresh_removes_device_code_entry(tmp_path, monkeypa
     )
 
     from agent.credential_pool import PooledCredential, load_pool
-    from prostor_cli import auth as auth_mod
-    from prostor_cli.auth import AuthError
+    from hermes_cli import auth as auth_mod
+    from hermes_cli.auth import AuthError
 
     refresh_calls = {"count": 0}
 
@@ -1471,7 +1518,7 @@ def test_load_pool_removes_stale_file_backed_singleton_entry(tmp_path, monkeypat
     )
 
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_prostor_oauth_credentials",
+        "agent.anthropic_adapter.read_hermes_oauth_credentials",
         lambda: None,
     )
     monkeypatch.setattr(
@@ -1540,7 +1587,7 @@ def test_singleton_seed_does_not_clobber_manual_oauth_entry(tmp_path, monkeypatc
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_TOKEN", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    monkeypatch.setattr("prostor_cli.auth.is_provider_explicitly_configured", lambda pid: True)
+    monkeypatch.setattr("hermes_cli.auth.is_provider_explicitly_configured", lambda pid: True)
     _write_auth_store(
         tmp_path,
         {
@@ -1552,7 +1599,7 @@ def test_singleton_seed_does_not_clobber_manual_oauth_entry(tmp_path, monkeypatc
                         "label": "manual-pkce",
                         "auth_type": "oauth",
                         "priority": 0,
-                        "source": "manual:prostor_pkce",
+                        "source": "manual:hermes_pkce",
                         "access_token": "manual-token",
                         "refresh_token": "manual-refresh",
                         "expires_at_ms": 1711234567000,
@@ -1563,7 +1610,7 @@ def test_singleton_seed_does_not_clobber_manual_oauth_entry(tmp_path, monkeypatc
     )
 
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_prostor_oauth_credentials",
+        "agent.anthropic_adapter.read_hermes_oauth_credentials",
         lambda: {
             "accessToken": "seeded-token",
             "refreshToken": "seeded-refresh",
@@ -1581,7 +1628,7 @@ def test_singleton_seed_does_not_clobber_manual_oauth_entry(tmp_path, monkeypatc
     entries = pool.entries()
 
     assert len(entries) == 2
-    assert {entry.source for entry in entries} == {"manual:prostor_pkce", "prostor_pkce"}
+    assert {entry.source for entry in entries} == {"manual:hermes_pkce", "hermes_pkce"}
 
 
 def test_load_pool_prefers_anthropic_env_token_over_file_backed_oauth(tmp_path, monkeypatch):
@@ -1592,7 +1639,7 @@ def test_load_pool_prefers_anthropic_env_token_over_file_backed_oauth(tmp_path, 
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
 
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_prostor_oauth_credentials",
+        "agent.anthropic_adapter.read_hermes_oauth_credentials",
         lambda: {
             "accessToken": "file-backed-token",
             "refreshToken": "refresh-token",
@@ -1632,7 +1679,7 @@ def test_load_pool_api_key_path_skips_oauth_autodiscovery(tmp_path, monkeypatch)
     monkeypatch.delenv("ANTHROPIC_TOKEN", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
-    monkeypatch.setattr("prostor_cli.auth.is_provider_explicitly_configured", lambda pid: True)
+    monkeypatch.setattr("hermes_cli.auth.is_provider_explicitly_configured", lambda pid: True)
 
     pkce_called = {"n": 0}
     cc_called = {"n": 0}
@@ -1653,7 +1700,7 @@ def test_load_pool_api_key_path_skips_oauth_autodiscovery(tmp_path, monkeypatch)
             "expiresAt": int(time.time() * 1000) + 3_600_000,
         }
 
-    monkeypatch.setattr("agent.anthropic_adapter.read_prostor_oauth_credentials", _fake_pkce)
+    monkeypatch.setattr("agent.anthropic_adapter.read_hermes_oauth_credentials", _fake_pkce)
     monkeypatch.setattr("agent.anthropic_adapter.read_claude_code_credentials", _fake_cc)
 
     from agent.credential_pool import load_pool
@@ -1672,7 +1719,7 @@ def test_load_pool_api_key_path_prunes_stale_oauth_entries(tmp_path, monkeypatch
     """Switching OAuth -> API key must prune stale OAuth entries from auth.json.
 
     Without this, a user who logs into OAuth (seeding `claude_code` or
-    `prostor_pkce` into auth.json) and later switches to the API key at
+    `hermes_pkce` into auth.json) and later switches to the API key at
     `prostor setup` would still have those OAuth entries dormant on disk.
     Pool rotation on a transient 401 could revive them and flip the
     session onto the OAuth masquerade.
@@ -1706,8 +1753,8 @@ def test_load_pool_api_key_path_prunes_stale_oauth_entries(tmp_path, monkeypatch
             },
         },
     )
-    monkeypatch.setattr("prostor_cli.auth.is_provider_explicitly_configured", lambda pid: True)
-    monkeypatch.setattr("agent.anthropic_adapter.read_prostor_oauth_credentials", lambda: None)
+    monkeypatch.setattr("hermes_cli.auth.is_provider_explicitly_configured", lambda pid: True)
+    monkeypatch.setattr("agent.anthropic_adapter.read_hermes_oauth_credentials", lambda: None)
     monkeypatch.setattr("agent.anthropic_adapter.read_claude_code_credentials", lambda: None)
 
     from agent.credential_pool import load_pool
@@ -1733,10 +1780,10 @@ def test_load_pool_oauth_path_still_autodiscovers(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_TOKEN", "sk-ant-oat01-explicit-oauth-token")
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
-    monkeypatch.setattr("prostor_cli.auth.is_provider_explicitly_configured", lambda pid: True)
+    monkeypatch.setattr("hermes_cli.auth.is_provider_explicitly_configured", lambda pid: True)
 
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_prostor_oauth_credentials",
+        "agent.anthropic_adapter.read_hermes_oauth_credentials",
         lambda: None,
     )
     monkeypatch.setattr(
@@ -2211,12 +2258,12 @@ def test_load_pool_does_not_seed_claude_code_when_anthropic_not_configured(tmp_p
         lambda: {"accessToken": "sk-ant...oken", "refreshToken": "rt", "expiresAt": 9999999999999},
     )
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_prostor_oauth_credentials",
+        "agent.anthropic_adapter.read_hermes_oauth_credentials",
         lambda: None,
     )
     # User configured kimi-coding, NOT anthropic
     monkeypatch.setattr(
-        "prostor_cli.auth.is_provider_explicitly_configured",
+        "hermes_cli.auth.is_provider_explicitly_configured",
         lambda pid: pid == "kimi-coding",
     )
 
@@ -2233,7 +2280,7 @@ def test_load_pool_seeds_copilot_via_gh_auth_token(tmp_path, monkeypatch):
     _write_auth_store(tmp_path, {"version": 1, "credential_pool": {}})
 
     monkeypatch.setattr(
-        "prostor_cli.copilot_auth.resolve_copilot_token",
+        "hermes_cli.copilot_auth.resolve_copilot_token",
         lambda: ("gho_fake_token_abc123", "gh auth token"),
     )
 
@@ -2254,7 +2301,7 @@ def test_load_pool_does_not_seed_copilot_when_no_token(tmp_path, monkeypatch):
     _write_auth_store(tmp_path, {"version": 1, "credential_pool": {}})
 
     monkeypatch.setattr(
-        "prostor_cli.copilot_auth.resolve_copilot_token",
+        "hermes_cli.copilot_auth.resolve_copilot_token",
         lambda: ("", ""),
     )
 
@@ -2271,7 +2318,7 @@ def test_load_pool_seeds_qwen_oauth_via_cli_tokens(tmp_path, monkeypatch):
     _write_auth_store(tmp_path, {"version": 1, "credential_pool": {}})
 
     monkeypatch.setattr(
-        "prostor_cli.auth.resolve_qwen_runtime_credentials",
+        "hermes_cli.auth.resolve_qwen_runtime_credentials",
         lambda **kw: {
             "provider": "qwen-oauth",
             "base_url": "https://portal.qwen.ai/v1",
@@ -2297,10 +2344,10 @@ def test_load_pool_does_not_seed_qwen_oauth_when_no_token(tmp_path, monkeypatch)
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
     _write_auth_store(tmp_path, {"version": 1, "credential_pool": {}})
 
-    from prostor_cli.auth import AuthError
+    from hermes_cli.auth import AuthError
 
     monkeypatch.setattr(
-        "prostor_cli.auth.resolve_qwen_runtime_credentials",
+        "hermes_cli.auth.resolve_qwen_runtime_credentials",
         lambda **kw: (_ for _ in ()).throw(
             AuthError("Qwen CLI credentials not found.", provider="qwen-oauth", code="qwen_auth_missing")
         ),
@@ -2744,7 +2791,7 @@ def _xai_auth_store(access_token: str, refresh_token: str) -> dict:
 
 
 def test_is_terminal_xai_oauth_refresh_error():
-    from prostor_cli.auth import AuthError, _is_terminal_xai_oauth_refresh_error
+    from hermes_cli.auth import AuthError, _is_terminal_xai_oauth_refresh_error
 
     assert _is_terminal_xai_oauth_refresh_error(
         AuthError("Refresh failed", provider="xai-oauth", code="xai_refresh_failed", relogin_required=True)
@@ -2774,8 +2821,8 @@ def test_xai_oauth_terminal_refresh_clears_auth_json_and_removes_pool_entries(
     _write_auth_store(tmp_path, _xai_auth_store("old-access-token", "old-refresh-token"))
 
     from agent.credential_pool import PooledCredential, load_pool
-    import prostor_cli.auth as auth_mod
-    from prostor_cli.auth import AuthError
+    import hermes_cli.auth as auth_mod
+    from hermes_cli.auth import AuthError
 
     pool = load_pool("xai-oauth")
     selected = pool.select()
@@ -2834,8 +2881,8 @@ def test_xai_oauth_nonterminal_refresh_does_not_quarantine(tmp_path, monkeypatch
     _write_auth_store(tmp_path, _xai_auth_store("old-access-token", "old-refresh-token"))
 
     from agent.credential_pool import load_pool
-    import prostor_cli.auth as auth_mod
-    from prostor_cli.auth import AuthError
+    import hermes_cli.auth as auth_mod
+    from hermes_cli.auth import AuthError
 
     pool = load_pool("xai-oauth")
     assert pool.select() is not None
@@ -2880,7 +2927,7 @@ def _codex_auth_store(access_token: str, refresh_token: str) -> dict:
 
 
 def test_is_terminal_codex_oauth_refresh_error():
-    from prostor_cli.auth import AuthError, _is_terminal_codex_oauth_refresh_error
+    from hermes_cli.auth import AuthError, _is_terminal_codex_oauth_refresh_error
 
     assert _is_terminal_codex_oauth_refresh_error(
         AuthError("Refresh failed", provider="openai-codex", code="codex_refresh_failed", relogin_required=True)
@@ -2916,8 +2963,8 @@ def test_codex_oauth_terminal_refresh_clears_auth_json_and_removes_pool_entries(
     _write_auth_store(tmp_path, _codex_auth_store("old-access-token", "old-refresh-token"))
 
     from agent.credential_pool import PooledCredential, load_pool
-    import prostor_cli.auth as auth_mod
-    from prostor_cli.auth import AuthError
+    import hermes_cli.auth as auth_mod
+    from hermes_cli.auth import AuthError
 
     pool = load_pool("openai-codex")
     selected = pool.select()
@@ -2975,8 +3022,8 @@ def test_codex_oauth_nonterminal_refresh_does_not_quarantine(tmp_path, monkeypat
     _write_auth_store(tmp_path, _codex_auth_store("old-access-token", "old-refresh-token"))
 
     from agent.credential_pool import load_pool
-    import prostor_cli.auth as auth_mod
-    from prostor_cli.auth import AuthError
+    import hermes_cli.auth as auth_mod
+    from hermes_cli.auth import AuthError
 
     pool = load_pool("openai-codex")
     assert pool.select() is not None

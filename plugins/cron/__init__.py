@@ -41,17 +41,17 @@ _CRON_PLUGINS_DIR = Path(__file__).parent
 
 # Synthetic parent package for user-installed providers, so they don't
 # collide with bundled providers in sys.modules.
-_USER_NAMESPACE = "_prostor_user_cron"
+_USER_NAMESPACE = "_hermes_user_cron"
 
 
 def _register_synthetic_package(name: str, search_locations: List[str]) -> None:
     """Register an empty package shell in sys.modules.
 
-    User-installed providers import as ``_prostor_user_cron.<name>``, a dotted
+    User-installed providers import as ``_hermes_user_cron.<name>``, a dotted
     name whose parents exist nowhere on disk. Unless those parents are present
     in ``sys.modules``, any relative import inside the plugin
     (``from . import config``) fails with
-    ``ModuleNotFoundError: No module named '_prostor_user_cron'`` — the same
+    ``ModuleNotFoundError: No module named '_hermes_user_cron'`` — the same
     reason the loader already registers ``plugins`` and ``plugins.cron`` for
     bundled providers.
     """
@@ -69,8 +69,8 @@ def _register_synthetic_package(name: str, search_locations: List[str]) -> None:
 def _get_user_plugins_dir() -> Optional[Path]:
     """Return ``$PROSTOR_HOME/plugins/`` or None if unavailable."""
     try:
-        from prostor_constants import get_prostor_home
-        d = get_prostor_home() / "plugins"
+        from hermes_constants import get_hermes_home
+        d = get_hermes_home() / "plugins"
         return d if d.is_dir() else None
     except Exception:
         return None

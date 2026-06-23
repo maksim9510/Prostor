@@ -17,7 +17,7 @@ def test_main_wrapper_preserves_docker_workdir() -> None:
     text = MAIN_WRAPPER.read_text(encoding="utf-8")
 
     # Must save original cwd before cd /opt/data.
-    assert "_prostor_orig_cwd" in text, (
+    assert "_hermes_orig_cwd" in text, (
         "main-wrapper.sh must save the original cwd before cd /opt/data"
     )
     assert 'PROSTOR_ORIG_CWD:-$PWD' in text, (
@@ -31,10 +31,10 @@ def test_main_wrapper_preserves_docker_workdir() -> None:
     # The restore cd must appear AFTER venv activation but BEFORE the
     # first exec / if-block.
     activate_idx = text.index("/opt/prostor/.venv/bin/activate")
-    restore_idx = text.index('cd "$_prostor_orig_cwd"')
+    restore_idx = text.index('cd "$_hermes_orig_cwd"')
     exec_idx = text.index("if [ $# -eq 0 ]")
     assert activate_idx < restore_idx < exec_idx, (
-        "cd $_prostor_orig_cwd must appear after venv activation and "
+        "cd $_hermes_orig_cwd must appear after venv activation and "
         "before the exec routing block"
     )
 

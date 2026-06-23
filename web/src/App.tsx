@@ -903,7 +903,7 @@ function SidebarSystemActions({
   const navigate = useNavigate();
   const { activeAction, isBusy, isRunning, pendingAction, runAction } =
     useSystemActions();
-  const canUpdateProstor = status?.can_update_prostor === true;
+  const canUpdateHermes = status?.can_update_hermes === true;
 
   const items: SystemActionItem[] = [
     {
@@ -914,12 +914,12 @@ function SidebarSystemActions({
       spin: true,
     },
   ];
-  if (canUpdateProstor) {
+  if (canUpdateHermes) {
     items.push({
       action: "update",
       icon: Download,
-      label: t.status.updateProstor,
-      runningLabel: t.status.updatingProstor,
+      label: t.status.updateHermes,
+      runningLabel: t.status.updatingHermes,
       spin: false,
     });
   }

@@ -31,9 +31,9 @@ def stage2_text() -> str:
 
 
 def _seed_mkdir_block(text: str) -> str:
-    """Extract the `as_prostor mkdir -p \\ ...` seed block."""
-    m = re.search(r"as_prostor mkdir -p \\\n(?:[^\n]*\\\n)*[^\n]*\n", text)
-    assert m, "stage2-hook.sh must contain the as_prostor mkdir -p seed block"
+    """Extract the `as_hermes mkdir -p \\ ...` seed block."""
+    m = re.search(r"as_hermes mkdir -p \\\n(?:[^\n]*\\\n)*[^\n]*\n", text)
+    assert m, "stage2-hook.sh must contain the as_hermes mkdir -p seed block"
     return m.group(0)
 
 

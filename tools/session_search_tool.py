@@ -19,7 +19,7 @@ mode parameter):
      previews, timestamps).
 
 All three modes operate on the SQLite session DB via the FTS5 index and
-the get_anchored_view / get_messages_around primitives in prostor_state.
+the get_anchored_view / get_messages_around primitives in hermes_state.
 No LLM calls anywhere — every shape returns actual messages from the DB.
 
 History: PR #20238 (JabberELF) seeded a fast/summary dual-mode split; the
@@ -120,8 +120,8 @@ def _resolve_profile_db(profile: str):
     if profile is None or not str(profile).strip():
         return None
 
-    from prostor_cli import profiles as profiles_mod
-    from prostor_state import SessionDB
+    from hermes_cli import profiles as profiles_mod
+    from hermes_state import SessionDB
 
     canon = profiles_mod.normalize_profile_name(profile)
     profiles_mod.validate_profile_name(canon)
@@ -143,8 +143,8 @@ def _locate_session_db(session_id: str):
     from pathlib import Path
 
     try:
-        from prostor_cli import profiles as profiles_mod
-        from prostor_state import SessionDB
+        from hermes_cli import profiles as profiles_mod
+        from hermes_state import SessionDB
     except Exception:
         return None, None
 
@@ -520,11 +520,11 @@ def session_search(
     """
     if db is None:
         try:
-            from prostor_state import SessionDB
+            from hermes_state import SessionDB
             db = SessionDB()
         except Exception:
             logging.debug("SessionDB unavailable for session_search", exc_info=True)
-            from prostor_state import format_session_db_unavailable
+            from hermes_state import format_session_db_unavailable
             return tool_error(format_session_db_unavailable(), success=False)
 
     # Normalise a raw `@session:<profile>/<id>` link value passed as session_id.
@@ -619,7 +619,7 @@ def session_search(
 def check_session_search_requirements() -> bool:
     """Requires the SQLite state database."""
     try:
-        from prostor_state import DEFAULT_DB_PATH
+        from hermes_state import DEFAULT_DB_PATH
         return DEFAULT_DB_PATH.parent.exists()
     except ImportError:
         return False
@@ -631,6 +631,17 @@ SESSION_SEARCH_SCHEMA = {
         "Search past sessions stored in the local session DB, or scroll inside one. "
         "FTS5-backed retrieval over the SQLite message store. No LLM calls — every "
         "shape returns actual messages from the DB.\n\n"
+        "SOURCE-FIRST LIMIT\n\n"
+        "  This tool searches Prostor conversation history only. It is not evidence "
+        "about the current contents of external sources. If the user provided a "
+        "direct source such as a URL, phone number/contact, app/thread, file path, "
+        "account, website, or live system, inspect that original source before or "
+        "instead of session_search when accessible. Use session_search as secondary "
+        "context for what was previously said, not as primary proof of what the "
+        "source currently contains. If the original source is inaccessible, say so "
+        "and why before falling back to session history. Do not conclude 'not found' "
+        "or 'no prior correspondence' from session_search alone when a direct source "
+        "was provided.\n\n"
         "FOUR CALLING SHAPES\n\n"
         "  1) DISCOVERY — pass `query`:\n"
         "     session_search(query=\"auth refactor\", limit=3)\n"
@@ -673,10 +684,12 @@ SESSION_SEARCH_SCHEMA = {
         "(`\"docker networking\"`), boolean (`python NOT java`), or prefix wildcards "
         "(`deploy*`).\n\n"
         "WHEN TO USE\n\n"
-        "  Reach for this on any \"what did we do about X\" / \"where did we leave Y\" / "
-        "\"find the session where Z\" question — before gh, web search, or filesystem "
-        "inspection. The session DB carries what was said when; external tools show "
-        "current world state."
+        "  Reach for this on questions about Prostor conversation history itself, such "
+        "as \"what did we do about X\", \"where did we leave Y\", or \"find the "
+        "session where Z\". If the user provided a direct source identifier, inspect "
+        "that source first when accessible; session_search can then supply historical "
+        "context. The session DB carries what was said when; external tools show "
+        "current source/world state."
     ),
     "parameters": {
         "type": "object",

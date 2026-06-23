@@ -21,7 +21,7 @@ PROSTOR_HOME="${PROSTOR_HOME:-/opt/data}"
 INSTALL_DIR="/opt/prostor"
 
 # Drop to prostor via s6-setuidgid, but skip it when already non-root.
-as_prostor() { [ "$(id -u)" = 0 ] || { "$@"; return; }; s6-setuidgid prostor "$@"; }
+as_hermes() { [ "$(id -u)" = 0 ] || { "$@"; return; }; s6-setuidgid prostor "$@"; }
 
 # --- Reject the unsupported `docker run --user <uid>:<gid>` start ---
 # Detect the case where the container was launched with `--user` pinned to an
@@ -180,13 +180,13 @@ done
 #
 # The canonical list of prostor-owned subdirs is the same one the s6-setuidgid
 # mkdir -p block below seeds. Keep them in sync if the seed list changes.
-actual_prostor_uid=$(id -u prostor)
+actual_hermes_uid=$(id -u prostor)
 needs_chown=false
-if [ "$(stat -c %u "$PROSTOR_HOME" 2>/dev/null)" != "$actual_prostor_uid" ]; then
+if [ "$(stat -c %u "$PROSTOR_HOME" 2>/dev/null)" != "$actual_hermes_uid" ]; then
     needs_chown=true
 fi
 if [ "$needs_chown" = true ]; then
-    echo "[stage2] Fixing ownership of $PROSTOR_HOME (targeted) to prostor ($actual_prostor_uid)"
+    echo "[stage2] Fixing ownership of $PROSTOR_HOME (targeted) to prostor ($actual_hermes_uid)"
     # In rootless Podman the container's "root" is mapped to an
     # unprivileged host UID — chown will fail. That's fine: the volume
     # is already owned by the mapped user on the host side.
@@ -247,12 +247,12 @@ fi
 # sweep so host-owned files in a bind-mounted $PROSTOR_HOME are never
 # touched — same targeted-ownership contract as the subdir chown above
 # (issue #19788, PR #19795). The list mirrors the top-level *file*
-# entries of prostor_cli.profile_distribution.USER_OWNED_EXCLUDE plus the
+# entries of hermes_cli.profile_distribution.USER_OWNED_EXCLUDE plus the
 # runtime lock files; keep them in sync if that set changes.
 for f in \
     auth.json auth.lock .env \
     state.db state.db-shm state.db-wal \
-    prostor_state.db \
+    hermes_state.db \
     response_store.db response_store.db-shm response_store.db-wal \
     gateway.pid gateway.lock gateway_state.json processes.json \
     active_profile; do
@@ -276,7 +276,7 @@ fi
 # Use direct `mkdir -p` invocation (no `sh -c "..."` wrapper) so the
 # shell isn't a second interpreter — defends against $PROSTOR_HOME values
 # containing shell metacharacters. PR #30136 review item O2.
-as_prostor mkdir -p \
+as_hermes mkdir -p \
     "$PROSTOR_HOME/cron" \
     "$PROSTOR_HOME/sessions" \
     "$PROSTOR_HOME/logs" \
@@ -316,7 +316,7 @@ seed_one() {
     dest=$1
     src=$2
     if [ ! -f "$PROSTOR_HOME/$dest" ] && [ -f "$INSTALL_DIR/$src" ]; then
-        as_prostor cp "$INSTALL_DIR/$src" "$PROSTOR_HOME/$dest"
+        as_hermes cp "$INSTALL_DIR/$src" "$PROSTOR_HOME/$dest"
     fi
 }
 seed_one ".env" ".env.example"
@@ -390,7 +390,7 @@ fi
 # the python binary's own bin-stub already sets up (sys.path is rooted
 # at the venv's site-packages by virtue of running .venv/bin/python).
 if [ -d "$INSTALL_DIR/skills" ]; then
-    as_prostor "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/tools/skills_sync.py" \
+    as_hermes "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/tools/skills_sync.py" \
         || echo "[stage2] Warning: skills_sync.py failed; continuing"
 fi
 

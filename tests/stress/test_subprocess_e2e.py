@@ -2,7 +2,7 @@
 
 This validates the IPC + lifecycle story that mocks can't:
   - spawn_fn returns a real PID
-  - the child process resolves prostor_cli.kanban_db on its own
+  - the child process resolves hermes_cli.kanban_db on its own
   - the child writes heartbeats via the CLI (real argparse, real init_db)
   - the child completes via the CLI with --summary + --metadata
   - the dispatcher observes all of this through the DB only
@@ -52,20 +52,20 @@ def make_spawn_fn(home: str):
 
 
 def main():
-    home = tempfile.mkdtemp(prefix="prostor_e2e_")
+    home = tempfile.mkdtemp(prefix="hermes_e2e_")
     os.environ["PROSTOR_HOME"] = home
     os.environ["HOME"] = home
     sys.path.insert(0, WT)
-    from prostor_cli import kanban_db as kb
+    from hermes_cli import kanban_db as kb
 
     # Point the `prostor` CLI child processes will run at the worktree
-    # prostor_cli.main. We do this by putting a shim on PATH.
+    # hermes_cli.main. We do this by putting a shim on PATH.
     shim_dir = os.path.join(home, "bin")
     os.makedirs(shim_dir, exist_ok=True)
     shim_path = os.path.join(shim_dir, "prostor")
     with open(shim_path, "w") as f:
         f.write(f"""#!/bin/sh
-exec {PY} -m prostor_cli.main "$@"
+exec {PY} -m hermes_cli.main "$@"
 """)
     os.chmod(shim_path, 0o755)
     os.environ["PATH"] = f"{shim_dir}:{os.environ.get('PATH','')}"
@@ -211,7 +211,7 @@ exec {PY} -m prostor_cli.main "$@"
     print("=" * 60)
     print("C. Worker log captured to disk")
     print("=" * 60)
-    # Scenario A workers wrote to /tmp/prostor_e2e_*/worker_*.log
+    # Scenario A workers wrote to /tmp/hermes_e2e_*/worker_*.log
     import glob
     logs = glob.glob(os.path.join(home, "worker_*.log"))
     print(f"  {len(logs)} worker log files")

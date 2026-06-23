@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:0.11.23-python3.13-trixie@sha256:aa1cb04101f7c3f1bc49c5f1108baf115deb831175fc75c71963143900d82a5b AS uv_source
+FROM ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie@sha256:b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b AS uv_source
 # Node 22 LTS source stage. Debian trixie's bundled nodejs is pinned to 20.x
 # which reached EOL in April 2026 — we copy node + npm + corepack from the
 # upstream node:22 image instead so we can stay on a supported LTS without
@@ -229,8 +229,8 @@ RUN mkdir -p /opt/prostor/bin && \
 # we can't tell which commit the user is actually running.
 #
 # Fix: write the commit SHA passed via the PROSTOR_GIT_SHA build-arg to
-# /opt/prostor/.prostor_build_sha at build time, and have
-# prostor_cli/build_info.py read it at runtime.  Both `prostor dump` and
+# /opt/prostor/.hermes_build_sha at build time, and have
+# hermes_cli/build_info.py read it at runtime.  Both `prostor dump` and
 # banner.get_git_banner_state() try the baked SHA first, then fall back
 # to live `git rev-parse` for source installs (unchanged behaviour).
 #
@@ -241,8 +241,8 @@ RUN mkdir -p /opt/prostor/bin && \
 ARG PROSTOR_GIT_SHA=
 RUN if [ -n "${PROSTOR_GIT_SHA}" ]; then \
         chmod u+w /opt/prostor && \
-        printf '%s\n' "${PROSTOR_GIT_SHA}" > /opt/prostor/.prostor_build_sha && \
-        chmod a-w /opt/prostor /opt/prostor/.prostor_build_sha; \
+        printf '%s\n' "${PROSTOR_GIT_SHA}" > /opt/prostor/.hermes_build_sha && \
+        chmod a-w /opt/prostor /opt/prostor/.hermes_build_sha; \
     fi
 
 # ---------- s6-overlay service wiring ----------
@@ -269,7 +269,7 @@ COPY --chmod=0755 docker/cont-init.d/015-supervise-perms /etc/cont-init.d/015-su
 COPY --chmod=0755 docker/cont-init.d/02-reconcile-profiles /etc/cont-init.d/02-reconcile-profiles
 
 # ---------- Runtime ----------
-ENV PROSTOR_WEB_DIST=/opt/prostor/prostor_cli/web_dist
+ENV PROSTOR_WEB_DIST=/opt/prostor/hermes_cli/web_dist
 # Point the TUI launcher at the prebuilt bundle baked at build time (Layer 8:
 # `ui-tui && npm run build`). This makes _make_tui_argv take the prebuilt-bundle
 # fast path (`node --expose-gc /opt/prostor/ui-tui/dist/entry.js`) and skip the

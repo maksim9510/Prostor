@@ -19,7 +19,7 @@ import yaml
 
 from utils import atomic_json_write, base_url_host_matches, base_url_hostname
 
-from prostor_constants import OPENROUTER_MODELS_URL
+from hermes_constants import OPENROUTER_MODELS_URL
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +115,8 @@ _ENDPOINT_MODEL_CACHE_TTL = 300
 
 def _get_model_metadata_cache_path() -> Path:
     """Return path to the OpenRouter model metadata disk cache."""
-    from prostor_core import get_prostor_home
-    return get_prostor_home() / "cache" / "openrouter_model_metadata.json"
+    from hermes_constants import get_hermes_home
+    return get_hermes_home() / "cache" / "openrouter_model_metadata.json"
 
 
 def _model_metadata_disk_cache_age_seconds() -> Optional[float]:
@@ -909,8 +909,8 @@ def _resolve_endpoint_context_length(
 
 def _get_context_cache_path() -> Path:
     """Return path to the persistent context length cache file."""
-    from prostor_core import get_prostor_home
-    return get_prostor_home() / "context_length_cache.yaml"
+    from hermes_constants import get_hermes_home
+    return get_hermes_home() / "context_length_cache.yaml"
 
 
 def _load_context_cache() -> Dict[str, int]:
@@ -1652,7 +1652,7 @@ def get_model_context_length(
     # See #15779.
     if custom_providers and base_url and model:
         try:
-            from prostor_cli.config import get_custom_provider_context_length
+            from hermes_cli.config import get_custom_provider_context_length
             cp_ctx = get_custom_provider_context_length(
                 model=model,
                 base_url=base_url,
@@ -1846,7 +1846,7 @@ def get_model_context_length(
     # returns the provider-enforced limit which is what users can actually use.
     if effective_provider in {"copilot", "copilot-acp", "github-copilot"}:
         try:
-            from prostor_cli.models import get_copilot_model_context
+            from hermes_cli.models import get_copilot_model_context
             ctx = get_copilot_model_context(model, api_key=api_key)
             if ctx:
                 return ctx

@@ -9,5 +9,5 @@ Currently shipped:
 
   - ``bitwarden`` — Bitwarden Secrets Manager (`bws` CLI).  See
     ``agent.secret_sources.bitwarden`` for the integration and
-    ``prostor_cli.secrets_cli`` for the user-facing setup wizard.
+    ``hermes_cli.secrets_cli`` for the user-facing setup wizard.
 """

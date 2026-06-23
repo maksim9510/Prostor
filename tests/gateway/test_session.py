@@ -314,7 +314,7 @@ class TestBuildSessionContextPrompt:
         assert "Local" in prompt
         assert "machine running this agent" in prompt
 
-    def test_local_delivery_path_uses_display_prostor_home(self):
+    def test_local_delivery_path_uses_display_hermes_home(self):
         config = GatewayConfig()
         source = SessionSource(
             platform=Platform.LOCAL, chat_id="cli",
@@ -322,7 +322,7 @@ class TestBuildSessionContextPrompt:
         )
         ctx = build_session_context(source, config)
 
-        with patch("prostor_constants.display_prostor_home", return_value="~/.prostor/profiles/coder"):
+        with patch("hermes_constants.display_hermes_home", return_value="~/.prostor/profiles/coder"):
             prompt = build_session_context_prompt(ctx)
 
         assert "~/.prostor/profiles/coder/cron/output/" in prompt
@@ -505,8 +505,8 @@ class TestSessionStoreRewriteTranscript:
 
     @pytest.fixture()
     def store(self, tmp_path, monkeypatch):
-        import prostor_state
-        monkeypatch.setattr(prostor_state, "DEFAULT_DB_PATH", tmp_path / "state.db")
+        import hermes_state
+        monkeypatch.setattr(hermes_state, "DEFAULT_DB_PATH", tmp_path / "state.db")
         config = GatewayConfig()
         s = SessionStore(sessions_dir=tmp_path, config=config)
         return s
@@ -549,16 +549,16 @@ class TestLoadTranscriptDBOnly:
     """After spec 002, load_transcript reads only from state.db."""
 
     def test_db_only_returns_empty_for_nonexistent(self, tmp_path, monkeypatch):
-        import prostor_state
-        monkeypatch.setattr(prostor_state, "DEFAULT_DB_PATH", tmp_path / "state.db")
+        import hermes_state
+        monkeypatch.setattr(hermes_state, "DEFAULT_DB_PATH", tmp_path / "state.db")
         config = GatewayConfig()
         store = SessionStore(sessions_dir=tmp_path, config=config)
         result = store.load_transcript("nonexistent")
         assert result == []
 
     def test_db_only_returns_messages(self, tmp_path, monkeypatch):
-        import prostor_state
-        monkeypatch.setattr(prostor_state, "DEFAULT_DB_PATH", tmp_path / "state.db")
+        import hermes_state
+        monkeypatch.setattr(hermes_state, "DEFAULT_DB_PATH", tmp_path / "state.db")
         config = GatewayConfig()
         store = SessionStore(sessions_dir=tmp_path, config=config)
         sid = "db_only_session"
@@ -576,7 +576,7 @@ class TestSessionStoreSwitchSession:
     """Regression coverage for gateway /resume session switching semantics."""
 
     def test_switch_session_reopens_target_session_in_db(self, tmp_path):
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         config = GatewayConfig()
         with patch("gateway.session.SessionStore._ensure_loaded"):
@@ -1046,6 +1046,97 @@ class TestWhatsAppIdentifierPublicHelpers:
         assert canonical_whatsapp_identifier("") == ""
 
 
+class TestSessionEntryFromDictTraversalValidation:
+    """Regression: from_dict must reject traversal sequences in session_key/session_id."""
+
+    BASE = {
+        "session_key": "agent:main:local:dm",
+        "session_id": "abc123",
+        "created_at": "2026-01-01T00:00:00",
+        "updated_at": "2026-01-01T00:00:00",
+    }
+
+    def _entry(self, **overrides):
+        from gateway.session import SessionEntry
+        return {**self.BASE, **overrides}
+
+    def test_valid_entry_loads(self):
+        from gateway.session import SessionEntry
+        entry = SessionEntry.from_dict(self._entry())
+        assert entry.session_id == "abc123"
+
+    def test_session_id_dotdot_raises(self):
+        from gateway.session import SessionEntry
+        with pytest.raises(ValueError, match="session_id"):
+            SessionEntry.from_dict(self._entry(session_id="../../etc/passwd"))
+
+    def test_session_key_dotdot_raises(self):
+        from gateway.session import SessionEntry
+        with pytest.raises(ValueError, match="session_key"):
+            SessionEntry.from_dict(self._entry(session_key="agent:main:../../secret"))
+
+    def test_session_id_absolute_unix_raises(self):
+        from gateway.session import SessionEntry
+        with pytest.raises(ValueError, match="session_id"):
+            SessionEntry.from_dict(self._entry(session_id="/etc/passwd"))
+
+    def test_session_id_absolute_windows_raises(self):
+        from gateway.session import SessionEntry
+        with pytest.raises(ValueError, match="session_id"):
+            SessionEntry.from_dict(self._entry(session_id="\\windows\\system32\\config"))
+
+    def test_session_id_windows_drive_letter_raises(self):
+        from gateway.session import SessionEntry
+        with pytest.raises(ValueError, match="session_id"):
+            SessionEntry.from_dict(self._entry(session_id="C:/windows/system32"))
+
+    def test_session_id_windows_drive_backslash_raises(self):
+        from gateway.session import SessionEntry
+        with pytest.raises(ValueError, match="session_id"):
+            SessionEntry.from_dict(self._entry(session_id="D:\\path\\to\\file"))
+
+    def test_session_id_non_leading_separator_raises(self):
+        """A path separator anywhere — not just leading — must be rejected,
+        since a non-leading backslash is still a Windows traversal vector."""
+        from gateway.session import SessionEntry
+        with pytest.raises(ValueError, match="session_id"):
+            SessionEntry.from_dict(self._entry(session_id="good\\..\\bad"))
+        with pytest.raises(ValueError, match="session_key"):
+            SessionEntry.from_dict(self._entry(session_key="agent:main:good/sub"))
+
+
+class TestEnsureLoadedSkipsInvalidEntries:
+    """Regression: one bad sessions.json entry must not block valid entries from loading."""
+
+    def test_invalid_entry_skipped_valid_entry_loads(self, tmp_path):
+        import json
+        from gateway.session import SessionStore
+        from gateway.config import GatewayConfig
+
+        sessions_file = tmp_path / "sessions.json"
+        sessions_file.write_text(json.dumps({
+            "bad:key": {
+                "session_key": "bad:key",
+                "session_id": "../../evil",
+                "created_at": "2026-01-01T00:00:00",
+                "updated_at": "2026-01-01T00:00:00",
+            },
+            "agent:main:local:dm": {
+                "session_key": "agent:main:local:dm",
+                "session_id": "good123",
+                "created_at": "2026-01-01T00:00:00",
+                "updated_at": "2026-01-01T00:00:00",
+            },
+        }), encoding="utf-8")
+
+        store = SessionStore(sessions_dir=tmp_path, config=GatewayConfig())
+        store._ensure_loaded()
+
+        assert "bad:key" not in store._entries
+        assert "agent:main:local:dm" in store._entries
+        assert store._entries["agent:main:local:dm"].session_id == "good123"
+
+
 class TestSessionStoreEntriesAttribute:
     """Regression: /reset must access _entries, not _sessions."""
 
@@ -1227,7 +1318,7 @@ class TestRewriteTranscriptPreservesReasoning:
     """rewrite_transcript must not drop reasoning fields from SQLite."""
 
     def test_reasoning_survives_rewrite(self, tmp_path):
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         db = SessionDB(db_path=tmp_path / "test.db")
         session_id = "reasoning-test"
@@ -1269,7 +1360,7 @@ class TestRewriteTranscriptPreservesReasoning:
         assert after[0].get("codex_reasoning_items") == [{"id": "r1", "type": "reasoning"}]
 
     def test_db_rewrite_is_atomic_on_insert_failure(self, tmp_path, monkeypatch):
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         db = SessionDB(db_path=tmp_path / "test.db")
         session_id = "atomic-rewrite-test"

@@ -240,15 +240,15 @@ def test_main_state_json_uses_env_fallback(monkeypatch, capsys):
     assert mock_post.call_args[0][0]["user"] == "0xenv999"
 
 
-def test_env_lookup_reads_prostor_dotenv(tmp_path, monkeypatch):
+def test_env_lookup_reads_hermes_dotenv(tmp_path, monkeypatch):
     mod = load_module()
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir(parents=True)
-    (prostor_home / ".env").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir(parents=True)
+    (hermes_home / ".env").write_text(
         "HYPERLIQUID_USER_ADDRESS=0xdotenv123\nHYPERLIQUID_API_URL=https://api.hyperliquid-testnet.xyz\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.delenv("HYPERLIQUID_USER_ADDRESS", raising=False)
     monkeypatch.delenv("HYPERLIQUID_API_URL", raising=False)
 
@@ -263,12 +263,12 @@ def test_user_dotenv_overrides_project_dotenv(tmp_path, monkeypatch):
     project_dir.mkdir()
     (project_dir / ".env").write_text("HYPERLIQUID_USER_ADDRESS=0xproject\n", encoding="utf-8")
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / ".env").write_text("HYPERLIQUID_USER_ADDRESS=0xuserhome\n", encoding="utf-8")
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / ".env").write_text("HYPERLIQUID_USER_ADDRESS=0xuserhome\n", encoding="utf-8")
 
     monkeypatch.chdir(project_dir)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.delenv("HYPERLIQUID_USER_ADDRESS", raising=False)
 
     assert mod._env_lookup("HYPERLIQUID_USER_ADDRESS") == "0xuserhome"

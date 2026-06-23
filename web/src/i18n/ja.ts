@@ -120,8 +120,8 @@ export const ja: Translations = {
     starting: "起動中",
     startedInBackground: "バックグラウンドで起動しました — 進行状況はログをご確認ください",
     stopped: "停止",
-    updateProstor: "Prostor を更新",
-    updatingProstor: "Prostor を更新しています…",
+    updateHermes: "Prostor を更新",
+    updatingHermes: "Prostor を更新しています…",
     waitingForOutput: "出力を待機しています…",
   },
 

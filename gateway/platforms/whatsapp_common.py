@@ -384,12 +384,12 @@ def resolve_whatsapp_bridge_dir() -> Path:
     from pathlib import Path as _Path
 
     # Default location in install tree (may be read-only)
-    from prostor_core import get_prostor_home
+    from hermes_constants import get_hermes_home
     install_bridge = _Path(__file__).resolve().parents[2] / "scripts" / "whatsapp-bridge"
 
     # Try PROSTOR_HOME location first
-    prostor_home = get_prostor_home()
-    prostor_home_bridge = prostor_home / "scripts" / "whatsapp-bridge"
+    hermes_home = get_hermes_home()
+    hermes_home_bridge = hermes_home / "scripts" / "whatsapp-bridge"
 
     # Check if install dir is writable
     try:
@@ -404,17 +404,17 @@ def resolve_whatsapp_bridge_dir() -> Path:
         return install_bridge
 
     # Install dir is read-only, mirror to PROSTOR_HOME if needed
-    if prostor_home_bridge.exists():
-        return prostor_home_bridge
+    if hermes_home_bridge.exists():
+        return hermes_home_bridge
 
     # Mirror the bridge source to PROSTOR_HOME
     try:
-        prostor_home_bridge.parent.mkdir(parents=True, exist_ok=True)
+        hermes_home_bridge.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
             install_bridge,
-            prostor_home_bridge,
+            hermes_home_bridge,
             dirs_exist_ok=False,
         )
-        return prostor_home_bridge
+        return hermes_home_bridge
     except Exception:
         return install_bridge

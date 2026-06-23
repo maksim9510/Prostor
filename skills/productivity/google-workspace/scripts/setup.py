@@ -31,14 +31,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Ensure sibling modules (_prostor_home) are importable when run standalone.
+# Ensure sibling modules (_hermes_home) are importable when run standalone.
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from _prostor_home import display_prostor_home, get_prostor_home
+from _hermes_home import display_hermes_home, get_hermes_home
 
-PROSTOR_HOME = get_prostor_home()
+PROSTOR_HOME = get_hermes_home()
 TOKEN_PATH = PROSTOR_HOME / "google_token.json"
 CLIENT_SECRET_PATH = PROSTOR_HOME / "google_client_secret.json"
 PENDING_AUTH_PATH = PROSTOR_HOME / "google_oauth_pending.json"
@@ -413,7 +413,7 @@ def exchange_auth_code(code: str):
     TOKEN_PATH.write_text(json.dumps(token_payload, indent=2))
     PENDING_AUTH_PATH.unlink(missing_ok=True)
     print(f"OK: Authenticated. Token saved to {TOKEN_PATH}")
-    print(f"Profile-scoped token location: {display_prostor_home()}/google_token.json")
+    print(f"Profile-scoped token location: {display_hermes_home()}/google_token.json")
 
 
 def revoke():

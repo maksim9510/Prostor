@@ -1,12 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import type { ProstorGateway } from '@/prostor'
+import type { HermesGateway } from '@/prostor'
 import { $gateway } from '@/store/gateway'
 import { $approvalRequest, clearAllPrompts, setApprovalRequest } from '@/store/prompts'
 import { $activeSessionId } from '@/store/session'
 
-import { PendingToolApproval } from './tool-approval'
+import { PendingApprovalFallback, PendingToolApproval } from './tool-approval'
 import type { ToolPart } from './tool-fallback-model'
 
 // Radix's DropdownMenu touches pointer-capture + scrollIntoView, which jsdom
@@ -37,7 +37,7 @@ function setRequest(command = 'rm -rf /tmp/x', allowPermanent?: boolean) {
 
 function mockGateway() {
   const request = vi.fn().mockResolvedValue({ resolved: true })
-  $gateway.set({ request } as unknown as ProstorGateway)
+  $gateway.set({ request } as unknown as HermesGateway)
 
   return request
 }
@@ -129,5 +129,31 @@ describe('PendingToolApproval', () => {
     // The session + reject options still render, but never the permanent allow.
     expect(await screen.findByRole('menuitem', { name: /Allow this session/ })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: /Always allow/ })).toBeNull()
+  })
+
+  it('renders a floating fallback when no pending tool row is mounted', () => {
+    setRequest('rm /tmp/hermes_approval_test.txt')
+    const { container } = render(<PendingApprovalFallback />)
+    const fallback = container.querySelector('[data-slot="tool-approval-fallback"]')
+
+    expect(fallback).not.toBeNull()
+    expect(within(fallback as HTMLElement).getByRole('button', { name: /Run/ })).toBeTruthy()
+    expect(within(fallback as HTMLElement).getByRole('button', { name: /Reject/ })).toBeTruthy()
+  })
+
+  it('hides the floating fallback once the inline approval bar is mounted', async () => {
+    setRequest('rm /tmp/hermes_approval_test.txt')
+
+    const { container } = render(
+      <>
+        <PendingToolApproval part={part('terminal')} />
+        <PendingApprovalFallback />
+      </>
+    )
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-approval-inline"]')).not.toBeNull()
+      expect(container.querySelector('[data-slot="tool-approval-fallback"]')).toBeNull()
+    })
   })
 })

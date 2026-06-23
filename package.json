@@ -1,6 +1,6 @@
 {
   "name": "prostor-agent",
-  "version": "0.17.0",
+  "version": "1.0.0",
   "description": "An AI agent with advanced tool-calling capabilities, featuring a flexible toolsets system for organizing and managing tools.",
   "private": true,
   "workspaces": [
@@ -10,7 +10,7 @@
     "web"
   ],
   "scripts": {
-    "postinstall": "echo '\u2705 Browser tools ready. Run: python run_agent.py --help'",
+    "postinstall": "echo '✅ Browser tools ready. Run: python run_agent.py --help'",
     "install:root": "npm install --workspaces=false",
     "install:web": "npm install --workspace web",
     "install:tui": "npm install --workspace ui-tui",
@@ -24,18 +24,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/maksim9510/Prostor-Agent.git"
+    "url": "git+https://github.com/NousResearch/Prostor-Agent.git"
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/maksim9510/Prostor-Agent/issues"
+    "url": "https://github.com/NousResearch/Prostor-Agent/issues"
   },
-  "homepage": "https://github.com/maksim9510/Prostor-Agent#readme",
+  "homepage": "https://github.com/NousResearch/Prostor-Agent#readme",
   "dependencies": {
     "@streamdown/math": "^1.0.2",
-    "agent-browser": "^0.26.0",
-    "node-pty": "^1.1.0",
-    "typescript": "^6.0.3"
+    "agent-browser": "^0.26.0"
   },
   "overrides": {
     "lodash": "4.18.1",

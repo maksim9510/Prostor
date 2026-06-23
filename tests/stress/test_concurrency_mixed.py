@@ -30,11 +30,11 @@ RUN_DURATION_S = 30
 WT = str(Path(__file__).resolve().parents[2])
 
 
-def worker_loop(worker_id: int, prostor_home: str, result_file: str) -> None:
-    os.environ["PROSTOR_HOME"] = prostor_home
-    os.environ["HOME"] = prostor_home
+def worker_loop(worker_id: int, hermes_home: str, result_file: str) -> None:
+    os.environ["PROSTOR_HOME"] = hermes_home
+    os.environ["HOME"] = hermes_home
     sys.path.insert(0, WT)
-    from prostor_cli import kanban_db as kb
+    from hermes_cli import kanban_db as kb
 
     events = []
     start = time.monotonic()
@@ -141,12 +141,12 @@ def worker_loop(worker_id: int, prostor_home: str, result_file: str) -> None:
         json.dump(events, f)
 
 
-def reclaimer_loop(prostor_home: str, result_file: str) -> None:
+def reclaimer_loop(hermes_home: str, result_file: str) -> None:
     """Background dispatcher-like loop that reclaims stale tasks."""
-    os.environ["PROSTOR_HOME"] = prostor_home
-    os.environ["HOME"] = prostor_home
+    os.environ["PROSTOR_HOME"] = hermes_home
+    os.environ["HOME"] = hermes_home
     sys.path.insert(0, WT)
-    from prostor_cli import kanban_db as kb
+    from hermes_cli import kanban_db as kb
 
     events = []
     start = time.monotonic()
@@ -170,13 +170,13 @@ def reclaimer_loop(prostor_home: str, result_file: str) -> None:
 
 
 def main():
-    home = tempfile.mkdtemp(prefix="prostor_mixed_stress_")
+    home = tempfile.mkdtemp(prefix="hermes_mixed_stress_")
     print(f"PROSTOR_HOME = {home}")
 
     os.environ["PROSTOR_HOME"] = home
     os.environ["HOME"] = home
     sys.path.insert(0, WT)
-    from prostor_cli import kanban_db as kb
+    from hermes_cli import kanban_db as kb
 
     kb.init_db()
     conn = kb.connect()

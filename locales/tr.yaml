@@ -314,7 +314,7 @@ Future messages in this room will use that transcript until `/reset` or another 
   update:
     platform_not_messaging:  "✗ /update yalnızca mesajlaşma platformlarında kullanılabilir. Terminalden `prostor update` komutunu çalıştırın."
     not_git_repo:            "✗ Git deposu değil — güncellenemiyor."
-    prostor_cmd_not_found:    "✗ `prostor` komutu bulunamadı. Prostor çalışıyor, ancak güncelleme komutu yürütülebilir dosyayı PATH'te veya mevcut Python yorumlayıcısı aracılığıyla bulamadı. Terminalde `prostor update` komutunu manuel olarak çalıştırmayı deneyin."
+    hermes_cmd_not_found:    "✗ `prostor` komutu bulunamadı. Prostor çalışıyor, ancak güncelleme komutu yürütülebilir dosyayı PATH'te veya mevcut Python yorumlayıcısı aracılığıyla bulamadı. Terminalde `prostor update` komutunu manuel olarak çalıştırmayı deneyin."
     start_failed:            "✗ Güncelleme başlatılamadı: {error}"
     starting:                "⚕ Prostor güncellemesi başlatılıyor… İlerlemeyi buraya akıtacağım."
 

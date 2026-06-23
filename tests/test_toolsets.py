@@ -211,7 +211,7 @@ class TestToolsetConsistency:
             for inc in ts["includes"]:
                 assert inc in TOOLSETS, f"{name} includes unknown toolset '{inc}'"
 
-    def test_prostor_platforms_share_core_tools(self):
+    def test_hermes_platforms_share_core_tools(self):
         """All prostor-* platform toolsets share the same core tools.
 
         Platform-specific additions (e.g. ``discord`` / ``discord_admin``
@@ -248,8 +248,8 @@ class TestPluginToolsets:
 
 
 class TestDefaultPlatformWebSearchCoverage:
-    def test_prostor_whatsapp_toolset_includes_web_search(self):
+    def test_hermes_whatsapp_toolset_includes_web_search(self):
         assert "web_search" in resolve_toolset("prostor-whatsapp")
 
-    def test_prostor_api_server_toolset_includes_web_search(self):
+    def test_hermes_api_server_toolset_includes_web_search(self):
         assert "web_search" in resolve_toolset("prostor-api-server")

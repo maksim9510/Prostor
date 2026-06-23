@@ -13,11 +13,11 @@ through a thin wrapper that mirrors the real dispatch shape.
 
 from unittest.mock import patch
 
-from cli import ProstorCLI
+from cli import HermesCLI
 
 
 def _make_cli():
-    cli = ProstorCLI.__new__(ProstorCLI)
+    cli = HermesCLI.__new__(HermesCLI)
     cli._should_exit = False
     cli.conversation_history = []
     cli.agent = None

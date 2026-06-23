@@ -12,6 +12,7 @@ import logging
 import shutil
 import tempfile
 import threading
+import time
 import os
 import re
 import uuid
@@ -30,12 +31,12 @@ except ImportError:  # pragma: no cover - non-Windows
     msvcrt = None
 from datetime import datetime, timedelta
 from pathlib import Path
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from typing import Optional, Dict, List, Any, Union
 
 logger = logging.getLogger(__name__)
 
-from prostor_time import now as _prostor_now
+from hermes_time import now as _hermes_now
 from utils import atomic_replace
 
 try:
@@ -48,9 +49,23 @@ except ImportError:
 # Configuration
 # =============================================================================
 
-PROSTOR_DIR = get_prostor_home().resolve()
+PROSTOR_DIR = get_hermes_home().resolve()
 CRON_DIR = PROSTOR_DIR / "cron"
 JOBS_FILE = CRON_DIR / "jobs.json"
+# Heartbeat file the in-process ticker touches on every loop iteration. The
+# gateway process and the (separate) ``prostor cron status`` process share it
+# so status can tell whether the ticker THREAD is alive, not just whether the
+# gateway PROCESS exists — a ticker that dies silently inside a live gateway
+# would otherwise report healthy (#32612, #32895).
+TICKER_HEARTBEAT_FILE = CRON_DIR / "ticker_heartbeat"
+# Last tick that completed WITHOUT raising. Distinguishing this from the plain
+# heartbeat lets status detect a ticker that is alive but failing every tick.
+TICKER_SUCCESS_FILE = CRON_DIR / "ticker_last_success"
+# Default ticker loop interval (seconds). The single source of truth shared by
+# the in-process ticker (cron/scheduler_provider.py) and the staleness
+# threshold in `prostor cron status` (hermes_cli/cron.py), so the two never
+# drift apart.
+TICKER_INTERVAL_SECONDS = 60
 
 # In-process lock protecting load_jobs→modify→save_jobs cycles.
 # Required when tick() runs jobs in parallel threads — without this,
@@ -357,7 +372,7 @@ def parse_schedule(schedule: str) -> Dict[str, Any]:
     # Duration like "30m", "2h", "1d" → one-shot from now
     try:
         minutes = parse_duration(schedule)
-        run_at = _prostor_now() + timedelta(minutes=minutes)
+        run_at = _hermes_now() + timedelta(minutes=minutes)
         return {
             "kind": "once",
             "run_at": run_at.isoformat(),
@@ -387,11 +402,36 @@ def _ensure_aware(dt: datetime) -> datetime:
     This preserves relative ordering for legacy naive timestamps across
     timezone changes and avoids false not-due results.
     """
-    target_tz = _prostor_now().tzinfo
+    target_tz = _hermes_now().tzinfo
     if dt.tzinfo is None:
         local_tz = datetime.now().astimezone().tzinfo
         return dt.replace(tzinfo=local_tz).astimezone(target_tz)
     return dt.astimezone(target_tz)
+
+
+def _timezone_offset_mismatch(stored: datetime, current: datetime) -> bool:
+    """Return True when a stored aware timestamp uses a different UTC offset.
+
+    Naive stored timestamps return False: they carry no offset to compare, and
+    are normalized by ``_ensure_aware`` instead — they intentionally never take
+    the offset-repair path.
+    """
+    if stored.tzinfo is None or current.tzinfo is None:
+        return False
+    return stored.utcoffset() != current.utcoffset()
+
+
+def _stored_wall_clock_is_future(stored: datetime, current: datetime) -> bool:
+    """Return True when the stored local wall-clock time has not arrived yet.
+
+    Cron schedules express local wall-clock intent. If Prostor/system local time
+    changes after next_run_at was persisted, an old offset can make a future
+    wall-clock run look due at the converted absolute time (for example
+    21:00+10 becomes 13:00+02). Comparing naive wall-clock values lets us
+    distinguish that migration case from a genuinely missed run whose scheduled
+    wall time has already passed.
+    """
+    return stored.replace(tzinfo=None) > current.replace(tzinfo=None)
 
 
 def _recoverable_oneshot_run_at(
@@ -440,7 +480,7 @@ def _compute_grace_seconds(schedule: dict) -> int:
 
     if kind == "cron" and HAS_CRONITER:
         try:
-            now = _prostor_now()
+            now = _hermes_now()
             cron = croniter(schedule["expr"], now)
             first = cron.get_next(datetime)
             second = cron.get_next(datetime)
@@ -459,7 +499,7 @@ def compute_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = None
 
     Returns ISO timestamp string, or None if no more runs.
     """
-    now = _prostor_now()
+    now = _hermes_now()
 
     if schedule["kind"] == "once":
         return _recoverable_oneshot_run_at(schedule, now, last_run_at=last_run_at)
@@ -497,6 +537,78 @@ def compute_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = None
         return next_run.isoformat()
 
     return None
+
+
+# =============================================================================
+# Ticker heartbeat (liveness signal for `prostor cron status`)
+# =============================================================================
+
+def _atomic_write_epoch(path: Path) -> None:
+    """Atomically write the current epoch time to ``path``.
+
+    Uses the same tmpfile + ``atomic_replace`` pattern as ``save_jobs`` so a
+    concurrent reader in another process (``prostor cron status``) never sees a
+    torn/truncated file. Best-effort: failures are swallowed by callers.
+    """
+    ensure_dirs()
+    fd, tmp_path = tempfile.mkstemp(dir=str(CRON_DIR), suffix=".tmp", prefix=".hb_")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(str(time.time()))
+            f.flush()
+            os.fsync(f.fileno())
+        atomic_replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def record_ticker_heartbeat(success: bool = False) -> None:
+    """Record a ticker liveness signal, and optionally a successful-tick signal.
+
+    The ticker calls this once per loop iteration. ``success=True`` additionally
+    bumps the *last successful tick* marker. We track two distinct signals so
+    `prostor cron status` can tell a thread that is merely *alive and looping*
+    (heartbeat fresh, success stale) from one that is actually *firing jobs*
+    (both fresh) — a ticker stuck failing every tick would otherwise keep the
+    plain heartbeat fresh and falsely report healthy (#32612, #32895).
+
+    Best-effort: a write failure must never disrupt the tick loop.
+    """
+    try:
+        _atomic_write_epoch(TICKER_HEARTBEAT_FILE)
+    except Exception:
+        pass
+    if success:
+        try:
+            _atomic_write_epoch(TICKER_SUCCESS_FILE)
+        except Exception:
+            pass
+
+
+def _epoch_file_age(path: Path) -> Optional[float]:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        return max(0.0, time.time() - float(raw))
+    except Exception:
+        return None
+
+
+def get_ticker_heartbeat_age() -> Optional[float]:
+    """Seconds since the ticker loop last iterated, or None if unknown.
+
+    None = heartbeat file missing/unreadable (older build, never ran, or a
+    torn read). Callers treat None as "cannot determine", not "dead".
+    """
+    return _epoch_file_age(TICKER_HEARTBEAT_FILE)
+
+
+def get_ticker_success_age() -> Optional[float]:
+    """Seconds since the ticker last completed a tick WITHOUT raising, or None."""
+    return _epoch_file_age(TICKER_SUCCESS_FILE)
 
 
 # =============================================================================
@@ -557,7 +669,7 @@ def _save_jobs_unlocked(jobs: List[Dict[str, Any]]):
     fd, tmp_path = tempfile.mkstemp(dir=str(JOBS_FILE.parent), suffix='.tmp', prefix='.jobs_')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump({"jobs": jobs, "updated_at": _prostor_now().isoformat()}, f, indent=2)
+            json.dump({"jobs": jobs, "updated_at": _hermes_now().isoformat()}, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
         atomic_replace(tmp_path, JOBS_FILE)
@@ -689,7 +801,7 @@ def create_job(
         deliver = "origin" if origin else "local"
 
     job_id = uuid.uuid4().hex[:12]
-    now = _prostor_now().isoformat()
+    now = _hermes_now().isoformat()
 
     normalized_skills = _normalize_skill_list(skill, skills)
     normalized_model = str(model).strip() if isinstance(model, str) else None
@@ -890,7 +1002,7 @@ def pause_job(job_id: str, reason: Optional[str] = None) -> Optional[Dict[str, A
         {
             "enabled": False,
             "state": "paused",
-            "paused_at": _prostor_now().isoformat(),
+            "paused_at": _hermes_now().isoformat(),
             "paused_reason": reason,
         },
     )
@@ -927,7 +1039,7 @@ def trigger_job(job_id: str) -> Optional[Dict[str, Any]]:
             "state": "scheduled",
             "paused_at": None,
             "paused_reason": None,
-            "next_run_at": _prostor_now().isoformat(),
+            "next_run_at": _hermes_now().isoformat(),
         },
     )
 
@@ -970,7 +1082,7 @@ def mark_job_run(job_id: str, success: bool, error: Optional[str] = None,
         jobs = load_jobs()
         for i, job in enumerate(jobs):
             if job["id"] == job_id:
-                now = _prostor_now().isoformat()
+                now = _hermes_now().isoformat()
                 job["last_run_at"] = now
                 job["last_status"] = "ok" if success else "error"
                 job["last_error"] = error if not success else None
@@ -1050,7 +1162,7 @@ def advance_next_run(job_id: str) -> bool:
                 kind = job.get("schedule", {}).get("kind")
                 if kind not in {"cron", "interval"}:
                     return False
-                now = _prostor_now().isoformat()
+                now = _hermes_now().isoformat()
                 new_next = compute_next_run(job["schedule"], now)
                 if new_next and new_next != job.get("next_run_at"):
                     job["next_run_at"] = new_next
@@ -1105,7 +1217,7 @@ def claim_job_for_fire(job_id: str, *, claim_ttl_seconds: int = 300) -> bool:
                 continue
             if not job.get("enabled", True) or job.get("state") == "paused":
                 return False
-            now = _prostor_now()
+            now = _hermes_now()
             existing = job.get("fire_claim")
             if existing:
                 try:
@@ -1128,10 +1240,16 @@ def claim_job_for_fire(job_id: str, *, claim_ttl_seconds: int = 300) -> bool:
 def get_due_jobs() -> List[Dict[str, Any]]:
     """Get all jobs that are due to run now.
 
-    For recurring jobs (cron/interval), if the scheduled time is stale
-    (more than one period in the past, e.g. because the gateway was down),
-    the job is fast-forwarded to the next future run instead of firing
-    immediately.  This prevents a burst of missed jobs on gateway restart.
+    For recurring jobs (cron/interval), if the scheduled time is stale (more
+    than one period in the past, e.g. because the gateway was down OR because a
+    long-running previous execution overran the interval), the accumulated
+    missed runs are collapsed — ``next_run_at`` is fast-forwarded to the next
+    future occurrence so a backlog does NOT burst-fire on restart — but the job
+    still fires ONCE now. This prevents the perpetual-defer loop (#33315) where
+    a job whose runtime exceeds ``interval + grace`` would be skipped forever.
+
+    Note: firing once on catch-up flows through ``mark_job_run``, so a job with
+    a ``repeat.times`` limit consumes one of its runs on that catch-up fire.
     """
     with _jobs_lock():
         return _get_due_jobs_locked()
@@ -1139,7 +1257,7 @@ def get_due_jobs() -> List[Dict[str, Any]]:
 
 def _get_due_jobs_locked() -> List[Dict[str, Any]]:
     """Inner implementation of get_due_jobs(); must be called with _jobs_lock held."""
-    now = _prostor_now()
+    now = _hermes_now()
     raw_jobs = load_jobs()
     jobs = [_apply_skill_fields(j) for j in copy.deepcopy(raw_jobs)]
     due = []
@@ -1189,35 +1307,84 @@ def _get_due_jobs_locked() -> List[Dict[str, Any]]:
                     needs_save = True
                     break
 
-        next_run_dt = _ensure_aware(datetime.fromisoformat(next_run))
+        raw_next_run_dt = datetime.fromisoformat(next_run)
+        schedule = job.get("schedule", {})
+        kind = schedule.get("kind")
+
+        next_run_dt = _ensure_aware(raw_next_run_dt)
+        # Migration repair: a cron job persists next_run_at as an absolute
+        # instant, but the cron expr describes local wall-clock intent. If the
+        # configured/system timezone changed after persistence, the stored
+        # instant's offset no longer matches now's, and its converted time can
+        # look due hours early (21:00+10 -> 13:00+02). When the stored *wall
+        # clock* is still in the future, recompute from the schedule so we fire
+        # at the intended local time instead of early-then-again.
+        #
+        # TRADE-OFF: this cannot distinguish a config/host TZ migration from a
+        # legitimate DST offset change. A DST boundary that satisfies all four
+        # conditions will recompute (and thus SKIP the pending occurrence, no
+        # catch-up) rather than fire it. Accepted: in the pure-migration case
+        # the recompute lands on the same wall-clock time later the same period,
+        # and DST-boundary collisions with a still-future stored wall clock are
+        # rare relative to the double-fire bug this prevents (#28934).
+        if (
+            kind == "cron"
+            and next_run_dt <= now
+            and _timezone_offset_mismatch(raw_next_run_dt, now)
+            and _stored_wall_clock_is_future(raw_next_run_dt, now)
+        ):
+            new_next = compute_next_run(schedule, now.isoformat())
+            if new_next:
+                logger.info(
+                    "Job '%s' next_run_at offset changed (%s -> %s). "
+                    "Recomputing cron run to preserve local wall-clock intent: %s",
+                    job.get("name", job["id"]),
+                    raw_next_run_dt.utcoffset(),
+                    now.utcoffset(),
+                    new_next,
+                )
+                for rj in raw_jobs:
+                    if rj["id"] == job["id"]:
+                        rj["next_run_at"] = new_next
+                        needs_save = True
+                        break
+                continue
+
         if next_run_dt <= now:
-            schedule = job.get("schedule", {})
-            kind = schedule.get("kind")
 
             # For recurring jobs, check if the scheduled time is stale
             # (gateway was down and missed the window). Fast-forward to
             # the next future occurrence instead of firing a stale run.
             grace = _compute_grace_seconds(schedule)
             if kind in {"cron", "interval"} and (now - next_run_dt).total_seconds() > grace:
-                # Job is past its catch-up grace window — this is a stale missed run.
-                # Grace scales with schedule period: daily=2h, hourly=30m, 10min=5m.
+                # Job is past its catch-up grace window — skip accumulated
+                # missed runs but still execute once now to avoid deferring
+                # indefinitely (e.g. a long-running job just finished).
                 new_next = compute_next_run(schedule, now.isoformat())
                 if new_next:
                     logger.info(
                         "Job '%s' missed its scheduled time (%s, grace=%ds). "
-                        "Fast-forwarding to next run: %s",
+                        "Running now; next run provisionally set to: %s "
+                        "(re-anchored on completion)",
                         job.get("name", job["id"]),
                         next_run,
                         grace,
                         new_next,
                     )
-                    # Update the job in storage
+                    # Persist the fast-forward to storage now (skip accumulated
+                    # slots). In the built-in ticker path this is shortly
+                    # overwritten by advance_next_run + mark_job_run, but it is
+                    # NOT redundant: it (a) protects the crash window between
+                    # here and mark_job_run, and (b) covers the external
+                    # fire_due provider path, which does not call
+                    # advance_next_run. mark_job_run re-anchors next_run_at off
+                    # the actual completion time, so this value is provisional.
                     for rj in raw_jobs:
                         if rj["id"] == job["id"]:
                             rj["next_run_at"] = new_next
                             needs_save = True
                             break
-                    continue  # Skip this run
+                    # Fall through to due.append(job) — execute once now
 
             due.append(job)
 
@@ -1234,7 +1401,7 @@ def save_job_output(job_id: str, output: str):
     job_output_dir.mkdir(parents=True, exist_ok=True)
     _secure_dir(job_output_dir)
     
-    timestamp = _prostor_now().strftime("%Y-%m-%d_%H-%M-%S")
+    timestamp = _hermes_now().strftime("%Y-%m-%d_%H-%M-%S")
     output_file = job_output_dir / f"{timestamp}.md"
     
     fd, tmp_path = tempfile.mkstemp(dir=str(job_output_dir), suffix='.tmp', prefix='.output_')

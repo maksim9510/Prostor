@@ -20,7 +20,7 @@ def test_openrouter_base_url_applies_or_headers(mock_openai):
     agent._apply_client_headers_for_base_url("https://openrouter.ai/api/v1")
 
     headers = agent._client_kwargs["default_headers"]
-    assert headers["HTTP-Referer"] == "https://github.com/maksim9510/Prostor"
+    assert headers["HTTP-Referer"] == "https://prostor-agent.nousresearch.com"
     assert headers["X-Title"] == "Prostor Agent"
 
 
@@ -110,6 +110,31 @@ def test_routed_client_preserves_openai_sdk_custom_headers(mock_openai):
 
 
 @patch("run_agent.OpenAI")
+def test_routed_client_preserves_openai_sdk_default_headers(mock_openai):
+    mock_openai.return_value = MagicMock()
+    routed_client = SimpleNamespace(
+        api_key="test-key",
+        base_url="https://api.githubcopilot.com",
+        default_headers={"copilot-integration-id": "vscode-chat"},
+    )
+
+    with patch("agent.auxiliary_client.resolve_provider_client", return_value=(
+        routed_client,
+        "claude-opus-4.7",
+    )):
+        agent = AIAgent(
+            provider="copilot",
+            model="claude-opus-4.7",
+            quiet_mode=True,
+            skip_context_files=True,
+            skip_memory=True,
+        )
+
+    headers = agent._client_kwargs["default_headers"]
+    assert headers["copilot-integration-id"] == "vscode-chat"
+
+
+@patch("run_agent.OpenAI")
 def test_gmi_base_url_picks_up_profile_user_agent(mock_openai):
     """GMI declares User-Agent on its ProviderProfile.default_headers.
 
@@ -165,13 +190,13 @@ def test_openrouter_headers_include_response_cache_when_enabled(mock_openai):
         skip_memory=True,
     )
 
-    with patch("prostor_cli.config.load_config", return_value={
+    with patch("hermes_cli.config.load_config", return_value={
         "openrouter": {"response_cache": True, "response_cache_ttl": 600},
     }):
         agent._apply_client_headers_for_base_url("https://openrouter.ai/api/v1")
 
     headers = agent._client_kwargs["default_headers"]
-    assert headers["HTTP-Referer"] == "https://github.com/maksim9510/Prostor"
+    assert headers["HTTP-Referer"] == "https://prostor-agent.nousresearch.com"
     assert headers["X-OpenRouter-Cache"] == "true"
     assert headers["X-OpenRouter-Cache-TTL"] == "600"
 
@@ -196,7 +221,7 @@ def test_user_default_headers_override_sdk_user_agent(mock_openai):
         skip_memory=True,
     )
 
-    with patch("prostor_cli.config.load_config", return_value={
+    with patch("hermes_cli.config.load_config", return_value={
         "model": {"default_headers": {"User-Agent": "curl/8.7.1", "X-Extra": "1"}},
     }):
         agent._apply_client_headers_for_base_url("http://localhost:8080/v1")
@@ -219,14 +244,14 @@ def test_user_default_headers_win_over_provider_defaults(mock_openai):
         skip_memory=True,
     )
 
-    with patch("prostor_cli.config.load_config", return_value={
+    with patch("hermes_cli.config.load_config", return_value={
         "model": {"default_headers": {"X-Title": "MyApp"}},
     }):
         agent._apply_client_headers_for_base_url("https://openrouter.ai/api/v1")
 
     headers = agent._client_kwargs["default_headers"]
     assert headers["X-Title"] == "MyApp"  # user override wins
-    assert headers["HTTP-Referer"] == "https://github.com/maksim9510/Prostor"  # default preserved
+    assert headers["HTTP-Referer"] == "https://prostor-agent.nousresearch.com"  # default preserved
 
 
 @patch("run_agent.OpenAI")
@@ -241,11 +266,11 @@ def test_no_user_default_headers_leaves_provider_defaults_untouched(mock_openai)
         skip_memory=True,
     )
 
-    with patch("prostor_cli.config.load_config", return_value={"model": {}}):
+    with patch("hermes_cli.config.load_config", return_value={"model": {}}):
         agent._apply_client_headers_for_base_url("https://openrouter.ai/api/v1")
 
     headers = agent._client_kwargs["default_headers"]
-    assert headers["HTTP-Referer"] == "https://github.com/maksim9510/Prostor"
+    assert headers["HTTP-Referer"] == "https://prostor-agent.nousresearch.com"
     assert "User-Agent" not in headers  # nothing injected when unconfigured
 
 
@@ -265,7 +290,7 @@ def test_user_default_headers_skipped_for_anthropic_mode(mock_openai):
     agent.api_mode = "anthropic_messages"
     agent._client_kwargs = {}
 
-    with patch("prostor_cli.config.load_config", return_value={
+    with patch("hermes_cli.config.load_config", return_value={
         "model": {"default_headers": {"User-Agent": "curl/8.7.1"}},
     }):
         agent._apply_user_default_headers()
@@ -286,12 +311,12 @@ def test_openrouter_headers_no_cache_when_disabled(mock_openai):
         skip_memory=True,
     )
 
-    with patch("prostor_cli.config.load_config", return_value={
+    with patch("hermes_cli.config.load_config", return_value={
         "openrouter": {"response_cache": False},
     }):
         agent._apply_client_headers_for_base_url("https://openrouter.ai/api/v1")
 
     headers = agent._client_kwargs["default_headers"]
-    assert headers["HTTP-Referer"] == "https://github.com/maksim9510/Prostor"
+    assert headers["HTTP-Referer"] == "https://prostor-agent.nousresearch.com"
     assert "X-OpenRouter-Cache" not in headers
     assert "X-OpenRouter-Cache-TTL" not in headers

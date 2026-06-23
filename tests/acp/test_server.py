@@ -1,4 +1,4 @@
-"""Tests for acp_adapter.server — ProstorACPAgent ACP server."""
+"""Tests for acp_adapter.server — HermesACPAgent ACP server."""
 
 import asyncio
 import os
@@ -36,9 +36,9 @@ from acp.schema import (
     UserMessageChunk,
 )
 from acp_adapter.auth import TERMINAL_SETUP_AUTH_METHOD_ID
-from acp_adapter.server import ProstorACPAgent, PROSTOR_VERSION
+from acp_adapter.server import HermesACPAgent, PROSTOR_VERSION
 from acp_adapter.session import SessionManager
-from prostor_state import SessionDB
+from hermes_state import SessionDB
 
 
 @pytest.fixture()
@@ -49,8 +49,8 @@ def mock_manager():
 
 @pytest.fixture()
 def agent(mock_manager):
-    """ProstorACPAgent backed by a mock session manager."""
-    return ProstorACPAgent(session_manager=mock_manager)
+    """HermesACPAgent backed by a mock session manager."""
+    return HermesACPAgent(session_manager=mock_manager)
 
 
 @pytest.mark.asyncio
@@ -242,10 +242,10 @@ class TestSessionOps:
         manager = SessionManager(
             agent_factory=lambda: SimpleNamespace(model="gpt-5.4", provider="openai-codex")
         )
-        acp_agent = ProstorACPAgent(session_manager=manager)
+        acp_agent = HermesACPAgent(session_manager=manager)
 
         with patch(
-            "prostor_cli.models.curated_models_for_provider",
+            "hermes_cli.models.curated_models_for_provider",
             return_value=[("gpt-5.4", "recommended"), ("gpt-5.4-mini", "")],
         ):
             resp = await acp_agent.new_session(cwd="/tmp")
@@ -367,7 +367,7 @@ class TestSessionOps:
         state.history = [
             {"role": "system", "content": "hidden system"},
             {"role": "user", "content": "what controls the / slash commands?"},
-            {"role": "assistant", "content": "ProstorACPAgent._ADVERTISED_COMMANDS controls them."},
+            {"role": "assistant", "content": "HermesACPAgent._ADVERTISED_COMMANDS controls them."},
             {
                 "role": "assistant",
                 "content": "",
@@ -405,7 +405,7 @@ class TestSessionOps:
         assert isinstance(replay_calls[0].kwargs["update"], UserMessageChunk)
         assert replay_calls[0].kwargs["update"].content.text == "what controls the / slash commands?"
         assert isinstance(replay_calls[1].kwargs["update"], AgentMessageChunk)
-        assert replay_calls[1].kwargs["update"].content.text.startswith("ProstorACPAgent")
+        assert replay_calls[1].kwargs["update"].content.text.startswith("HermesACPAgent")
 
         tool_updates = [
             call.kwargs["update"]
@@ -962,11 +962,11 @@ class TestSessionConfiguration:
                 api_mode=kwargs.get("api_mode"),
             )
 
-        monkeypatch.setattr("prostor_cli.config.load_config", lambda: {
+        monkeypatch.setattr("hermes_cli.config.load_config", lambda: {
             "model": {"provider": "openrouter", "default": "openrouter/gpt-5"}
         })
         monkeypatch.setattr(
-            "prostor_cli.runtime_provider.resolve_runtime_provider",
+            "hermes_cli.runtime_provider.resolve_runtime_provider",
             fake_resolve_runtime_provider,
         )
         # Pin the parser so this test doesn't depend on live
@@ -974,17 +974,17 @@ class TestSessionConfiguration:
         # (sibling of the same hardening on
         # ``test_model_switch_uses_requested_provider``).
         monkeypatch.setattr(
-            "prostor_cli.models.parse_model_input",
+            "hermes_cli.models.parse_model_input",
             lambda raw, current: ("anthropic", "claude-sonnet-4-6"),
         )
         monkeypatch.setattr(
-            "prostor_cli.models.detect_provider_for_model",
+            "hermes_cli.models.detect_provider_for_model",
             lambda model, current: None,
         )
         manager = SessionManager(db=SessionDB(tmp_path / "state.db"))
 
         with patch("run_agent.AIAgent", side_effect=fake_agent):
-            acp_agent = ProstorACPAgent(session_manager=manager)
+            acp_agent = HermesACPAgent(session_manager=manager)
             state = manager.create_session(cwd="/tmp")
             result = await acp_agent.set_session_model(
                 model_id="anthropic:claude-sonnet-4-6",
@@ -1177,7 +1177,7 @@ class TestPrompt:
         assert final_text in agent_texts
 
     @pytest.mark.asyncio
-    async def test_prompt_propagates_prostor_session_id_env(self, agent, monkeypatch):
+    async def test_prompt_propagates_hermes_session_id_env(self, agent, monkeypatch):
         """ACP must propagate the originating session id to the agent loop
         via ``PROSTOR_SESSION_ID`` so tools that want to stamp side-effects
         with it (e.g. ``kanban_create``) can read the env var inside
@@ -1222,7 +1222,7 @@ class TestPrompt:
         )
 
     @pytest.mark.asyncio
-    async def test_prompt_restores_prior_prostor_session_id(self, agent, monkeypatch):
+    async def test_prompt_restores_prior_hermes_session_id(self, agent, monkeypatch):
         """If the env already had PROSTOR_SESSION_ID set (e.g. nested
         agent loops), the prior value must be restored after the inner
         prompt completes — not popped, not left at the inner id."""
@@ -1664,11 +1664,11 @@ class TestSlashCommands:
                 api_mode=kwargs.get("api_mode"),
             )
 
-        monkeypatch.setattr("prostor_cli.config.load_config", lambda: {
+        monkeypatch.setattr("hermes_cli.config.load_config", lambda: {
             "model": {"provider": "openrouter", "default": "openrouter/gpt-5"}
         })
         monkeypatch.setattr(
-            "prostor_cli.runtime_provider.resolve_runtime_provider",
+            "hermes_cli.runtime_provider.resolve_runtime_provider",
             fake_resolve_runtime_provider,
         )
         # Pin the model-string parser independently of the live
@@ -1678,17 +1678,17 @@ class TestSlashCommands:
         # ``anthropic``) flakes this one — observed once in CI as
         # ``'custom' == 'anthropic'``.
         monkeypatch.setattr(
-            "prostor_cli.models.parse_model_input",
+            "hermes_cli.models.parse_model_input",
             lambda raw, current: ("anthropic", "claude-sonnet-4-6"),
         )
         monkeypatch.setattr(
-            "prostor_cli.models.detect_provider_for_model",
+            "hermes_cli.models.detect_provider_for_model",
             lambda model, current: None,
         )
         manager = SessionManager(db=SessionDB(tmp_path / "state.db"))
 
         with patch("run_agent.AIAgent", side_effect=fake_agent):
-            acp_agent = ProstorACPAgent(session_manager=manager)
+            acp_agent = HermesACPAgent(session_manager=manager)
             state = manager.create_session(cwd="/tmp")
             result = acp_agent._cmd_model("anthropic:claude-sonnet-4-6", state)
 

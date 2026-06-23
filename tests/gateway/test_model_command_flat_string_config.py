@@ -39,7 +39,7 @@ def _make_event(text):
 
 def _fake_switch_result():
     """Build a successful ModelSwitchResult that bypasses real provider resolution."""
-    from prostor_cli.model_switch import ModelSwitchResult
+    from hermes_cli.model_switch import ModelSwitchResult
 
     return ModelSwitchResult(
         success=True,
@@ -58,23 +58,23 @@ def _setup_isolated_home(tmp_path, monkeypatch, model_yaml_value):
     """Write a config.yaml with the given ``model:`` value and stub the heavy bits."""
     import gateway.run as gateway_run
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    cfg_path = prostor_home / "config.yaml"
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    cfg_path = hermes_home / "config.yaml"
     cfg_path.write_text(
         yaml.safe_dump({"model": model_yaml_value, "providers": {}}),
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(gateway_run, "_prostor_home", prostor_home)
+    monkeypatch.setattr(gateway_run, "_hermes_home", hermes_home)
     monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
     monkeypatch.setattr(
-        "prostor_cli.model_switch.switch_model",
+        "hermes_cli.model_switch.switch_model",
         lambda **kw: _fake_switch_result(),
     )
-    # save_config writes to ``get_prostor_home() / config.yaml`` — point it here.
-    monkeypatch.setattr("prostor_constants.get_prostor_home", lambda: prostor_home)
-    monkeypatch.setattr("prostor_cli.config.get_prostor_home", lambda: prostor_home)
+    # save_config writes to ``get_hermes_home() / config.yaml`` — point it here.
+    monkeypatch.setattr("hermes_constants.get_hermes_home", lambda: hermes_home)
+    monkeypatch.setattr("hermes_cli.config.get_hermes_home", lambda: hermes_home)
     return cfg_path
 
 
@@ -112,19 +112,19 @@ async def test_model_global_persists_when_config_has_missing_model(tmp_path, mon
     """
     import gateway.run as gateway_run
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    cfg_path = prostor_home / "config.yaml"
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    cfg_path = hermes_home / "config.yaml"
     cfg_path.write_text(yaml.safe_dump({"providers": {}}), encoding="utf-8")
 
-    monkeypatch.setattr(gateway_run, "_prostor_home", prostor_home)
+    monkeypatch.setattr(gateway_run, "_hermes_home", hermes_home)
     monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
     monkeypatch.setattr(
-        "prostor_cli.model_switch.switch_model",
+        "hermes_cli.model_switch.switch_model",
         lambda **kw: _fake_switch_result(),
     )
-    monkeypatch.setattr("prostor_constants.get_prostor_home", lambda: prostor_home)
-    monkeypatch.setattr("prostor_cli.config.get_prostor_home", lambda: prostor_home)
+    monkeypatch.setattr("hermes_constants.get_hermes_home", lambda: hermes_home)
+    monkeypatch.setattr("hermes_cli.config.get_hermes_home", lambda: hermes_home)
 
     result = await _make_runner()._handle_model_command(
         _make_event("/model gpt-5.5 --global")

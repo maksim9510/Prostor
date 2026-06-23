@@ -144,7 +144,7 @@ from gateway.platforms.base import (
 # Pin the logger name to the legacy module path so operator log filters,
 # grep aliases, and the gateway's bundled log views keep matching after
 # the in-tree → plugin migration. ``__name__`` resolves to
-# ``prostor_plugins.platforms__google_chat.adapter`` once the plugin
+# ``hermes_plugins.platforms__google_chat.adapter`` once the plugin
 # loader namespaces this module, which would silently break every
 # downstream log-monitor that greps for ``gateway.platforms.google_chat``.
 logger = logging.getLogger("gateway.platforms.google_chat")
@@ -522,12 +522,12 @@ class GoogleChatAdapter(BasePlatformAdapter):
         # made the in-memory version of this heuristic flaky for
         # multi-restart sessions).
         try:
-            from prostor_constants import get_prostor_home as _get_prostor_home
-            _prostor_home = _get_prostor_home()
+            from hermes_constants import get_hermes_home as _get_hermes_home
+            _hermes_home = _get_hermes_home()
         except (ModuleNotFoundError, ImportError):
-            _prostor_home = _Path.home() / ".prostor"
+            _hermes_home = _Path.home() / ".prostor"
         self._thread_count_store = _ThreadCountStore(
-            _prostor_home / "google_chat_thread_counts.json"
+            _hermes_home / "google_chat_thread_counts.json"
         )
         # In-flight typing-card creates per chat_id. send_typing() reserves
         # an Event here BEFORE starting the API call so concurrent calls
@@ -3031,20 +3031,20 @@ def _env_enablement() -> Optional[Dict[str, Any]]:
 def interactive_setup() -> None:
     """Walk the user through Google Chat configuration via ``prostor setup``.
 
-    The setup wizard at ``prostor_cli/gateway.py`` calls this for plugin
+    The setup wizard at ``hermes_cli/gateway.py`` calls this for plugin
     platforms instead of using the in-tree ``_PLATFORMS`` data block. The
     flow mirrors the in-tree built-ins: print the GCP setup instructions,
     prompt for env vars, persist them to ``~/.prostor/.env`` so the next
     gateway restart picks them up.
     """
-    from prostor_cli.cli_output import (
+    from hermes_cli.cli_output import (
         print_info,
         print_success,
         print_warning,
         prompt,
         prompt_yes_no,
     )
-    from prostor_cli.config import get_env_value, save_env_value
+    from hermes_cli.config import get_env_value, save_env_value
 
     existing_sub = get_env_value("GOOGLE_CHAT_SUBSCRIPTION_NAME")
     if existing_sub:

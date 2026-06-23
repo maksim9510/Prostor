@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # long-running subprocesses immediately instead of blocking until timeout.
 # ---------------------------------------------------------------------------
 from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — re-exported
-# display_prostor_home imported lazily at call site (stale-module safety during prostor update)
+# display_hermes_home imported lazily at call site (stale-module safety during prostor update)
 
 
 
@@ -312,7 +312,7 @@ def _handle_sudo_failure(output: str, env_type: str) -> str:
     
     for failure in sudo_failures:
         if failure in output:
-            from prostor_constants import display_prostor_home as _dhh
+            from hermes_constants import display_hermes_home as _dhh
             return output + f"\n\n💡 Tip: To enable sudo over messaging, add SUDO_PASSWORD to {_dhh()}/.env on the agent machine."
     
     return output
@@ -1011,7 +1011,7 @@ def _resolve_container_task_id(task_id: Optional[str]) -> str:
     ``"default"`` here so subagents share the parent's long-lived container
     (one bash, one /workspace, one set of installed packages).
 
-    Exception: RL / benchmark environments (TerminalBench2, ProstorSweEnv, ...)
+    Exception: RL / benchmark environments (TerminalBench2, HermesSweEnv, ...)
     call ``register_task_env_overrides(task_id, {...})`` to request a
     per-task Docker/Modal image. When an override is registered for a
     task_id, we honour it by returning the task_id unchanged -- those
@@ -2063,10 +2063,10 @@ def terminal_tool(
         # gateway process itself. The restart would SIGTERM the gateway, which
         # kills this very subprocess before it can complete — the service may
         # never restart. This mirrors the `prostor gateway restart` guard in
-        # prostor_cli/gateway.py and the cron-path guard in prostor_cli/cron.py,
+        # hermes_cli/gateway.py and the cron-path guard in hermes_cli/cron.py,
         # but applies unconditionally (force=True cannot help here).
-        if os.environ.get("_PROSTOR_GATEWAY") == "1":
-            from prostor_cli.cron import _contains_gateway_lifecycle_command
+        if os.environ.get("_HERMES_GATEWAY") == "1":
+            from hermes_cli.cron import _contains_gateway_lifecycle_command
             if _contains_gateway_lifecycle_command(command):
                 return json.dumps({
                     "output": "",
@@ -2297,20 +2297,47 @@ def terminal_tool(
                 # watch-pattern and completion notifications can be
                 # routed back to the correct chat/thread.
                 if background and (notify_on_complete or watch_patterns):
-                    from gateway.session_context import get_session_env as _gse
-                    _gw_platform = _gse("PROSTOR_SESSION_PLATFORM", "")
-                    if _gw_platform:
-                        _gw_chat_id = _gse("PROSTOR_SESSION_CHAT_ID", "")
-                        _gw_thread_id = _gse("PROSTOR_SESSION_THREAD_ID", "")
-                        _gw_user_id = _gse("PROSTOR_SESSION_USER_ID", "")
-                        _gw_user_name = _gse("PROSTOR_SESSION_USER_NAME", "")
-                        _gw_message_id = _gse("PROSTOR_SESSION_MESSAGE_ID", "")
-                        proc_session.watcher_platform = _gw_platform
-                        proc_session.watcher_chat_id = _gw_chat_id
-                        proc_session.watcher_user_id = _gw_user_id
-                        proc_session.watcher_user_name = _gw_user_name
-                        proc_session.watcher_thread_id = _gw_thread_id
-                        proc_session.watcher_message_id = _gw_message_id
+                    from gateway.session_context import (
+                        async_delivery_supported as _async_ok,
+                        get_session_env as _gse,
+                    )
+
+                    # Stateless request/response sessions (the API server /
+                    # WebUI path) cannot route a completion back to the agent
+                    # after the turn ends — there is no persistent channel and
+                    # send() is a no-op. Registering a watcher there silently
+                    # no-ops (issue #10760). Refuse the promise instead: drop
+                    # the flags and tell the agent to poll.
+                    if not _async_ok():
+                        notify_on_complete = False
+                        watch_patterns = None
+                        result_data["notify_on_complete"] = False
+                        result_data["notify_unsupported"] = (
+                            "notify_on_complete / watch_patterns are not available on "
+                            "this endpoint (stateless HTTP API — no channel to deliver "
+                            "an async completion after the turn ends). The process is "
+                            "running in the background; retrieve its result with "
+                            "process(action='poll') or process(action='wait')."
+                        )
+                        logger.info(
+                            "background proc %s: async delivery unsupported on this "
+                            "session; notify_on_complete/watch_patterns disabled",
+                            proc_session.id,
+                        )
+                    else:
+                        _gw_platform = _gse("PROSTOR_SESSION_PLATFORM", "")
+                        if _gw_platform:
+                            _gw_chat_id = _gse("PROSTOR_SESSION_CHAT_ID", "")
+                            _gw_thread_id = _gse("PROSTOR_SESSION_THREAD_ID", "")
+                            _gw_user_id = _gse("PROSTOR_SESSION_USER_ID", "")
+                            _gw_user_name = _gse("PROSTOR_SESSION_USER_NAME", "")
+                            _gw_message_id = _gse("PROSTOR_SESSION_MESSAGE_ID", "")
+                            proc_session.watcher_platform = _gw_platform
+                            proc_session.watcher_chat_id = _gw_chat_id
+                            proc_session.watcher_user_id = _gw_user_id
+                            proc_session.watcher_user_name = _gw_user_name
+                            proc_session.watcher_thread_id = _gw_thread_id
+                            proc_session.watcher_message_id = _gw_message_id
 
                 # Mutual exclusion: if both notify_on_complete and watch_patterns
                 # are set, drop watch_patterns. The combination produces duplicate
@@ -2421,7 +2448,7 @@ def terminal_tool(
             # replace it by returning a string from transform_terminal_output.
             # The hook is fail-open, and the first valid string return wins.
             try:
-                from prostor_cli.plugins import invoke_hook
+                from hermes_cli.plugins import invoke_hook
                 hook_results = invoke_hook(
                     "transform_terminal_output",
                     command=command,
@@ -2639,7 +2666,7 @@ if __name__ == "__main__":
     print(f"  TERMINAL_MODAL_IMAGE: {os.getenv('TERMINAL_MODAL_IMAGE', default_img)}")
     print(f"  TERMINAL_DAYTONA_IMAGE: {os.getenv('TERMINAL_DAYTONA_IMAGE', default_img)}")
     print(f"  TERMINAL_CWD: {os.getenv('TERMINAL_CWD', _safe_getcwd())}")
-    from prostor_constants import display_prostor_home as _dhh
+    from hermes_constants import display_hermes_home as _dhh
     print(f"  TERMINAL_SANDBOX_DIR: {os.getenv('TERMINAL_SANDBOX_DIR', f'{_dhh()}/sandboxes')}")
     print(f"  TERMINAL_TIMEOUT: {os.getenv('TERMINAL_TIMEOUT', '60')}")
     print(f"  TERMINAL_LIFETIME_SECONDS: {os.getenv('TERMINAL_LIFETIME_SECONDS', '300')}")

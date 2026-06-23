@@ -297,9 +297,9 @@ def test_link_ovcli_profile_removes_stale_inline_config(tmp_path):
 
 def test_post_setup_existing_profile_picker_validates_and_links_saved_profile(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    env_path = prostor_home / ".env"
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    env_path = hermes_home / ".env"
     env_path.write_text("OPENVIKING_ENDPOINT=http://old.local\nOTHER_KEY=keep\n", encoding="utf-8")
     openviking_home = tmp_path / ".openviking"
     openviking_home.mkdir()
@@ -310,10 +310,10 @@ def test_post_setup_existing_profile_picker_validates_and_links_saved_profile(tm
         json.dumps({"url": "https://vps.example", "api_key": "user-key"}),
         encoding="utf-8",
     )
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setattr(openviking_module.Path, "home", staticmethod(lambda: tmp_path))
 
-    from prostor_cli import memory_setup
+    from hermes_cli import memory_setup
 
     validate_calls = []
 
@@ -331,7 +331,7 @@ def test_post_setup_existing_profile_picker_validates_and_links_saved_profile(tm
     monkeypatch.setattr(memory_setup, "_curses_select", lambda *args, **kwargs: next(choices))
     config = {"memory": {}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     assert validate_calls == [{
         "endpoint": "https://vps.example",
@@ -353,13 +353,13 @@ def test_post_setup_existing_profile_picker_validates_and_links_saved_profile(tm
 
 def test_post_setup_create_remote_user_profile_can_mirror_to_openviking_store(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setattr(openviking_module.Path, "home", staticmethod(lambda: tmp_path))
     _allow_setup_validation(monkeypatch)
 
-    from prostor_cli import memory_setup
+    from hermes_cli import memory_setup
 
     choices = iter([1, 0, 1])
     monkeypatch.setattr(memory_setup, "_curses_select", lambda *args, **kwargs: next(choices))
@@ -375,7 +375,7 @@ def test_post_setup_create_remote_user_profile_can_mirror_to_openviking_store(tm
     )
     config = {"memory": {}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     mirrored_path = tmp_path / ".openviking" / "ovcli.conf.VPS"
     assert mirrored_path.exists()
@@ -389,19 +389,19 @@ def test_post_setup_create_remote_user_profile_can_mirror_to_openviking_store(tm
         "use_ovcli_config": True,
         "ovcli_config_path": str(mirrored_path),
     }
-    env_path = prostor_home / ".env"
+    env_path = hermes_home / ".env"
     if env_path.exists():
         assert "OPENVIKING_" not in env_path.read_text(encoding="utf-8")
 
 
-def test_post_setup_create_remote_user_can_keep_prostor_only(tmp_path, monkeypatch):
+def test_post_setup_create_remote_user_can_keep_hermes_only(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     _allow_setup_validation(monkeypatch)
 
-    from prostor_cli import memory_setup
+    from hermes_cli import memory_setup
 
     choices = iter([1, 0, 0])
     monkeypatch.setattr(memory_setup, "_curses_select", lambda *args, **kwargs: next(choices))
@@ -416,11 +416,11 @@ def test_post_setup_create_remote_user_can_keep_prostor_only(tmp_path, monkeypat
     )
     config = {"memory": {}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     assert config["memory"]["provider"] == "openviking"
     assert config["memory"]["openviking"] == {"use_ovcli_config": False}
-    env_text = (prostor_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
     assert "OPENVIKING_ENDPOINT=https://openviking.example" in env_text
     assert "OPENVIKING_API_KEY=user-secret" in env_text
     assert "OPENVIKING_AGENT=agent" in env_text
@@ -429,11 +429,11 @@ def test_post_setup_create_remote_user_can_keep_prostor_only(tmp_path, monkeypat
 
 def test_post_setup_create_openviking_service_validates_after_api_key(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
-    from prostor_cli import memory_setup
+    from hermes_cli import memory_setup
 
     validation_calls = []
 
@@ -462,7 +462,7 @@ def test_post_setup_create_openviking_service_validates_after_api_key(tmp_path, 
     )
     config = {"memory": {}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     assert validation_calls == [(
         {
@@ -476,7 +476,7 @@ def test_post_setup_create_openviking_service_validates_after_api_key(tmp_path, 
         },
         True,
     )]
-    env_text = (prostor_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
     assert "OPENVIKING_ENDPOINT=https://api.vikingdb.cn-beijing.volces.com/openviking" in env_text
     assert "OPENVIKING_API_KEY=service-secret" in env_text
     assert "OPENVIKING_AGENT=agent" in env_text
@@ -484,16 +484,16 @@ def test_post_setup_create_openviking_service_validates_after_api_key(tmp_path, 
 
 def test_post_setup_remote_blank_api_key_cancels_without_saving(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setattr(openviking_module, "_validate_openviking_reachability", lambda endpoint: (True, ""))
 
-    from prostor_cli import config as prostor_config
-    from prostor_cli import memory_setup
+    from hermes_cli import config as hermes_config
+    from hermes_cli import memory_setup
 
     save_config = MagicMock()
-    monkeypatch.setattr(prostor_config, "save_config", save_config)
+    monkeypatch.setattr(hermes_config, "save_config", save_config)
     choices = iter([1, 0, 1])
     monkeypatch.setattr(memory_setup, "_curses_select", lambda *args, **kwargs: next(choices))
     monkeypatch.setattr(
@@ -506,20 +506,20 @@ def test_post_setup_remote_blank_api_key_cancels_without_saving(tmp_path, monkey
     )
     config = {"memory": {"provider": "builtin"}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     save_config.assert_not_called()
     assert config == {"memory": {"provider": "builtin"}}
-    assert not (prostor_home / ".env").exists()
+    assert not (hermes_home / ".env").exists()
 
 
 def test_post_setup_user_key_path_can_route_detected_root_key_to_root_setup(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
-    from prostor_cli import memory_setup
+    from hermes_cli import memory_setup
 
     def validate_values(values, *, require_api_key=False):
         assert values["api_key"] == "root-secret"
@@ -547,10 +547,10 @@ def test_post_setup_user_key_path_can_route_detected_root_key_to_root_setup(tmp_
     monkeypatch.setattr(memory_setup, "_prompt", fake_prompt)
     config = {"memory": {}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     assert prompt_events.count("Prostor peer ID in OpenViking") == 1
-    env_text = (prostor_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
     assert "OPENVIKING_API_KEY=root-secret" in env_text
     assert "OPENVIKING_ACCOUNT=acct" in env_text
     assert "OPENVIKING_USER=alice" in env_text
@@ -559,11 +559,11 @@ def test_post_setup_user_key_path_can_route_detected_root_key_to_root_setup(tmp_
 
 def test_post_setup_root_key_path_can_route_detected_user_key_to_user_setup(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
-    from prostor_cli import memory_setup
+    from hermes_cli import memory_setup
 
     def validate_values(values, *, require_api_key=False):
         assert values["api_key"] == "user-secret"
@@ -587,9 +587,9 @@ def test_post_setup_root_key_path_can_route_detected_user_key_to_user_setup(tmp_
     )
     config = {"memory": {}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
-    env_text = (prostor_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
     assert "OPENVIKING_API_KEY=user-secret" in env_text
     assert "OPENVIKING_AGENT=agent" in env_text
     assert "OPENVIKING_ACCOUNT" not in env_text
@@ -650,8 +650,8 @@ def test_start_local_openviking_server_uses_endpoint_host_and_port(monkeypatch):
 
 
 def test_start_local_openviking_server_writes_output_to_log(tmp_path, monkeypatch):
-    prostor_home = tmp_path / "prostor"
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     popen_calls = []
 
     class FakeProcess:
@@ -660,7 +660,7 @@ def test_start_local_openviking_server_writes_output_to_log(tmp_path, monkeypatc
     def fake_popen(args, **kwargs):
         popen_calls.append((args, kwargs))
         assert kwargs["stdout"] is kwargs["stderr"]
-        assert kwargs["stdout"].name == str(prostor_home / "logs" / "openviking-server.log")
+        assert kwargs["stdout"].name == str(hermes_home / "logs" / "openviking-server.log")
         assert not kwargs["stdout"].closed
         return FakeProcess()
 
@@ -670,7 +670,7 @@ def test_start_local_openviking_server_writes_output_to_log(tmp_path, monkeypatc
     started, message = openviking_module._start_local_openviking_server("http://127.0.0.1:1934")
 
     assert started is True
-    assert str(prostor_home / "logs" / "openviking-server.log") in message
+    assert str(hermes_home / "logs" / "openviking-server.log") in message
     assert popen_calls
 
 
@@ -1067,12 +1067,12 @@ def test_initialize_does_not_emit_cli_warning_when_callback_absent(monkeypatch):
 
 def test_post_setup_local_server_down_can_offer_autostart(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setattr(openviking_module, "_validate_openviking_setup_values", lambda values, *, require_api_key=False: (True, "", None))
 
-    from prostor_cli import memory_setup
+    from hermes_cli import memory_setup
 
     reachability_calls = []
 
@@ -1096,27 +1096,27 @@ def test_post_setup_local_server_down_can_offer_autostart(tmp_path, monkeypatch)
     )
     config = {"memory": {}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     assert started == ["http://localhost:1933"]
     assert reachability_calls == ["http://localhost:1933"]
-    env_text = (prostor_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
     assert "OPENVIKING_ENDPOINT=http://localhost:1933" in env_text
     assert "OPENVIKING_API_KEY" not in env_text
 
 
 def test_post_setup_invalid_env_profile_can_create_new_config(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir()
+    hermes_home = tmp_path / "prostor"
+    hermes_home.mkdir()
     ovcli_path = tmp_path / "broken" / "ovcli.conf"
     ovcli_path.parent.mkdir()
     ovcli_path.write_text("{", encoding="utf-8")
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("OPENVIKING_CLI_CONFIG_FILE", str(ovcli_path))
     _allow_setup_validation(monkeypatch)
 
-    from prostor_cli import memory_setup
+    from hermes_cli import memory_setup
 
     choices = iter([1, 0, 0])
     monkeypatch.setattr(memory_setup, "_curses_select", lambda *args, **kwargs: next(choices))
@@ -1131,7 +1131,7 @@ def test_post_setup_invalid_env_profile_can_create_new_config(tmp_path, monkeypa
     )
     config = {"memory": {}}
 
-    OpenVikingMemoryProvider().post_setup(str(prostor_home), config)
+    OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     assert ovcli_path.read_text(encoding="utf-8") == "{"
     assert config["memory"]["openviking"] == {"use_ovcli_config": False}
@@ -1457,6 +1457,137 @@ def test_tool_add_resource_sends_git_remote_sources_as_path(url):
     provider._client.post.assert_called_once_with("/api/v1/resources", {
         "path": url,
     })
+
+
+def test_get_tool_schemas_includes_narrow_forget_tool():
+    provider = OpenVikingMemoryProvider()
+
+    names = [schema["name"] for schema in provider.get_tool_schemas()]
+
+    assert "viking_forget" in names
+
+
+def test_handle_tool_call_forget_deletes_exact_memory_file_uri():
+    uri = "viking://user/peers/prostor/memories/preferences/mem_abc123.md"
+    provider = OpenVikingMemoryProvider()
+    provider._client = MagicMock()
+    provider._client.delete.return_value = {
+        "status": "ok",
+        "result": {"uri": uri, "estimated_deleted_count": 1},
+    }
+
+    result = json.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
+
+    provider._client.delete.assert_called_once_with(
+        "/api/v1/fs",
+        params={"uri": uri, "recursive": False},
+    )
+    assert result == {
+        "status": "deleted",
+        "uri": uri,
+        "estimated_deleted_count": 1,
+    }
+
+
+def test_handle_tool_call_forget_deletes_exact_memory_file_under_memories_root():
+    uri = "viking://user/default/memories/profile.md"
+    provider = OpenVikingMemoryProvider()
+    provider._client = MagicMock()
+    provider._client.delete.return_value = {
+        "status": "ok",
+        "result": {"uri": uri, "estimated_deleted_count": 1},
+    }
+
+    result = json.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
+
+    provider._client.delete.assert_called_once_with(
+        "/api/v1/fs",
+        params={"uri": uri, "recursive": False},
+    )
+    assert result == {
+        "status": "deleted",
+        "uri": uri,
+        "estimated_deleted_count": 1,
+    }
+
+
+def test_handle_tool_call_forget_allows_non_generated_dot_md_memory_file():
+    uri = "viking://user/default/memories/preferences/.full.md"
+    provider = OpenVikingMemoryProvider()
+    provider._client = MagicMock()
+    provider._client.delete.return_value = {
+        "status": "ok",
+        "result": {"uri": uri, "estimated_deleted_count": 1},
+    }
+
+    result = json.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
+
+    provider._client.delete.assert_called_once_with(
+        "/api/v1/fs",
+        params={"uri": uri, "recursive": False},
+    )
+    assert result == {
+        "status": "deleted",
+        "uri": uri,
+        "estimated_deleted_count": 1,
+    }
+
+
+@pytest.mark.parametrize("uri", [
+    "",
+    "https://example.com/mem.md",
+    "viking:/user/memories/preferences/mem_abc123.md",
+    "viking://resources/project/doc.md",
+    "viking://resources/project/memories/mem_abc123.md",
+    "viking://memories/preferences/mem_abc123.md",
+    "viking://agent/prostor/memories/preferences/mem_abc123.md",
+    "viking://user/skills/example/SKILL.md",
+    "viking://user/sessions/session-1/messages.jsonl",
+    "viking://user/memories/preferences/",
+    "viking://user/memories/preferences/.overview.md",
+    "viking://user/memories/preferences/.abstract.md",
+    "viking://user/memories/preferences/mem_abc123.md?recursive=true",
+])
+def test_handle_tool_call_forget_rejects_non_memory_file_uris(uri):
+    provider = OpenVikingMemoryProvider()
+    provider._client = MagicMock()
+
+    result = json.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
+
+    assert "error" in result
+    provider._client.delete.assert_not_called()
+
+
+def test_viking_client_delete_uses_identity_headers(monkeypatch):
+    client = _VikingClient(
+        "https://example.com",
+        api_key="test-key",
+        account="acct",
+        user="alice",
+        agent="prostor",
+    )
+    captured = {}
+
+    def capture_delete(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            status_code=200,
+            text="",
+            json=lambda: {"status": "ok", "result": {"uri": "viking://user/memories/x.md"}},
+            raise_for_status=lambda: None,
+        )
+
+    monkeypatch.setattr(client._httpx, "delete", capture_delete)
+
+    assert client.delete("/api/v1/fs", params={"uri": "viking://user/memories/x.md"}) == {
+        "status": "ok",
+        "result": {"uri": "viking://user/memories/x.md"},
+    }
+    assert captured["url"] == "https://example.com/api/v1/fs"
+    assert captured["kwargs"]["params"] == {"uri": "viking://user/memories/x.md"}
+    assert captured["kwargs"]["headers"]["Authorization"] == "Bearer test-key"
+    assert captured["kwargs"]["headers"]["X-OpenViking-Actor-Peer"] == "prostor"
 
 
 def test_viking_client_upload_temp_file_uses_multipart_identity_headers(tmp_path, monkeypatch):
@@ -2635,6 +2766,94 @@ def test_on_memory_write_uses_content_write_independent_of_session_rotation():
     assert captured_payloads[0]["uri"].startswith(
         "viking://user/peers/prostor/memories/preferences/mem_"
     )
+
+
+def test_shutdown_waits_for_memory_write_worker(monkeypatch):
+    import threading
+
+    provider = OpenVikingMemoryProvider()
+    provider._client = MagicMock()
+    provider._endpoint = "http://test"
+    provider._api_key = ""
+    provider._account = "acct"
+    provider._user = "usr"
+    provider._agent = "prostor"
+
+    worker_started = threading.Event()
+    release_worker = threading.Event()
+    worker_finished = threading.Event()
+    shutdown_returned = threading.Event()
+
+    class StubClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        def post(self, path, payload=None, **kwargs):
+            assert path == "/api/v1/content/write"
+            worker_started.set()
+            release_worker.wait(timeout=2.0)
+            worker_finished.set()
+            return {}
+
+    monkeypatch.setattr(openviking_module, "_VikingClient", StubClient)
+
+    provider.on_memory_write("add", "user", "remember this")
+    assert worker_started.wait(timeout=2.0), "worker never entered post()"
+
+    shutdown_thread = threading.Thread(
+        target=lambda: (provider.shutdown(), shutdown_returned.set()),
+        daemon=True,
+    )
+    shutdown_thread.start()
+
+    returned_before_worker_finished = shutdown_returned.wait(timeout=0.1)
+    release_worker.set()
+    assert shutdown_returned.wait(timeout=2.0), "shutdown did not return after worker finished"
+    shutdown_thread.join(timeout=2.0)
+
+    assert not returned_before_worker_finished
+    assert worker_finished.is_set()
+    assert provider._memory_write_threads == set()
+
+
+@pytest.mark.parametrize(
+    ("action", "content"),
+    [
+        ("replace", "updated memory"),
+        ("remove", ""),
+        ("forget", ""),
+        ("delete", ""),
+    ],
+)
+def test_on_memory_write_ignores_non_add_actions(action, content, monkeypatch):
+    provider = OpenVikingMemoryProvider()
+    provider._client = MagicMock()
+    provider._endpoint = "http://test"
+    provider._api_key = ""
+    provider._account = "acct"
+    provider._user = "usr"
+    provider._agent = "prostor"
+    uri = "viking://user/peers/prostor/memories/preferences/mem_abc123.md"
+    spawned = []
+
+    class StubThread:
+        def __init__(self, *args, **kwargs):
+            spawned.append((args, kwargs))
+
+        def start(self):
+            raise AssertionError("non-URI remove should not spawn a mirror thread")
+
+    import plugins.memory.openviking as _mod
+    monkeypatch.setattr(_mod.threading, "Thread", StubThread)
+
+    provider.on_memory_write(
+        action,
+        "memory",
+        content,
+        metadata={"uri": uri, "old_text": "stale fact"},
+    )
+
+    assert spawned == []
 
 
 # ---------------------------------------------------------------------------

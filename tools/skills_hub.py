@@ -10,7 +10,7 @@ This is a library module (not an agent tool). It provides:
   - HubLockFile: Track provenance of installed hub skills
   - Hub state directory management (quarantine, audit log, taps, index cache)
 
-Used by prostor_cli/skills_hub.py for CLI commands and the /skills slash command.
+Used by hermes_cli/skills_hub.py for CLI commands and the /skills slash command.
 """
 
 import hashlib
@@ -25,7 +25,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from agent.skill_utils import is_excluded_skill_path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # Paths
 # ---------------------------------------------------------------------------
 
-PROSTOR_HOME = get_prostor_home()
+PROSTOR_HOME = get_hermes_home()
 SKILLS_DIR = PROSTOR_HOME / "skills"
 HUB_DIR = SKILLS_DIR / ".hub"
 LOCK_FILE = HUB_DIR / "lock.json"
@@ -523,9 +523,9 @@ class GitHubSource(SkillSource):
         tags = []
         metadata = fm.get("metadata", {})
         if isinstance(metadata, dict):
-            prostor_meta = metadata.get("prostor", {})
-            if isinstance(prostor_meta, dict):
-                tags = prostor_meta.get("tags", [])
+            hermes_meta = metadata.get("prostor", {})
+            if isinstance(hermes_meta, dict):
+                tags = hermes_meta.get("tags", [])
         if not tags:
             raw_tags = fm.get("tags", [])
             tags = raw_tags if isinstance(raw_tags, list) else []
@@ -1254,9 +1254,9 @@ class UrlSource(SkillSource):
         tags: List[str] = []
         metadata = fm.get("metadata", {})
         if isinstance(metadata, dict):
-            prostor_meta = metadata.get("prostor", {})
-            if isinstance(prostor_meta, dict):
-                raw_tags = prostor_meta.get("tags", [])
+            hermes_meta = metadata.get("prostor", {})
+            if isinstance(hermes_meta, dict):
+                raw_tags = hermes_meta.get("tags", [])
                 if isinstance(raw_tags, list):
                     tags = [str(t) for t in raw_tags]
         return SkillMeta(
@@ -2932,7 +2932,7 @@ class OptionalSkillSource(SkillSource):
     """
 
     def __init__(self):
-        from prostor_constants import get_optional_skills_dir
+        from hermes_constants import get_optional_skills_dir
 
         self._optional_dir = get_optional_skills_dir(
             Path(__file__).parent.parent / "optional-skills"
@@ -3057,9 +3057,9 @@ class OptionalSkillSource(SkillSource):
             tags = []
             meta_block = fm.get("metadata", {})
             if isinstance(meta_block, dict):
-                prostor_meta = meta_block.get("prostor", {})
-                if isinstance(prostor_meta, dict):
-                    tags = prostor_meta.get("tags", [])
+                hermes_meta = meta_block.get("prostor", {})
+                if isinstance(hermes_meta, dict):
+                    tags = hermes_meta.get("tags", [])
 
             rel_path = str(parent.relative_to(self._optional_dir))
 
@@ -3521,12 +3521,12 @@ def check_for_skill_updates(
 # Prostor centralized index source
 # ---------------------------------------------------------------------------
 
-PROSTOR_INDEX_URL = "https://github.com/maksim9510/Prostor/docs/api/skills-index.json"
+PROSTOR_INDEX_URL = "https://prostor-agent.nousresearch.com/docs/api/skills-index.json"
 PROSTOR_INDEX_CACHE_FILE = INDEX_CACHE_DIR / "prostor-index.json"
 PROSTOR_INDEX_TTL = 6 * 3600  # 6 hours
 
 
-def _load_prostor_index() -> Optional[dict]:
+def _load_hermes_index() -> Optional[dict]:
     """Fetch the centralized skills index, with local cache.
 
     The index is a JSON file hosted on the docs site, rebuilt daily by CI.
@@ -3577,7 +3577,7 @@ def _load_stale_index_cache() -> Optional[dict]:
     return None
 
 
-class ProstorIndexSource(SkillSource):
+class HermesIndexSource(SkillSource):
     """Skill source backed by the centralized Prostor Skills Index.
 
     The index is a JSON catalog published to the docs site and rebuilt
@@ -3599,7 +3599,7 @@ class ProstorIndexSource(SkillSource):
 
     def _ensure_loaded(self) -> dict:
         if not self._loaded:
-            self._index = _load_prostor_index()
+            self._index = _load_hermes_index()
             self._loaded = True
         return self._index or {}
 
@@ -3746,7 +3746,7 @@ def create_source_router(auth: Optional[GitHubAuth] = None) -> List[SkillSource]
 
     sources: List[SkillSource] = [
         OptionalSkillSource(),        # Official optional skills (highest priority)
-        ProstorIndexSource(auth=auth), # Centralized index (search + resolved install paths)
+        HermesIndexSource(auth=auth), # Centralized index (search + resolved install paths)
         SkillsShSource(auth=auth),
         WellKnownSkillSource(),
         UrlSource(),                  # Direct HTTP(S) URL to a SKILL.md file

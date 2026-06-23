@@ -1,8 +1,8 @@
 import type { ConnectionState, GatewayEvent } from '@prostor/shared'
 import { atom } from 'nanostores'
 
+import { HermesGateway } from '@/prostor'
 import { resolveGatewayWsUrl } from '@/lib/gateway-ws-url'
-import { ProstorGateway } from '@/prostor'
 import { setGatewayState } from '@/store/session'
 
 // ── Multi-profile gateway routing ──────────────────────────────────────────
@@ -19,12 +19,12 @@ const normKey = (profile: string | null | undefined): string => (profile ?? '').
 
 // Read connection state through a call so TS control-flow analysis doesn't
 // narrow the getter to a constant across guards (it genuinely changes).
-const isOpen = (gateway: ProstorGateway | null): boolean => gateway?.connectionState === 'open'
+const isOpen = (gateway: HermesGateway | null): boolean => gateway?.connectionState === 'open'
 
 // The active gateway instance, exposed for inline message-stream components
 // (e.g. inline ClarifyTool, model overlays) that call gateway methods without
 // the instance threaded down through props.
-export const $gateway = atom<ProstorGateway | null>(null)
+export const $gateway = atom<HermesGateway | null>(null)
 
 interface RegistryConfig {
   onEvent: (event: GatewayEvent) => void
@@ -37,10 +37,10 @@ export function configureGatewayRegistry(cfg: RegistryConfig): void {
 }
 
 // ── Primary (window) backend ───────────────────────────────────────────────
-let primaryGateway: ProstorGateway | null = null
+let primaryGateway: HermesGateway | null = null
 let primaryProfile = 'default'
 
-export function setPrimaryGateway(gateway: ProstorGateway | null, profile = 'default'): void {
+export function setPrimaryGateway(gateway: HermesGateway | null, profile = 'default'): void {
   primaryGateway = gateway
   primaryProfile = normKey(profile)
 }
@@ -48,7 +48,7 @@ export function setPrimaryGateway(gateway: ProstorGateway | null, profile = 'def
 // ── Secondary (pool) backends ──────────────────────────────────────────────
 interface Secondary {
   profile: string
-  gateway: ProstorGateway
+  gateway: HermesGateway
   offEvent: () => void
   offState: () => void
   reconnectTimer: ReturnType<typeof setTimeout> | null
@@ -67,7 +67,7 @@ export function isActivePrimary(): boolean {
   return activeKey === primaryProfile
 }
 
-export function activeGateway(): ProstorGateway | null {
+export function activeGateway(): HermesGateway | null {
   if (activeKey === primaryProfile) {
     return primaryGateway
   }
@@ -104,7 +104,7 @@ function clearTimer(entry: Secondary): void {
 }
 
 async function openSecondary(entry: Secondary): Promise<void> {
-  const desktop = window.prostorDesktop
+  const desktop = window.hermesDesktop
 
   if (!desktop) {
     return
@@ -152,7 +152,7 @@ async function reconnectSecondary(entry: Secondary): Promise<void> {
 }
 
 function createSecondary(profile: string): Secondary {
-  const gateway = new ProstorGateway()
+  const gateway = new HermesGateway()
 
   const entry: Secondary = {
     profile,
@@ -217,7 +217,7 @@ export async function ensureGatewayForProfile(profile: string): Promise<void> {
 
 // Reconnect the active gateway after a transient request failure. Primary
 // reconnects are owned by use-gateway-boot, so we only drive secondaries here.
-export async function ensureActiveGatewayOpen(): Promise<ProstorGateway | null> {
+export async function ensureActiveGatewayOpen(): Promise<HermesGateway | null> {
   if (activeKey === primaryProfile) {
     return primaryGateway
   }
@@ -251,7 +251,7 @@ export function reconnectSecondaryGateways(): void {
 // Keep the idle reaper from killing a backend we still need: ping every live
 // secondary. The active one is pinged separately (touchActiveGatewayBackend).
 export function touchSecondaryGateways(): void {
-  const desktop = window.prostorDesktop
+  const desktop = window.hermesDesktop
 
   for (const entry of secondaries.values()) {
     if (entry.wantOpen) {

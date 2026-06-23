@@ -13,10 +13,10 @@ import {
 } from '@/components/desktop-onboarding-overlay'
 import { Button } from '@/components/ui/button'
 import { SearchField } from '@/components/ui/search-field'
+import { disconnectOAuthProvider, listOAuthProviders } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronRight, KeyRound, Loader2, Terminal, Trash2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import { disconnectOAuthProvider, listOAuthProviders } from '@/prostor'
 import { notify, notifyError } from '@/store/notifications'
 import { $desktopOnboarding, startManualProviderOAuth } from '@/store/onboarding'
 import type { EnvVarInfo, OAuthProvider } from '@/types/prostor'
@@ -28,7 +28,7 @@ import { LoadingState, SettingsContent } from './primitives'
 
 // The embedded terminal (and thus the "run disconnect command" path) only
 // exists in the Electron desktop shell, not the web dashboard.
-const canRunInTerminal = () => typeof window !== 'undefined' && Boolean(window.prostorDesktop?.terminal)
+const canRunInTerminal = () => typeof window !== 'undefined' && Boolean(window.hermesDesktop?.terminal)
 
 // Parallel group headers ("Connected", "Other providers") so the expanded list
 // reads as its own section instead of bleeding into the connected group.
@@ -51,7 +51,7 @@ export type ProviderView = (typeof PROVIDER_VIEWS)[number]
 //
 // Grouping key precedence:
 //   1. Backend `provider_label` / `provider` (from the unified provider catalog
-//      in prostor_cli/provider_catalog.py) — the SAME provider identity
+//      in hermes_cli/provider_catalog.py) — the SAME provider identity
 //      `prostor model` uses. This is authoritative: a provider tagged by the
 //      backend always renders a card, even with no PROVIDER_GROUPS row.
 //   2. Desktop prefix match (`providerGroup`) — legacy fallback for provider
@@ -391,7 +391,6 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
 
   if (showApiKeys) {
     const q = keyQuery.trim().toLowerCase()
-
     const visibleGroups = q
       ? keyGroups.filter(group => {
           const haystack = [

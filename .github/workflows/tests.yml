@@ -30,7 +30,7 @@ jobs:
         slice: [1, 2, 3, 4, 5, 6]
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Restore duration cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -58,7 +58,7 @@ jobs:
           rg --version
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           # Persist uv's download/wheel cache (~/.cache/uv) across runs.
           # Keyed on the dependency manifests, so the cache is reused until
@@ -118,28 +118,6 @@ jobs:
           OPENAI_API_KEY: ""
           NOUS_API_KEY: ""
 
-      - name: Generate coverage report (slice 1 only)
-        # Coverage only on slice 1 to avoid 6× redundant work; codecov-action
-        # merges per-job coverage.xml into a single report at upload time.
-        if: matrix.slice == 1
-        run: |
-          source .venv/bin/activate
-          pytest --cov=tools --cov=agent --cov=prostor_cli \
-                 --cov-report=xml:coverage.xml \
-                 --cov-report=term-missing \
-                 --no-header -q \
-                 tests/ -x --ignore=tests/integration --ignore=tests/e2e \
-                 -p no:cacheprovider 2>&1 | tail -200
-
-      - name: Upload coverage to Codecov
-        if: matrix.slice == 1
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage.xml
-          flags: unittests
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
       - name: Upload per-slice durations
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -185,7 +163,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install ripgrep (prebuilt binary)
         run: |
@@ -202,7 +180,7 @@ jobs:
           rg --version
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           # Persist uv's download/wheel cache (~/.cache/uv) across runs.
           # Keyed on the dependency manifests, so the cache is reused until

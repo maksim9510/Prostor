@@ -2,10 +2,10 @@ import { IconDownload, IconRefresh, IconUpload } from '@tabler/icons-react'
 import { useRef } from 'react'
 
 import { Tip } from '@/components/ui/tooltip'
+import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { Archive, Bell, Globe, Info, KeyRound, Settings2, Sparkles, Wrench, Zap } from '@/lib/icons'
-import { getProstorConfigDefaults, getProstorConfigRecord, saveProstorConfig } from '@/prostor'
 import { notifyError } from '@/store/notifications'
 
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
@@ -58,7 +58,7 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
 
   const exportConfig = async () => {
     try {
-      const cfg = await getProstorConfigRecord()
+      const cfg = await getHermesConfigRecord()
       const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -78,7 +78,7 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
     }
 
     try {
-      await saveProstorConfig(await getProstorConfigDefaults())
+      await saveHermesConfig(await getHermesConfigDefaults())
       triggerHaptic('success')
       onConfigSaved?.()
     } catch (err) {

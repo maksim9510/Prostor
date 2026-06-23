@@ -26,7 +26,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 
-def prostor_available() -> bool:
+def hermes_available() -> bool:
     return shutil.which("prostor") is not None
 
 
@@ -171,7 +171,7 @@ def main():
                     help="Print one snapshot and exit (no polling loop)")
     args = ap.parse_args()
 
-    if not prostor_available():
+    if not hermes_available():
         print("ERROR: 'prostor' CLI not found in PATH", file=sys.stderr)
         sys.exit(1)
 

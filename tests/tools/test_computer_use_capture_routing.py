@@ -13,7 +13,7 @@ deterministic stubs for:
 * ``should_route_capture_to_aux_vision`` (the policy decision)
 * ``_run_async`` (sync->async bridge)
 * ``vision_analyze_tool`` (the aux LLM call)
-* ``prostor_constants.get_prostor_dir`` (cache path)
+* ``hermes_constants.get_hermes_dir`` (cache path)
 
 …so the full code path is covered without a live cua-driver, a real
 auxiliary client, or network access.
@@ -48,14 +48,14 @@ _JPEG_B64 = (
 
 @pytest.fixture
 def tmp_cache_dir(tmp_path):
-    """Override get_prostor_dir so cache writes land under tmp_path."""
+    """Override get_hermes_dir so cache writes land under tmp_path."""
     cache_dir = tmp_path / "cache_vision"
     cache_dir.mkdir()
 
     def _fake_get(*_args, **_kw):
         return cache_dir
 
-    with patch("prostor_constants.get_prostor_dir", _fake_get):
+    with patch("hermes_constants.get_hermes_dir", _fake_get):
         yield cache_dir
 
 
@@ -204,7 +204,7 @@ class TestCaptureResponseRoutedToAuxVision:
         args, _kwargs = fake_vat.call_args
         path_arg, prompt_arg = args[0], args[1]
         assert str(tmp_cache_dir) in path_arg
-        assert "macOS application screenshot" in prompt_arg
+        assert "desktop application screenshot" in prompt_arg
         # AX summary is included so the aux model can ground its description
         # against the same set-of-mark index the agent will see.
         assert "Sign in" in prompt_arg
@@ -263,7 +263,7 @@ class TestCaptureResponseRoutedToAuxVision:
 
         with patch.object(cu_tool, "_should_route_through_aux_vision",
                           return_value=True), \
-             patch("prostor_constants.get_prostor_dir", _fake_get), \
+             patch("hermes_constants.get_hermes_dir", _fake_get), \
              patch("model_tools._run_async", side_effect=_fake_run_async), \
              patch("tools.vision_tools.vision_analyze_tool",
                    new_callable=lambda: fake_vat):
@@ -298,15 +298,17 @@ class TestCaptureResponseRoutedToAuxVision:
                    new_callable=lambda: fake_vat):
             resp = cu_tool._capture_response(cap)
 
-        # Aux failure → fall back to multimodal envelope (so the user still
-        # gets *something* useful even if vision is broken).
-        assert isinstance(resp, dict)
-        assert resp.get("_multimodal") is True
+        # Aux failure with routing requested degrades to the AX/SOM text
+        # payload. Falling through to a multimodal envelope can hand pixels to
+        # a text-only model and fail the provider request.
+        assert isinstance(resp, str)
+        body = json.loads(resp)
+        assert body.get("vision_unavailable") is True
         # Temp file must still be cleaned up.
         assert observed_path["path"]
         assert not os.path.exists(observed_path["path"])
 
-    def test_empty_aux_analysis_falls_back_to_multimodal(self, tmp_cache_dir):
+    def test_empty_aux_analysis_degrades_to_text_payload(self, tmp_cache_dir):
         from tools.computer_use import tool as cu_tool
 
         cap = _make_capture(mode="som")
@@ -323,12 +325,15 @@ class TestCaptureResponseRoutedToAuxVision:
                    new_callable=lambda: fake_vat):
             resp = cu_tool._capture_response(cap)
 
-        # Empty analysis is treated as failure — we'd rather show pixels
-        # than embed an empty 'vision_analysis' string into the result.
-        assert isinstance(resp, dict)
-        assert resp.get("_multimodal") is True
+        # Empty analysis is treated as failure; with routing requested the
+        # capture degrades to the AX/SOM text payload (elements stay usable)
+        # rather than embedding an empty 'vision_analysis' string.
+        assert isinstance(resp, str)
+        body = json.loads(resp)
+        assert body.get("vision_unavailable") is True
+        assert body.get("elements") is not None
 
-    def test_invalid_aux_response_falls_back_to_multimodal(self, tmp_cache_dir):
+    def test_invalid_aux_response_degrades_to_text_payload(self, tmp_cache_dir):
         from tools.computer_use import tool as cu_tool
 
         cap = _make_capture(mode="som")
@@ -345,8 +350,9 @@ class TestCaptureResponseRoutedToAuxVision:
                    new_callable=lambda: fake_vat):
             resp = cu_tool._capture_response(cap)
 
-        assert isinstance(resp, dict)
-        assert resp.get("_multimodal") is True
+        assert isinstance(resp, str)
+        body = json.loads(resp)
+        assert body.get("vision_unavailable") is True
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +378,7 @@ class TestRoutingDecisionWiring:
                    return_value="openrouter"), \
              patch("agent.auxiliary_client._read_main_model",
                    return_value="tencent/hy3-preview"), \
-             patch("prostor_cli.config.load_config", return_value=cfg):
+             patch("hermes_cli.config.load_config", return_value=cfg):
             assert cu_tool._should_route_through_aux_vision() is True
 
     def test_no_explicit_aux_and_vision_capable_main_keeps_multimodal(self):
@@ -385,7 +391,7 @@ class TestRoutingDecisionWiring:
                    return_value="anthropic"), \
              patch("agent.auxiliary_client._read_main_model",
                    return_value="claude-opus-4-5"), \
-             patch("prostor_cli.config.load_config", return_value=cfg), \
+             patch("hermes_cli.config.load_config", return_value=cfg), \
              patch("tools.computer_use.vision_routing._lookup_supports_vision",
                    return_value=True), \
              patch("tools.computer_use.vision_routing."
@@ -396,7 +402,7 @@ class TestRoutingDecisionWiring:
     def test_config_load_failure_disables_routing_safely(self):
         from tools.computer_use import tool as cu_tool
 
-        with patch("prostor_cli.config.load_config",
+        with patch("hermes_cli.config.load_config",
                    side_effect=RuntimeError("config.yaml unreadable")):
             # No exception should bubble up — fail open by returning False
             # so the legacy multimodal envelope continues to work.
@@ -410,7 +416,7 @@ class TestRoutingDecisionWiring:
                    return_value="openrouter"), \
              patch("agent.auxiliary_client._read_main_model",
                    return_value="x"), \
-             patch("prostor_cli.config.load_config", return_value={}), \
+             patch("hermes_cli.config.load_config", return_value={}), \
              patch.object(vr_mod, "should_route_capture_to_aux_vision",
                           side_effect=ValueError("policy bug")):
             assert cu_tool._should_route_through_aux_vision() is False

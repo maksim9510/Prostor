@@ -17,6 +17,7 @@ Config via environment variables:
   HINDSIGHT_MODE                   — cloud or local (default: cloud)
   HINDSIGHT_TIMEOUT                — API request timeout in seconds (default: 120)
   HINDSIGHT_IDLE_TIMEOUT           — embedded daemon idle timeout seconds; 0 disables shutdown (default: 300)
+  HINDSIGHT_EMBED_PORT_HEALTH_GRACE_TIMEOUT — seconds to wait for a slow embedded daemon /health before treating it as stale (default: 30; set via config.json port_health_grace_timeout)
   HINDSIGHT_RETAIN_TAGS            — comma-separated tags attached to retained memories
   HINDSIGHT_RETAIN_OBSERVATION_SCOPES — observation scoping for retained memories: per_tag/combined/all_combinations, or a JSON list of tag-lists for custom scopes
   HINDSIGHT_RETAIN_SOURCE          — metadata source value attached to retained memories
@@ -36,15 +37,16 @@ import json
 import logging
 import os
 import queue
+import sys
 import threading
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from agent.memory_provider import MemoryProvider
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from tools.registry import tool_error
-from prostor_cli.config import cfg_get
+from hermes_cli.config import cfg_get
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,43 @@ def _parse_int_setting(value: Any, default: int) -> int:
     except (TypeError, ValueError):
         logger.warning("Invalid integer Hindsight setting %r; using default %s", value, default)
         return default
+
+
+# Env var the embedded daemon manager reads (at import time, as a module-level
+# constant) to size the grace window it waits for a slow /health before
+# declaring a daemon stale and killing it. Default upstream is 30s; on
+# resource-contended hosts a busy daemon can exceed a single 2s health check
+# and get needlessly killed + restarted (issue #13125 comment thread). We
+# surface it as plugin config so users can raise it without hand-setting an
+# env var, consistent with "config.json, not raw env vars".
+_PORT_HEALTH_GRACE_ENV = "HINDSIGHT_EMBED_PORT_HEALTH_GRACE_TIMEOUT"
+
+
+def _export_port_health_grace_timeout(config: dict[str, Any]) -> None:
+    """Export the embedded-daemon health grace timeout to the process env.
+
+    Must run BEFORE ``hindsight_embed.daemon_embed_manager`` is imported,
+    because the package reads the env var into a module-level constant at
+    import time. We only set it when the user configured a value AND the
+    env var isn't already set, so an explicit env override always wins.
+    """
+    raw = config.get("port_health_grace_timeout")
+    if raw is None or raw == "":
+        return
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid Hindsight port_health_grace_timeout %r; ignoring.", raw
+        )
+        return
+    if seconds < 0:
+        logger.warning(
+            "Negative Hindsight port_health_grace_timeout %r; ignoring.", raw
+        )
+        return
+    # setdefault: an explicit env var the operator set wins over config.
+    os.environ.setdefault(_PORT_HEALTH_GRACE_ENV, repr(seconds))
 
 
 def _check_local_runtime() -> tuple[bool, str | None]:
@@ -318,7 +357,7 @@ def _load_config() -> dict:
     from pathlib import Path
 
     # Profile-scoped path (preferred)
-    profile_path = get_prostor_home() / "hindsight" / "config.json"
+    profile_path = get_hermes_home() / "hindsight" / "config.json"
     if profile_path.exists():
         try:
             return json.loads(profile_path.read_text(encoding="utf-8"))
@@ -582,6 +621,16 @@ def _resolve_bank_id_template(template: str, fallback: str, **placeholders: str)
 class HindsightMemoryProvider(MemoryProvider):
     """Hindsight long-term memory with knowledge graph and multi-strategy retrieval."""
 
+    def backup_paths(self) -> List[str]:
+        """Hindsight's legacy shared config and embedded-mode profile env
+        files live under ~/.hindsight (see _load_config / line ~509)."""
+        try:
+            from pathlib import Path
+            legacy_dir = Path.home() / ".hindsight"
+            return [str(legacy_dir)]
+        except Exception:
+            return []
+
     def __init__(self):
         self._config = None
         self._api_key = None
@@ -687,11 +736,11 @@ class HindsightMemoryProvider(MemoryProvider):
         except Exception:
             return False
 
-    def save_config(self, values, prostor_home):
+    def save_config(self, values, hermes_home):
         """Write config to $PROSTOR_HOME/hindsight/config.json."""
         import json
         from pathlib import Path
-        config_dir = Path(prostor_home) / "hindsight"
+        config_dir = Path(hermes_home) / "hindsight"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_path = config_dir / "config.json"
         existing = {}
@@ -704,17 +753,17 @@ class HindsightMemoryProvider(MemoryProvider):
         from utils import atomic_json_write
         atomic_json_write(config_path, existing, mode=0o600)
 
-    def post_setup(self, prostor_home: str, config: dict) -> None:
+    def post_setup(self, hermes_home: str, config: dict) -> None:
         """Custom setup wizard — installs only the deps needed for the selected mode."""
         import subprocess
         import shutil
         import sys
         from pathlib import Path
 
-        from prostor_cli.config import save_config
-        from prostor_cli.secret_prompt import masked_secret_prompt
+        from hermes_cli.config import save_config
+        from hermes_cli.secret_prompt import masked_secret_prompt
 
-        from prostor_cli.memory_setup import _CANCELLED, _curses_select, _print_cancelled_setup
+        from hermes_cli.memory_setup import _CANCELLED, _curses_select, _print_cancelled_setup
 
         print("\n  Configuring Hindsight memory:\n")
 
@@ -843,7 +892,7 @@ class HindsightMemoryProvider(MemoryProvider):
             if llm_key:
                 env_writes["HINDSIGHT_LLM_API_KEY"] = llm_key
             else:
-                env_path = Path(prostor_home) / ".env"
+                env_path = Path(hermes_home) / ".env"
                 existing_llm_key = ""
                 if env_path.exists():
                     for line in env_path.read_text().splitlines():
@@ -869,10 +918,10 @@ class HindsightMemoryProvider(MemoryProvider):
         config["memory"]["provider"] = "hindsight"
         save_config(config)
 
-        self.save_config(provider_config, prostor_home)
+        self.save_config(provider_config, hermes_home)
 
         if env_writes:
-            env_path = Path(prostor_home) / ".env"
+            env_path = Path(hermes_home) / ".env"
             env_path.parent.mkdir(parents=True, exist_ok=True)
             existing_lines = []
             if env_path.exists():
@@ -893,7 +942,7 @@ class HindsightMemoryProvider(MemoryProvider):
 
         if mode == "local_embedded":
             materialized_config = dict(provider_config)
-            config_path = Path(prostor_home) / "hindsight" / "config.json"
+            config_path = Path(hermes_home) / "hindsight" / "config.json"
             try:
                 materialized_config = json.loads(config_path.read_text(encoding="utf-8"))
             except Exception:
@@ -901,7 +950,7 @@ class HindsightMemoryProvider(MemoryProvider):
 
             llm_api_key = env_writes.get("HINDSIGHT_LLM_API_KEY", "")
             if not llm_api_key:
-                llm_api_key = _load_simple_env(Path(prostor_home) / ".env").get("HINDSIGHT_LLM_API_KEY", "")
+                llm_api_key = _load_simple_env(Path(hermes_home) / ".env").get("HINDSIGHT_LLM_API_KEY", "")
             if not llm_api_key:
                 llm_api_key = _load_simple_env(_embedded_profile_env_path(materialized_config)).get(
                     "HINDSIGHT_API_LLM_API_KEY",
@@ -957,6 +1006,7 @@ class HindsightMemoryProvider(MemoryProvider):
             {"key": "recall_prompt_preamble", "description": "Custom preamble for recalled memories in context"},
             {"key": "timeout", "description": "API request timeout in seconds", "default": _DEFAULT_TIMEOUT},
             {"key": "idle_timeout", "description": "Embedded daemon idle timeout in seconds (0 disables auto-shutdown)", "default": _DEFAULT_IDLE_TIMEOUT, "when": {"mode": "local_embedded"}},
+            {"key": "port_health_grace_timeout", "description": "Seconds to wait for a slow daemon /health before treating it as stale (raise on busy/low-resource hosts; blank uses the 30s default)", "default": "", "when": {"mode": "local_embedded"}},
         ]
 
     def _get_client(self):
@@ -1217,6 +1267,9 @@ class HindsightMemoryProvider(MemoryProvider):
         if self._mode == "local":
             self._mode = "local_embedded"
         if self._mode == "local_embedded":
+            # Export the daemon health grace timeout BEFORE importing
+            # daemon_embed_manager (which reads it at import time).
+            _export_port_health_grace_timeout(self._config)
             available, reason = _check_local_runtime()
             if not available:
                 logger.warning(
@@ -1322,9 +1375,33 @@ class HindsightMemoryProvider(MemoryProvider):
         # doesn't block the chat. Redirect stdout/stderr to a log file to
         # prevent rich startup output from spamming the terminal.
         if self._mode == "local_embedded":
+            # PostgreSQL's initdb refuses to run as root by design, so the
+            # embedded daemon can never initialize its data directory under
+            # root. Without this guard the daemon-start thread would fail,
+            # retry, and loop forever — each cycle reloading embedding models
+            # (~958MB RAM, ~33% CPU) with no user-visible error. Detect root
+            # up front and skip daemon startup with a clear message instead.
+            if hasattr(os, "geteuid") and os.geteuid() == 0:
+                msg = (
+                    "Hindsight local_embedded mode cannot run as root "
+                    "(PostgreSQL initdb refuses root). Skipping the embedded "
+                    "memory daemon. Run Prostor as a non-root user, or switch "
+                    "to cloud / local_external mode via 'prostor memory setup'."
+                )
+                logger.warning(msg)
+                # Surface to the terminal too — a daemon that never starts
+                # would otherwise fail silently and the user would only see
+                # Prostor get sluggish. (issue #13125)
+                try:
+                    print(f"  ⚠ {msg}", file=sys.stderr, flush=True)
+                except Exception:
+                    pass
+                self._mode = "disabled"
+                return
+
             def _start_daemon():
                 import traceback
-                log_dir = get_prostor_home() / "logs"
+                log_dir = get_hermes_home() / "logs"
                 log_dir.mkdir(parents=True, exist_ok=True)
                 log_path = log_dir / "hindsight-embed.log"
                 try:

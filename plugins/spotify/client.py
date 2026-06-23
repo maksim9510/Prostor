@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from prostor_cli.auth import (
+from hermes_cli.auth import (
     AuthError,
     resolve_spotify_runtime_credentials,
 )

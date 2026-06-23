@@ -8,7 +8,7 @@ targets the generic tool-result seam that runs for every tool dispatch.
 import os
 from pathlib import Path
 
-import prostor_cli.plugins as plugins_mod
+import hermes_cli.plugins as plugins_mod
 import model_tools
 
 
@@ -35,11 +35,11 @@ def _run_handle_function_call(
 
     if invoke_hook is not _UNSET:
         # Patch the symbol actually imported inside handle_function_call.
-        monkeypatch.setattr("prostor_cli.plugins.invoke_hook", invoke_hook)
+        monkeypatch.setattr("hermes_cli.plugins.invoke_hook", invoke_hook)
         # Supplying a custom invoke_hook means the test expects hooks to
         # fire — make has_hook agree so the has_hook gate doesn't skip the
         # post_tool_call / transform_tool_result emit paths.
-        monkeypatch.setattr("prostor_cli.plugins.has_hook", lambda name: True)
+        monkeypatch.setattr("hermes_cli.plugins.has_hook", lambda name: True)
 
     return model_tools.handle_function_call(
         tool_name,
@@ -53,7 +53,7 @@ def _run_handle_function_call(
 
 def test_result_unchanged_when_no_hook_registered(monkeypatch):
     # Real invoke_hook with no plugins loaded returns [].
-    monkeypatch.setenv("PROSTOR_HOME", "/tmp/prostor_no_plugins")
+    monkeypatch.setenv("PROSTOR_HOME", "/tmp/hermes_no_plugins")
     # Force a fresh plugin manager so no stale plugins pollute state.
     plugins_mod._plugin_manager = plugins_mod.PluginManager()
 
@@ -165,8 +165,8 @@ def test_transform_tool_result_integration_with_real_plugin(monkeypatch, tmp_pat
     """End-to-end: load a real plugin from PROSTOR_HOME and verify it rewrites results."""
     import yaml
 
-    prostor_home = Path(os.environ["PROSTOR_HOME"])
-    plugins_dir = prostor_home / "plugins"
+    hermes_home = Path(os.environ["PROSTOR_HOME"])
+    plugins_dir = hermes_home / "plugins"
     plugin_dir = plugins_dir / "transform_result_canon"
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "plugin.yaml").write_text("name: transform_result_canon\n", encoding="utf-8")
@@ -177,7 +177,7 @@ def test_transform_tool_result_integration_with_real_plugin(monkeypatch, tmp_pat
         encoding="utf-8",
     )
     # Plugins are opt-in — must be listed in plugins.enabled to load.
-    cfg_path = prostor_home / "config.yaml"
+    cfg_path = hermes_home / "config.yaml"
     cfg_path.write_text(
         yaml.safe_dump({"plugins": {"enabled": ["transform_result_canon"]}}),
         encoding="utf-8",

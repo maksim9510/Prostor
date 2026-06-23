@@ -22,21 +22,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 @pytest.fixture
 def cron_env(tmp_path, monkeypatch):
     """Isolated cron environment with temp PROSTOR_HOME."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "cron").mkdir()
-    (prostor_home / "cron" / "output").mkdir()
-    (prostor_home / "scripts").mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "cron").mkdir()
+    (hermes_home / "cron" / "output").mkdir()
+    (hermes_home / "scripts").mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
     # Clear cached module-level paths
     import cron.jobs as jobs_mod
-    monkeypatch.setattr(jobs_mod, "PROSTOR_DIR", prostor_home)
-    monkeypatch.setattr(jobs_mod, "CRON_DIR", prostor_home / "cron")
-    monkeypatch.setattr(jobs_mod, "JOBS_FILE", prostor_home / "cron" / "jobs.json")
-    monkeypatch.setattr(jobs_mod, "OUTPUT_DIR", prostor_home / "cron" / "output")
+    monkeypatch.setattr(jobs_mod, "PROSTOR_DIR", hermes_home)
+    monkeypatch.setattr(jobs_mod, "CRON_DIR", hermes_home / "cron")
+    monkeypatch.setattr(jobs_mod, "JOBS_FILE", hermes_home / "cron" / "jobs.json")
+    monkeypatch.setattr(jobs_mod, "OUTPUT_DIR", hermes_home / "cron" / "output")
 
-    return prostor_home
+    return hermes_home
 
 
 class TestJobScriptField:
@@ -134,12 +134,12 @@ class TestRunJobScript:
 
     def test_script_subprocess_env_sanitized(self, cron_env, monkeypatch):
         """Cron scripts must not inherit Prostor provider env (SECURITY.md §2.3)."""
-        from tools.environments.local import _PROSTOR_PROVIDER_ENV_BLOCKLIST
+        from tools.environments.local import _HERMES_PROVIDER_ENV_BLOCKLIST
         from cron.scheduler import _run_job_script
 
         # sorted() so the probed var is deterministic across runs
         # (frozenset iteration order varies with PYTHONHASHSEED).
-        blocked_var = sorted(_PROSTOR_PROVIDER_ENV_BLOCKLIST)[0]
+        blocked_var = sorted(_HERMES_PROVIDER_ENV_BLOCKLIST)[0]
         monkeypatch.setenv(blocked_var, "must_not_leak")
 
         script = cron_env / "scripts" / "env_probe.py"

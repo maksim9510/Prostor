@@ -9,8 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from prostor_constants import reset_prostor_home_override, set_prostor_home_override
-from prostor_cli.active_sessions import active_session_registry_snapshot
+from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+from hermes_cli.active_sessions import active_session_registry_snapshot
 from tui_gateway import server
 
 
@@ -18,7 +18,7 @@ def test_session_create_rejects_at_active_session_limit(monkeypatch, tmp_path):
     home = tmp_path / ".prostor"
     home.mkdir()
     (home / "config.yaml").write_text("max_concurrent_sessions: 1\n", encoding="utf-8")
-    token = set_prostor_home_override(home)
+    token = set_hermes_home_override(home)
 
     def _clear_server_sessions():
         for session in list(server._sessions.values()):
@@ -55,7 +55,7 @@ def test_session_create_rejects_at_active_session_limit(monkeypatch, tmp_path):
         server._cfg_cache = None
         server._cfg_mtime = None
         server._cfg_path = None
-        reset_prostor_home_override(token)
+        reset_hermes_home_override(token)
 
 
 def test_session_context_uses_session_cwd(monkeypatch, tmp_path):
@@ -500,7 +500,7 @@ def test_voice_record_start_handles_non_dict_voice_cfg(monkeypatch):
 
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.voice",
+        "hermes_cli.voice",
         types.SimpleNamespace(
             start_continuous=fake_start_continuous, stop_continuous=lambda: None
         ),
@@ -565,7 +565,7 @@ def test_voice_record_stop_forces_transcription(monkeypatch):
 
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.voice",
+        "hermes_cli.voice",
         types.SimpleNamespace(
             start_continuous=lambda **_kwargs: None,
             stop_continuous=fake_stop_continuous,
@@ -587,7 +587,7 @@ def test_voice_record_stop_forces_transcription(monkeypatch):
 def test_voice_record_stop_updates_event_session_id(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.voice",
+        "hermes_cli.voice",
         types.SimpleNamespace(
             start_continuous=lambda **_kwargs: True,
             stop_continuous=lambda **_kwargs: None,
@@ -610,7 +610,7 @@ def test_voice_record_stop_updates_event_session_id(monkeypatch):
 def test_voice_record_start_reports_busy_when_stop_is_in_progress(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.voice",
+        "hermes_cli.voice",
         types.SimpleNamespace(
             start_continuous=lambda **_kwargs: False,
             stop_continuous=lambda **_kwargs: None,
@@ -672,7 +672,7 @@ def test_load_enabled_toolsets_filters_invalid_tui_env(monkeypatch, capsys):
     monkeypatch.setenv("PROSTOR_TUI_TOOLSETS", "web, nope")
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(discover_plugins=lambda: None),
     )
 
@@ -694,7 +694,7 @@ def test_load_enabled_toolsets_accepts_plugin_env_after_discovery(monkeypatch):
     monkeypatch.setattr(toolsets, "validate_toolset", fake_validate)
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(
             discover_plugins=lambda: discovered.update({"ready": True})
         ),
@@ -707,11 +707,11 @@ def test_load_enabled_toolsets_rejects_disabled_mcp_env(monkeypatch, capsys):
     monkeypatch.setenv("PROSTOR_TUI_TOOLSETS", "mcp-off")
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(discover_plugins=lambda: None),
     )
 
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
     monkeypatch.setattr(
         config_mod,
@@ -736,11 +736,11 @@ def test_load_enabled_toolsets_falls_back_when_tui_env_invalid(monkeypatch, caps
     monkeypatch.setenv("PROSTOR_TUI_TOOLSETS", "nope")
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(discover_plugins=lambda: None),
     )
 
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
     monkeypatch.setattr(
         config_mod, "load_config", lambda: {"platform_toolsets": {"cli": ["memory"]}}
@@ -754,11 +754,11 @@ def test_load_enabled_toolsets_warns_when_config_fallback_fails(monkeypatch, cap
     monkeypatch.setenv("PROSTOR_TUI_TOOLSETS", "nope")
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(discover_plugins=lambda: None),
     )
 
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
     monkeypatch.setattr(
         config_mod, "load_config", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
@@ -771,7 +771,7 @@ def test_load_enabled_toolsets_warns_when_config_fallback_fails(monkeypatch, cap
 def test_load_enabled_toolsets_honors_builtin_env_if_config_fails(monkeypatch):
     monkeypatch.setenv("PROSTOR_TUI_TOOLSETS", "web")
 
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
     monkeypatch.setattr(
         config_mod, "load_config", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
@@ -799,11 +799,11 @@ def test_load_enabled_toolsets_reports_disabled_mcp_separately(monkeypatch, caps
     monkeypatch.setenv("PROSTOR_TUI_TOOLSETS", "web,mcp-off,nope")
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(discover_plugins=lambda: None),
     )
 
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
     monkeypatch.setattr(
         config_mod,
@@ -964,7 +964,7 @@ def test_session_resume_follows_compression_tip(monkeypatch, tmp_path):
     the response generated after compression. session.resume must follow the
     compression tip via resolve_resume_session_id.
     """
-    from prostor_state import SessionDB
+    from hermes_state import SessionDB
 
     db = SessionDB(db_path=tmp_path / "state.db")
     base = int(time.time()) - 10_000
@@ -1116,7 +1116,7 @@ def test_session_resume_profile_uses_profile_db_cwd(monkeypatch, tmp_path):
 
     monkeypatch.setenv("TERMINAL_CWD", str(launch_cwd))
     monkeypatch.setattr(server, "_profile_home", lambda _profile: profile_home)
-    monkeypatch.setattr("prostor_state.SessionDB", lambda db_path=None: profile_db)
+    monkeypatch.setattr("hermes_state.SessionDB", lambda db_path=None: profile_db)
     monkeypatch.setattr(server, "_get_db", lambda: launch_db)
     monkeypatch.setattr(server, "_enable_gateway_prompts", lambda: None)
     monkeypatch.setattr(server, "_set_session_context", lambda target: [])
@@ -1178,7 +1178,7 @@ def test_session_cwd_set_profile_session_updates_profile_db(monkeypatch, tmp_pat
 
     import tools.terminal_tool as terminal_tool
 
-    monkeypatch.setattr("prostor_state.SessionDB", lambda db_path=None: profile_db)
+    monkeypatch.setattr("hermes_state.SessionDB", lambda db_path=None: profile_db)
     monkeypatch.setattr(server, "_get_db", lambda: LaunchDB())
     monkeypatch.setattr(terminal_tool, "cleanup_vm", lambda _key: None)
     monkeypatch.setattr(server, "_register_session_cwd", lambda _session: None)
@@ -1468,7 +1468,7 @@ def test_startup_runtime_does_not_treat_inference_provider_as_explicit(monkeypat
     monkeypatch.delenv("PROSTOR_TUI_PROVIDER", raising=False)
     monkeypatch.setenv("PROSTOR_INFERENCE_PROVIDER", "nous")
     monkeypatch.setattr(
-        "prostor_cli.models.detect_static_provider_for_model",
+        "hermes_cli.models.detect_static_provider_for_model",
         lambda model, provider: None,
     )
 
@@ -1487,7 +1487,7 @@ def test_startup_runtime_detects_provider_for_model_env(monkeypatch):
         return "anthropic", "anthropic/claude-sonnet-4.6"
 
     monkeypatch.setattr(
-        "prostor_cli.models.detect_static_provider_for_model", fake_detect
+        "hermes_cli.models.detect_static_provider_for_model", fake_detect
     )
 
     assert server._resolve_startup_runtime() == (
@@ -1497,7 +1497,7 @@ def test_startup_runtime_detects_provider_for_model_env(monkeypatch):
 
 
 def test_load_fallback_model_merges_chain_providers_first(monkeypatch):
-    # Parity with ProstorCLI / gateway: fallback_providers stays first and keeps
+    # Parity with HermesCLI / gateway: fallback_providers stays first and keeps
     # its order, with any distinct legacy fallback_model entry merged in after
     # (deduped on provider/model/base_url).
     fallback_chain = [
@@ -1542,7 +1542,7 @@ def test_make_agent_passes_configured_fallback_chain(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        "prostor_cli.runtime_provider.resolve_runtime_provider",
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
         lambda requested=None, target_model=None: {
             "provider": "openai-codex",
             "base_url": "https://chatgpt.com/backend-api/codex",
@@ -1611,7 +1611,7 @@ def test_startup_runtime_resolves_short_alias_without_network(monkeypatch):
     monkeypatch.delenv("PROSTOR_INFERENCE_PROVIDER", raising=False)
     monkeypatch.setattr(server, "_load_cfg", lambda: {"model": {"provider": "auto"}})
     monkeypatch.setattr(
-        "prostor_cli.models.fetch_openrouter_models",
+        "hermes_cli.models.fetch_openrouter_models",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("network lookup should not run")
         ),
@@ -1629,7 +1629,7 @@ def test_startup_runtime_does_not_call_network_detector(monkeypatch):
     monkeypatch.delenv("PROSTOR_INFERENCE_PROVIDER", raising=False)
     monkeypatch.setattr(server, "_load_cfg", lambda: {"model": {"provider": "auto"}})
     monkeypatch.setattr(
-        "prostor_cli.models.detect_provider_for_model",
+        "hermes_cli.models.detect_provider_for_model",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("network detector called")
         ),
@@ -2127,8 +2127,10 @@ def test_session_title_clears_pending_after_persist(monkeypatch):
             return True
 
     db = _FakeDB()
+    emitted = []
     server._sessions["sid"] = _session(pending_title="stale")
     monkeypatch.setattr(server, "_get_db", lambda: db)
+    monkeypatch.setattr(server, "_emit", lambda *args: emitted.append(args))
     try:
         resp = server.handle_request(
             {
@@ -2141,6 +2143,8 @@ def test_session_title_clears_pending_after_persist(monkeypatch):
         assert resp["result"]["pending"] is False
         assert resp["result"]["title"] == "fresh"
         assert server._sessions["sid"]["pending_title"] is None
+        assert emitted[-1][0:2] == ("session.info", "sid")
+        assert emitted[-1][2]["title"] == "fresh"
     finally:
         server._sessions.pop("sid", None)
 
@@ -2429,7 +2433,7 @@ def test_config_set_yolo_global_scope_writes_approvals_mode(tmp_path, monkeypatc
 
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "manual"}}))
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
 
     resp_on = server.handle_request(
         {
@@ -2459,7 +2463,7 @@ def test_config_set_yolo_global_scope_honors_explicit_value(tmp_path, monkeypatc
 
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "manual"}}))
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
 
     resp = server.handle_request(
         {
@@ -2499,7 +2503,7 @@ def test_config_set_fast_updates_live_agent_and_config(monkeypatch):
     monkeypatch.setattr(server, "_session_info", lambda _agent, *a: {"model": "x"})
     monkeypatch.setattr(server, "_emit", lambda *args: emits.append(args))
     monkeypatch.setattr(
-        "prostor_cli.models.resolve_fast_mode_overrides",
+        "hermes_cli.models.resolve_fast_mode_overrides",
         lambda _model_id: {"service_tier": "priority"},
     )
 
@@ -2574,7 +2578,7 @@ def test_config_set_fast_rejects_unsupported_model(monkeypatch):
         server, "_write_config_key", lambda path, value: writes.append((path, value))
     )
     monkeypatch.setattr(
-        "prostor_cli.models.resolve_fast_mode_overrides",
+        "hermes_cli.models.resolve_fast_mode_overrides",
         lambda _model_id: None,
     )
 
@@ -2693,7 +2697,7 @@ def test_config_set_statusbar_survives_non_dict_display(tmp_path, monkeypatch):
 
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(yaml.safe_dump({"display": "broken"}))
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
 
     resp = server.handle_request(
         {
@@ -2717,7 +2721,7 @@ def test_config_set_details_mode_pins_all_sections(tmp_path, monkeypatch):
             {"display": {"sections": {"tools": "expanded", "activity": "hidden"}}}
         )
     )
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
 
     resp = server.handle_request(
         {
@@ -2742,7 +2746,7 @@ def test_config_set_section_writes_per_section_override(tmp_path, monkeypatch):
     import yaml
 
     cfg_path = tmp_path / "config.yaml"
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
 
     resp = server.handle_request(
         {
@@ -2766,7 +2770,7 @@ def test_config_set_section_clears_override_on_empty_value(tmp_path, monkeypatch
             {"display": {"sections": {"activity": "hidden", "tools": "expanded"}}}
         )
     )
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
 
     resp = server.handle_request(
         {
@@ -2782,7 +2786,7 @@ def test_config_set_section_clears_override_on_empty_value(tmp_path, monkeypatch
 
 
 def test_config_set_section_rejects_unknown_section_or_mode(tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
 
     bad_section = server.handle_request(
         {
@@ -2895,7 +2899,7 @@ def test_enable_gateway_prompts_sets_gateway_env(monkeypatch):
 
 
 def test_setup_status_reports_provider_config(monkeypatch):
-    monkeypatch.setattr("prostor_cli.main._has_any_provider_configured", lambda: False)
+    monkeypatch.setattr("hermes_cli.main._has_any_provider_configured", lambda: False)
 
     resp = server.handle_request({"id": "1", "method": "setup.status", "params": {}})
 
@@ -2903,9 +2907,9 @@ def test_setup_status_reports_provider_config(monkeypatch):
 
 
 def test_setup_runtime_check_rejects_empty_runtime_key(monkeypatch):
-    monkeypatch.setattr("prostor_cli.main._has_any_provider_configured", lambda: True)
+    monkeypatch.setattr("hermes_cli.main._has_any_provider_configured", lambda: True)
     monkeypatch.setattr(
-        "prostor_cli.runtime_provider.resolve_runtime_provider",
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
         lambda requested=None: {
             "provider": "openrouter",
             "api_key": "",
@@ -2920,9 +2924,9 @@ def test_setup_runtime_check_rejects_empty_runtime_key(monkeypatch):
 
 
 def test_setup_runtime_check_allows_no_key_custom_runtime(monkeypatch):
-    monkeypatch.setattr("prostor_cli.main._has_any_provider_configured", lambda: True)
+    monkeypatch.setattr("hermes_cli.main._has_any_provider_configured", lambda: True)
     monkeypatch.setattr(
-        "prostor_cli.runtime_provider.resolve_runtime_provider",
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
         lambda requested=None: {
             "provider": "custom",
             "api_key": "no-key-required",
@@ -2937,9 +2941,9 @@ def test_setup_runtime_check_allows_no_key_custom_runtime(monkeypatch):
 
 
 def test_setup_runtime_check_rejects_implicit_bedrock_when_unconfigured(monkeypatch):
-    monkeypatch.setattr("prostor_cli.main._has_any_provider_configured", lambda: False)
+    monkeypatch.setattr("hermes_cli.main._has_any_provider_configured", lambda: False)
     monkeypatch.setattr(
-        "prostor_cli.runtime_provider.resolve_runtime_provider",
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
         lambda requested=None: {
             "provider": "bedrock",
             "api_key": "aws-sdk",
@@ -3028,7 +3032,7 @@ def test_complete_slash_details_args():
 
 
 def test_config_set_reasoning_updates_live_session_and_agent(tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     agent = types.SimpleNamespace(reasoning_config=None)
     server._sessions["sid"] = _session(agent=agent)
 
@@ -3064,9 +3068,36 @@ def test_config_set_reasoning_updates_live_session_and_agent(tmp_path, monkeypat
     assert server._sessions["sid"]["show_reasoning"] is False
     assert server._load_cfg()["display"]["sections"]["thinking"] == "hidden"
 
+    # /reasoning full | clamp — parity with the classic CLI reasoning_full
+    # toggle. In the TUI these map to the thinking section's expand/collapse
+    # rendering (no fixed 10-line recap exists here).
+    resp_full = server.handle_request(
+        {
+            "id": "4",
+            "method": "config.set",
+            "params": {"session_id": "sid", "key": "reasoning", "value": "full"},
+        }
+    )
+    assert resp_full["result"]["value"] == "full"
+    cfg_full = server._load_cfg()
+    assert cfg_full["display"]["reasoning_full"] is True
+    assert cfg_full["display"]["sections"]["thinking"] == "expanded"
+
+    resp_clamp = server.handle_request(
+        {
+            "id": "5",
+            "method": "config.set",
+            "params": {"session_id": "sid", "key": "reasoning", "value": "clamp"},
+        }
+    )
+    assert resp_clamp["result"]["value"] == "clamp"
+    cfg_clamp = server._load_cfg()
+    assert cfg_clamp["display"]["reasoning_full"] is False
+    assert cfg_clamp["display"]["sections"]["thinking"] == "collapsed"
+
 
 def test_config_set_verbose_updates_session_mode_and_agent(tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     agent = types.SimpleNamespace(verbose_logging=False)
     server._sessions["sid"] = _session(agent=agent)
 
@@ -3176,7 +3207,7 @@ def test_config_set_model_requires_confirmation_for_expensive_model(monkeypatch)
     agent = _Agent()
     server._sessions["sid"] = _session(agent=agent)
     monkeypatch.setattr(
-        "prostor_cli.model_switch.switch_model", lambda **_kwargs: result
+        "hermes_cli.model_switch.switch_model", lambda **_kwargs: result
     )
     monkeypatch.setattr(server, "_restart_slash_worker", lambda sid, session: None)
     monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
@@ -3242,10 +3273,10 @@ def test_config_set_model_global_persists(monkeypatch):
         return result
 
     server._sessions["sid"] = _session(agent=_Agent())
-    monkeypatch.setattr("prostor_cli.model_switch.switch_model", _switch_model)
+    monkeypatch.setattr("hermes_cli.model_switch.switch_model", _switch_model)
     monkeypatch.setattr(server, "_restart_slash_worker", lambda sid, session: None)
     monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
-    monkeypatch.setattr("prostor_cli.config.save_config", lambda cfg: saved.update(cfg))
+    monkeypatch.setattr("hermes_cli.config.save_config", lambda cfg: saved.update(cfg))
 
     resp = server.handle_request(
         {
@@ -3289,7 +3320,7 @@ def test_config_set_model_explicit_provider_skips_broken_default_init(monkeypatc
             }
         raise RuntimeError(f"unexpected provider {requested}")
 
-    monkeypatch.setattr("prostor_cli.runtime_provider.resolve_runtime_provider", fake_runtime_provider)
+    monkeypatch.setattr("hermes_cli.runtime_provider.resolve_runtime_provider", fake_runtime_provider)
 
     try:
         resp = server.handle_request(
@@ -3330,7 +3361,7 @@ def test_config_set_model_explicit_provider_surfaces_selected_provider_errors(mo
             raise RuntimeError("missing anthropic API key")
         raise RuntimeError(f"unexpected provider {requested}")
 
-    monkeypatch.setattr("prostor_cli.runtime_provider.resolve_runtime_provider", fake_runtime_provider)
+    monkeypatch.setattr("hermes_cli.runtime_provider.resolve_runtime_provider", fake_runtime_provider)
 
     try:
         resp = server.handle_request(
@@ -3388,7 +3419,7 @@ def test_config_set_model_does_not_leak_inference_provider_env(monkeypatch):
     server._sessions["sid"] = session
     monkeypatch.setenv("PROSTOR_INFERENCE_PROVIDER", "openrouter")
     monkeypatch.setattr(
-        "prostor_cli.model_switch.switch_model", lambda **_kwargs: result
+        "hermes_cli.model_switch.switch_model", lambda **_kwargs: result
     )
     monkeypatch.setattr(server, "_restart_slash_worker", lambda sid, session: None)
     monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
@@ -3449,7 +3480,7 @@ def test_config_set_model_records_per_session_override_not_env(monkeypatch):
     monkeypatch.delenv("PROSTOR_TUI_PROVIDER", raising=False)
     monkeypatch.delenv("PROSTOR_INFERENCE_PROVIDER", raising=False)
     monkeypatch.setattr(
-        "prostor_cli.model_switch.switch_model", lambda **_kwargs: result
+        "hermes_cli.model_switch.switch_model", lambda **_kwargs: result
     )
     monkeypatch.setattr(server, "_restart_slash_worker", lambda sid, session: None)
     monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
@@ -3547,7 +3578,7 @@ def test_config_set_model_switches_agent_without_touching_env(monkeypatch):
             warning_message="",
         )
 
-    monkeypatch.setattr("prostor_cli.model_switch.switch_model", fake_switch_model)
+    monkeypatch.setattr("hermes_cli.model_switch.switch_model", fake_switch_model)
 
     try:
         resp = server.handle_request(
@@ -3684,7 +3715,7 @@ def test_session_compress_syncs_session_key_after_rotation(monkeypatch):
     """When AIAgent._compress_context rotates session_id (compression split),
     the gateway session_key must follow so subsequent approval routing,
     DB title/history lookups, and slash worker resume target the new
-    continuation session — mirrors ProstorCLI._manual_compress's
+    continuation session — mirrors HermesCLI._manual_compress's
     session_id sync (cli.py).
     """
     agent = types.SimpleNamespace(session_id="rotated-id")
@@ -4222,7 +4253,7 @@ def test_command_dispatch_exec_nonzero_surfaces_error(monkeypatch):
 
 
 def test_plugins_list_surfaces_loader_error(monkeypatch):
-    with patch("prostor_cli.plugins.get_plugin_manager", side_effect=Exception("boom")):
+    with patch("hermes_cli.plugins.get_plugin_manager", side_effect=Exception("boom")):
         resp = server.handle_request(
             {"id": "1", "method": "plugins.list", "params": {}}
         )
@@ -4233,7 +4264,7 @@ def test_plugins_list_surfaces_loader_error(monkeypatch):
 
 def test_complete_slash_surfaces_completer_error(monkeypatch):
     with patch(
-        "prostor_cli.commands.SlashCommandCompleter",
+        "hermes_cli.commands.SlashCommandCompleter",
         side_effect=Exception("no completer"),
     ):
         resp = server.handle_request(
@@ -4432,6 +4463,22 @@ def test_session_info_includes_mcp_servers(monkeypatch):
 
     assert info["provider"] == "openai-codex"
     assert info["mcp_servers"] == fake_status
+
+
+def test_session_info_includes_session_title(monkeypatch):
+    class _FakeDB:
+        def get_session_title(self, key):
+            assert key == "session-key"
+            return "Dashboard title"
+
+    monkeypatch.setattr(server, "_get_db", lambda: _FakeDB())
+
+    info = server._session_info(
+        types.SimpleNamespace(tools=[], model="test/model", provider="openai-codex"),
+        {"session_key": "session-key", "history": []},
+    )
+
+    assert info["title"] == "Dashboard title"
 
 
 # ---------------------------------------------------------------------------
@@ -4968,7 +5015,8 @@ def test_mirror_slash_side_effects_allowed_when_idle(monkeypatch):
 def test_mirror_slash_compress_does_not_prelock_history(monkeypatch):
     """Regression guard: /compress side effect must not hold history_lock
     when calling _compress_session_history (the helper snapshots under
-    the same non-reentrant lock internally)."""
+    the same non-reentrant lock internally). It also returns a before/after
+    summary string (#46686)."""
     import types
 
     seen = {"compress": False, "sync": False}
@@ -4977,7 +5025,9 @@ def test_mirror_slash_compress_does_not_prelock_history(monkeypatch):
     def _fake_compress(session, focus_topic=None, **_kw):
         seen["compress"] = True
         assert not session["history_lock"].locked()
-        return (0, {"total": 0})
+        # Simulate a real compaction shrinking the transcript.
+        session["history"] = [{"role": "user", "content": "summary"}]
+        return (1, {"total": 0})
 
     def _fake_sync(_sid, _session):
         seen["sync"] = True
@@ -4988,14 +5038,20 @@ def test_mirror_slash_compress_does_not_prelock_history(monkeypatch):
     monkeypatch.setattr(server, "_emit", lambda *args: emitted.append(args))
 
     session = _session(running=False)
-    session["agent"] = types.SimpleNamespace(model="x")
+    session["history"] = [
+        {"role": "user", "content": f"m{i}"} for i in range(6)
+    ]
+    session["agent"] = types.SimpleNamespace(model="x", _cached_system_prompt="", tools=None)
 
     warning = server._mirror_slash_side_effects("sid", session, "/compress")
 
-    assert warning == ""
+    # Now returns a before/after summary (was "" before #46686).
     assert seen["compress"]
     assert seen["sync"]
     assert ("session.info", "sid", {"model": "x"}) in emitted
+    assert "Compressed:" in warning
+    assert "6 → 1 messages" in warning
+    assert "tokens" in warning
 
 
 # ---------------------------------------------------------------------------
@@ -5215,14 +5271,14 @@ def test_session_create_no_race_keeps_worker_alive(monkeypatch):
 
 
 def test_get_db_degrades_cleanly_when_sessiondb_init_fails(monkeypatch):
-    fake_mod = types.ModuleType("prostor_state")
+    fake_mod = types.ModuleType("hermes_state")
 
     class _BrokenSessionDB:
         def __init__(self):
             raise RuntimeError("locking protocol")
 
     fake_mod.SessionDB = _BrokenSessionDB
-    monkeypatch.setitem(sys.modules, "prostor_state", fake_mod)
+    monkeypatch.setitem(sys.modules, "hermes_state", fake_mod)
     monkeypatch.setattr(server, "_db", None)
     monkeypatch.setattr(server, "_db_error", None)
 
@@ -5453,7 +5509,7 @@ def test_session_delete_success_returns_deleted_id(monkeypatch):
     assert resp["result"] == {"deleted": "old-1"}
     assert captured["sid"] == "old-1"
     # sessions_dir must be forwarded so transcript files get cleaned up
-    # too — not just the SQLite row.  The autouse _isolate_prostor_home
+    # too — not just the SQLite row.  The autouse _isolate_hermes_home
     # fixture pins PROSTOR_HOME to a temp dir; the handler should append
     # /sessions to it.
     assert captured["sessions_dir"] is not None
@@ -5494,13 +5550,13 @@ def test_model_options_does_not_overwrite_curated_models(monkeypatch):
     )
 
     with patch(
-        "prostor_cli.model_switch.list_authenticated_providers",
+        "hermes_cli.model_switch.list_authenticated_providers",
         return_value=curated_providers,
     ) as listing:
         # If provider_model_ids gets called at all, the handler is still
         # overwriting curated with live — that's the regression we're
         # guarding against.
-        with patch("prostor_cli.models.provider_model_ids") as live_fetch:
+        with patch("hermes_cli.models.provider_model_ids") as live_fetch:
             resp = server._methods["model.options"](99, {"session_id": ""})
 
     assert "result" in resp, resp
@@ -5527,7 +5583,7 @@ def test_model_options_propagates_list_exception(monkeypatch):
         lambda: {"providers": {}, "custom_providers": []},
     )
     with patch(
-        "prostor_cli.model_switch.list_authenticated_providers",
+        "hermes_cli.model_switch.list_authenticated_providers",
         side_effect=RuntimeError("catalog blew up"),
     ):
         resp = server._methods["model.options"](77, {"session_id": ""})
@@ -6117,7 +6173,7 @@ def test_browser_manage_status_falls_back_to_config_cdp_url(monkeypatch):
     fake_cfg = types.SimpleNamespace(
         read_raw_config=lambda: {"browser": {"cdp_url": "http://lan:9222"}}
     )
-    with patch.dict(sys.modules, {"prostor_cli.config": fake_cfg}):
+    with patch.dict(sys.modules, {"hermes_cli.config": fake_cfg}):
         resp = server.handle_request(
             {"id": "1", "method": "browser.manage", "params": {"action": "status"}}
         )
@@ -6211,10 +6267,10 @@ def test_browser_manage_connect_default_local_reports_launch_hint(monkeypatch):
         _stub_urlopen(monkeypatch, ok=False)
         with (
             patch(
-                "prostor_cli.browser_connect.try_launch_chrome_debug", return_value=False
+                "hermes_cli.browser_connect.try_launch_chrome_debug", return_value=False
             ),
             patch(
-                "prostor_cli.browser_connect.get_chrome_debug_candidates",
+                "hermes_cli.browser_connect.get_chrome_debug_candidates",
                 return_value=[],
             ),
         ):
@@ -6267,10 +6323,10 @@ def test_browser_manage_connect_no_session_skips_progress_events(monkeypatch):
         _stub_urlopen(monkeypatch, ok=False)
         with (
             patch(
-                "prostor_cli.browser_connect.try_launch_chrome_debug", return_value=False
+                "hermes_cli.browser_connect.try_launch_chrome_debug", return_value=False
             ),
             patch(
-                "prostor_cli.browser_connect.get_chrome_debug_candidates",
+                "hermes_cli.browser_connect.get_chrome_debug_candidates",
                 return_value=[],
             ),
         ):
@@ -6355,7 +6411,7 @@ def test_browser_manage_connect_default_local_retries_after_launch(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", _opener)
     with patch.dict(sys.modules, {"tools.browser_tool": fake}):
         with patch(
-            "prostor_cli.browser_connect.try_launch_chrome_debug", return_value=True
+            "hermes_cli.browser_connect.try_launch_chrome_debug", return_value=True
         ):
             resp = server.handle_request(
                 {"id": "1", "method": "browser.manage", "params": {"action": "connect"}}
@@ -6745,7 +6801,7 @@ def test_config_set_indicator_none_keeps_blank_repr(monkeypatch):
 # ── reload.env ───────────────────────────────────────────────────────
 
 
-def test_reload_env_rpc_calls_prostor_cli_reload_env(monkeypatch):
+def test_reload_env_rpc_calls_hermes_cli_reload_env(monkeypatch):
     """reload.env mirrors classic CLI's `/reload` — re-reads ~/.prostor/.env
     into the gateway process and reports the count of vars updated."""
     calls = {"n": 0}
@@ -6755,7 +6811,7 @@ def test_reload_env_rpc_calls_prostor_cli_reload_env(monkeypatch):
         return 7
 
     fake = types.SimpleNamespace(reload_env=_fake_reload)
-    with patch.dict(sys.modules, {"prostor_cli.config": fake}):
+    with patch.dict(sys.modules, {"hermes_cli.config": fake}):
         resp = server.handle_request({"id": "1", "method": "reload.env", "params": {}})
 
     assert resp["result"] == {"updated": 7}
@@ -6767,7 +6823,7 @@ def test_reload_env_rpc_surfaces_errors(monkeypatch):
         raise RuntimeError("env path locked")
 
     fake = types.SimpleNamespace(reload_env=_broken)
-    with patch.dict(sys.modules, {"prostor_cli.config": fake}):
+    with patch.dict(sys.modules, {"hermes_cli.config": fake}):
         resp = server.handle_request({"id": "1", "method": "reload.env", "params": {}})
 
     assert "error" in resp
@@ -6783,7 +6839,7 @@ def _setup_make_agent_mocks(monkeypatch, cfg):
         server, "_resolve_startup_runtime", lambda: ("test-model", None)
     )
     monkeypatch.setattr(
-        "prostor_cli.runtime_provider.resolve_runtime_provider",
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
         lambda requested=None, target_model=None: {
             "provider": None,
             "base_url": None,
@@ -6815,7 +6871,7 @@ def test_make_agent_waits_for_shared_mcp_discovery(monkeypatch):
     _setup_make_agent_mocks(monkeypatch, {})
     waited = []
 
-    from prostor_cli import mcp_startup
+    from hermes_cli import mcp_startup
 
     monkeypatch.setattr(
         mcp_startup,
@@ -6867,7 +6923,7 @@ def test_make_agent_uses_session_runtime_overrides(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "prostor_cli.runtime_provider.resolve_runtime_provider",
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
         fake_resolve_runtime_provider,
     )
 
@@ -7145,12 +7201,12 @@ def test_notification_poller_requeues_when_busy(monkeypatch):
             process_registry.completion_queue.get_nowait()
 
 
-def test_session_save_writes_under_prostor_home_with_system_prompt(monkeypatch, tmp_path):
+def test_session_save_writes_under_hermes_home_with_system_prompt(monkeypatch, tmp_path):
     """TUI /save (session.save RPC) must snapshot under the Prostor profile
     home — not the project/workspace CWD — and include the system prompt,
     mirroring the classic CLI /save and the dashboard save export.
 
-    Regression: the gateway handler wrote ``prostor_conversation_*.json`` to
+    Regression: the gateway handler wrote ``hermes_conversation_*.json`` to
     ``os.path.abspath(...)`` (the workspace CWD) and only exported ``model``
     and ``messages``, so ``system_prompt`` was missing.
     """
@@ -7190,7 +7246,7 @@ def test_session_save_writes_under_prostor_home_with_system_prompt(monkeypatch, 
     saved_file = Path(resp["result"]["file"])
 
     # Must NOT leak into the workspace/project CWD.
-    assert not list(work.glob("prostor_conversation_*.json"))
+    assert not list(work.glob("hermes_conversation_*.json"))
 
     saved_dir = home / "sessions" / "saved"
     assert saved_file.parent == saved_dir
@@ -7316,7 +7372,7 @@ def _attach_bytes_cli(monkeypatch):
 def test_image_attach_bytes_writes_to_gateway_dir(monkeypatch, tmp_path):
     """Remote client uploads base64 bytes; gateway writes them to its own disk."""
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     server._sessions["abx"] = _session()
 
     resp = server.handle_request(
@@ -7343,7 +7399,7 @@ def test_image_attach_bytes_writes_to_gateway_dir(monkeypatch, tmp_path):
 
 def test_image_attach_bytes_accepts_data_url_prefix(monkeypatch, tmp_path):
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     server._sessions["abx2"] = _session()
 
     resp = server.handle_request(
@@ -7362,7 +7418,7 @@ def test_image_attach_bytes_accepts_data_url_prefix(monkeypatch, tmp_path):
 def test_image_attach_bytes_data_alias_and_magic_sniff(monkeypatch, tmp_path):
     """Older desktop builds send `data` (not content_base64); ext sniffed from bytes."""
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     server._sessions["abx3"] = _session()
 
     resp = server.handle_request(
@@ -7379,7 +7435,7 @@ def test_image_attach_bytes_data_alias_and_magic_sniff(monkeypatch, tmp_path):
 
 def test_image_attach_bytes_rejects_invalid_base64(monkeypatch, tmp_path):
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     server._sessions["abx4"] = _session()
 
     resp = server.handle_request(
@@ -7397,7 +7453,7 @@ def test_image_attach_bytes_rejects_oversize(monkeypatch, tmp_path):
     import base64 as _b64
 
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     monkeypatch.setattr(server, "_ATTACH_BYTES_MAX_BYTES", 10)
     server._sessions["abx5"] = _session()
 
@@ -7415,7 +7471,7 @@ def test_image_attach_bytes_rejects_oversize(monkeypatch, tmp_path):
 
 def test_image_attach_bytes_rejects_unsupported_extension(monkeypatch, tmp_path):
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     server._sessions["abx6"] = _session()
 
     # filename hint forces a non-image extension; magic sniff is bypassed by hint
@@ -7437,7 +7493,7 @@ def test_image_attach_bytes_rejects_unsupported_extension(monkeypatch, tmp_path)
 def test_pdf_attach_requires_poppler(monkeypatch, tmp_path):
     """Without pdftoppm on PATH, pdf.attach returns a clear 5028."""
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     monkeypatch.setattr("shutil.which", lambda _name: None)
     server._sessions["pdf1"] = _session()
 
@@ -7456,7 +7512,7 @@ def test_pdf_attach_rejects_non_pdf_bytes(monkeypatch, tmp_path):
     import base64 as _b64
 
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/pdftoppm")
     server._sessions["pdf2"] = _session()
 
@@ -7474,7 +7530,7 @@ def test_pdf_attach_rejects_non_pdf_bytes(monkeypatch, tmp_path):
 
 def test_pdf_attach_requires_path_or_bytes(monkeypatch, tmp_path):
     _attach_bytes_cli(monkeypatch)
-    monkeypatch.setattr(server, "_prostor_home", tmp_path)
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
     monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/pdftoppm")
     server._sessions["pdf3"] = _session()
 

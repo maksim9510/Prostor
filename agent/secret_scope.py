@@ -99,7 +99,7 @@ _GLOBAL_ENV_EXACT = frozenset({
     "PROSTOR_HOME", "PROSTOR_PROFILE", "PROSTOR_GATEWAY_LOCK_DIR",
     "PROSTOR_MAX_ITERATIONS", "PROSTOR_MAX_TOKENS", "PROSTOR_API_TIMEOUT",
     "PROSTOR_REDACT_SECRETS", "PROSTOR_NOUS_TIMEOUT_SECONDS",
-    "_PROSTOR_GATEWAY",
+    "_HERMES_GATEWAY",
     # OS / interpreter
     "PATH", "HOME", "USER", "LANG", "LC_ALL", "TZ", "PWD", "SHELL", "TMPDIR",
     "VIRTUAL_ENV", "PYTHONPATH", "SSL_CERT_FILE",
@@ -194,12 +194,12 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
     return secrets
 
 
-def build_profile_secret_scope(prostor_home: Path) -> Dict[str, str]:
+def build_profile_secret_scope(hermes_home: Path) -> Dict[str, str]:
     """Build a profile's secret mapping from its ``<home>/.env``.
 
     Returns a fresh dict (safe to install via ``set_secret_scope``). Genuinely
     global vars are intentionally NOT copied in — ``get_secret`` reads those
     from ``os.environ`` directly, so the scope holds only profile secrets.
     """
-    return load_env_file(Path(prostor_home) / ".env")
+    return load_env_file(Path(hermes_home) / ".env")
 

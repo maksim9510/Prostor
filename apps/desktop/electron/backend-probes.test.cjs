@@ -11,50 +11,50 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-const { canImportProstorCli, verifyProstorCli } = require('./backend-probes.cjs')
+const { canImportHermesCli, verifyHermesCli } = require('./backend-probes.cjs')
 
 // Resolve the host's own Node binary -- guaranteed to be on disk and
 // runnable. We use it as both a stand-in for "a python that doesn't
-// have prostor_cli" (since `node -c "import prostor_cli"` will exit
-// non-zero) and as a way to script verifyProstorCli's success path
+// have hermes_cli" (since `node -c "import hermes_cli"` will exit
+// non-zero) and as a way to script verifyHermesCli's success path
 // (a tiny script we write to disk that exits 0 on --version).
 const NODE_BIN = process.execPath
 
-test('canImportProstorCli returns false when path is falsy', () => {
-  assert.equal(canImportProstorCli(''), false)
-  assert.equal(canImportProstorCli(null), false)
-  assert.equal(canImportProstorCli(undefined), false)
+test('canImportHermesCli returns false when path is falsy', () => {
+  assert.equal(canImportHermesCli(''), false)
+  assert.equal(canImportHermesCli(null), false)
+  assert.equal(canImportHermesCli(undefined), false)
 })
 
-test('canImportProstorCli returns false when interpreter cannot run -c', () => {
-  // node IS an interpreter, but `node -c "import prostor_cli"` is a
+test('canImportHermesCli returns false when interpreter cannot run -c', () => {
+  // node IS an interpreter, but `node -c "import hermes_cli"` is a
   // SyntaxError -- different exit reason from a real Python's
   // ModuleNotFoundError, but the predicate is "exit 0 or not" and
   // both land on "not", which is exactly what we want for the
   // resolver fall-through.
-  assert.equal(canImportProstorCli(NODE_BIN), false)
+  assert.equal(canImportHermesCli(NODE_BIN), false)
 })
 
-test('canImportProstorCli returns false when binary does not exist', () => {
+test('canImportHermesCli returns false when binary does not exist', () => {
   const ghost = path.join(os.tmpdir(), 'prostor-probes-ghost-' + Date.now() + '.exe')
-  assert.equal(canImportProstorCli(ghost), false)
+  assert.equal(canImportHermesCli(ghost), false)
 })
 
-test('verifyProstorCli returns false when command is falsy', () => {
-  assert.equal(verifyProstorCli(''), false)
-  assert.equal(verifyProstorCli(null), false)
-  assert.equal(verifyProstorCli(undefined), false)
+test('verifyHermesCli returns false when command is falsy', () => {
+  assert.equal(verifyHermesCli(''), false)
+  assert.equal(verifyHermesCli(null), false)
+  assert.equal(verifyHermesCli(undefined), false)
 })
 
-test('verifyProstorCli returns false when binary does not exist', () => {
+test('verifyHermesCli returns false when binary does not exist', () => {
   const ghost = path.join(os.tmpdir(), 'prostor-probes-ghost-' + Date.now() + '.exe')
-  assert.equal(verifyProstorCli(ghost), false)
+  assert.equal(verifyHermesCli(ghost), false)
 })
 
-test('verifyProstorCli returns true when --version exits 0', () => {
+test('verifyHermesCli returns true when --version exits 0', () => {
   // Write a tiny script that exits 0 regardless of args, then invoke
   // it through node. This stands in for a working prostor binary --
-  // verifyProstorCli only cares about the exit code.
+  // verifyHermesCli only cares about the exit code.
   const scriptPath = path.join(os.tmpdir(), `prostor-probes-ok-${Date.now()}-${process.pid}.cjs`)
   fs.writeFileSync(scriptPath, 'process.exit(0)\n')
   try {
@@ -63,7 +63,7 @@ test('verifyProstorCli returns true when --version exits 0', () => {
     // execFileSync passes ['--version'] as args, which node ignores
     // gracefully (well, it prints its version and exits 0, which is
     // perfect -- exit code 0 is the only signal we read).
-    assert.equal(verifyProstorCli(NODE_BIN), true)
+    assert.equal(verifyHermesCli(NODE_BIN), true)
   } finally {
     try {
       fs.unlinkSync(scriptPath)
@@ -73,10 +73,10 @@ test('verifyProstorCli returns true when --version exits 0', () => {
   }
 })
 
-test('verifyProstorCli swallows timeouts (does not throw)', () => {
+test('verifyHermesCli swallows timeouts (does not throw)', () => {
   // We can't easily provoke a real 5s hang in CI without slowing the
   // suite, but we CAN confirm that an invocation that DOES throw
   // (because the binary is missing) returns false rather than
   // propagating. Same code path the timeout case takes.
-  assert.equal(verifyProstorCli('/definitely/not/a/real/binary/anywhere'), false)
+  assert.equal(verifyHermesCli('/definitely/not/a/real/binary/anywhere'), false)
 })

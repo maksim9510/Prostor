@@ -90,7 +90,7 @@ def test_re_running_setup_path_block_preserves_pip_entry_point(tmp_path: Path) -
 
     block = _extract_setup_path_shim_block()
     # Drive the block with the real env vars setup_path() sets.
-    script = f'set -e\nPROSTOR_BIN={pip_entry!s}\ncommand_link_dir={command_link_dir!s}\n{block}\n'
+    script = f'set -e\nHERMES_BIN={pip_entry!s}\ncommand_link_dir={command_link_dir!s}\n{block}\n'
     result = subprocess.run(
         ["bash", "-c", script],
         capture_output=True,

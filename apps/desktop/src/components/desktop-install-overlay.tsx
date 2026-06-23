@@ -270,7 +270,7 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
       return
     }
 
-    const desktop = window.prostorDesktop
+    const desktop = window.hermesDesktop
 
     if (!desktop || typeof desktop.onBootstrapEvent !== 'function') {
       return
@@ -375,7 +375,7 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
               </Button>
               <Button
                 onClick={() => {
-                  window.prostorDesktop?.openExternal?.(ups.docsUrl)
+                  window.hermesDesktop?.openExternal?.(ups.docsUrl)
                 }}
                 size="sm"
                 variant="ghost"
@@ -521,7 +521,7 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
                   setCancelling(true)
 
                   try {
-                    await window.prostorDesktop?.cancelBootstrap?.()
+                    await window.hermesDesktop?.cancelBootstrap?.()
                   } catch {
                     // ignore -- the failed/cancelled event will surface the result
                   }
@@ -573,7 +573,7 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
                     // and main short-circuits to the latched error without
                     // re-running install.ps1.
                     try {
-                      await window.prostorDesktop?.resetBootstrap?.()
+                      await window.hermesDesktop?.resetBootstrap?.()
                     } catch {
                       // best-effort -- continue with reload regardless
                     }

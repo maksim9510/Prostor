@@ -1,12 +1,12 @@
 ---
 sidebar_position: 3
 title: "Persistent Memory"
-description: "How Prostor Agent remembers across sessions — MEMORY.md, USER.md, and session search"
+description: "How Hermes Agent remembers across sessions — MEMORY.md, USER.md, and session search"
 ---
 
 # Persistent Memory
 
-Prostor Agent has bounded, curated memory that persists across sessions. This lets it remember your preferences, your projects, your environment, and things it has learned.
+Hermes Agent has bounded, curated memory that persists across sessions. This lets it remember your preferences, your projects, your environment, and things it has learned.
 
 ## How It Works
 
@@ -17,7 +17,7 @@ Two files make up the agent's memory:
 | **MEMORY.md** | Agent's personal notes — environment facts, conventions, things learned | 2,200 chars (~800 tokens) |
 | **USER.md** | User profile — your preferences, communication style, expectations | 1,375 chars (~500 tokens) |
 
-Both are stored in `~/.prostor/memories/` and are injected into the system prompt as a frozen snapshot at session start. The agent manages its own memory via the `memory` tool — it can add, replace, or remove entries.
+Both are stored in `~/.hermes/memories/` and are injected into the system prompt as a frozen snapshot at session start. The agent manages its own memory via the `memory` tool — it can add, replace, or remove entries.
 
 :::info
 Character limits keep memory focused. Memory does **not** auto-compact: when a
@@ -182,13 +182,13 @@ Memory entries are scanned for injection and exfiltration patterns before being 
 
 Beyond MEMORY.md and USER.md, the agent can search its past conversations using the `session_search` tool:
 
-- All CLI and messaging sessions are stored in SQLite (`~/.prostor/state.db`) with FTS5 full-text search
+- All CLI and messaging sessions are stored in SQLite (`~/.hermes/state.db`) with FTS5 full-text search
 - Search queries return actual messages from the DB — no LLM summarization, no truncation
 - The agent can find things it discussed weeks ago, even if they're not in its active memory
 - The agent can also scroll forward/backward inside any session it finds
 
 ```bash
-prostor sessions list    # Browse past sessions
+hermes sessions list    # Browse past sessions
 ```
 
 See [Session Search Tool](/user-guide/sessions#session-search-tool) for the three calling shapes (discovery / scroll / browse) and the response format.
@@ -209,7 +209,7 @@ See [Session Search Tool](/user-guide/sessions#session-search-tool) for the thre
 ## Configuration
 
 ```yaml
-# In ~/.prostor/config.yaml
+# In ~/.hermes/config.yaml
 memory:
   memory_enabled: true
   user_profile_enabled: true
@@ -248,8 +248,12 @@ ones — waits for your yes/no before it ever enters your profile.
 ## Background review notifications (`display.memory_notifications`)
 
 After a turn, the background self-improvement review may quietly save a memory
-or update a skill. By default it surfaces a short `💾 Memory updated` line in
-chat so you know it happened. Control how chatty that is:
+or update a skill. This is Hermes' consent-aware learning loop: repeated
+corrections and durable workflow lessons become compact memory entries or
+procedural skills, while `write_approval` can stage those writes for review
+before they affect future sessions. By default it surfaces a short
+`💾 Memory updated` line in chat so you know it happened. Control how chatty
+that is:
 
 ```yaml
 display:
@@ -265,6 +269,31 @@ display:
 > This only governs the **gateway** chat notification. The review itself, and
 > writes to your memory/skill stores, are unaffected by this setting. Set it
 > per-platform via `display.platforms.<platform>.memory_notifications`.
+
+## Running the review on a cheaper model (`auxiliary.background_review`)
+
+The review runs on your **main chat model** by default, replaying the
+conversation — which is already warm in the prompt cache, so it's cheap cache
+reads. On an expensive main model you can run the review on a cheaper model
+instead:
+
+```yaml
+auxiliary:
+  background_review:
+    provider: openrouter
+    model: google/gemini-3-flash-preview   # auto (default) = main chat model
+```
+
+When you point it at a model **different** from your main one, the review runs
+there for substantially lower cost (~3–5× in benchmarks). Because a different
+model can't reuse your main model's prompt cache anyway, the fork automatically
+replays a compact **digest** of the conversation (recent turns verbatim + a
+summary of older ones) rather than the full transcript — minimizing what it
+writes to the new cache. Capture holds: in testing, memory capture was
+identical and skill capture near-identical to the main-model review.
+
+Leave it at `auto` (or set it to your main model) and nothing changes — the
+review keeps running on the main model with the full warm-cache replay.
 
 ## Controlling skill writes (`skills.write_approval`)
 
@@ -290,19 +319,19 @@ inline, but the full diff stays out-of-band:
 
 On a messaging platform, approve a skill from its gist + metadata, or open
 `/skills diff` on the CLI / dashboard / the staged file under
-`~/.prostor/pending/skills/<id>.json` when you want to read the whole change.
+`~/.hermes/pending/skills/<id>.json` when you want to read the whole change.
 Full details in [Gating agent skill writes](/user-guide/features/skills#gating-agent-skill-writes-skillswrite_approval).
 
 
 ## External Memory Providers
 
-For deeper, persistent memory that goes beyond MEMORY.md and USER.md, Prostor ships with 8 external memory provider plugins — including Honcho, OpenViking, Mem0, Hindsight, Holographic, RetainDB, ByteRover, and Supermemory.
+For deeper, persistent memory that goes beyond MEMORY.md and USER.md, Hermes ships with 8 external memory provider plugins — including Honcho, OpenViking, Mem0, Hindsight, Holographic, RetainDB, ByteRover, and Supermemory.
 
 External providers run **alongside** built-in memory (never replacing it) and add capabilities like knowledge graphs, semantic search, automatic fact extraction, and cross-session user modeling.
 
 ```bash
-prostor memory setup      # pick a provider and configure it
-prostor memory status     # check what's active
+hermes memory setup      # pick a provider and configure it
+hermes memory status     # check what's active
 ```
 
 See the [Memory Providers](./memory-providers.md) guide for full details on each provider, setup instructions, and comparison.

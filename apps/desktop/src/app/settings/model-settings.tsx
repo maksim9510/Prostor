@@ -4,23 +4,23 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { useI18n } from '@/i18n'
-import { AlertTriangle, Cpu, Loader2 } from '@/lib/icons'
-import { cn } from '@/lib/utils'
 import {
   getAuxiliaryModels,
   getGlobalModelInfo,
   getGlobalModelOptions,
-  getProstorConfigRecord,
+  getHermesConfigRecord,
   getRecommendedDefaultModel,
-  saveProstorConfig,
+  saveHermesConfig,
   setEnvVar,
   setModelAssignment
 } from '@/prostor'
 import type { AuxiliaryModelsResponse, ModelOptionProvider, StaleAuxAssignment } from '@/prostor'
+import { useI18n } from '@/i18n'
+import { AlertTriangle, Cpu, Loader2 } from '@/lib/icons'
+import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
 import { startManualLocalEndpoint, startManualProviderOAuth } from '@/store/onboarding'
-import type { ProstorConfigRecord } from '@/types/prostor'
+import type { HermesConfigRecord } from '@/types/prostor'
 
 import { CONTROL_TEXT } from './constants'
 import { getNested, setNested } from './helpers'
@@ -46,7 +46,7 @@ function isProviderReady(p?: ModelOptionProvider): boolean {
   return !!p && (p.authenticated !== false || (p.models?.length ?? 0) > 0)
 }
 
-// Mirrors `_AUX_TASK_SLOTS` in prostor_cli/web_server.py. Friendly labels and
+// Mirrors `_AUX_TASK_SLOTS` in hermes_cli/web_server.py. Friendly labels and
 // hints make the assignments readable; raw task keys (vision, mcp, …) are
 // opaque to most users.
 interface AuxTaskMeta {
@@ -117,7 +117,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
   const [auxiliary, setAuxiliary] = useState<AuxiliaryModelsResponse | null>(null)
   // Full profile config, kept so the reasoning/speed defaults round-trip
   // (read agent.* → write back the whole record) like the generic config page.
-  const [config, setConfig] = useState<ProstorConfigRecord | null>(null)
+  const [config, setConfig] = useState<HermesConfigRecord | null>(null)
   const [applying, setApplying] = useState(false)
   const [editingAuxTask, setEditingAuxTask] = useState<null | string>(null)
   const [auxDraft, setAuxDraft] = useState<{ model: string; provider: string }>({ model: '', provider: '' })
@@ -138,7 +138,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         getGlobalModelInfo(),
         getGlobalModelOptions(),
         getAuxiliaryModels(),
-        getProstorConfigRecord()
+        getHermesConfigRecord()
       ])
 
       setMainModel({ model: modelInfo.model, provider: modelInfo.provider })
@@ -231,7 +231,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       setConfig(next)
 
       try {
-        await saveProstorConfig(next)
+        await saveHermesConfig(next)
       } catch (err) {
         setConfig(prev)
         notifyError(err, m.defaultsFailed)

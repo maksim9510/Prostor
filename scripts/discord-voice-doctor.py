@@ -176,10 +176,10 @@ def check_env_vars():
 
     # Load .env
     try:
-        from prostor_cli.env_loader import load_prostor_dotenv
+        from hermes_cli.env_loader import load_hermes_dotenv
 
-        load_prostor_dotenv(
-            prostor_home=ENV_FILE.parent,
+        load_hermes_dotenv(
+            hermes_home=ENV_FILE.parent,
             project_env=PROJECT_ROOT / ".env",
         )
     except ImportError:

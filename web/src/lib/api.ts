@@ -1,13 +1,13 @@
 // The dashboard can be served either at the root of its host (e.g.
 // https://kanban.tilos.com/) or under a URL prefix when reverse-proxied
 // (e.g. https://mission-control.tilos.com/prostor/). The Python backend
-// injects ``window.__PROSTOR_BASE_PATH__`` into index.html based on the
+// injects ``window.__HERMES_BASE_PATH__`` into index.html based on the
 // incoming ``X-Forwarded-Prefix`` header so the SPA can address its own
 // ``/api/...`` and ``/dashboard-plugins/...`` URLs correctly without a
 // rebuild. Empty string means "served at root".
 function readBasePath(): string {
   if (typeof window === "undefined") return "";
-  const raw = window.__PROSTOR_BASE_PATH__ ?? "";
+  const raw = window.__HERMES_BASE_PATH__ ?? "";
   if (!raw) return "";
   // Normalise: ensure leading slash, strip trailing slash.
   const withLead = raw.startsWith("/") ? raw : `/${raw}`;
@@ -23,13 +23,13 @@ import type { DashboardTheme } from "@/themes/types";
 // Injected into index.html by the server — never fetched via API.
 declare global {
   interface Window {
-    __PROSTOR_SESSION_TOKEN__?: string;
-    __PROSTOR_BASE_PATH__?: string;
+    __HERMES_SESSION_TOKEN__?: string;
+    __HERMES_BASE_PATH__?: string;
     /** Server-injected flag: ``true`` when the dashboard's OAuth gate is
      * engaged (public bind, no ``--insecure``). Toggles the SPA's
      * WS-upgrade path from legacy ``?token=`` to single-use ``?ticket=``
      * fetched via :func:`getWsTicket`. */
-    __PROSTOR_AUTH_REQUIRED__?: boolean;
+    __HERMES_AUTH_REQUIRED__?: boolean;
   }
 }
 let _sessionToken: string | null = null;
@@ -96,7 +96,7 @@ export async function fetchJSON<T>(
   url = withManagementProfile(url);
   // Inject the session token into all /api/ requests.
   const headers = new Headers(init?.headers);
-  const token = window.__PROSTOR_SESSION_TOKEN__;
+  const token = window.__HERMES_SESSION_TOKEN__;
   if (token) {
     setSessionHeader(headers, token);
   }
@@ -146,13 +146,13 @@ export async function fetchJSON<T>(
     // Loopback mode: ``_SESSION_TOKEN`` rotates on every server restart
     // (``prostor update``, ``prostor gateway restart``, etc.). A tab kept
     // open across the restart holds the OLD token in
-    // ``window.__PROSTOR_SESSION_TOKEN__`` from the previous HTML render,
+    // ``window.__HERMES_SESSION_TOKEN__`` from the previous HTML render,
     // so every fetch returns 401. The HTML is served ``Cache-Control:
     // no-store`` so a reload picks up the freshly-injected token. Trigger
     // that reload once on the first stale-token 401 — gated mode is
     // handled above, so reaching here in gated mode means a real
     // middleware failure that should not reload-loop.
-    if (!window.__PROSTOR_AUTH_REQUIRED__ && !options?.allowUnauthorized) {
+    if (!window.__HERMES_AUTH_REQUIRED__ && !options?.allowUnauthorized) {
       let alreadyReloaded = false;
       try {
         alreadyReloaded =
@@ -173,7 +173,7 @@ export async function fetchJSON<T>(
   }
   if (res.ok) {
     // Clear the stale-token reload guard: a successful 2xx proves the
-    // current ``window.__PROSTOR_SESSION_TOKEN__`` is valid, so the next
+    // current ``window.__HERMES_SESSION_TOKEN__`` is valid, so the next
     // 401 — if any — should be allowed to trigger its own reload cycle.
     try {
       sessionStorage.removeItem("prostor.tokenReloadAttempted");
@@ -195,7 +195,7 @@ function pluginPath(name: string): string {
 
 async function getSessionToken(): Promise<string> {
   if (_sessionToken) return _sessionToken;
-  const injected = window.__PROSTOR_SESSION_TOKEN__;
+  const injected = window.__HERMES_SESSION_TOKEN__;
   if (injected) {
     _sessionToken = injected;
     return _sessionToken;
@@ -206,7 +206,7 @@ async function getSessionToken(): Promise<string> {
 /**
  * Fetch a single-use ticket for a WebSocket upgrade in gated mode.
  *
- * The dashboard's gated-mode WS auth (``prostor_cli.web_server._ws_auth_ok``)
+ * The dashboard's gated-mode WS auth (``hermes_cli.web_server._ws_auth_ok``)
  * rejects the legacy ``?token=<_SESSION_TOKEN>`` path and only accepts
  * ``?ticket=<minted>`` consumed against the in-memory ticket store. Browsers
  * can't set ``Authorization`` on a WS upgrade, so this round-trip via the
@@ -232,11 +232,11 @@ export async function getWsTicket(): Promise<{ ticket: string; ttl_seconds: numb
  * mode returns the injected session token.
  */
 export async function buildWsAuthParam(): Promise<[string, string]> {
-  if (window.__PROSTOR_AUTH_REQUIRED__) {
+  if (window.__HERMES_AUTH_REQUIRED__) {
     const { ticket } = await getWsTicket();
     return ["ticket", ticket];
   }
-  const token = window.__PROSTOR_SESSION_TOKEN__ ?? "";
+  const token = window.__HERMES_SESSION_TOKEN__ ?? "";
   return ["token", token];
 }
 
@@ -249,7 +249,7 @@ export async function buildWsAuthParam(): Promise<[string, string]> {
  * Auth, in both modes, exactly as ``fetchJSON`` does it:
  *  - loopback / ``--insecure``: attach the ``X-Prostor-Session-Token`` header.
  *  - gated OAuth: no token header (it's absent by design); the
- *    ``prostor_session_at`` cookie rides along via ``credentials: 'include'``.
+ *    ``hermes_session_at`` cookie rides along via ``credentials: 'include'``.
  *
  * Unlike ``fetchJSON`` this does NOT parse the body, does NOT throw on
  * non-2xx (the caller decides — a 404 on a download is meaningful), and
@@ -262,7 +262,7 @@ export async function authedFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const headers = new Headers(init?.headers);
-  const token = window.__PROSTOR_SESSION_TOKEN__;
+  const token = window.__HERMES_SESSION_TOKEN__;
   if (token) {
     setSessionHeader(headers, token);
   }
@@ -278,7 +278,7 @@ export async function authedFetch(
  * with the correct auth query param appended for the active mode (fresh
  * single-use ``ticket`` in gated mode, ``token`` in loopback). Plugins and
  * the SPA should use this instead of hand-assembling a WS URL + reading
- * ``window.__PROSTOR_SESSION_TOKEN__`` directly, so the gated-mode ticket
+ * ``window.__HERMES_SESSION_TOKEN__`` directly, so the gated-mode ticket
  * path can never be forgotten.
  *
  * ``path`` is the dashboard-relative path (e.g.
@@ -359,6 +359,10 @@ export const api = {
   getSessionMessages: (id: string, profile = getManagementProfile()) =>
     fetchJSON<SessionMessagesResponse>(
       appendProfileParam(`/api/sessions/${encodeURIComponent(id)}/messages`, profile),
+    ),
+  getSessionDetail: (id: string, profile = getManagementProfile()) =>
+    fetchJSON<SessionInfo>(
+      appendProfileParam(`/api/sessions/${encodeURIComponent(id)}`, profile),
     ),
   getSessionLatestDescendant: (id: string) =>
     fetchJSON<SessionLatestDescendantResponse>(
@@ -839,9 +843,9 @@ export const api = {
   // Gateway / update actions
   restartGateway: () =>
     fetchJSON<ActionResponse>("/api/gateway/restart", { method: "POST" }),
-  updateProstor: () =>
+  updateHermes: () =>
     fetchJSON<ActionResponse>("/api/prostor/update", { method: "POST" }),
-  checkProstorUpdate: (force = false) =>
+  checkHermesUpdate: (force = false) =>
     fetchJSON<UpdateCheckResponse>(
       `/api/prostor/update/check${force ? "?force=true" : ""}`,
     ),
@@ -1527,7 +1531,7 @@ export interface SystemStats {
   hostname: string;
   python_version: string;
   python_impl: string;
-  prostor_version: string;
+  hermes_version: string;
   cpu_count: number | null;
   psutil: boolean;
   cpu_percent?: number;
@@ -1609,7 +1613,7 @@ export interface StatusResponse {
   auth_providers?: string[];
   /** False when the dashboard is running in a hosted/managed layout where
    * updates are handled by the outer launcher instead of ``prostor update``. */
-  can_update_prostor?: boolean;
+  can_update_hermes?: boolean;
   config_path: string;
   config_version: number;
   env_path: string;
@@ -1620,7 +1624,7 @@ export interface StatusResponse {
   gateway_running: boolean;
   gateway_state: string | null;
   gateway_updated_at: string | null;
-  prostor_home: string;
+  hermes_home: string;
   latest_config_version: number;
   release_date: string;
   version: string;
@@ -1887,7 +1891,7 @@ export interface CronJob {
   id: string;
   profile?: string | null;
   profile_name?: string | null;
-  prostor_home?: string | null;
+  hermes_home?: string | null;
   is_default_profile?: boolean;
   name?: string | null;
   prompt?: string | null;

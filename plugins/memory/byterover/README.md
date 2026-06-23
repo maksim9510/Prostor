@@ -14,14 +14,14 @@ npm install -g byterover-cli
 ## Setup
 
 ```bash
-prostor memory setup    # select "byterover"
+hermes memory setup    # select "byterover"
 ```
 
 Or manually:
 ```bash
-prostor config set memory.provider byterover
+hermes config set memory.provider byterover
 # Optional cloud sync:
-echo "BRV_API_KEY=your-key" >> ~/.prostor/.env
+echo "BRV_API_KEY=your-key" >> ~/.hermes/.env
 ```
 
 ## Config
@@ -30,7 +30,7 @@ echo "BRV_API_KEY=your-key" >> ~/.prostor/.env
 |---------|----------|-------------|
 | `BRV_API_KEY` | No | Cloud sync key (optional, local-first by default) |
 
-Working directory: `$PROSTOR_HOME/byterover/` (profile-scoped).
+Working directory: `$HERMES_HOME/byterover/` (profile-scoped).
 
 ## Tools
 

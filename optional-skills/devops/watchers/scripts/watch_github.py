@@ -6,7 +6,7 @@ Usage (via cron with --no-agent):
     prostor cron create prostor-issues \\
       --schedule "*/5 * * * *" --no-agent \\
       --script "$PROSTOR_HOME/skills/devops/watchers/scripts/watch_github.py" \\
-      --script-args "--name prostor-issues --repo maksim9510/Prostor --scope issues"
+      --script-args "--name prostor-issues --repo NousResearch/prostor-agent --scope issues"
 
 Set GITHUB_TOKEN (or GH_TOKEN) in the Prostor .env file
 (``${PROSTOR_HOME:-~/.prostor}/.env``) to avoid the 60 req/hr

@@ -2,11 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
-from cli import ProstorCLI
+from cli import HermesCLI
 
 
-def _make_cli() -> ProstorCLI:
-    cli_obj = ProstorCLI.__new__(ProstorCLI)
+def _make_cli() -> HermesCLI:
+    cli_obj = HermesCLI.__new__(HermesCLI)
     cli_obj.config = {}
     cli_obj.console = MagicMock()
     cli_obj.agent = None

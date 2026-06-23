@@ -1,84 +1,85 @@
-name: ✨ Feature Request
-description: Предложить новую фичу в Prostor
+name: "✨ Feature Request"
+description: Suggest a new feature or improvement.
 title: "[Feature]: "
-labels: ["enhancement", "status:needs-triage"]
-assignees: []
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Хотите новую возможность в Prostor? Опишите её здесь.
-        Хороший запрос содержит **проблему**, **решение** и **альтернативы**.
+        Thanks for the suggestion! Before submitting, please consider:
 
-  - type: dropdown
-    id: area
-    attributes:
-      label: Область
-      options:
-        - area:agents
-        - area:tools
-        - area:gateway
-        - area:ui
-        - area:cli
-        - area:skills
-        - area:docs
-        - area:i18n
-        - area:release
-    validations:
-      required: true
-
-  - type: dropdown
-    id: priority
-    attributes:
-      label: Приоритет (по вашему мнению)
-      options:
-        - priority:critical (блокирует мою работу)
-        - priority:high (нужно в ближайшем релизе)
-        - priority:medium (когда-нибудь)
-        - priority:low (nice-to-have)
-    validations:
-      required: false
+        - **Is this a new skill?** Most capabilities should be [skills, not tools](https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md#should-it-be-a-skill-or-a-tool). If it's a specialized integration (crypto, NFT, niche SaaS), it belongs on the Skills Hub, not bundled.
+        - **Search [existing issues](https://github.com/NousResearch/hermes-agent/issues)** — someone may have already proposed this.
 
   - type: textarea
     id: problem
     attributes:
-      label: Какую проблему решаем?
-      description: Опишите use case / боль / ситуацию, в которой эта фича нужна
+      label: Problem or Use Case
+      description: What problem does this solve? What are you trying to do that you can't today?
+      placeholder: |
+        I'm trying to use Hermes with [provider/platform/workflow] but currently
+        there's no way to...
     validations:
       required: true
 
   - type: textarea
     id: solution
     attributes:
-      label: Предлагаемое решение
-      description: Как вы представляете реализацию? API, CLI-команда, skill?
+      label: Proposed Solution
+      description: How do you think this should work? Be as specific as you can — CLI flags, config options, UI behavior.
+      placeholder: |
+        Add a `--foo` flag to `hermes chat` that enables...
+        Or: Add a config key `bar.baz` that controls...
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Альтернативы, которые вы рассматривали
-      description: Workaround'ы, другие подходы, почему они не подходят
-    validations:
-      required: false
+      label: Alternatives Considered
+      description: What other approaches did you consider? Why is the proposed solution better?
 
-  - type: textarea
-    id: examples
+  - type: dropdown
+    id: type
     attributes:
-      label: Примеры
-      description: Примеры использования, желательно в формате CLI/skills
-      placeholder: |
-        prostor tools install my-skill
-        /команда аргументы
+      label: Feature Type
+      options:
+        - New tool
+        - New bundled skill
+        - CLI improvement
+        - Gateway / messaging improvement
+        - Configuration option
+        - Performance / reliability
+        - Developer experience (tests, docs, CI)
+        - Other
     validations:
-      required: false
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: How big is this change?
+      options:
+        - Small (single file, < 50 lines)
+        - Medium (few files, < 300 lines)
+        - Large (new module or significant refactor)
 
   - type: checkboxes
-    id: hacktoberfest
+    id: pr-ready
     attributes:
-      label: Участие
+      label: Contribution
       options:
-        - label: Готов(а) реализовать в PR
-        - label: Готов(а) тестировать
-        - label: Это для Hacktoberfest
+        - label: I'd like to implement this myself and submit a PR
+
+  - type: textarea
+    id: debug-report
+    attributes:
+      label: Debug Report (optional)
+      description: |
+        If this feature request is related to a problem you're experiencing, run `hermes debug share` and paste the links here.
+        In an interactive chat session, you can use `/debug` instead.
+        This helps us understand your environment and any related logs.
+      placeholder: |
+        Report   https://paste.rs/abc123
+      render: shell

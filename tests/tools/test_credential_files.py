@@ -32,26 +32,26 @@ def _clean_state():
 
 class TestRegisterCredentialFiles:
     def test_dict_with_path_key(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        (prostor_home / "token.json").write_text("{}")
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        (hermes_home / "token.json").write_text("{}")
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             missing = register_credential_files([{"path": "token.json"}])
 
         assert missing == []
         mounts = get_credential_file_mounts()
         assert len(mounts) == 1
-        assert mounts[0]["host_path"] == str(prostor_home / "token.json")
+        assert mounts[0]["host_path"] == str(hermes_home / "token.json")
         assert mounts[0]["container_path"] == "/root/.prostor/token.json"
 
     def test_dict_with_name_key_fallback(self, tmp_path):
         """Skills use 'name' instead of 'path' — both should work."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        (prostor_home / "google_token.json").write_text("{}")
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        (hermes_home / "google_token.json").write_text("{}")
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             missing = register_credential_files([
                 {"name": "google_token.json", "description": "OAuth token"},
             ])
@@ -62,11 +62,11 @@ class TestRegisterCredentialFiles:
         assert "google_token.json" in mounts[0]["container_path"]
 
     def test_string_entry(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        (prostor_home / "secret.key").write_text("key")
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        (hermes_home / "secret.key").write_text("key")
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             missing = register_credential_files(["secret.key"])
 
         assert missing == []
@@ -74,10 +74,10 @@ class TestRegisterCredentialFiles:
         assert len(mounts) == 1
 
     def test_missing_file_reported(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             missing = register_credential_files([
                 {"name": "does_not_exist.json"},
             ])
@@ -87,11 +87,11 @@ class TestRegisterCredentialFiles:
 
     def test_path_takes_precedence_over_name(self, tmp_path):
         """When both path and name are present, path wins."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        (prostor_home / "real.json").write_text("{}")
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        (hermes_home / "real.json").write_text("{}")
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             missing = register_credential_files([
                 {"path": "real.json", "name": "wrong.json"},
             ])
@@ -103,13 +103,13 @@ class TestRegisterCredentialFiles:
 
 class TestSkillsDirectoryMount:
     def test_returns_mount_when_skills_dir_exists(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        skills_dir = prostor_home / "skills"
+        hermes_home = tmp_path / ".prostor"
+        skills_dir = hermes_home / "skills"
         skills_dir.mkdir(parents=True)
         (skills_dir / "test-skill").mkdir()
         (skills_dir / "test-skill" / "SKILL.md").write_text("# test")
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             mounts = get_skills_directory_mount()
 
         assert len(mounts) >= 1
@@ -117,10 +117,10 @@ class TestSkillsDirectoryMount:
         assert mounts[0]["container_path"] == "/root/.prostor/skills"
 
     def test_returns_none_when_no_skills_dir(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             mounts = get_skills_directory_mount()
 
         # No local skills dir → no local mount (external dirs may still appear)
@@ -128,18 +128,18 @@ class TestSkillsDirectoryMount:
         assert local_mounts == []
 
     def test_custom_container_base(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        (prostor_home / "skills").mkdir(parents=True)
+        hermes_home = tmp_path / ".prostor"
+        (hermes_home / "skills").mkdir(parents=True)
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             mounts = get_skills_directory_mount(container_base="/home/user/.prostor")
 
         assert mounts[0]["container_path"] == "/home/user/.prostor/skills"
 
     def test_symlinks_are_sanitized(self, tmp_path):
         """Symlinks in skills dir should be excluded from the mount."""
-        prostor_home = tmp_path / ".prostor"
-        skills_dir = prostor_home / "skills"
+        hermes_home = tmp_path / ".prostor"
+        skills_dir = hermes_home / "skills"
         skills_dir.mkdir(parents=True)
         (skills_dir / "legit.md").write_text("# real skill")
         # Create a symlink pointing outside the skills tree
@@ -147,7 +147,7 @@ class TestSkillsDirectoryMount:
         secret.write_text("TOP SECRET")
         (skills_dir / "evil_link").symlink_to(secret)
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             mounts = get_skills_directory_mount()
 
         assert len(mounts) >= 1
@@ -163,12 +163,12 @@ class TestSkillsDirectoryMount:
 
     def test_no_symlinks_returns_original_dir(self, tmp_path):
         """When no symlinks exist, the original dir is returned (no copy)."""
-        prostor_home = tmp_path / ".prostor"
-        skills_dir = prostor_home / "skills"
+        hermes_home = tmp_path / ".prostor"
+        skills_dir = hermes_home / "skills"
         skills_dir.mkdir(parents=True)
         (skills_dir / "skill.md").write_text("ok")
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             mounts = get_skills_directory_mount()
 
         assert mounts[0]["host_path"] == str(skills_dir)
@@ -176,8 +176,8 @@ class TestSkillsDirectoryMount:
 
 class TestIterSkillsFiles:
     def test_returns_files_skipping_symlinks(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        skills_dir = prostor_home / "skills"
+        hermes_home = tmp_path / ".prostor"
+        skills_dir = hermes_home / "skills"
         (skills_dir / "cat" / "myskill").mkdir(parents=True)
         (skills_dir / "cat" / "myskill" / "SKILL.md").write_text("# skill")
         (skills_dir / "cat" / "myskill" / "scripts").mkdir()
@@ -187,7 +187,7 @@ class TestIterSkillsFiles:
         secret.write_text("nope")
         (skills_dir / "cat" / "myskill" / "evil").symlink_to(secret)
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             files = iter_skills_files()
 
         paths = {f["container_path"] for f in files}
@@ -197,10 +197,10 @@ class TestIterSkillsFiles:
         assert not any("evil" in f["container_path"] for f in files)
 
     def test_empty_when_no_skills_dir(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             assert iter_skills_files() == []
 
 class TestPathTraversalSecurity:
@@ -220,7 +220,7 @@ class TestPathTraversalSecurity:
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / ".prostor"))
         (tmp_path / ".prostor").mkdir()
 
-        # Create a sensitive file one level above prostor_home
+        # Create a sensitive file one level above hermes_home
         sensitive = tmp_path / "sensitive.json"
         sensitive.write_text('{"secret": "value"}')
 
@@ -231,11 +231,11 @@ class TestPathTraversalSecurity:
 
     def test_deep_traversal_rejected(self, tmp_path, monkeypatch):
         """'../../etc/passwd' style traversal must be rejected."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
-        # Create a fake sensitive file outside prostor_home
+        # Create a fake sensitive file outside hermes_home
         ssh_dir = tmp_path / ".ssh"
         ssh_dir.mkdir()
         (ssh_dir / "id_rsa").write_text("PRIVATE KEY")
@@ -247,9 +247,9 @@ class TestPathTraversalSecurity:
 
     def test_absolute_path_rejected(self, tmp_path, monkeypatch):
         """Absolute paths must be rejected regardless of whether they exist."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         # Create a file at an absolute path
         sensitive = tmp_path / "absolute.json"
@@ -262,10 +262,10 @@ class TestPathTraversalSecurity:
 
     def test_legitimate_file_still_works(self, tmp_path, monkeypatch):
         """Normal files inside PROSTOR_HOME must still be registered."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
-        (prostor_home / "token.json").write_text('{"token": "abc"}')
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
+        (hermes_home / "token.json").write_text('{"token": "abc"}')
 
         result = register_credential_file("token.json")
 
@@ -274,14 +274,14 @@ class TestPathTraversalSecurity:
         assert len(mounts) == 1
         assert "token.json" in mounts[0]["container_path"]
 
-    def test_nested_subdir_inside_prostor_home_allowed(self, tmp_path, monkeypatch):
+    def test_nested_subdir_inside_hermes_home_allowed(self, tmp_path, monkeypatch):
         """Files in subdirectories of PROSTOR_HOME must be allowed."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        subdir = prostor_home / "creds"
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        subdir = hermes_home / "creds"
         subdir.mkdir()
         (subdir / "oauth.json").write_text("{}")
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         result = register_credential_file("creds/oauth.json")
 
@@ -289,16 +289,16 @@ class TestPathTraversalSecurity:
 
     def test_symlink_traversal_rejected(self, tmp_path, monkeypatch):
         """A symlink inside PROSTOR_HOME pointing outside must be rejected."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
-        # Create a sensitive file outside prostor_home
+        # Create a sensitive file outside hermes_home
         sensitive = tmp_path / "sensitive.json"
         sensitive.write_text('{"secret": "value"}')
 
-        # Create a symlink inside prostor_home pointing outside
-        symlink = prostor_home / "evil_link.json"
+        # Create a symlink inside hermes_home pointing outside
+        symlink = hermes_home / "evil_link.json"
         try:
             symlink.symlink_to(sensitive)
         except (OSError, NotImplementedError):
@@ -318,20 +318,20 @@ class TestPathTraversalSecurity:
 class TestConfigPathTraversal:
     """terminal.credential_files in config.yaml must also reject traversal."""
 
-    def _write_config(self, prostor_home: Path, cred_files: list):
+    def _write_config(self, hermes_home: Path, cred_files: list):
         import yaml
-        config_path = prostor_home / "config.yaml"
+        config_path = hermes_home / "config.yaml"
         config_path.write_text(yaml.dump({"terminal": {"credential_files": cred_files}}))
 
     def test_config_traversal_rejected(self, tmp_path, monkeypatch):
         """'../secret' in config.yaml must not escape PROSTOR_HOME."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         sensitive = tmp_path / "secret.json"
         sensitive.write_text("{}")
-        self._write_config(prostor_home, ["../secret.json"])
+        self._write_config(hermes_home, ["../secret.json"])
 
         mounts = get_credential_file_mounts()
         host_paths = [m["host_path"] for m in mounts]
@@ -340,25 +340,25 @@ class TestConfigPathTraversal:
 
     def test_config_absolute_path_rejected(self, tmp_path, monkeypatch):
         """Absolute paths in config.yaml must be rejected."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         sensitive = tmp_path / "abs.json"
         sensitive.write_text("{}")
-        self._write_config(prostor_home, [str(sensitive)])
+        self._write_config(hermes_home, [str(sensitive)])
 
         mounts = get_credential_file_mounts()
         assert mounts == []
 
     def test_config_legitimate_file_works(self, tmp_path, monkeypatch):
         """Normal files inside PROSTOR_HOME via config must still mount."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
-        (prostor_home / "oauth.json").write_text("{}")
-        self._write_config(prostor_home, ["oauth.json"])
+        (hermes_home / "oauth.json").write_text("{}")
+        self._write_config(hermes_home, ["oauth.json"])
 
         mounts = get_credential_file_mounts()
         assert len(mounts) == 1
@@ -374,12 +374,12 @@ class TestCacheDirectoryMounts:
 
     def test_returns_existing_cache_dirs(self, tmp_path, monkeypatch):
         """Existing cache dirs are returned with correct container paths."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        (prostor_home / "cache" / "documents").mkdir(parents=True)
-        (prostor_home / "cache" / "audio").mkdir(parents=True)
-        (prostor_home / "cache" / "videos").mkdir(parents=True)
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        (hermes_home / "cache" / "documents").mkdir(parents=True)
+        (hermes_home / "cache" / "audio").mkdir(parents=True)
+        (hermes_home / "cache" / "videos").mkdir(parents=True)
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         mounts = get_cache_directory_mounts()
         paths = {m["container_path"] for m in mounts}
@@ -389,11 +389,11 @@ class TestCacheDirectoryMounts:
 
     def test_skips_nonexistent_dirs(self, tmp_path, monkeypatch):
         """Dirs that don't exist on disk are not returned."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
         # Create only one cache dir
-        (prostor_home / "cache" / "documents").mkdir(parents=True)
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        (hermes_home / "cache" / "documents").mkdir(parents=True)
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         mounts = get_cache_directory_mounts()
         assert len(mounts) == 1
@@ -401,27 +401,27 @@ class TestCacheDirectoryMounts:
 
     def test_legacy_dir_names_resolved(self, tmp_path, monkeypatch):
         """Old-style dir names (e.g. document_cache) are resolved correctly."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        # Use legacy dir name — get_prostor_dir prefers old if it exists
-        (prostor_home / "document_cache").mkdir()
-        (prostor_home / "image_cache").mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        # Use legacy dir name — get_hermes_dir prefers old if it exists
+        (hermes_home / "document_cache").mkdir()
+        (hermes_home / "image_cache").mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         mounts = get_cache_directory_mounts()
         host_paths = {m["host_path"] for m in mounts}
-        assert str(prostor_home / "document_cache") in host_paths
-        assert str(prostor_home / "image_cache") in host_paths
+        assert str(hermes_home / "document_cache") in host_paths
+        assert str(hermes_home / "image_cache") in host_paths
         # Container paths always use the new layout
         container_paths = {m["container_path"] for m in mounts}
         assert "/root/.prostor/cache/documents" in container_paths
         assert "/root/.prostor/cache/images" in container_paths
 
-    def test_empty_prostor_home(self, tmp_path, monkeypatch):
+    def test_empty_hermes_home(self, tmp_path, monkeypatch):
         """No cache dirs → empty list."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         assert get_cache_directory_mounts() == []
 
@@ -430,11 +430,11 @@ class TestMapCachePathToContainer:
     """Tests for map_cache_path_to_container() — the backend-agnostic mapper."""
 
     def test_maps_path_under_cache_dir(self, tmp_path, monkeypatch):
-        prostor_home = tmp_path / ".prostor"
-        img_dir = prostor_home / "cache" / "images"
+        hermes_home = tmp_path / ".prostor"
+        img_dir = hermes_home / "cache" / "images"
         img_dir.mkdir(parents=True)
         host_path = str(img_dir / "generated.png")
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         assert (
             map_cache_path_to_container(host_path)
@@ -442,11 +442,11 @@ class TestMapCachePathToContainer:
         )
 
     def test_custom_container_base_for_remote_home(self, tmp_path, monkeypatch):
-        prostor_home = tmp_path / ".prostor"
-        img_dir = prostor_home / "cache" / "images"
+        hermes_home = tmp_path / ".prostor"
+        img_dir = hermes_home / "cache" / "images"
         img_dir.mkdir(parents=True)
         host_path = str(img_dir / "remote.png")
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         assert (
             map_cache_path_to_container(host_path, container_base="/home/agent/.prostor")
@@ -454,18 +454,18 @@ class TestMapCachePathToContainer:
         )
 
     def test_returns_none_when_outside_cache_dirs(self, tmp_path, monkeypatch):
-        prostor_home = tmp_path / ".prostor"
-        (prostor_home / "cache" / "images").mkdir(parents=True)
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        (hermes_home / "cache" / "images").mkdir(parents=True)
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         assert map_cache_path_to_container(str(tmp_path / "elsewhere.png")) is None
 
     def test_returns_none_when_no_cache_dirs_exist(self, tmp_path, monkeypatch):
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
-        assert map_cache_path_to_container(str(prostor_home / "cache" / "images" / "x.png")) is None
+        assert map_cache_path_to_container(str(hermes_home / "cache" / "images" / "x.png")) is None
 
 
 class TestIterCacheFiles:
@@ -473,12 +473,12 @@ class TestIterCacheFiles:
 
     def test_enumerates_files(self, tmp_path, monkeypatch):
         """Regular files in cache dirs are returned."""
-        prostor_home = tmp_path / ".prostor"
-        doc_dir = prostor_home / "cache" / "documents"
+        hermes_home = tmp_path / ".prostor"
+        doc_dir = hermes_home / "cache" / "documents"
         doc_dir.mkdir(parents=True)
         (doc_dir / "upload.zip").write_bytes(b"PK\x03\x04")
         (doc_dir / "report.pdf").write_bytes(b"%PDF-1.4")
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         entries = iter_cache_files()
         names = {Path(e["container_path"]).name for e in entries}
@@ -487,13 +487,13 @@ class TestIterCacheFiles:
 
     def test_skips_symlinks(self, tmp_path, monkeypatch):
         """Symlinks inside cache dirs are skipped."""
-        prostor_home = tmp_path / ".prostor"
-        doc_dir = prostor_home / "cache" / "documents"
+        hermes_home = tmp_path / ".prostor"
+        doc_dir = hermes_home / "cache" / "documents"
         doc_dir.mkdir(parents=True)
         real_file = doc_dir / "real.txt"
         real_file.write_text("content")
         (doc_dir / "link.txt").symlink_to(real_file)
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         entries = iter_cache_files()
         names = [Path(e["container_path"]).name for e in entries]
@@ -502,12 +502,12 @@ class TestIterCacheFiles:
 
     def test_nested_files(self, tmp_path, monkeypatch):
         """Files in subdirectories are included with correct relative paths."""
-        prostor_home = tmp_path / ".prostor"
-        ss_dir = prostor_home / "cache" / "screenshots"
+        hermes_home = tmp_path / ".prostor"
+        ss_dir = hermes_home / "cache" / "screenshots"
         sub = ss_dir / "session_abc"
         sub.mkdir(parents=True)
         (sub / "screen1.png").write_bytes(b"PNG")
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         entries = iter_cache_files()
         assert len(entries) == 1
@@ -515,8 +515,8 @@ class TestIterCacheFiles:
 
     def test_empty_cache(self, tmp_path, monkeypatch):
         """No cache dirs → empty list."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         assert iter_cache_files() == []

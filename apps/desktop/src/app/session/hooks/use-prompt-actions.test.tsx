@@ -72,13 +72,10 @@ function Harness({
   storedSessionId?: null | string
 }) {
   const activeSessionIdRef: MutableRefObject<string | null> = { current: RUNTIME_SESSION_ID }
-
   const selectedStoredSessionIdRef: MutableRefObject<string | null> = {
     current: storedSessionId === undefined ? RUNTIME_SESSION_ID : storedSessionId
   }
-
   const localBusyRef = busyRef ?? { current: false }
-
   const stateRef = useRef({
     messages: seedMessages ?? [],
     busy: false,
@@ -133,7 +130,6 @@ describe('usePromptActions /title', () => {
 
   it('renames via the session.title RPC (with the runtime id), updates the sidebar store, and refreshes', async () => {
     const refreshSessions = vi.fn(async () => undefined)
-
     const requestGateway = vi.fn(async (method: string) =>
       (method === 'session.title' ? { pending: false, title: 'New title' } : {}) as never
     )
@@ -157,7 +153,6 @@ describe('usePromptActions /title', () => {
 
   it('reports the queued state when the session row is not persisted yet', async () => {
     const refreshSessions = vi.fn(async () => undefined)
-
     const requestGateway = vi.fn(async (method: string) =>
       (method === 'session.title' ? { pending: true, title: 'Fresh chat' } : {}) as never
     )
@@ -191,7 +186,6 @@ describe('usePromptActions /title', () => {
 
   it('surfaces a rename error without touching the sidebar store', async () => {
     const refreshSessions = vi.fn(async () => undefined)
-
     const requestGateway = vi.fn(async (method: string) => {
       if (method === 'session.title') {
         throw new Error('Title too long')
@@ -221,7 +215,6 @@ describe('usePromptActions slash.exec dispatch payloads', () => {
   it('submits /goal send directives returned directly by slash.exec instead of rendering no output', async () => {
     const calls: { method: string; params?: Record<string, unknown> }[] = []
     const states: Record<string, unknown>[] = []
-
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       calls.push({ method, params })
 
@@ -307,7 +300,6 @@ describe('usePromptActions desktop slash pickers', () => {
   it('marks a timed-out handoff as failed so the next attempt can retry', async () => {
     vi.useFakeTimers()
     const calls: { method: string; params?: Record<string, unknown> }[] = []
-
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       calls.push({ method, params })
 
@@ -400,7 +392,6 @@ describe('usePromptActions submit / queue drain semantics', () => {
     // auto-drain re-attempts once the session is idle again. storedSessionId is
     // null so the session.resume recovery path is skipped and the error surfaces.
     let attempt = 0
-
     const requestGateway = vi.fn(async (method: string) => {
       if (method === 'prompt.submit') {
         attempt += 1
@@ -440,7 +431,6 @@ describe('usePromptActions submit / queue drain semantics', () => {
     // gateway accepts, never a red "session busy" bubble.
     let attempt = 0
     const seeds: Record<string, unknown>[] = []
-
     const requestGateway = vi.fn(async (method: string) => {
       if (method === 'prompt.submit') {
         attempt += 1
@@ -617,7 +607,6 @@ describe('usePromptActions restoreToMessage', () => {
     $busy.set(true)
 
     let submitAttempts = 0
-
     const requestGateway = vi.fn(async (method: string) => {
       if (method === 'prompt.submit') {
         submitAttempts += 1
@@ -689,16 +678,14 @@ describe('usePromptActions file attachment sync', () => {
     // not the original /Users/... path (which would dead-end as "outside the
     // allowed workspace").
     $connection.set({ mode: 'remote' } as never)
-    Object.defineProperty(window, 'prostorDesktop', {
+    Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: { readFileDataUrl: vi.fn(async () => 'data:text/plain;base64,aGVsbG8=') }
     })
 
     const calls: { method: string; params?: Record<string, unknown> }[] = []
-
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       calls.push({ method, params })
-
       if (method === 'file.attach') {
         return {
           attached: true,
@@ -707,7 +694,6 @@ describe('usePromptActions file attachment sync', () => {
           uploaded: true
         } as never
       }
-
       return {} as never
     })
 
@@ -742,7 +728,7 @@ describe('usePromptActions file attachment sync', () => {
     // path-less inline ref. See partitionDroppedFiles in use-composer-actions.
     $connection.set({ mode: 'remote' } as never)
     const readFileDataUrl = vi.fn(async () => 'data:application/pdf;base64,JVBERi0=')
-    Object.defineProperty(window, 'prostorDesktop', {
+    Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: { readFileDataUrl }
     })
@@ -756,10 +742,8 @@ describe('usePromptActions file attachment sync', () => {
     }
 
     const calls: { method: string; params?: Record<string, unknown> }[] = []
-
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       calls.push({ method, params })
-
       return {} as never
     })
 
@@ -779,14 +763,11 @@ describe('usePromptActions file attachment sync', () => {
     $connection.set({ mode: 'local' } as never)
 
     const calls: { method: string; params?: Record<string, unknown> }[] = []
-
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       calls.push({ method, params })
-
       if (method === 'file.attach') {
         return { attached: true, ref_text: '@file:data/report.txt', uploaded: false } as never
       }
-
       return {} as never
     })
 
@@ -825,26 +806,22 @@ describe('usePromptActions eager-upload races', () => {
     // under .prostor/desktop-attachments/. Submit must await the in-flight upload
     // and reuse its gateway-side ref.
     $connection.set({ mode: 'remote' } as never)
-    Object.defineProperty(window, 'prostorDesktop', {
+    Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: { readFileDataUrl: vi.fn(async () => 'data:application/pdf;base64,JVBERi0=') }
     })
 
     let releaseAttach: () => void = () => {}
     const methods: string[] = []
-
     const requestGateway = vi.fn(async (method: string) => {
       methods.push(method)
-
       if (method === 'file.attach') {
         // Block until released so submit runs while the upload is in flight.
         await new Promise<void>(resolve => {
           releaseAttach = resolve
         })
-
         return { attached: true, ref_text: '@file:.prostor/desktop-attachments/doc.pdf', uploaded: true } as never
       }
-
       return {} as never
     })
 
@@ -883,24 +860,18 @@ describe('usePromptActions sleep/wake session recovery', () => {
     // and retries the send transparently.
     const calls: { method: string; params?: Record<string, unknown> }[] = []
     let submitAttempts = 0
-
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       calls.push({ method, params })
-
       if (method === 'prompt.submit') {
         submitAttempts += 1
-
         if (submitAttempts === 1) {
           throw new Error('session not found')
         }
-
         return {} as never
       }
-
       if (method === 'session.resume') {
         return { session_id: RECOVERED_SESSION_ID } as never
       }
-
       return {} as never
     })
 
@@ -926,24 +897,18 @@ describe('usePromptActions sleep/wake session recovery', () => {
   it('resumes the stored session and retries once when session.interrupt reports "session not found"', async () => {
     const calls: { method: string; params?: Record<string, unknown> }[] = []
     let interruptAttempts = 0
-
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       calls.push({ method, params })
-
       if (method === 'session.interrupt') {
         interruptAttempts += 1
-
         if (interruptAttempts === 1) {
           throw new Error('session not found')
         }
-
         return {} as never
       }
-
       if (method === 'session.resume') {
         return { session_id: RECOVERED_SESSION_ID } as never
       }
-
       return {} as never
     })
 
@@ -969,14 +934,11 @@ describe('usePromptActions sleep/wake session recovery', () => {
   it('surfaces the original error (no resume) when the failure is not "session not found"', async () => {
     const calls: string[] = []
     const states: Record<string, unknown>[] = []
-
     const requestGateway = vi.fn(async (method: string) => {
       calls.push(method)
-
       if (method === 'prompt.submit') {
         throw new Error('gateway exploded')
       }
-
       return {} as never
     })
 
@@ -999,14 +961,11 @@ describe('usePromptActions sleep/wake session recovery', () => {
 
   it('surfaces "session not found" (no resume) when there is no stored session id', async () => {
     const calls: string[] = []
-
     const requestGateway = vi.fn(async (method: string) => {
       calls.push(method)
-
       if (method === 'prompt.submit') {
         throw new Error('session not found')
       }
-
       return {} as never
     })
 
@@ -1042,17 +1001,14 @@ describe('usePromptActions eager attachment upload (drop-time)', () => {
     // waiting for submit.
     $connection.set({ mode: 'remote' } as never)
     const readFileDataUrl = vi.fn(async () => 'data:application/pdf;base64,JVBERi0=')
-    Object.defineProperty(window, 'prostorDesktop', { configurable: true, value: { readFileDataUrl } })
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { readFileDataUrl } })
 
     const calls: string[] = []
-
     const requestGateway = vi.fn(async (method: string) => {
       calls.push(method)
-
       if (method === 'file.attach') {
         return { attached: true, ref_text: '@file:.prostor/desktop-attachments/DEVIS_signed.pdf', uploaded: true } as never
       }
-
       return {} as never
     })
 
@@ -1073,7 +1029,7 @@ describe('usePromptActions eager attachment upload (drop-time)', () => {
 
   it('flags the chip uploadState=error when the eager upload fails, keeping the path so submit can retry', async () => {
     $connection.set({ mode: 'remote' } as never)
-    Object.defineProperty(window, 'prostorDesktop', {
+    Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: { readFileDataUrl: vi.fn(async () => 'data:application/pdf;base64,JVBERi0=') }
     })
@@ -1082,7 +1038,6 @@ describe('usePromptActions eager attachment upload (drop-time)', () => {
       if (method === 'file.attach') {
         throw new Error('[Errno 13] Permission denied')
       }
-
       return {} as never
     })
 
@@ -1125,7 +1080,7 @@ describe('uploadComposerAttachment remote read failures', () => {
   it('turns the raw 16MB IPC cap error into a friendly remote-gateway message', async () => {
     // electron/hardening.cjs rejects the readFileDataUrl IPC with this exact
     // shape when a file exceeds DATA_URL_READ_MAX_BYTES.
-    Object.defineProperty(window, 'prostorDesktop', {
+    Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
         readFileDataUrl: vi.fn(async () => {
@@ -1148,7 +1103,7 @@ describe('uploadComposerAttachment remote read failures', () => {
   })
 
   it('passes non-cap read errors through unchanged', async () => {
-    Object.defineProperty(window, 'prostorDesktop', {
+    Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
         readFileDataUrl: vi.fn(async () => {

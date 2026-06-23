@@ -91,9 +91,9 @@ def list_providers() -> list[ProviderProfile]:
 def _user_plugins_dir() -> Path | None:
     """Return ``$PROSTOR_HOME/plugins/model-providers/`` if it exists."""
     try:
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
 
-        d = get_prostor_home() / "plugins" / "model-providers"
+        d = get_hermes_home() / "plugins" / "model-providers"
         return d if d.is_dir() else None
     except Exception:
         return None
@@ -116,7 +116,7 @@ def _import_plugin_dir(plugin_dir: Path, source: str) -> None:
     if source == "bundled":
         module_name = f"plugins.model_providers.{safe_name}"
     else:
-        module_name = f"_prostor_user_provider_{safe_name}"
+        module_name = f"_hermes_user_provider_{safe_name}"
 
     if module_name in sys.modules:
         return  # already imported

@@ -8,6 +8,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { ErrorIcon } from '@/components/ui/error-state'
 import { Input } from '@/components/ui/input'
 import { Loader } from '@/components/ui/loader'
+import { getGlobalModelOptions } from '@/prostor'
 import { useI18n } from '@/i18n'
 import {
   Check,
@@ -21,7 +22,6 @@ import {
 } from '@/lib/icons'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { cn } from '@/lib/utils'
-import { getGlobalModelOptions } from '@/prostor'
 import { $desktopBoot, type DesktopBootState } from '@/store/boot'
 import {
   $desktopOnboarding,
@@ -93,7 +93,7 @@ const API_KEY_OPTIONS: ApiKeyOption[] = [
     id: 'local',
     name: 'Local / custom endpoint',
     envKey: 'OPENAI_BASE_URL',
-    docsUrl: 'https://github.com/maksim9510/Prostor#bring-your-own-endpoint',
+    docsUrl: 'https://github.com/NousResearch/prostor-agent#bring-your-own-endpoint',
     placeholder: 'http://127.0.0.1:8000/v1'
   }
 ]

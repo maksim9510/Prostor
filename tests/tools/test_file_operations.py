@@ -76,19 +76,19 @@ class TestIsWriteDenied:
     )
     def test_oauth_mcp_tokens_and_pairing_denied(self, path):
         """PKCE creds, mcp-tokens, and pairing entries must be write-denied."""
-        from prostor_constants import get_prostor_home
-        prostor_home = get_prostor_home()
-        full_path = str(prostor_home / path)
+        from hermes_constants import get_hermes_home
+        hermes_home = get_hermes_home()
+        full_path = str(hermes_home / path)
         assert _is_write_denied(full_path) is True
 
     @pytest.mark.parametrize(
         "path",
         ["auth.json", "config.yaml", "webhook_subscriptions.json"],
     )
-    def test_prostor_control_files_requested_writable(self, path):
-        from prostor_constants import get_prostor_home
+    def test_hermes_control_files_requested_writable(self, path):
+        from hermes_constants import get_hermes_home
 
-        assert _is_write_denied(str(get_prostor_home() / path)) is False
+        assert _is_write_denied(str(get_hermes_home() / path)) is False
 
     @pytest.mark.parametrize(
         "path",
@@ -98,9 +98,9 @@ class TestIsWriteDenied:
     )
     def test_oauth_traversal_denied(self, path):
         """Path traversal attempts to protected OAuth files must be blocked."""
-        from prostor_constants import get_prostor_home
-        prostor_home = get_prostor_home()
-        full_path = str(prostor_home / path)
+        from hermes_constants import get_hermes_home
+        hermes_home = get_hermes_home()
+        full_path = str(hermes_home / path)
         assert _is_write_denied(full_path) is True
 
     @pytest.mark.parametrize(
@@ -527,10 +527,10 @@ class TestShellFileOpsHelpers:
 
     def test_read_file_strips_leaked_terminal_fence_markers(self, mock_env):
         leaked = (
-            "'\x07__PROSTOR_FENCE_a9f7b3__\x1b]0;cat "
+            "'\x07__HERMES_FENCE_a9f7b3__\x1b]0;cat "
             "'/tmp/test/a.py' 2> /dev/null\x07\n"
             "print('ok')\n"
-            "__PROSTOR_FENCE_a9f7b3__\x07'\n"
+            "__HERMES_FENCE_a9f7b3__\x07'\n"
         )
 
         def side_effect(command, **kwargs):
@@ -556,9 +556,9 @@ class TestShellFileOpsHelpers:
 
     def test_read_file_raw_strips_leaked_terminal_fence_markers(self, mock_env):
         leaked = (
-            "__PROSTOR_FENCE_a9f7b3__\x07'\n"
+            "__HERMES_FENCE_a9f7b3__\x07'\n"
             "alpha\n"
-            "\x1b]0;cat '/tmp/test/a.txt'\x07__PROSTOR_FENCE_a9f7b3__\n"
+            "\x1b]0;cat '/tmp/test/a.txt'\x07__HERMES_FENCE_a9f7b3__\n"
         )
 
         def side_effect(command, **kwargs):

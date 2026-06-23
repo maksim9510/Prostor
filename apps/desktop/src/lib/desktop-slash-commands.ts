@@ -150,7 +150,7 @@ const DESKTOP_COMMAND_SPECS: readonly DesktopCommandSpec[] = [
 const NO_DESKTOP_SURFACE: Record<DesktopUnavailableReason, readonly string[]> = {
   terminal: [
     '/busy', '/clear', '/compact', '/config', '/copy', '/cron', '/details',
-    '/exit', '/footer', '/gateway', '/gquota', '/history', '/image', '/indicator', '/logs',
+    '/exit', '/footer', '/gateway', '/history', '/image', '/indicator', '/logs',
     '/mouse', '/paste', '/platforms', '/plugins', '/quit', '/redraw', '/reload', '/restart',
     '/sb', '/set-home', '/sethome', '/snap', '/snapshot', '/statusbar', '/toolsets', '/update', '/verbose'
   ],
@@ -203,7 +203,7 @@ export function resolveDesktopCommand(command: string): DesktopCommandSpec | nul
   return SPEC_BY_NAME.get(canonicalDesktopSlashCommand(command)) ?? null
 }
 
-function isKnownProstorSlashCommand(command: string): boolean {
+function isKnownHermesSlashCommand(command: string): boolean {
   const normalized = normalizeCommand(command)
 
   return SPEC_BY_NAME.has(normalized) || ALIAS_TO_CANONICAL.has(normalized)
@@ -222,7 +222,7 @@ export function isDesktopSlashExtensionCommand(command: string): boolean {
     return false
   }
 
-  return !isKnownProstorSlashCommand(normalized)
+  return !isKnownHermesSlashCommand(normalized)
 }
 
 /** Gates execution: true unless the command is a known no-desktop-surface command. */

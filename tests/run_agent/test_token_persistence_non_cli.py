@@ -73,9 +73,9 @@ def test_session_search_lazily_opens_db_when_entrypoint_did_not_pass_one(monkeyp
         def __new__(cls):
             return sentinel_db
 
-    prostor_state = ModuleType("prostor_state")
-    prostor_state.SessionDB = FakeSessionDB
-    monkeypatch.setitem(sys.modules, "prostor_state", prostor_state)
+    hermes_state = ModuleType("hermes_state")
+    hermes_state.SessionDB = FakeSessionDB
+    monkeypatch.setitem(sys.modules, "hermes_state", hermes_state)
 
     session_search_mod = ModuleType("tools.session_search_tool")
 

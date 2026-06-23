@@ -8,7 +8,7 @@ initial kanban task.
 
 Profile-config patching, SOUL.md-per-profile, TEAM.md task-graph convention,
 and the `prostor kanban create --workspace dir:` initial-task pattern are
-adapted from alt-glitch's maksim9510/kanban-video-pipeline.
+adapted from alt-glitch's NousResearch/kanban-video-pipeline.
 
 Usage:
     bootstrap_pipeline.py plan.json [--out setup.sh]
@@ -423,8 +423,6 @@ def render_soul_md(team_member: dict, plan: dict) -> str:
             "- **Decompose, route, comment, approve — that's the whole job.**\n"
             "- **Read TEAM.md** for the canonical task graph. Do not invent "
             "new roles unless the brief truly demands it.\n"
-            "- **Load the `kanban-orchestrator` skill** for the deeper "
-            "decomposition playbook beyond the auto-injected baseline.\n"
         )
 
     common_commands = (

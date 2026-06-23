@@ -1,12 +1,12 @@
 import { useStore } from '@nanostores/react'
 
 import { ModelVisibilityDialog } from '@/components/model-visibility-dialog'
-import type { ProstorGateway } from '@/prostor'
+import type { HermesGateway } from '@/prostor'
 import { $modelVisibilityOpen, setModelVisibilityOpen } from '@/store/model-visibility'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 
 interface ModelVisibilityOverlayProps {
-  gateway?: ProstorGateway
+  gateway?: HermesGateway
   onOpenProviders: () => void
 }
 

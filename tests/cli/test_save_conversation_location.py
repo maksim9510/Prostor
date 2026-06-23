@@ -1,6 +1,6 @@
 """Tests for /save — the conversation snapshot slash command.
 
-Regression: the old implementation wrote ``prostor_conversation_<ts>.json``
+Regression: the old implementation wrote ``hermes_conversation_<ts>.json``
 to the current working directory (CWD). Users who ran /save expected the
 file to be discoverable via ``prostor sessions browse``, but CWD-resident
 snapshots are not indexed in the state DB and are generally invisible.
@@ -20,15 +20,15 @@ import pytest
 
 
 @pytest.fixture
-def prostor_home(tmp_path, monkeypatch):
+def hermes_home(tmp_path, monkeypatch):
     home = tmp_path / ".prostor"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("PROSTOR_HOME", str(home))
-    # Clear any cached prostor_home computation
-    import prostor_constants
-    if hasattr(prostor_constants, "_prostor_home_cache"):
-        prostor_constants._prostor_home_cache = None
+    # Clear any cached hermes_home computation
+    import hermes_constants
+    if hasattr(hermes_constants, "_hermes_home_cache"):
+        hermes_constants._hermes_home_cache = None
     return home
 
 
@@ -42,7 +42,7 @@ def _make_stub_cli(history):
     )
 
 
-def test_save_conversation_writes_under_prostor_home(prostor_home, tmp_path, monkeypatch, capsys):
+def test_save_conversation_writes_under_hermes_home(hermes_home, tmp_path, monkeypatch, capsys):
     """Snapshot must land under ~/.prostor/sessions/saved/, not CWD."""
     # Change CWD to a different directory to prove the file does NOT go there.
     work = tmp_path / "somewhere-else"
@@ -50,7 +50,7 @@ def test_save_conversation_writes_under_prostor_home(prostor_home, tmp_path, mon
     monkeypatch.chdir(work)
 
     # Import fresh to pick up the PROSTOR_HOME fixture
-    for mod in [m for m in sys.modules if m.startswith("cli") or m == "prostor_constants"]:
+    for mod in [m for m in sys.modules if m.startswith("cli") or m == "hermes_constants"]:
         sys.modules.pop(mod, None)
 
     import cli  # noqa: F401  (module under test)
@@ -61,16 +61,16 @@ def test_save_conversation_writes_under_prostor_home(prostor_home, tmp_path, mon
     ])
 
     # Call the unbound method against our stub.
-    cli.ProstorCLI.save_conversation(stub)
+    cli.HermesCLI.save_conversation(stub)
 
     # File must NOT be in CWD
-    cwd_leak = list(work.glob("prostor_conversation_*.json"))
+    cwd_leak = list(work.glob("hermes_conversation_*.json"))
     assert not cwd_leak, f"snapshot leaked to CWD: {cwd_leak}"
 
     # File MUST be under ~/.prostor/sessions/saved/
-    saved_dir = prostor_home / "sessions" / "saved"
+    saved_dir = hermes_home / "sessions" / "saved"
     assert saved_dir.is_dir(), "expected saved/ subdirectory to be created"
-    files = list(saved_dir.glob("prostor_conversation_*.json"))
+    files = list(saved_dir.glob("hermes_conversation_*.json"))
     assert len(files) == 1, files
 
     payload = json.loads(files[0].read_text())
@@ -87,15 +87,15 @@ def test_save_conversation_writes_under_prostor_home(prostor_home, tmp_path, mon
     assert "prostor --resume 20260101_120000_abc123" in out, out
 
 
-def test_save_conversation_empty_history_does_nothing(prostor_home, capsys):
-    for mod in [m for m in sys.modules if m.startswith("cli") or m == "prostor_constants"]:
+def test_save_conversation_empty_history_does_nothing(hermes_home, capsys):
+    for mod in [m for m in sys.modules if m.startswith("cli") or m == "hermes_constants"]:
         sys.modules.pop(mod, None)
     import cli
 
     stub = _make_stub_cli([])
-    cli.ProstorCLI.save_conversation(stub)
+    cli.HermesCLI.save_conversation(stub)
 
-    saved_dir = prostor_home / "sessions" / "saved"
+    saved_dir = hermes_home / "sessions" / "saved"
     assert not saved_dir.exists() or not list(saved_dir.iterdir())
     out = capsys.readouterr().out
     assert "No conversation to save" in out

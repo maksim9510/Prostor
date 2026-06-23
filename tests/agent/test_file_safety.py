@@ -66,7 +66,7 @@ class TestEnvFileReadBlocking:
             error = get_read_block_error(path)
             assert error is None, f"{path} should be allowed"
 
-    def test_allowed_prostor_env(self):
+    def test_allowed_hermes_env(self):
         """Prostor' own .env inside PROSTOR_HOME is NOT blocked by this rule
         (it's handled by other mechanisms). Only project-local .env is blocked."""
         # Note: prostor internal .env is in ~/.prostor/.env which is NOT a project-local
@@ -91,24 +91,24 @@ class TestCacheFileReadBlocking:
 
     def test_hub_index_cache_blocked(self, tmp_path):
         """Hub index-cache reads are blocked."""
-        prostor_home = tmp_path / ".prostor"
-        cache = prostor_home / "skills" / ".hub" / "index-cache" / "data.json"
+        hermes_home = tmp_path / ".prostor"
+        cache = hermes_home / "skills" / ".hub" / "index-cache" / "data.json"
         cache.parent.mkdir(parents=True)
         cache.write_text("{}")
 
-        with patch("agent.file_safety._prostor_home_path", return_value=prostor_home):
+        with patch("agent.file_safety._hermes_home_path", return_value=hermes_home):
             error = get_read_block_error(str(cache))
             assert error is not None
             assert "internal Prostor cache" in error
 
     def test_hub_directory_blocked(self, tmp_path):
         """Hub directory reads are blocked."""
-        prostor_home = tmp_path / ".prostor"
-        hub = prostor_home / "skills" / ".hub" / "metadata.json"
+        hermes_home = tmp_path / ".prostor"
+        hub = hermes_home / "skills" / ".hub" / "metadata.json"
         hub.parent.mkdir(parents=True)
         hub.write_text("{}")
 
-        with patch("agent.file_safety._prostor_home_path", return_value=prostor_home):
+        with patch("agent.file_safety._hermes_home_path", return_value=hermes_home):
             error = get_read_block_error(str(hub))
             assert error is not None
 
@@ -121,12 +121,12 @@ class TestCacheFileReadBlocking:
 class TestCombinedGuards:
     """Both guards should work independently without interference."""
 
-    def test_env_guard_works_regardless_of_prostor_home(self, tmp_path):
+    def test_env_guard_works_regardless_of_hermes_home(self, tmp_path):
         """The env basename guard does not depend on PROSTOR_HOME resolution."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
 
-        with patch("agent.file_safety._prostor_home_path", return_value=prostor_home):
+        with patch("agent.file_safety._hermes_home_path", return_value=hermes_home):
             # Regular project .env should still be blocked
             error = get_read_block_error("/workspace/.env")
             assert error is not None
@@ -137,12 +137,12 @@ class TestCombinedGuards:
 
     def test_cache_guard_still_works_with_env_guard(self, tmp_path):
         """Cache file blocking still works when env guard is active."""
-        prostor_home = tmp_path / ".prostor"
-        cache = prostor_home / "skills" / ".hub" / "index-cache" / "x"
+        hermes_home = tmp_path / ".prostor"
+        cache = hermes_home / "skills" / ".hub" / "index-cache" / "x"
         cache.parent.mkdir(parents=True)
         cache.write_text("")
 
-        with patch("agent.file_safety._prostor_home_path", return_value=prostor_home):
+        with patch("agent.file_safety._hermes_home_path", return_value=hermes_home):
             error = get_read_block_error(str(cache))
             assert error is not None
             assert "internal Prostor cache" in error

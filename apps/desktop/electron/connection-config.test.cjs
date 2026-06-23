@@ -251,23 +251,23 @@ test('resolveAuthMode: ignores unknown values, defaults to token', () => {
 // --- cookiesHaveSession ---
 
 test('cookiesHaveSession detects the bare access-token cookie', () => {
-  assert.equal(cookiesHaveSession([{ name: 'prostor_session_at', value: 'x' }]), true)
+  assert.equal(cookiesHaveSession([{ name: 'hermes_session_at', value: 'x' }]), true)
 })
 
 test('cookiesHaveSession detects the __Host- and __Secure- prefixed variants', () => {
-  assert.equal(cookiesHaveSession([{ name: '__Host-prostor_session_at', value: 'x' }]), true)
-  assert.equal(cookiesHaveSession([{ name: '__Secure-prostor_session_at', value: 'x' }]), true)
+  assert.equal(cookiesHaveSession([{ name: '__Host-hermes_session_at', value: 'x' }]), true)
+  assert.equal(cookiesHaveSession([{ name: '__Secure-hermes_session_at', value: 'x' }]), true)
 })
 
 test('cookiesHaveSession is false for an empty value', () => {
-  assert.equal(cookiesHaveSession([{ name: 'prostor_session_at', value: '' }]), false)
+  assert.equal(cookiesHaveSession([{ name: 'hermes_session_at', value: '' }]), false)
 })
 
 test('cookiesHaveSession ignores unrelated cookies (AT-only by design)', () => {
   // cookiesHaveSession is deliberately access-token-only — a lone RT cookie
   // is NOT an access token, so this returns false. Connectivity callers must
   // use cookiesHaveLiveSession instead (see below).
-  assert.equal(cookiesHaveSession([{ name: 'prostor_session_rt', value: 'x' }]), false)
+  assert.equal(cookiesHaveSession([{ name: 'hermes_session_rt', value: 'x' }]), false)
   assert.equal(cookiesHaveSession([{ name: 'other', value: 'x' }]), false)
 })
 
@@ -278,47 +278,47 @@ test('cookiesHaveSession handles non-arrays', () => {
 })
 
 test('AT_COOKIE_VARIANTS covers all three deploy shapes', () => {
-  assert.deepEqual(AT_COOKIE_VARIANTS, ['__Host-prostor_session_at', '__Secure-prostor_session_at', 'prostor_session_at'])
+  assert.deepEqual(AT_COOKIE_VARIANTS, ['__Host-hermes_session_at', '__Secure-hermes_session_at', 'hermes_session_at'])
 })
 
 test('RT_COOKIE_VARIANTS covers all three deploy shapes', () => {
-  assert.deepEqual(RT_COOKIE_VARIANTS, ['__Host-prostor_session_rt', '__Secure-prostor_session_rt', 'prostor_session_rt'])
+  assert.deepEqual(RT_COOKIE_VARIANTS, ['__Host-hermes_session_rt', '__Secure-hermes_session_rt', 'hermes_session_rt'])
 })
 
 // --- cookiesHaveLiveSession (AT or RT — the connectivity check) ---
 
 test('cookiesHaveLiveSession is true for a live access-token cookie', () => {
-  assert.equal(cookiesHaveLiveSession([{ name: 'prostor_session_at', value: 'x' }]), true)
-  assert.equal(cookiesHaveLiveSession([{ name: '__Host-prostor_session_at', value: 'x' }]), true)
-  assert.equal(cookiesHaveLiveSession([{ name: '__Secure-prostor_session_at', value: 'x' }]), true)
+  assert.equal(cookiesHaveLiveSession([{ name: 'hermes_session_at', value: 'x' }]), true)
+  assert.equal(cookiesHaveLiveSession([{ name: '__Host-hermes_session_at', value: 'x' }]), true)
+  assert.equal(cookiesHaveLiveSession([{ name: '__Secure-hermes_session_at', value: 'x' }]), true)
 })
 
 test('cookiesHaveLiveSession is true for an RT cookie even with NO access-token cookie', () => {
   // This is the bug-fix case: the AT cookie has lapsed (dropped from the jar)
   // but the 24h RT cookie is still alive. The session is still connectable —
   // the gateway rotates a fresh AT from the RT on the next request.
-  assert.equal(cookiesHaveLiveSession([{ name: 'prostor_session_rt', value: 'x' }]), true)
-  assert.equal(cookiesHaveLiveSession([{ name: '__Host-prostor_session_rt', value: 'x' }]), true)
-  assert.equal(cookiesHaveLiveSession([{ name: '__Secure-prostor_session_rt', value: 'x' }]), true)
+  assert.equal(cookiesHaveLiveSession([{ name: 'hermes_session_rt', value: 'x' }]), true)
+  assert.equal(cookiesHaveLiveSession([{ name: '__Host-hermes_session_rt', value: 'x' }]), true)
+  assert.equal(cookiesHaveLiveSession([{ name: '__Secure-hermes_session_rt', value: 'x' }]), true)
 })
 
 test('cookiesHaveLiveSession is true when both AT and RT are present', () => {
   assert.equal(
     cookiesHaveLiveSession([
-      { name: 'prostor_session_at', value: 'a' },
-      { name: 'prostor_session_rt', value: 'r' }
+      { name: 'hermes_session_at', value: 'a' },
+      { name: 'hermes_session_rt', value: 'r' }
     ]),
     true
   )
 })
 
 test('cookiesHaveLiveSession is false for empty values', () => {
-  assert.equal(cookiesHaveLiveSession([{ name: 'prostor_session_at', value: '' }]), false)
-  assert.equal(cookiesHaveLiveSession([{ name: 'prostor_session_rt', value: '' }]), false)
+  assert.equal(cookiesHaveLiveSession([{ name: 'hermes_session_at', value: '' }]), false)
+  assert.equal(cookiesHaveLiveSession([{ name: 'hermes_session_rt', value: '' }]), false)
   assert.equal(
     cookiesHaveLiveSession([
-      { name: 'prostor_session_at', value: '' },
-      { name: 'prostor_session_rt', value: '' }
+      { name: 'hermes_session_at', value: '' },
+      { name: 'hermes_session_rt', value: '' }
     ]),
     false
   )

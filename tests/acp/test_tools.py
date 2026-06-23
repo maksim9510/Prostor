@@ -25,13 +25,13 @@ from acp.schema import (
 # ---------------------------------------------------------------------------
 
 
-COMMON_PROSTOR_TOOLS = ["read_file", "search_files", "terminal", "patch", "write_file", "process"]
+COMMON_HERMES_TOOLS = ["read_file", "search_files", "terminal", "patch", "write_file", "process"]
 
 
 class TestToolKindMap:
-    def test_all_prostor_tools_have_kind(self):
+    def test_all_hermes_tools_have_kind(self):
         """Every common prostor tool should appear in TOOL_KIND_MAP."""
-        for tool in COMMON_PROSTOR_TOOLS:
+        for tool in COMMON_HERMES_TOOLS:
             assert tool in TOOL_KIND_MAP, f"{tool} missing from TOOL_KIND_MAP"
 
     def test_tool_kind_read_file(self):
@@ -125,8 +125,8 @@ class TestBuildToolTitle:
         assert title == "skill view (github-pitfalls/references/api.md)"
 
     def test_execute_code_title_includes_first_code_line(self):
-        title = build_tool_title("execute_code", {"code": "\nfrom prostor_tools import terminal\nprint('done')"})
-        assert title == "python: from prostor_tools import terminal"
+        title = build_tool_title("execute_code", {"code": "\nfrom hermes_tools import terminal\nprint('done')"})
+        assert title == "python: from hermes_tools import terminal"
 
     def test_skill_manage_title_includes_action_and_target(self):
         title = build_tool_title(

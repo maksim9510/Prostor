@@ -50,26 +50,26 @@ function appendUniquePathEntries(entries, { delimiter = path.delimiter } = {}) {
 }
 
 function buildDesktopBackendPath({
-  prostorHome,
+  hermesHome,
   venvRoot,
   currentPath = '',
   platform = process.platform,
   pathModule = pathModuleForPlatform(platform)
 } = {}) {
   const delimiter = delimiterForPlatform(platform)
-  const prostorNodeBin = prostorHome ? pathModule.join(prostorHome, 'node', 'bin') : null
+  const hermesNodeBin = hermesHome ? pathModule.join(hermesHome, 'node', 'bin') : null
   const venvBin = venvRoot ? pathModule.join(venvRoot, platform === 'win32' ? 'Scripts' : 'bin') : null
   const saneEntries = platform === 'win32' ? [] : POSIX_SANE_PATH_ENTRIES
 
   return appendUniquePathEntries(
-    [prostorNodeBin, venvBin, currentPath, saneEntries],
+    [hermesNodeBin, venvBin, currentPath, saneEntries],
     { delimiter }
   )
 }
 
-function normalizeProstorHomeRoot(prostorHome, { pathModule = pathModuleForPlatform(process.platform) } = {}) {
-  if (!prostorHome) return prostorHome
-  const resolved = pathModule.resolve(String(prostorHome))
+function normalizeHermesHomeRoot(hermesHome, { pathModule = pathModuleForPlatform(process.platform) } = {}) {
+  if (!hermesHome) return hermesHome
+  const resolved = pathModule.resolve(String(hermesHome))
   const parent = pathModule.dirname(resolved)
   if (pathModule.basename(parent).toLowerCase() === 'profiles') {
     return pathModule.dirname(parent)
@@ -78,7 +78,7 @@ function normalizeProstorHomeRoot(prostorHome, { pathModule = pathModuleForPlatf
 }
 
 function buildDesktopBackendEnv({
-  prostorHome,
+  hermesHome,
   pythonPathEntries = [],
   venvRoot,
   currentEnv = process.env,
@@ -92,7 +92,7 @@ function buildDesktopBackendEnv({
   return {
     PYTHONPATH: appendUniquePathEntries([...pythonPathEntries, currentPythonPath], { delimiter }),
     [key]: buildDesktopBackendPath({
-      prostorHome,
+      hermesHome,
       venvRoot,
       currentPath: currentPathValue(currentEnv, platform),
       platform,
@@ -107,6 +107,6 @@ module.exports = {
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
   delimiterForPlatform,
-  normalizeProstorHomeRoot,
+  normalizeHermesHomeRoot,
   pathEnvKey
 }

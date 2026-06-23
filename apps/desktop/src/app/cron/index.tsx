@@ -17,9 +17,6 @@ import { Input } from '@/components/ui/input'
 import { SearchField } from '@/components/ui/search-field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { type Translations, useI18n } from '@/i18n'
-import { AlertTriangle, Clock } from '@/lib/icons'
-import { cn } from '@/lib/utils'
 import {
   createCronJob,
   type CronJob,
@@ -32,6 +29,9 @@ import {
   triggerCronJob,
   updateCronJob
 } from '@/prostor'
+import { type Translations, useI18n } from '@/i18n'
+import { AlertTriangle, Clock } from '@/lib/icons'
+import { cn } from '@/lib/utils'
 import { $cronFocusJobId, $cronJobs, setCronFocusJobId, setCronJobs, updateCronJobs } from '@/store/cron'
 import { notify, notifyError } from '@/store/notifications'
 

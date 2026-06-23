@@ -9,7 +9,7 @@ no messages, no title, and no child sessions.
 
 import pytest
 
-from prostor_state import SessionDB
+from hermes_state import SessionDB
 
 
 @pytest.fixture()
@@ -106,12 +106,12 @@ class TestDeleteSessionIfEmpty:
 
 
 class TestCLIDiscardSessionIfEmpty:
-    """Wiring tests for ProstorCLI._discard_session_if_empty."""
+    """Wiring tests for HermesCLI._discard_session_if_empty."""
 
     def _make_cli(self, db):
-        from cli import ProstorCLI
+        from cli import HermesCLI
 
-        cli = ProstorCLI.__new__(ProstorCLI)
+        cli = HermesCLI.__new__(HermesCLI)
         cli._session_db = db
         cli.conversation_history = []
         return cli

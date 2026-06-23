@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
-contextBridge.exposeInMainWorld('prostorDesktop', {
+contextBridge.exposeInMainWorld('hermesDesktop', {
   getConnection: profile => ipcRenderer.invoke('prostor:connection', profile),
   revalidateConnection: () => ipcRenderer.invoke('prostor:connection:revalidate'),
   touchBackend: profile => ipcRenderer.invoke('prostor:backend:touch', profile),
@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('prostorDesktop', {
   setTranslucency: payload => ipcRenderer.send('prostor:translucency', payload),
   setPreviewShortcutActive: active => ipcRenderer.send('prostor:previewShortcutActive', Boolean(active)),
   openExternal: url => ipcRenderer.invoke('prostor:openExternal', url),
+  openPreviewInBrowser: url => ipcRenderer.invoke('prostor:openPreviewInBrowser', url),
   fetchLinkTitle: url => ipcRenderer.invoke('prostor:fetchLinkTitle', url),
   sanitizeWorkspaceCwd: cwd => ipcRenderer.invoke('prostor:workspace:sanitize', cwd),
   settings: {

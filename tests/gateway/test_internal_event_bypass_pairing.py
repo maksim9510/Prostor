@@ -17,6 +17,7 @@ from gateway.config import GatewayConfig, Platform
 from gateway.platforms.base import MessageEvent
 from gateway.run import GatewayRunner
 from gateway.session import SessionSource
+from tools.process_registry import ProcessRegistry, ProcessSession
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +49,7 @@ def _build_runner(monkeypatch, tmp_path) -> GatewayRunner:
 
     import gateway.run as gateway_run
 
-    monkeypatch.setattr(gateway_run, "_prostor_home", tmp_path)
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
 
     runner = GatewayRunner(GatewayConfig())
     adapter = SimpleNamespace(send=AsyncMock(), handle_message=AsyncMock())
@@ -100,11 +101,51 @@ async def test_notify_on_complete_sets_internal_flag(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_poll_does_not_suppress_notify_on_complete_watcher(monkeypatch, tmp_path):
+    """Regression: polling an exited process must not suppress watcher injection."""
+    import tools.process_registry as pr_module
+
+    registry = ProcessRegistry()
+    session = ProcessSession(
+        id="proc_polled_completion",
+        command="echo done",
+        output_buffer="done\n",
+        exited=True,
+        exit_code=0,
+        notify_on_complete=True,
+    )
+    registry._finished[session.id] = session
+
+    poll_result = registry.poll(session.id)
+    assert poll_result["status"] == "exited"
+    assert not registry.is_completion_consumed(session.id)
+
+    monkeypatch.setattr(pr_module, "process_registry", registry)
+
+    async def _instant_sleep(*_a, **_kw):
+        pass
+    monkeypatch.setattr(asyncio, "sleep", _instant_sleep)
+
+    runner = _build_runner(monkeypatch, tmp_path)
+    adapter = runner.adapters[Platform.DISCORD]
+
+    watcher = _watcher_dict_with_notify()
+    watcher["session_id"] = session.id
+
+    await runner._run_process_watcher(watcher)
+
+    assert adapter.handle_message.await_count == 1
+    event = adapter.handle_message.await_args.args[0]
+    assert session.id in event.text
+    assert event.internal is True
+
+
+@pytest.mark.asyncio
 async def test_internal_event_bypasses_authorization(monkeypatch, tmp_path):
     """An internal event should skip _is_user_authorized entirely."""
     import gateway.run as gateway_run
 
-    monkeypatch.setattr(gateway_run, "_prostor_home", tmp_path)
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
     (tmp_path / "config.yaml").write_text("", encoding="utf-8")
 
     runner = GatewayRunner(GatewayConfig())
@@ -153,7 +194,7 @@ async def test_internal_event_does_not_trigger_pairing(monkeypatch, tmp_path):
     """An internal event with no user_id must not generate a pairing code."""
     import gateway.run as gateway_run
 
-    monkeypatch.setattr(gateway_run, "_prostor_home", tmp_path)
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
     (tmp_path / "config.yaml").write_text("", encoding="utf-8")
 
     runner = GatewayRunner(GatewayConfig())
@@ -288,7 +329,7 @@ async def test_none_user_id_skips_pairing(monkeypatch, tmp_path):
     """A non-internal event with user_id=None should be silently dropped."""
     import gateway.run as gateway_run
 
-    monkeypatch.setattr(gateway_run, "_prostor_home", tmp_path)
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
     (tmp_path / "config.yaml").write_text("", encoding="utf-8")
 
     runner = GatewayRunner(GatewayConfig())
@@ -319,7 +360,7 @@ async def test_none_user_id_does_not_generate_pairing_code(monkeypatch, tmp_path
     """A message with user_id=None must never call generate_code."""
     import gateway.run as gateway_run
 
-    monkeypatch.setattr(gateway_run, "_prostor_home", tmp_path)
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
     (tmp_path / "config.yaml").write_text("", encoding="utf-8")
 
     runner = GatewayRunner(GatewayConfig())
@@ -357,7 +398,7 @@ async def test_non_internal_event_without_user_triggers_pairing(monkeypatch, tmp
     import gateway.run as gateway_run
     import gateway.pairing as pairing_mod
 
-    monkeypatch.setattr(gateway_run, "_prostor_home", tmp_path)
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
     # gateway.pairing.PAIRING_DIR is a module-level constant captured at
     # import time from whichever PROSTOR_HOME was set then. Per-test
     # PROSTOR_HOME redirection in conftest doesn't retroactively move it.

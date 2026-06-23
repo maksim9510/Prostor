@@ -3,7 +3,7 @@
 **Target:** {target_url}
 **Date:** {date}
 **Scope:** {scope_description}
-**Tester:** Prostor Agent (automated exploratory QA)
+**Tester:** Hermes Agent (automated exploratory QA)
 
 ---
 

@@ -2867,7 +2867,7 @@ class TestHydrateBotIdentity(unittest.TestCase):
                 "code": 0,
                 "bot": {
                     "bot_name": "Prostor Bot",
-                    "open_id": "ou_prostor_hydrated",
+                    "open_id": "ou_hermes_hydrated",
                 },
             }
         ).encode("utf-8")
@@ -2876,7 +2876,7 @@ class TestHydrateBotIdentity(unittest.TestCase):
 
         asyncio.run(adapter._hydrate_bot_identity())
 
-        self.assertEqual(adapter._bot_open_id, "ou_prostor_hydrated")
+        self.assertEqual(adapter._bot_open_id, "ou_hermes_hydrated")
         self.assertEqual(adapter._bot_name, "Prostor Bot")
 
     @patch.dict(

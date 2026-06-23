@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { HermesConfigRecord } from '@/prostor'
 import { type I18nConfigClient, I18nProvider } from '@/i18n'
-import type { ProstorConfigRecord } from '@/prostor'
 
 import { LanguageSwitcher } from './language-switcher'
 
@@ -27,7 +27,7 @@ describe('LanguageSwitcher', () => {
 
   it('persists language changes through display.language config', async () => {
     const saveConfig = vi.fn().mockResolvedValue({ ok: true })
-    const latestConfig: ProstorConfigRecord = { display: { language: 'en', skin: 'slate' } }
+    const latestConfig: HermesConfigRecord = { display: { language: 'en', skin: 'slate' } }
 
     const configClient: I18nConfigClient = {
       getConfig: vi.fn().mockResolvedValue(latestConfig),

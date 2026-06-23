@@ -24,9 +24,9 @@ API_PATH = (
 
 @pytest.fixture
 def bridge_module(monkeypatch, tmp_path):
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
     spec = importlib.util.spec_from_file_location("gws_bridge_test", BRIDGE_PATH)
     module = importlib.util.module_from_spec(spec)
@@ -37,9 +37,9 @@ def bridge_module(monkeypatch, tmp_path):
 
 @pytest.fixture
 def api_module(monkeypatch, tmp_path):
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
     spec = importlib.util.spec_from_file_location("gws_api_test", API_PATH)
     module = importlib.util.module_from_spec(spec)

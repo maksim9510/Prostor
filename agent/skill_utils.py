@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from prostor_constants import get_config_path, get_skills_dir, is_termux
+from hermes_constants import get_config_path, get_skills_dir, is_termux
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +247,7 @@ def _detect_environment(env: str) -> bool:
                 result = False
     elif env == "docker":
         try:
-            from prostor_constants import is_container
+            from hermes_constants import is_container
 
             result = is_container()
         except Exception:
@@ -280,9 +280,9 @@ def skill_matches_environment(frontmatter: Dict[str, Any]) -> bool:
     This is an OFFER-time filter: it controls whether a skill shows up in the
     skills index / autocomplete / slash-command list. It is intentionally NOT
     enforced by ``skill_view`` or ``--skills`` preloading — an explicit load is
-    explicit consent, and load-bearing force-loads (e.g. the kanban dispatcher
-    injecting ``--skills kanban-worker``) must always succeed regardless of how
-    the offer surfaces filter the skill.
+    explicit consent, and load-bearing force-loads (e.g. a dispatcher pinning
+    a task to a specialist skill via ``--skills``) must always succeed
+    regardless of how the offer surfaces filter the skill.
 
     A skill matches when ANY of its declared environments is currently active
     (OR semantics, mirroring ``platforms``). Unknown env tags fail open.
@@ -318,7 +318,7 @@ def _raw_config_cache_clear() -> None:
 def _load_raw_config() -> Dict[str, Any]:
     """Read config.yaml with a shared mtime+size keyed cache.
 
-    This module intentionally avoids importing ``prostor_cli.config`` on the
+    This module intentionally avoids importing ``hermes_cli.config`` on the
     skill prompt/build path. A tiny local cache gives the same repeated-read
     win without pulling the heavier CLI config stack into startup.
     """
@@ -462,9 +462,9 @@ def get_external_skills_dirs() -> List[Path]:
     if not isinstance(raw_dirs, list):
         return []
 
-    from prostor_core import get_prostor_home
+    from hermes_constants import get_hermes_home
 
-    prostor_home = get_prostor_home()
+    hermes_home = get_hermes_home()
     local_skills = get_skills_dir().resolve()
     seen: Set[Path] = set()
     result = []
@@ -478,7 +478,7 @@ def get_external_skills_dirs() -> List[Path]:
         p = Path(expanded)
         # Resolve relative paths against PROSTOR_HOME, not cwd
         if not p.is_absolute():
-            p = (prostor_home / p).resolve()
+            p = (hermes_home / p).resolve()
         else:
             p = p.resolve()
         if p == local_skills:

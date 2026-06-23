@@ -25,7 +25,7 @@ except ImportError:
 from pathlib import Path
 from typing import Callable
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from tools.environments.base import _file_mtime_key
 
 logger = logging.getLogger(__name__)
@@ -214,7 +214,7 @@ class FileSyncManager:
     # Sync-back: pull remote changes to host on teardown
     # ------------------------------------------------------------------
 
-    def sync_back(self, prostor_home: Path | None = None) -> None:
+    def sync_back(self, hermes_home: Path | None = None) -> None:
         """Pull remote changes back to the host filesystem.
 
         Downloads the remote ``.prostor/`` directory as a tar archive,
@@ -234,7 +234,7 @@ class FileSyncManager:
             logger.debug("sync_back: no prior push state — skipping")
             return
 
-        lock_path = (prostor_home or get_prostor_home()) / ".sync.lock"
+        lock_path = (hermes_home or get_hermes_home()) / ".sync.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
 
         last_exc: Exception | None = None

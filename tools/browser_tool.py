@@ -65,9 +65,9 @@ import requests
 from typing import Dict, Any, Optional, List, Tuple, Union
 from pathlib import Path
 from agent.auxiliary_client import call_llm
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from utils import env_int, is_truthy_value
-from prostor_cli.config import DEFAULT_CONFIG, cfg_get
+from hermes_cli.config import DEFAULT_CONFIG, cfg_get
 
 try:
     from tools.website_policy import check_website_access
@@ -156,11 +156,11 @@ def _discover_homebrew_node_dirs() -> tuple[str, ...]:
 
 def _browser_candidate_path_dirs() -> list[str]:
     """Return ordered browser CLI PATH candidates shared by discovery and execution."""
-    prostor_home = get_prostor_home()
-    prostor_node_bin = str(prostor_home / "node" / "bin")
-    prostor_node_root = str(prostor_home / "node")
-    prostor_nm_bin = str(prostor_home / "node_modules" / ".bin")
-    return [prostor_node_bin, prostor_node_root, prostor_nm_bin, *list(_discover_homebrew_node_dirs()), *_SANE_PATH_DIRS]
+    hermes_home = get_hermes_home()
+    hermes_node_bin = str(hermes_home / "node" / "bin")
+    hermes_node_root = str(hermes_home / "node")
+    hermes_nm_bin = str(hermes_home / "node_modules" / ".bin")
+    return [hermes_node_bin, hermes_node_root, hermes_nm_bin, *list(_discover_homebrew_node_dirs()), *_SANE_PATH_DIRS]
 
 
 def _merge_browser_path(existing_path: str = "") -> str:
@@ -211,7 +211,7 @@ def _get_command_timeout() -> int:
     _command_timeout_resolved = True
     result = DEFAULT_COMMAND_TIMEOUT
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         val = cfg_get(cfg, "browser", "command_timeout")
         if val is not None:
@@ -297,7 +297,7 @@ def _get_cdp_override() -> str:
         return _resolve_cdp_override(env_override)
 
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
 
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {})
@@ -323,7 +323,7 @@ def _get_dialog_policy_config() -> Tuple[str, float]:
     )
 
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
 
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {}) if isinstance(cfg, dict) else {}
@@ -479,7 +479,7 @@ def _ensure_browser_plugins_loaded() -> None:
     calls early-return inside `_ensure_plugins_discovered`.
     """
     try:
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
     except Exception as exc:
@@ -509,7 +509,7 @@ def _get_cloud_provider() -> Optional[CloudBrowserProvider]:
 
     resolved: Optional[CloudBrowserProvider] = None
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {})
         provider_key = None
@@ -591,7 +591,7 @@ def _get_cloud_provider() -> Optional[CloudBrowserProvider]:
     return _cached_cloud_provider
 
 
-from prostor_constants import is_termux as _is_termux_environment
+from hermes_constants import is_termux as _is_termux_environment
 
 
 def _browser_install_hint() -> str:
@@ -619,7 +619,7 @@ def _is_local_mode() -> bool:
 
 
 def _is_local_backend() -> bool:
-    """Return True when the browser runs locally (no cloud provider).
+    """Return True when the browser runs locally AND the terminal is also local.
 
     SSRF protection is only meaningful for cloud backends (Browserbase,
     BrowserUse) where the agent could reach internal resources on a remote
@@ -627,8 +627,20 @@ def _is_local_backend() -> bool:
     Chromium without a cloud provider — the user already has full terminal
     and network access on the same machine, so the check adds no security
     value.
+
+    However, when the terminal runs in a container (docker, modal, daytona,
+    ssh, singularity), the browser on the host can access internal networks
+    that the terminal cannot.  In this case, SSRF protection should be
+    enabled even though the browser is technically "local".
     """
-    return _is_camofox_mode() or _get_cloud_provider() is None
+    if _is_camofox_mode():
+        return True
+    if _get_cloud_provider() is not None:
+        return False
+    # When terminal runs in a container, browser on host can access
+    # internal networks the terminal can't → treat as non-local.
+    terminal_backend = os.getenv("TERMINAL_ENV", "local").strip().lower()
+    return terminal_backend in ("local", "")
 
 
 _auto_local_for_private_urls_resolved = False
@@ -657,7 +669,7 @@ def _get_browser_engine() -> str:
 
     # Config file takes priority
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         val = cfg.get("browser", {}).get("engine")
         if val and str(val).strip():
@@ -985,7 +997,7 @@ def _auto_local_for_private_urls() -> bool:
 
     _auto_local_for_private_urls_resolved = True
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {})
         if isinstance(browser_cfg, dict) and "auto_local_for_private_urls" in browser_cfg:
@@ -1121,7 +1133,7 @@ def _allow_private_urls() -> bool:
     _allow_private_urls_resolved = True
     _cached_allow_private_urls = False  # safe default
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {})
         if isinstance(browser_cfg, dict):
@@ -1137,7 +1149,7 @@ def _socket_safe_tmpdir() -> str:
     """Return a short temp directory path suitable for Unix domain sockets.
 
     macOS sets ``TMPDIR`` to ``/var/folders/xx/.../T/`` (~51 chars).  When we
-    append ``agent-browser-prostor_…`` the resulting socket path exceeds the
+    append ``agent-browser-hermes_…`` the resulting socket path exceeds the
     104-byte macOS limit for ``AF_UNIX`` addresses, causing agent-browser to
     fail with "Failed to create socket directory" or silent screenshot failures.
 
@@ -1188,7 +1200,7 @@ DEFAULT_SESSION_INACTIVITY_TIMEOUT = int(
 def _get_session_inactivity_timeout() -> int:
     result = env_int("BROWSER_INACTIVITY_TIMEOUT", DEFAULT_SESSION_INACTIVITY_TIMEOUT)
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         val = cfg_get(cfg, "browser", "inactivity_timeout")
         if val is not None:
@@ -1308,6 +1320,92 @@ def _write_owner_pid(socket_dir: str, session_name: str) -> None:
                      session_name, exc)
 
 
+def _verify_reapable_browser_daemon(daemon_pid: int, socket_dir: str,
+                                    session_name: str) -> bool:
+    """Confirm a live PID is genuinely *this* session's agent-browser daemon.
+
+    The orphan reaper scans world-writable, predictably-named temp paths
+    (``/tmp/agent-browser-h_*`` etc.) and reads a daemon PID from a ``.pid``
+    file we do not write ourselves — the agent-browser daemon writes it.  A
+    same-user actor can therefore plant a fake socket dir whose ``.pid`` points
+    at an arbitrary victim process, or a recycled PID can land on an unrelated
+    process after the real daemon exits.  Either way, terminating that PID
+    (a *tree* kill via ``_terminate_host_pid``) is an arbitrary-process DoS.
+
+    Before reaping we require, via ``psutil`` (a hard dependency, cross-platform
+    for same-user processes — the only processes the reaper can signal):
+
+      1. **Identity** — the process looks like agent-browser: ``agent-browser``
+         appears in its name or command line.
+      2. **Binding** — the process is bound to *this* session's socket dir: the
+         socket dir path (or its basename) appears in the command line, or in
+         ``AGENT_BROWSER_SOCKET_DIR`` in the process environment.
+
+    Requirement (2) is the real spoof defense: a planted process pointing at a
+    victim PID will not have the victim's cmdline/environ referencing our
+    socket dir.  An attacker would need a process that genuinely embeds this
+    exact session path — i.e. a real daemon they already own and could signal
+    directly.  Fail-closed: any ambiguity (unreadable cmdline, no match) means
+    we refuse to reap and leave the process and its socket dir alone.
+
+    Returns ``True`` only when both checks pass.
+    """
+    try:
+        import psutil
+    except ImportError:  # psutil is a hard dep; defensive only
+        logger.warning(
+            "Refusing to reap browser daemon PID %d (session %s): "
+            "psutil unavailable for identity verification",
+            daemon_pid, session_name)
+        return False
+
+    try:
+        proc = psutil.Process(daemon_pid)
+        name = (proc.name() or "").lower()
+        cmdline = " ".join(proc.cmdline() or []).lower()
+    except psutil.NoSuchProcess:
+        # Vanished between the liveness check and now — nothing to reap.
+        return False
+    except (psutil.AccessDenied, OSError) as exc:
+        logger.warning(
+            "Refusing to reap browser daemon PID %d (session %s): "
+            "could not read process identity (%s)",
+            daemon_pid, session_name, exc)
+        return False
+
+    looks_like_browser = "agent-browser" in name or "agent-browser" in cmdline
+    if not looks_like_browser:
+        logger.warning(
+            "Refusing to reap PID %d (session %s): not an agent-browser "
+            "process (name=%r)", daemon_pid, session_name, name)
+        return False
+
+    # Binding check: the live process must reference *this* socket dir.
+    socket_dir_l = socket_dir.lower()
+    socket_base_l = os.path.basename(socket_dir).lower()
+    bound = socket_dir_l in cmdline or (
+        socket_base_l and socket_base_l in cmdline)
+    if not bound:
+        try:
+            env_dir = (proc.environ() or {}).get(
+                "AGENT_BROWSER_SOCKET_DIR", "")
+            bound = bool(env_dir) and os.path.normpath(env_dir) == \
+                os.path.normpath(socket_dir)
+        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+            # environ() can be denied even same-user on some platforms.
+            # cmdline already failed to bind — fail closed.
+            bound = False
+
+    if not bound:
+        logger.warning(
+            "Refusing to reap agent-browser PID %d: not bound to session "
+            "socket dir %s (possible recycled PID or planted pid file)",
+            daemon_pid, socket_dir)
+        return False
+
+    return True
+
+
 def _reap_orphaned_browser_sessions():
     """Scan for orphaned agent-browser daemon processes from previous runs.
 
@@ -1339,7 +1437,7 @@ def _reap_orphaned_browser_sessions():
     # Also pick up CDP sessions
     socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-cdp_*"))
     # Also pick up cloud-provider sessions (browser-use/browserbase/firecrawl)
-    socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-prostor_*"))
+    socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-hermes_*"))
 
     if not socket_dirs:
         return
@@ -1401,6 +1499,17 @@ def _reap_orphaned_browser_sessions():
         from gateway.status import _pid_exists
         if not _pid_exists(daemon_pid):
             shutil.rmtree(socket_dir, ignore_errors=True)
+            continue
+
+        # The PID is live — but the .pid file lives in a world-writable,
+        # predictably-named temp dir we don't write ourselves, and PIDs get
+        # recycled after the real daemon exits.  Verify the process really is
+        # *this* session's agent-browser daemon before tree-killing it; refuse
+        # otherwise (don't touch the process, leave the socket dir for a later
+        # sweep once the imposter PID is gone).  Fixes the arbitrary same-user
+        # process DoS in issue #14073.
+        if not _verify_reapable_browser_daemon(
+                daemon_pid, socket_dir, session_name):
             continue
 
         # Daemon is alive and its owner is dead (or legacy + untracked).  Reap.
@@ -1841,20 +1950,20 @@ def _find_agent_browser() -> str:
 
     # Nothing found — try lazy installation before giving up.
     try:
-        from prostor_cli.dep_ensure import ensure_dependency
+        from hermes_cli.dep_ensure import ensure_dependency
         if ensure_dependency("browser"):
             recheck = shutil.which("agent-browser")
             if not recheck and extended_path:
                 recheck = shutil.which("agent-browser", path=extended_path)
             if not recheck:
-                prostor_nm = str(get_prostor_home() / "node_modules" / ".bin")
-                recheck = shutil.which("agent-browser", path=prostor_nm)
+                hermes_nm = str(get_hermes_home() / "node_modules" / ".bin")
+                recheck = shutil.which("agent-browser", path=hermes_nm)
             if not recheck:
-                prostor_node_bin = str(get_prostor_home() / "node" / "bin")
-                recheck = shutil.which("agent-browser", path=prostor_node_bin)
+                hermes_node_bin = str(get_hermes_home() / "node" / "bin")
+                recheck = shutil.which("agent-browser", path=hermes_node_bin)
             if not recheck:
-                prostor_node_root = str(get_prostor_home() / "node")
-                recheck = shutil.which("agent-browser", path=prostor_node_root)
+                hermes_node_root = str(get_hermes_home() / "node")
+                recheck = shutil.which("agent-browser", path=hermes_node_root)
             if recheck:
                 _cached_agent_browser = recheck
                 _agent_browser_resolved = True
@@ -2984,15 +3093,15 @@ def _maybe_start_recording(task_id: str):
         if task_id in _recording_sessions:
             return
     try:
-        from prostor_cli.config import read_raw_config
-        prostor_home = get_prostor_home()
+        from hermes_cli.config import read_raw_config
+        hermes_home = get_hermes_home()
         cfg = read_raw_config()
         record_enabled = cfg_get(cfg, "browser", "record_sessions", default=False)
 
         if not record_enabled:
             return
 
-        recordings_dir = prostor_home / "browser_recordings"
+        recordings_dir = hermes_home / "browser_recordings"
         recordings_dir.mkdir(parents=True, exist_ok=True)
         _cleanup_old_recordings(max_age_hours=72)
 
@@ -3117,8 +3226,8 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
 
     import base64
     import uuid as uuid_mod
-    from prostor_constants import get_prostor_dir
-    screenshots_dir = get_prostor_dir("cache/screenshots", "browser_screenshots")
+    from hermes_constants import get_hermes_dir
+    screenshots_dir = get_hermes_dir("cache/screenshots", "browser_screenshots")
     screenshot_path = screenshots_dir / f"browser_screenshot_{uuid_mod.uuid4().hex}.png"
     effective_task_id = _last_session_key(task_id or "default")
 
@@ -3145,8 +3254,8 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
             _lp_fallback_warning = fb_result.get("fallback_warning")
             fb_path = fb_result.get("data", {}).get("path", "")
             if fb_path and os.path.exists(fb_path):
-                from prostor_constants import get_prostor_dir
-                screenshots_dir = get_prostor_dir("cache/screenshots", "browser_screenshots")
+                from hermes_constants import get_hermes_dir
+                screenshots_dir = get_hermes_dir("cache/screenshots", "browser_screenshots")
                 screenshots_dir.mkdir(parents=True, exist_ok=True)
                 import shutil as _shutil_vision
                 persistent_path = screenshots_dir / f"browser_screenshot_{uuid_mod.uuid4().hex}.png"
@@ -3282,7 +3391,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
         vision_timeout = 120.0
         vision_temperature = 0.1
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             _cfg = load_config()
             _vision_cfg = cfg_get(_cfg, "auxiliary", "vision", default={})
             _vt = _vision_cfg.get("timeout")
@@ -3389,8 +3498,8 @@ def _cleanup_old_screenshots(screenshots_dir, max_age_hours=24):
 def _cleanup_old_recordings(max_age_hours=72):
     """Remove browser recordings older than max_age_hours to prevent disk bloat."""
     try:
-        prostor_home = get_prostor_home()
-        recordings_dir = prostor_home / "browser_recordings"
+        hermes_home = get_hermes_home()
+        recordings_dir = hermes_home / "browser_recordings"
         if not recordings_dir.exists():
             return
         cutoff = time.time() - (max_age_hours * 3600)

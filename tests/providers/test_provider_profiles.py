@@ -313,7 +313,7 @@ class TestOpenRouterProfile:
         and NO reasoning field in extra_body.
 
         Covers the full real config range produced by
-        ``prostor_constants.parse_reasoning_effort`` —
+        ``hermes_constants.parse_reasoning_effort`` —
         ``VALID_REASONING_EFFORTS = (minimal, low, medium, high, xhigh)``.
         """
         p = get_provider_profile("openrouter")

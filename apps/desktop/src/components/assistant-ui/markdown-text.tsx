@@ -110,28 +110,28 @@ async function mediaSrc(path: string): Promise<string> {
 
   // Stream audio/video through the custom protocol: data URLs are capped and
   // load the whole file into memory, which broke playback for larger videos.
-  if (window.prostorDesktop && ['audio', 'video'].includes(mediaKind(path))) {
+  if (window.hermesDesktop && ['audio', 'video'].includes(mediaKind(path))) {
     return mediaStreamUrl(path)
   }
 
   // Remote gateway: the image lives on the gateway machine, so read it over the
   // authenticated API rather than this machine's disk.
-  if (window.prostorDesktop && isRemoteGateway()) {
+  if (window.hermesDesktop && isRemoteGateway()) {
     return gatewayMediaDataUrl(path)
   }
 
-  if (!window.prostorDesktop?.readFileDataUrl) {
+  if (!window.hermesDesktop?.readFileDataUrl) {
     return mediaExternalUrl(path)
   }
 
-  return window.prostorDesktop.readFileDataUrl(filePathFromMediaPath(path))
+  return window.hermesDesktop.readFileDataUrl(filePathFromMediaPath(path))
 }
 
 function OpenMediaButton({ kind, path }: { kind: 'audio' | 'video'; path: string }) {
   return (
     <button
       className="mt-2 bg-transparent text-xs font-medium text-muted-foreground underline underline-offset-4 decoration-current/20 hover:text-foreground"
-      onClick={() => void window.prostorDesktop?.openExternal(mediaExternalUrl(path))}
+      onClick={() => void window.hermesDesktop?.openExternal(mediaExternalUrl(path))}
       type="button"
     >
       Open {kind} file

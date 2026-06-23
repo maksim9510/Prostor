@@ -57,7 +57,7 @@ export function usePlugins() {
       // re-execute a previously cached <script> URL.
       const baseUrl = `${PROSTOR_BASE_PATH}/dashboard-plugins/${manifest.name}/${manifest.entry}`;
       const scriptSrc = import.meta.env.DEV
-        ? `${baseUrl}?prostor_dv=${Date.now()}`
+        ? `${baseUrl}?hermes_dv=${Date.now()}`
         : baseUrl;
       if (!import.meta.env.DEV) {
         if (loadedScripts.current.has(baseUrl)) continue;

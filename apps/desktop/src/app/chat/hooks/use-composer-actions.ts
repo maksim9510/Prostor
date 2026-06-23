@@ -68,7 +68,7 @@ export function extractDroppedFiles(transfer: DataTransfer): DroppedFile[] {
   const result: DroppedFile[] = []
   const seenPaths = new Set<string>()
   const seenFiles = new Set<File>()
-  const getPath = window.prostorDesktop?.getPathForFile
+  const getPath = window.hermesDesktop?.getPathForFile
 
   // In-app drags first — they carry richer metadata (isDirectory) than the
   // File-based fallback can provide, and produce no overlapping native files.
@@ -226,7 +226,6 @@ const attachToMain = (attachment: ComposerAttachment) => {
 export function useComposerActions({ activeSessionId, currentCwd, requestGateway }: ComposerActionsOptions) {
   const { t } = useI18n()
   const copy = t.desktop
-
   const addTextToDraft = useCallback((text: string) => {
     requestComposerInsert(text, { mode: 'block' })
   }, [copy.imagePreviewFailed])
@@ -262,7 +261,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
 
   const pickContextPaths = useCallback(
     async (kind: 'file' | 'folder') => {
-      const paths = await window.prostorDesktop?.selectPaths({
+      const paths = await window.hermesDesktop?.selectPaths({
         title: kind === 'file' ? 'Add files as context' : 'Add folders as context',
         defaultPath: currentCwd || undefined,
         directories: kind === 'folder'
@@ -346,7 +345,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
     attachToMain(baseAttachment)
 
     try {
-      const previewUrl = await window.prostorDesktop?.readFileDataUrl(filePath)
+      const previewUrl = await window.hermesDesktop?.readFileDataUrl(filePath)
 
       if (previewUrl) {
         addComposerAttachment({ ...baseAttachment, previewUrl })
@@ -373,7 +372,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
       try {
         const buffer = await blob.arrayBuffer()
         const data = new Uint8Array(buffer)
-        const savedPath = await window.prostorDesktop?.saveImageBuffer(data, blobExtension(blob))
+        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, blobExtension(blob))
 
         if (!savedPath) {
           notify({ kind: 'error', title: copy.imageAttach, message: copy.imageWriteFailed })
@@ -392,7 +391,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
   )
 
   const pickImages = useCallback(async () => {
-    const paths = await window.prostorDesktop?.selectPaths({
+    const paths = await window.hermesDesktop?.selectPaths({
       title: copy.attachImages,
       defaultPath: currentCwd || undefined,
       filters: [
@@ -414,7 +413,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
 
   const pasteClipboardImage = useCallback(async () => {
     try {
-      const path = await window.prostorDesktop?.saveClipboardImage()
+      const path = await window.hermesDesktop?.saveClipboardImage()
 
       if (!path) {
         notify({
@@ -504,7 +503,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
         }
 
         const fallbackPath =
-          !knownPath && window.prostorDesktop?.getPathForFile ? window.prostorDesktop.getPathForFile(file) : ''
+          !knownPath && window.hermesDesktop?.getPathForFile ? window.hermesDesktop.getPathForFile(file) : ''
 
         const filePath = knownPath || fallbackPath || ''
         const isImage = file.type.startsWith('image/') || isImagePath(file.name) || (filePath && isImagePath(filePath))

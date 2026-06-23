@@ -29,11 +29,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    from prostor_constants import get_prostor_home
+    from hermes_constants import get_hermes_home
 except Exception:  # pragma: no cover — plugin may load before constants resolves
     import os
 
-    def get_prostor_home() -> Path:  # type: ignore[no-redef]
+    def get_hermes_home() -> Path:  # type: ignore[no-redef]
         val = (os.environ.get("PROSTOR_HOME") or "").strip()
         return Path(val).resolve() if val else (Path.home() / ".prostor").resolve()
 
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 def get_state_dir() -> Path:
     """State dir — separate from ``$PROSTOR_HOME/logs/``."""
-    return get_prostor_home() / "disk-cleanup"
+    return get_hermes_home() / "disk-cleanup"
 
 
 def get_tracked_file() -> Path:
@@ -68,9 +68,9 @@ def is_safe_path(path: Path) -> bool:
 
     Rejects Windows mounts (``/mnt/c`` etc.) and any system directory.
     """
-    prostor_home = get_prostor_home()
+    hermes_home = get_hermes_home()
     try:
-        path.resolve().relative_to(prostor_home)
+        path.resolve().relative_to(hermes_home)
         return True
     except (ValueError, OSError):
         pass
@@ -173,9 +173,9 @@ def _is_protected_cron_path(p: Path) -> bool:
     # Lazily build the set once per process so PROSTOR_HOME is resolved
     # exactly once.
     if not _PROTECTED_CRON_PATHS:
-        prostor_home = get_prostor_home()
+        hermes_home = get_hermes_home()
         for parent in ("cron", "cronjobs"):
-            base = prostor_home / parent
+            base = hermes_home / parent
             _PROTECTED_CRON_PATHS.add(str(base))
             _PROTECTED_CRON_PATHS.add(str(base / "jobs.json"))
             _PROTECTED_CRON_PATHS.add(str(base / ".tick.lock"))
@@ -363,11 +363,11 @@ def quick() -> Dict[str, Any]:
     # durable state trees.  Some installs place the Prostor checkout, venv,
     # and desktop build under PROSTOR_HOME; a full rglob over that tree can
     # stall the gateway event loop for minutes.
-    prostor_home = get_prostor_home()
+    hermes_home = get_hermes_home()
     empty_removed = 0
     sweep_stack: List[Tuple[Path, bool]] = []
     try:
-        for top in prostor_home.iterdir():
+        for top in hermes_home.iterdir():
             if (
                 top.is_dir()
                 and not top.is_symlink()
@@ -550,9 +550,9 @@ def guess_category(path: Path) -> Optional[str]:
         return None
 
     # Skip the state dir itself, logs, memory files, sessions, config.
-    prostor_home = get_prostor_home()
+    hermes_home = get_hermes_home()
     try:
-        rel = path.resolve().relative_to(prostor_home)
+        rel = path.resolve().relative_to(hermes_home)
         top = rel.parts[0] if rel.parts else ""
         if top in {
             "disk-cleanup", "logs", "memories", "sessions", "config.yaml",

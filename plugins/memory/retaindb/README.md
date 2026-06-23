@@ -10,13 +10,13 @@ Cloud memory API with hybrid search (Vector + BM25 + Reranking) and 7 memory typ
 ## Setup
 
 ```bash
-prostor memory setup    # select "retaindb"
+hermes memory setup    # select "retaindb"
 ```
 
 Or manually:
 ```bash
-prostor config set memory.provider retaindb
-echo "RETAINDB_API_KEY=your-key" >> ~/.prostor/.env
+hermes config set memory.provider retaindb
+echo "RETAINDB_API_KEY=your-key" >> ~/.hermes/.env
 ```
 
 ## Config

@@ -14,9 +14,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useI18n } from '@/i18n'
-import { AlertTriangle, Pencil, Save, Terminal, Trash2, Users } from '@/lib/icons'
-import { cn } from '@/lib/utils'
 import {
   createProfile,
   deleteProfile,
@@ -27,6 +24,9 @@ import {
   renameProfile,
   updateProfileSoul
 } from '@/prostor'
+import { useI18n } from '@/i18n'
+import { AlertTriangle, Pencil, Save, Terminal, Trash2, Users } from '@/lib/icons'
+import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'

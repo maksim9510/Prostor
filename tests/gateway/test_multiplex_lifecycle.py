@@ -34,22 +34,22 @@ class TestNamedProfileMultiplexerGuard:
     """_guard_named_profile_under_multiplexer is inert unless all conditions hold."""
 
     def test_inert_for_default_profile(self, monkeypatch):
-        from prostor_cli import gateway as gw
+        from hermes_cli import gateway as gw
         monkeypatch.setattr(gw, "_profile_suffix", lambda: "")
         # Should return without raising (default profile => guard N/A).
         gw._guard_named_profile_under_multiplexer(force=False)
 
     def test_force_bypasses(self, monkeypatch):
-        from prostor_cli import gateway as gw
+        from hermes_cli import gateway as gw
         # Even if it looks like a named profile, force returns immediately.
         monkeypatch.setattr(gw, "_profile_suffix", lambda: "coder")
         gw._guard_named_profile_under_multiplexer(force=True)
 
     def test_inert_when_no_default_gateway_running(self, monkeypatch, tmp_path):
-        from prostor_cli import gateway as gw
+        from hermes_cli import gateway as gw
         monkeypatch.setattr(gw, "_profile_suffix", lambda: "coder")
         monkeypatch.setattr(
-            "prostor_constants.get_default_prostor_root", lambda: tmp_path
+            "hermes_constants.get_default_hermes_root", lambda: tmp_path
         )
         # No gateway.pid in tmp_path => no running default gateway => no raise.
         gw._guard_named_profile_under_multiplexer(force=False)

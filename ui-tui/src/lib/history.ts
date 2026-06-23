@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 const MAX = 1000
 const dir = process.env.PROSTOR_HOME ?? join(homedir(), '.prostor')
-const file = join(dir, '.prostor_history')
+const file = join(dir, '.hermes_history')
 
 let cache: string[] | null = null
 

@@ -49,16 +49,16 @@ const APP = (() => {
 })()
 
 // Default PROSTOR_HOME for non-sandboxed runs -- matches main.cjs's
-// resolveProstorHome(). On Windows it's %LOCALAPPDATA%\prostor; elsewhere
+// resolveHermesHome(). On Windows it's %LOCALAPPDATA%\prostor; elsewhere
 // it's ~/.prostor. The fresh-install sandbox launchFresh() sets its own
 // PROSTOR_HOME and never touches this.
-const DEFAULT_PROSTOR_HOME = (() => {
+const DEFAULT_HERMES_HOME = (() => {
   if (PLATFORM === 'win32' && process.env.LOCALAPPDATA) {
     return path.join(process.env.LOCALAPPDATA, 'prostor')
   }
   return path.join(os.homedir(), '.prostor')
 })()
-const VENV_ROOT = path.join(DEFAULT_PROSTOR_HOME, 'prostor-agent', 'venv')
+const VENV_ROOT = path.join(DEFAULT_HERMES_HOME, 'prostor-agent', 'venv')
 const FRESH_SANDBOX_ROOT = path.join(os.tmpdir(), 'prostor-desktop-fresh-install')
 
 function die(message) {
@@ -236,11 +236,11 @@ function launchFresh() {
 
   const sandbox = fs.mkdtempSync(`${FRESH_SANDBOX_ROOT}-`)
   const userDataDir = path.join(sandbox, 'electron-user-data')
-  const prostorHome = path.join(sandbox, 'prostor-home')
+  const hermesHome = path.join(sandbox, 'prostor-home')
   const cwd = path.join(sandbox, 'workspace')
 
   fs.mkdirSync(userDataDir, { recursive: true })
-  fs.mkdirSync(prostorHome, { recursive: true })
+  fs.mkdirSync(hermesHome, { recursive: true })
   fs.mkdirSync(cwd, { recursive: true })
 
   // Strip every credential-shaped env var so the sandbox is actually fresh.
@@ -254,9 +254,9 @@ function launchFresh() {
   env.PROSTOR_DESKTOP_IGNORE_EXISTING = '1'
   env.PROSTOR_DESKTOP_TEST_MODE = 'fresh-install'
   env.PROSTOR_DESKTOP_USER_DATA_DIR = userDataDir
-  env.PROSTOR_HOME = prostorHome
-  delete env.PROSTOR_DESKTOP_PROSTOR
-  delete env.PROSTOR_DESKTOP_PROSTOR_ROOT
+  env.PROSTOR_HOME = hermesHome
+  delete env.PROSTOR_DESKTOP_HERMES
+  delete env.PROSTOR_DESKTOP_HERMES_ROOT
 
   const child = spawn(APP.binary, [], {
     cwd: os.homedir(),
@@ -269,10 +269,10 @@ function launchFresh() {
   console.log('\nFresh install sandbox:')
   console.log(`  root: ${sandbox}`)
   console.log(`  electron userData: ${userDataDir}`)
-  console.log(`  PROSTOR_HOME: ${prostorHome}`)
+  console.log(`  PROSTOR_HOME: ${hermesHome}`)
   console.log(`  cwd: ${cwd}`)
 
-  return { runtimeRoot: path.join(prostorHome, 'prostor-agent', 'venv') }
+  return { runtimeRoot: path.join(hermesHome, 'prostor-agent', 'venv') }
 }
 
 // Validate the packaged bundle matches the thin-installer architecture:
@@ -290,9 +290,9 @@ function validateBundle() {
   }
 
   // Negative assertion: the OLD fat-installer factory payload must NOT be
-  // present anymore. If a stray ship of prostor_cli sneaks back in we want
+  // present anymore. If a stray ship of hermes_cli sneaks back in we want
   // to fail loudly rather than re-introduce the 400MB delta we just removed.
-  const staleFactoryMarker = path.join(APP.resourcesPath, 'prostor-agent', 'prostor_cli', 'main.py')
+  const staleFactoryMarker = path.join(APP.resourcesPath, 'prostor-agent', 'hermes_cli', 'main.py')
   if (exists(staleFactoryMarker)) {
     die(
       `Thin-installer regression: factory-payload file should NOT be in the package: ${staleFactoryMarker}`

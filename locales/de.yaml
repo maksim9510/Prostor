@@ -314,7 +314,7 @@ Future messages in this room will use that transcript until `/reset` or another 
   update:
     platform_not_messaging:  "✗ /update ist nur auf Messaging-Plattformen verfügbar. Führen Sie `prostor update` im Terminal aus."
     not_git_repo:            "✗ Kein Git-Repository — Update nicht möglich."
-    prostor_cmd_not_found:    "✗ Der Befehl `prostor` konnte nicht gefunden werden. Prostor läuft, aber der Update-Befehl konnte das ausführbare Programm weder im PATH noch über den aktuellen Python-Interpreter finden. Versuchen Sie, `prostor update` manuell im Terminal auszuführen."
+    hermes_cmd_not_found:    "✗ Der Befehl `prostor` konnte nicht gefunden werden. Prostor läuft, aber der Update-Befehl konnte das ausführbare Programm weder im PATH noch über den aktuellen Python-Interpreter finden. Versuchen Sie, `prostor update` manuell im Terminal auszuführen."
     start_failed:            "✗ Update konnte nicht gestartet werden: {error}"
     starting:                "⚕ Prostor-Update wird gestartet… Ich streame den Fortschritt hier."
 

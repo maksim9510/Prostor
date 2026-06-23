@@ -2,11 +2,11 @@
 name: searxng-search
 description: Free meta-search via SearXNG — aggregates results from 70+ search engines. Self-hosted or use a public instance. No API key needed. Falls back automatically when the web search toolset is unavailable.
 version: 1.0.0
-author: prostor-agent
+author: hermes-agent
 license: MIT
 platforms: [linux, macos]
 metadata:
-  prostor:
+  hermes:
     tags: [search, searxng, meta-search, self-hosted, free, fallback]
     related_skills: [duckduckgo-search, domain-intel]
     fallback_for_toolsets: [web]

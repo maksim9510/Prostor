@@ -8,13 +8,13 @@ collapsing multi-step tool chains into a single inference turn.
 Architecture (two transports):
 
   **Local backend (UDS):**
-  1. Parent generates a `prostor_tools.py` stub module with UDS RPC functions
+  1. Parent generates a `hermes_tools.py` stub module with UDS RPC functions
   2. Parent opens a Unix domain socket and starts an RPC listener thread
   3. Parent spawns a child process that runs the LLM's script
   4. Tool calls travel over the UDS back to the parent for dispatch
 
   **Remote backends (file-based RPC):**
-  1. Parent generates `prostor_tools.py` with file-based RPC stubs
+  1. Parent generates `hermes_tools.py` with file-based RPC stubs
   2. Parent ships both files to the remote environment
   3. Script runs inside the terminal backend (Docker/SSH/Modal/Daytona/etc.)
   4. Tool calls are written as request files; a polling thread on the parent
@@ -82,7 +82,7 @@ MAX_STDERR_BYTES = 10_000    # 10 KB
 # NB: the broad "PROSTOR_" prefix was deliberately removed (#27303) — it leaked
 # PROSTOR_*-named config that lacks a secret substring (e.g. PROSTOR_BASE_URL,
 # PROSTOR_KANBAN_DB, PROSTOR_*_WEBHOOK).  The child only needs the few
-# location/profile vars in _PROSTOR_CHILD_ALLOWED below; PROSTOR_RPC_SOCKET /
+# location/profile vars in _HERMES_CHILD_ALLOWED below; PROSTOR_RPC_SOCKET /
 # PROSTOR_RPC_DIR / TZ / HOME are injected explicitly after scrubbing.
 _SAFE_ENV_PREFIXES = ("PATH", "HOME", "USER", "LANG", "LC_", "TERM",
                       "TMPDIR", "TMP", "TEMP", "SHELL", "LOGNAME",
@@ -91,10 +91,10 @@ _SECRET_SUBSTRINGS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL",
                       "PASSWD", "AUTH", "DSN", "WEBHOOK")
 
 # Operational PROSTOR_* vars the child legitimately needs by exact name — these
-# are non-secret runtime-location flags (the same set prostor_cli treats as the
+# are non-secret runtime-location flags (the same set hermes_cli treats as the
 # runtime location) that repo-root modules a sandbox script imports may read at
 # import time.  None match _SECRET_SUBSTRINGS.
-_PROSTOR_CHILD_ALLOWED = frozenset({
+_HERMES_CHILD_ALLOWED = frozenset({
     "PROSTOR_HOME",
     "PROSTOR_PROFILE",
     "PROSTOR_CONFIG",
@@ -140,7 +140,7 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
       1. Passthrough vars (skill- or config-declared) always pass.
       2. Secret-substring names (KEY/TOKEN/DSN/WEBHOOK/etc.) are blocked.
       3. Names matching a safe prefix pass.
-      4. Operational PROSTOR_* vars (_PROSTOR_CHILD_ALLOWED) pass by exact name.
+      4. Operational PROSTOR_* vars (_HERMES_CHILD_ALLOWED) pass by exact name.
       5. On Windows, a small OS-essential allowlist passes by exact name
          — without these the child can't even create a socket or spawn a
          subprocess.
@@ -165,7 +165,7 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
     # that imports a repo module reading one at import time would otherwise see
     # it silently unset. Surface the drop once so the behavior change is
     # diagnosable and points at the env_passthrough opt-in escape hatch.
-    _dropped_prostor = []
+    _dropped_hermes = []
     for k, v in source_env.items():
         if is_passthrough(k):
             scrubbed[k] = v
@@ -175,7 +175,7 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
         if any(k.startswith(p) for p in _SAFE_ENV_PREFIXES):
             scrubbed[k] = v
             continue
-        if k in _PROSTOR_CHILD_ALLOWED:
+        if k in _HERMES_CHILD_ALLOWED:
             scrubbed[k] = v
             continue
         if is_windows and k.upper() in _WINDOWS_ESSENTIAL_ENV_VARS:
@@ -184,15 +184,15 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
         if k.startswith("PROSTOR_"):
             # Non-secret (secrets were already dropped above) and not in any
             # allowlist — a deliberately-dropped PROSTOR_* var.
-            _dropped_prostor.append(k)
-    if _dropped_prostor:
+            _dropped_hermes.append(k)
+    if _dropped_hermes:
         logger.debug(
             "execute_code: dropped %d non-allowlisted PROSTOR_* var(s) from the "
             "sandbox child env (%s). This is intentional hardening (#27303); if "
             "a sandbox script legitimately needs one, declare it via "
             "env_passthrough in the skill/config so it passes by explicit opt-in.",
-            len(_dropped_prostor),
-            ", ".join(sorted(_dropped_prostor)),
+            len(_dropped_hermes),
+            ", ".join(sorted(_dropped_hermes)),
         )
     return scrubbed
 
@@ -205,7 +205,7 @@ def check_sandbox_requirements() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# prostor_tools.py code generator
+# hermes_tools.py code generator
 # ---------------------------------------------------------------------------
 
 # Per-tool stub templates: (function_name, signature, docstring, args_dict_expr)
@@ -256,10 +256,10 @@ _TOOL_STUBS = {
 }
 
 
-def generate_prostor_tools_module(enabled_tools: List[str],
+def generate_hermes_tools_module(enabled_tools: List[str],
                                  transport: str = "uds") -> str:
     """
-    Build the source code for the prostor_tools.py stub module.
+    Build the source code for the hermes_tools.py stub module.
 
     Only tools in both SANDBOX_ALLOWED_TOOLS and enabled_tools get stubs.
 
@@ -401,7 +401,7 @@ _FILE_TRANSPORT_HEADER = '''\
 """Auto-generated Prostor tools RPC stubs (file-based transport)."""
 import json, os, shlex, tempfile, threading, time
 
-_RPC_DIR = os.environ.get("PROSTOR_RPC_DIR") or os.path.join(tempfile.gettempdir(), "prostor_rpc")
+_RPC_DIR = os.environ.get("PROSTOR_RPC_DIR") or os.path.join(tempfile.gettempdir(), "hermes_rpc")
 _seq = 0
 # `_seq += 1` is not atomic (read-modify-write), so concurrent _call()
 # invocations from multiple threads could allocate the same sequence number
@@ -881,7 +881,7 @@ def _execute_remote(
 ) -> str:
     """Run a script on the remote terminal backend via file-based RPC.
 
-    The script and the generated prostor_tools.py module are shipped to
+    The script and the generated hermes_tools.py module are shipped to
     the remote environment, and tool calls are proxied through a polling
     thread that communicates via request/response files.
     """
@@ -900,7 +900,7 @@ def _execute_remote(
 
     sandbox_id = uuid.uuid4().hex[:12]
     temp_dir = _env_temp_dir(env)
-    sandbox_dir = f"{temp_dir}/prostor_exec_{sandbox_id}"
+    sandbox_dir = f"{temp_dir}/hermes_exec_{sandbox_id}"
     quoted_sandbox_dir = shlex.quote(sandbox_dir)
     quoted_rpc_dir = shlex.quote(f"{sandbox_dir}/rpc")
 
@@ -934,10 +934,10 @@ def _execute_remote(
         )
 
         # Generate and ship files
-        tools_src = generate_prostor_tools_module(
+        tools_src = generate_hermes_tools_module(
             list(sandbox_tools), transport="file",
         )
-        _ship_file_to_remote(env, f"{sandbox_dir}/prostor_tools.py", tools_src)
+        _ship_file_to_remote(env, f"{sandbox_dir}/hermes_tools.py", tools_src)
         _ship_file_to_remote(env, f"{sandbox_dir}/script.py", code)
 
         # Wrapped so the thread inherits the turn's approval context + callbacks
@@ -961,7 +961,7 @@ def _execute_remote(
         )
         tz = os.getenv("PROSTOR_TIMEZONE", "").strip()
         if tz:
-            env_prefix += f" TZ={tz}"
+            env_prefix += f" TZ={shlex.quote(tz)}"
 
         # Execute the script on the remote backend
         logger.info("Executing code on %s backend (task %s)...",
@@ -1139,8 +1139,8 @@ def execute_code(
     if not sandbox_tools:
         sandbox_tools = SANDBOX_ALLOWED_TOOLS
 
-    # --- Set up temp directory with prostor_tools.py and script.py ---
-    tmpdir = tempfile.mkdtemp(prefix="prostor_sandbox_")
+    # --- Set up temp directory with hermes_tools.py and script.py ---
+    tmpdir = tempfile.mkdtemp(prefix="hermes_sandbox_")
     # Use /tmp on macOS to avoid the long /var/folders/... path that pushes
     # Unix domain socket paths past the 104-byte macOS AF_UNIX limit.
     # On Linux, tempfile.gettempdir() already returns /tmp.
@@ -1158,7 +1158,7 @@ def execute_code(
         sock_path = None  # not used on Windows; TCP endpoint stored below
         rpc_endpoint = None  # set after bind()
     else:
-        sock_path = os.path.join(_sock_tmpdir, f"prostor_rpc_{uuid.uuid4().hex}.sock")
+        sock_path = os.path.join(_sock_tmpdir, f"hermes_rpc_{uuid.uuid4().hex}.sock")
         rpc_endpoint = sock_path
 
     tool_call_log: list = []
@@ -1168,7 +1168,7 @@ def execute_code(
     stop_event = threading.Event()
 
     try:
-        # Write the auto-generated prostor_tools module.
+        # Write the auto-generated hermes_tools module.
         # encoding="utf-8" is required on Windows — the stub and user code
         # both contain non-ASCII characters (em-dashes in docstrings, plus
         # whatever the user script carries).  Python's default open() uses
@@ -1178,8 +1178,8 @@ def execute_code(
         # Python source files are decoded as UTF-8 by default (PEP 3120).
         # sandbox_tools is already the correct set (intersection with session
         # tools, or SANDBOX_ALLOWED_TOOLS as fallback — see lines above).
-        tools_src = generate_prostor_tools_module(list(sandbox_tools))
-        with open(os.path.join(tmpdir, "prostor_tools.py"), "w", encoding="utf-8") as f:
+        tools_src = generate_hermes_tools_module(list(sandbox_tools))
+        with open(os.path.join(tmpdir, "hermes_tools.py"), "w", encoding="utf-8") as f:
             f.write(tools_src)
 
         # Write the user's script
@@ -1253,11 +1253,11 @@ def execute_code(
         child_env["PYTHONUTF8"] = "1"
         # Ensure the prostor-agent root is importable in the sandbox so
         # repo-root modules are available to child scripts.  We also prepend
-        # the staging tmpdir so ``from prostor_tools import ...`` resolves even
+        # the staging tmpdir so ``from hermes_tools import ...`` resolves even
         # when the subprocess CWD is not tmpdir (project mode).
-        _prostor_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _hermes_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         _existing_pp = child_env.get("PYTHONPATH", "")
-        _pp_parts = [tmpdir, _prostor_root]
+        _pp_parts = [tmpdir, _hermes_root]
         if _existing_pp:
             _pp_parts.append(_existing_pp)
         child_env["PYTHONPATH"] = os.pathsep.join(_pp_parts)
@@ -1270,7 +1270,7 @@ def execute_code(
             child_env["TZ"] = _tz_name
         child_env.pop("PROSTOR_TIMEZONE", None)
 
-        from prostor_constants import apply_subprocess_home_env
+        from hermes_constants import apply_subprocess_home_env
         apply_subprocess_home_env(child_env)
 
         # Resolve interpreter + CWD based on execute_code mode.
@@ -1575,7 +1575,7 @@ def _load_config() -> dict:
     key cleanly falls back to DEFAULT_EXECUTION_MODE.
     """
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
 
         cfg = read_raw_config().get("code_execution", {})
         return cfg if isinstance(cfg, dict) else {}
@@ -1793,14 +1793,14 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None,
         "Use normal tool calls instead when: single tool call with no processing, "
         "you need to see the full result and apply complex reasoning, "
         "or the task requires interactive user input.\n\n"
-        f"Available via `from prostor_tools import ...`:\n\n"
+        f"Available via `from hermes_tools import ...`:\n\n"
         f"{tool_lines}\n\n"
         "Limits: 5-minute timeout, 50KB stdout cap, max 50 tool calls per script. "
         "terminal() is foreground-only (no background or pty).\n\n"
         f"{cwd_note}\n\n"
         "Print your final result to stdout. Use Python stdlib (json, re, math, csv, "
         "datetime, collections, etc.) for processing between tool calls.\n\n"
-        "Also available (no import needed — built into prostor_tools):\n"
+        "Also available (no import needed — built into hermes_tools):\n"
         "  json_parse(text: str) — json.loads with strict=False; use for terminal() output with control chars\n"
         "  shell_quote(s: str) — shlex.quote(); use when interpolating dynamic strings into shell commands\n"
         "  retry(fn, max_attempts=3, delay=2) — retry with exponential backoff for transient failures"
@@ -1816,7 +1816,7 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None,
                     "type": "string",
                     "description": (
                         "Python code to execute. Import tools with "
-                        f"`from prostor_tools import {import_str}` "
+                        f"`from hermes_tools import {import_str}` "
                         "and print your final result to stdout."
                     ),
                 },

@@ -1,5 +1,5 @@
-import { useStore } from '@nanostores/react'
 import { Box, type ScrollBoxHandle, stringWidth, Text } from '@prostor/ink'
+import { useStore } from '@nanostores/react'
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import unicodeSpinners from 'unicode-animations'
 
@@ -480,7 +480,6 @@ export function StatusRule({
   // mid-segment, so status/model/context are never crushed.
   const SEP = stringWidth(' │ ')
   let tailBudget = Math.max(0, leftWidth - essentialWidth)
-
   const fits = (w: number) => {
     if (tailBudget >= w) {
       tailBudget -= w
@@ -494,7 +493,6 @@ export function StatusRule({
   const sessionCountText = liveSessionCount > 0 ? statusSessionCountLabel(liveSessionCount) : ''
   const compressions = typeof usage.compressions === 'number' ? usage.compressions : 0
   const costText = typeof usage.cost_usd === 'number' ? `$${usage.cost_usd.toFixed(4)}` : ''
-
   // Dev-only readout (PROSTOR_DEV_CREDITS). The server omits the key entirely unless the
   // flag is on, so this segment self-hides for normal users. micros→cents is allowed money
   // math (display formatting) — never parseFloat a *_usd. Signed: a mid-session top-up that

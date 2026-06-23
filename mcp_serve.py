@@ -62,8 +62,8 @@ except ImportError:
 def _get_sessions_dir() -> Path:
     """Return the sessions directory using PROSTOR_HOME."""
     try:
-        from prostor_constants import get_prostor_home
-        return get_prostor_home() / "sessions"
+        from hermes_constants import get_hermes_home
+        return get_hermes_home() / "sessions"
     except ImportError:
         return Path(os.environ.get("PROSTOR_HOME", Path.home() / ".prostor")) / "sessions"
 
@@ -71,7 +71,7 @@ def _get_sessions_dir() -> Path:
 def _get_session_db():
     """Get a SessionDB instance for reading message transcripts."""
     try:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
         return SessionDB()
     except Exception as e:
         logger.debug("SessionDB unavailable: %s", e)
@@ -98,8 +98,8 @@ def _load_sessions_index() -> dict:
 def _load_channel_directory() -> dict:
     """Load the cached channel directory for available targets."""
     try:
-        from prostor_constants import get_prostor_home
-        directory_file = get_prostor_home() / "channel_directory.json"
+        from hermes_constants import get_hermes_home
+        directory_file = get_hermes_home() / "channel_directory.json"
     except ImportError:
         directory_file = Path(
             os.environ.get("PROSTOR_HOME", Path.home() / ".prostor")
@@ -362,8 +362,8 @@ class EventBridge:
 
         # Check if state.db has changed
         try:
-            from prostor_constants import get_prostor_home
-            db_file = get_prostor_home() / "state.db"
+            from hermes_constants import get_hermes_home
+            db_file = get_hermes_home() / "state.db"
         except ImportError:
             db_file = Path(os.environ.get("PROSTOR_HOME", Path.home() / ".prostor")) / "state.db"
 

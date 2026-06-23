@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $uiState, resetUiState } from '../app/uiStore.js'
 import {
@@ -9,6 +9,7 @@ import {
   normalizeMouseTracking,
   normalizeStatusBar
 } from '../app/useConfigSync.js'
+import type { ParsedVoiceRecordKey } from '../lib/platform.js'
 
 describe('applyDisplay', () => {
   beforeEach(() => {
@@ -236,7 +237,7 @@ describe('normalizeBusyInputMode', () => {
 
   it('defaults to queue for missing/unknown values (TUI-only override)', () => {
     // CLI / messaging adapters keep `interrupt` as the framework default
-    // (see prostor_cli/config.py + tui_gateway/server.py::_load_busy_input_mode);
+    // (see hermes_cli/config.py + tui_gateway/server.py::_load_busy_input_mode);
     // the TUI ships `queue` because typing a follow-up while the agent
     // streams is the common authoring pattern and an unintended interrupt
     // loses work.

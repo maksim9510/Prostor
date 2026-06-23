@@ -30,7 +30,7 @@ async function fetchPublicText(url, options = {}) {
 }
 
 function extractInjectedDashboardToken(html) {
-  const match = /window\.__PROSTOR_SESSION_TOKEN__\s*=\s*("(?:\\.|[^"\\])*")/.exec(String(html || ''))
+  const match = /window\.__HERMES_SESSION_TOKEN__\s*=\s*("(?:\\.|[^"\\])*")/.exec(String(html || ''))
   if (!match) return null
   try {
     return JSON.parse(match[1])

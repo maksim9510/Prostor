@@ -50,12 +50,12 @@ logger = logging.getLogger(__name__)
 def get_env_value(name, default=None):
     """Read env values through the live config module.
 
-    Tests may monkeypatch and later restore ``prostor_cli.config.get_env_value``
+    Tests may monkeypatch and later restore ``hermes_cli.config.get_env_value``
     before this module is imported. Resolve the helper at call time so STT does
     not keep a stale imported function for the rest of the test process.
     """
     try:
-        from prostor_cli.config import get_env_value as _get_env_value
+        from hermes_cli.config import get_env_value as _get_env_value
     except ImportError:
         return os.getenv(name, default)
     value = _get_env_value(name)
@@ -120,7 +120,7 @@ _local_model_name: Optional[str] = None
 def _load_stt_config() -> dict:
     """Load the ``stt`` section from user config, falling back to defaults."""
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         return load_config().get("stt", {})
     except Exception:
         return {}
@@ -458,7 +458,7 @@ def _render_command_stt_template(
 
     def replace_match(match: "re.Match[str]") -> str:
         name = match.group("double") or match.group("single")
-        token = f"__PROSTOR_STT_PLACEHOLDER_{len(replacements)}__"
+        token = f"__HERMES_STT_PLACEHOLDER_{len(replacements)}__"
         replacements.append((
             token,
             _quote_command_stt_placeholder(
@@ -928,7 +928,7 @@ def _dispatch_to_plugin_provider(
         return None
     try:
         from agent.transcription_registry import get_provider
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         plugin_provider = get_provider(key)
@@ -1465,7 +1465,7 @@ def _transcribe_xai(file_path: str, model_name: str) -> Dict[str, Any]:
 
     try:
         import requests
-        from tools.xai_http import prostor_xai_user_agent
+        from tools.xai_http import hermes_xai_user_agent
 
         data: Dict[str, str] = {}
         if language:
@@ -1480,7 +1480,7 @@ def _transcribe_xai(file_path: str, model_name: str) -> Dict[str, Any]:
                 f"{base_url}/stt",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "User-Agent": prostor_xai_user_agent(),
+                    "User-Agent": hermes_xai_user_agent(),
                 },
                 files={
                     "file": (Path(file_path).name, audio_file),

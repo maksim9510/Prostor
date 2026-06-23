@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from prostor_state import SessionDB
+from hermes_state import SessionDB
 from acp_adapter.session import SessionManager
 
 
@@ -28,7 +28,7 @@ def _mock_agent():
 
 
 # ---------------------------------------------------------------------------
-# prostor_state.SessionDB.update_session_meta — unit tests
+# hermes_state.SessionDB.update_session_meta — unit tests
 # ---------------------------------------------------------------------------
 
 class TestUpdateSessionMeta:

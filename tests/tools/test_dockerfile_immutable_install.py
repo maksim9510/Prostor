@@ -12,7 +12,7 @@ def _dockerfile_text() -> str:
     return DOCKERFILE.read_text()
 
 
-def test_dockerfile_makes_opt_prostor_root_owned_and_non_writable() -> None:
+def test_dockerfile_makes_opt_hermes_root_owned_and_non_writable() -> None:
     text = _dockerfile_text()
 
     assert "COPY --chown=prostor:prostor . ." not in text
@@ -46,7 +46,7 @@ def test_dockerfile_disables_runtime_install_mutations() -> None:
     assert "PROSTOR_TUI_DIR=/opt/prostor/ui-tui" in text
 
 
-def test_dockerfile_does_not_chown_install_trees_to_prostor() -> None:
+def test_dockerfile_does_not_chown_install_trees_to_hermes() -> None:
     text = _dockerfile_text()
     forbidden_patterns = (
         r"chown\s+-R\s+prostor:prostor\s+/opt/prostor/\.venv",

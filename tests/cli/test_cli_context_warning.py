@@ -19,14 +19,14 @@ def _isolate(tmp_path, monkeypatch):
 
 @pytest.fixture
 def cli_obj(_isolate):
-    """Create a minimal ProstorCLI instance for banner testing."""
+    """Create a minimal HermesCLI instance for banner testing."""
     with patch("cli.load_cli_config", return_value={
         "display": {"tool_progress": "new"},
         "terminal": {},
     }), patch("cli.get_tool_definitions", return_value=[]), \
          patch("cli.build_welcome_banner"):
-        from cli import ProstorCLI
-        obj = ProstorCLI.__new__(ProstorCLI)
+        from cli import HermesCLI
+        obj = HermesCLI.__new__(HermesCLI)
         obj.model = "test-model"
         obj.enabled_toolsets = ["prostor-core"]
         obj.compact = False

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
-import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { getLogs, getStatus } from '@/prostor'
+import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import type { StatusResponse } from '@/types/prostor'
 
 const REFRESH_MS = 15_000

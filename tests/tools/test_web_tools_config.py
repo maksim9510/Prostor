@@ -137,14 +137,14 @@ class TestFirecrawlClientConfig:
                     api_url="https://firecrawl-gateway.nousresearch.com",
                 )
 
-    def test_nous_auth_token_respects_prostor_home_override(self, tmp_path):
+    def test_nous_auth_token_respects_hermes_home_override(self, tmp_path):
         """Auth lookup should read from PROSTOR_HOME/auth.json, not ~/.prostor/auth.json."""
         real_home = tmp_path / "real-home"
         (real_home / ".prostor").mkdir(parents=True)
 
-        prostor_home = tmp_path / "prostor-home"
-        prostor_home.mkdir()
-        (prostor_home / "auth.json").write_text(json.dumps({
+        hermes_home = tmp_path / "prostor-home"
+        hermes_home.mkdir()
+        (hermes_home / "auth.json").write_text(json.dumps({
             "providers": {
                 "nous": {
                     "access_token": "nous-token",
@@ -154,7 +154,7 @@ class TestFirecrawlClientConfig:
 
         with patch.dict(os.environ, {
             "HOME": str(real_home),
-            "PROSTOR_HOME": str(prostor_home),
+            "PROSTOR_HOME": str(hermes_home),
         }, clear=False):
             import tools.web_tools
             importlib.reload(tools.web_tools)
@@ -675,7 +675,7 @@ class TestCheckWebApiKey:
             return "fresh-token"
 
         monkeypatch.setattr(
-            "prostor_cli.auth.resolve_nous_access_token",
+            "hermes_cli.auth.resolve_nous_access_token",
             _record_refresh,
         )
 

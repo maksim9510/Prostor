@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from prostor_constants import display_prostor_home
+from hermes_constants import display_hermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +21,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from cron.jobs import (
     AmbiguousJobReference,
+    claim_job_for_fire,
     create_job,
+    get_job,
     list_jobs,
+    mark_job_run,
     parse_schedule,
     pause_job,
     remove_job,
     resolve_job_ref,
     resume_job,
-    trigger_job,
     update_job,
 )
 
@@ -348,7 +350,7 @@ def _resolve_model_override(model_obj: Optional[Dict[str, Any]]) -> tuple:
     # silently hijacks a job that meant to use the configured custom endpoint.
     if provider_name == "custom":
         try:
-            from prostor_cli.runtime_provider import has_named_custom_provider
+            from hermes_cli.runtime_provider import has_named_custom_provider
             if not has_named_custom_provider("custom"):
                 provider_name = None
         except Exception:
@@ -356,7 +358,7 @@ def _resolve_model_override(model_obj: Optional[Dict[str, Any]]) -> tuple:
     if model_name and not provider_name:
         # Pin to the current main provider so the job is stable
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             cfg = load_config()
             model_cfg = cfg.get("model", {})
             if isinstance(model_cfg, dict):
@@ -408,7 +410,7 @@ def _validate_cron_script_path(script: Optional[str]) -> Optional[str]:
     if not script or not script.strip():
         return None  # empty/None = clearing the field, always OK
 
-    from prostor_constants import get_prostor_home
+    from hermes_constants import get_hermes_home
 
     raw = script.strip()
 
@@ -424,7 +426,7 @@ def _validate_cron_script_path(script: Optional[str]) -> Optional[str]:
     # Validate containment after resolution
     from tools.path_security import validate_within_dir
 
-    scripts_dir = get_prostor_home() / "scripts"
+    scripts_dir = get_hermes_home() / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     containment_error = validate_within_dir(scripts_dir / raw, scripts_dir)
     if containment_error:
@@ -470,6 +472,51 @@ def _format_job(job: Dict[str, Any]) -> Dict[str, Any]:
     if job.get("workdir"):
         result["workdir"] = job["workdir"]
     return result
+
+
+def _execute_job_now(job: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute a cron job immediately, outside the scheduler tick.
+
+    Atomically claims the job first via ``claim_job_for_fire`` — the same
+    at-most-once CAS the scheduler/external-provider fire path uses — so a
+    concurrently-running gateway ticker cannot also fire it (the claim both
+    blocks a duplicate fire and advances ``next_run_at`` for recurring jobs).
+    If the claim is lost (another fire is in flight), this is a no-op.
+
+    The actual firing is delegated to ``run_one_job`` — the single shared
+    execute→save→deliver→mark body the ticker and external providers use — so
+    failure delivery, ``[SILENT]`` handling, and live-adapter delivery stay
+    identical across paths and can't drift.
+
+    Returns {"claimed": bool, "success": bool, "error": str|None}.
+    """
+    job_id = job["id"]
+    try:
+        from cron.scheduler import run_one_job
+
+        # At-most-once claim: bail without running if a tick/other fire owns it.
+        if not claim_job_for_fire(job_id):
+            return {"claimed": False, "success": False,
+                    "error": "Job is already being fired by the scheduler; not run again."}
+
+        # run_one_job records last_run_at/last_status via mark_job_run (which
+        # also clears the fire claim) and returns True iff it processed the job.
+        processed = run_one_job(job)
+        refreshed = get_job(job_id) or {}
+        ok = refreshed.get("last_status") == "ok"
+        return {
+            "claimed": True,
+            "success": bool(processed and ok),
+            "error": refreshed.get("last_error"),
+        }
+
+    except Exception as e:
+        logger.error("Failed to execute cron job %s immediately: %s", job_id, e)
+        try:
+            mark_job_run(job_id, False, str(e))
+        except Exception:
+            pass
+        return {"claimed": True, "success": False, "error": str(e)}
 
 
 def cronjob(
@@ -640,8 +687,23 @@ def cronjob(
             return json.dumps({"success": True, "job": _format_job(updated)}, indent=2)
 
         if normalized in {"run", "run_now", "trigger"}:
-            updated = trigger_job(job_id)
-            return json.dumps({"success": True, "job": _format_job(updated)}, indent=2)
+            # Execute the job immediately rather than only scheduling it for the
+            # next scheduler tick — a manual `run` should actually run, even when
+            # no gateway/ticker is active (the #41037 case). The claim inside
+            # _execute_job_now advances next_run_at and blocks a concurrent tick
+            # from double-firing.
+            exec_result = _execute_job_now(job)
+            # Re-read so the response reflects the post-run last_run_at/last_status.
+            result = _format_job(get_job(job_id) or {"id": job_id})
+            result["executed"] = exec_result.get("claimed", False)
+            result["execution_success"] = exec_result.get("success", False)
+            if not exec_result.get("claimed", False):
+                result["execution_skipped"] = (
+                    "Already being fired by the scheduler; not run again."
+                )
+            elif exec_result.get("error"):
+                result["execution_error"] = exec_result["error"]
+            return json.dumps({"success": True, "job": result}, indent=2)
 
         if normalized == "update":
             updates: Dict[str, Any] = {}
@@ -807,7 +869,7 @@ Important safety rule: cron-run sessions should not recursively schedule more cr
             },
             "script": {
                 "type": "string",
-                "description": f"Optional path to a script that runs each tick. In the default mode its stdout is injected into the agent's prompt as context (data-collection / change-detection pattern). With no_agent=True, the script IS the job and its stdout is delivered verbatim (classic watchdog pattern). Relative paths resolve under {display_prostor_home()}/scripts/. ``.sh``/``.bash`` extensions run via bash, everything else via Python. On update, pass empty string to clear."
+                "description": f"Optional path to a script that runs each tick. In the default mode its stdout is injected into the agent's prompt as context (data-collection / change-detection pattern). With no_agent=True, the script IS the job and its stdout is delivered verbatim (classic watchdog pattern). Relative paths resolve under {display_hermes_home()}/scripts/. ``.sh``/``.bash`` extensions run via bash, everything else via Python. On update, pass empty string to clear."
             },
             "no_agent": {
                 "type": "boolean",

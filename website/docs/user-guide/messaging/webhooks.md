@@ -1,12 +1,12 @@
 ---
 sidebar_position: 13
 title: "Webhooks"
-description: "Receive events from GitHub, GitLab, and other services to trigger Prostor agent runs"
+description: "Receive events from GitHub, GitLab, and other services to trigger Hermes agent runs"
 ---
 
 # Webhooks
 
-Receive events from external services (GitHub, GitLab, JIRA, Stripe, etc.) and trigger Prostor agent runs automatically. The webhook adapter runs an HTTP server that accepts POST requests, validates HMAC signatures, transforms payloads into agent prompts, and routes responses back to the source or to another configured platform.
+Receive events from external services (GitHub, GitLab, JIRA, Stripe, etc.) and trigger Hermes agent runs automatically. The webhook adapter runs an HTTP server that accepts POST requests, validates HMAC signatures, transforms payloads into agent prompts, and routes responses back to the source or to another configured platform.
 
 The agent processes the event and can respond by posting comments on PRs, sending messages to Telegram/Discord, or logging the result.
 
@@ -15,7 +15,7 @@ The agent processes the event and can respond by posting comments on PRs, sendin
 <div style={{position: 'relative', width: '100%', aspectRatio: '16 / 9', marginBottom: '1.5rem'}}>
   <iframe
     src="https://www.youtube.com/embed/WNYe5mD4fY8"
-    title="Prostor Agent — Webhooks Tutorial"
+    title="Hermes Agent — Webhooks Tutorial"
     style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0}}
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
     allowFullScreen
@@ -26,8 +26,8 @@ The agent processes the event and can respond by posting comments on PRs, sendin
 
 ## Quick Start
 
-1. Enable via `prostor gateway setup` or environment variables
-2. Define routes in `config.yaml` **or** create them dynamically with `prostor webhook subscribe`
+1. Enable via `hermes gateway setup` or environment variables
+2. Define routes in `config.yaml` **or** create them dynamically with `hermes webhook subscribe`
 3. Point your service at `http://your-server:8644/webhooks/<route-name>`
 
 ---
@@ -39,14 +39,14 @@ There are two ways to enable the webhook adapter.
 ### Via setup wizard
 
 ```bash
-prostor gateway setup
+hermes gateway setup
 ```
 
 Follow the prompts to enable webhooks, set the port, and set a global HMAC secret.
 
 ### Via environment variables
 
-Add to `~/.prostor/.env`:
+Add to `~/.hermes/.env`:
 
 ```bash
 WEBHOOK_ENABLED=true
@@ -174,7 +174,7 @@ This walkthrough sets up automatic code review on every pull request.
 
 ### 2. Add the route config
 
-Add the `github-pr` route to your `~/.prostor/config.yaml` as shown in the example above.
+Add the `github-pr` route to your `~/.hermes/config.yaml` as shown in the example above.
 
 ### 3. Ensure `gh` CLI is authenticated
 
@@ -186,7 +186,7 @@ gh auth login
 
 ### 4. Test it
 
-Open a pull request on the repository. The webhook fires, Prostor processes the event, and posts a review comment on the PR.
+Open a pull request on the repository. The webhook fires, Hermes processes the event, and posts a review comment on the PR.
 
 ---
 
@@ -297,7 +297,7 @@ Your Supabase edge function signs the payload with HMAC-SHA256 and POSTs to `htt
 ### Example: Dynamic subscription via CLI
 
 ```bash
-prostor webhook subscribe antenna-matches \
+hermes webhook subscribe antenna-matches \
   --deliver telegram \
   --deliver-chat-id "123456789" \
   --deliver-only \
@@ -329,12 +329,12 @@ prostor webhook subscribe antenna-matches \
 
 ## Dynamic Subscriptions (CLI) {#dynamic-subscriptions}
 
-In addition to static routes in `config.yaml`, you can create webhook subscriptions dynamically using the `prostor webhook` CLI command. This is especially useful when the agent itself needs to set up event-driven triggers.
+In addition to static routes in `config.yaml`, you can create webhook subscriptions dynamically using the `hermes webhook` CLI command. This is especially useful when the agent itself needs to set up event-driven triggers.
 
 ### Create a subscription
 
 ```bash
-prostor webhook subscribe github-issues \
+hermes webhook subscribe github-issues \
   --events "issues" \
   --prompt "New issue #{issue.number}: {issue.title}\nBy: {issue.user.login}\n\n{issue.body}" \
   --deliver telegram \
@@ -347,25 +347,25 @@ This returns the webhook URL and an auto-generated HMAC secret. Configure your s
 ### List subscriptions
 
 ```bash
-prostor webhook list
+hermes webhook list
 ```
 
 ### Remove a subscription
 
 ```bash
-prostor webhook remove github-issues
+hermes webhook remove github-issues
 ```
 
 ### Test a subscription
 
 ```bash
-prostor webhook test github-issues
-prostor webhook test github-issues --payload '{"issue": {"number": 42, "title": "Test"}}'
+hermes webhook test github-issues
+hermes webhook test github-issues --payload '{"issue": {"number": 42, "title": "Test"}}'
 ```
 
 ### How dynamic subscriptions work
 
-- Subscriptions are stored in `~/.prostor/webhook_subscriptions.json`
+- Subscriptions are stored in `~/.hermes/webhook_subscriptions.json`
 - The webhook adapter hot-reloads this file on each incoming request (mtime-gated, negligible overhead)
 - Static routes from `config.yaml` always take precedence over dynamic ones with the same name
 - Dynamic subscriptions use the same route format and capabilities as static routes (events, prompt templates, skills, delivery)
@@ -373,7 +373,7 @@ prostor webhook test github-issues --payload '{"issue": {"number": 42, "title": 
 
 ### Agent-driven subscriptions
 
-The agent can create subscriptions via the terminal tool when guided by the `webhook-subscriptions` skill. Ask the agent to "set up a webhook for GitHub issues" and it will run the appropriate `prostor webhook subscribe` command.
+The agent can create subscriptions via the terminal tool when guided by the `webhook-subscriptions` skill. Ask the agent to "set up a webhook for GitHub issues" and it will run the appropriate `hermes webhook subscribe` command.
 
 ---
 
@@ -458,7 +458,7 @@ Webhook payloads contain attacker-controlled data — PR titles, commit messages
 
 ### Agent not responding
 
-- Run the gateway in foreground to see logs: `prostor gateway run`
+- Run the gateway in foreground to see logs: `hermes gateway run`
 - Check that the prompt template is rendering correctly
 - Verify the delivery target is configured and connected
 

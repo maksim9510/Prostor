@@ -9,7 +9,7 @@ finally block, so len() reflects truly-running tasks.
 import threading
 from datetime import datetime
 
-from cli import ProstorCLI
+from cli import HermesCLI
 
 
 def _stub_thread() -> threading.Thread:
@@ -18,8 +18,8 @@ def _stub_thread() -> threading.Thread:
 
 
 def _make_cli():
-    """Bare-metal ProstorCLI for snapshot/build tests (no __init__ side effects)."""
-    cli_obj = ProstorCLI.__new__(ProstorCLI)
+    """Bare-metal HermesCLI for snapshot/build tests (no __init__ side effects)."""
+    cli_obj = HermesCLI.__new__(HermesCLI)
     cli_obj.model = "anthropic/claude-opus-4.6"
     cli_obj.agent = None
     cli_obj._background_tasks = {}
@@ -42,8 +42,8 @@ def test_snapshot_counts_live_background_tasks():
 
 
 def test_snapshot_safe_when_background_tasks_attr_missing():
-    """Older ProstorCLI instances (tests with __new__, etc.) may lack the attr."""
-    cli_obj = ProstorCLI.__new__(ProstorCLI)
+    """Older HermesCLI instances (tests with __new__, etc.) may lack the attr."""
+    cli_obj = HermesCLI.__new__(HermesCLI)
     cli_obj.model = "x"
     cli_obj.agent = None
     cli_obj.session_start = datetime.now()

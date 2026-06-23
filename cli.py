@@ -12,12 +12,12 @@ Usage:
     python cli.py --list-tools             # List available tools and exit
 """
 
-# IMPORTANT: prostor_bootstrap must be the very first import — UTF-8 stdio
-# on Windows.  No-op on POSIX.  See prostor_bootstrap.py for full rationale.
+# IMPORTANT: hermes_bootstrap must be the very first import — UTF-8 stdio
+# on Windows.  No-op on POSIX.  See hermes_bootstrap.py for full rationale.
 try:
-    import prostor_bootstrap  # noqa: F401
+    import hermes_bootstrap  # noqa: F401
 except ModuleNotFoundError:
-    # Graceful fallback when prostor_bootstrap isn't registered in the venv
+    # Graceful fallback when hermes_bootstrap isn't registered in the venv
     # yet — happens during partial ``prostor update`` where git-reset landed
     # new code but ``uv pip install -e .`` didn't finish.  Missing bootstrap
     # means UTF-8 stdio setup is skipped on Windows; POSIX is unaffected.
@@ -51,9 +51,9 @@ os.environ["PROSTOR_QUIET"] = "1"  # Our own modules
 
 import yaml
 
-from prostor_cli.fallback_config import get_fallback_chain
-from prostor_cli.cli_agent_setup_mixin import CLIAgentSetupMixin
-from prostor_cli.cli_commands_mixin import CLICommandsMixin
+from hermes_cli.fallback_config import get_fallback_chain
+from hermes_cli.cli_agent_setup_mixin import CLIAgentSetupMixin
+from hermes_cli.cli_commands_mixin import CLICommandsMixin
 
 # prompt_toolkit for fixed input area TUI
 from prompt_toolkit.history import FileHistory
@@ -76,7 +76,7 @@ except (ImportError, AttributeError):
     _STEADY_CURSOR = None
 
 try:
-    from prostor_cli.pt_input_extras import (
+    from hermes_cli.pt_input_extras import (
         install_ctrl_enter_alias,
         install_ignored_terminal_sequences,
         install_shift_enter_alias,
@@ -102,18 +102,43 @@ def estimate_usage_cost(*args, **kwargs):
     return _estimate_usage_cost(*args, **kwargs)
 
 
-# format_duration_compact, format_token_count_compact, _strip_reasoning_tags,
-# _assistant_content_as_text, _assistant_copy_text moved to
-# prostor_cli.cli_utils. Re-imported here as thin private aliases so existing
-# call sites inside cli.py keep working without a 500-line import-block edit.
-# New code outside cli.py should import directly from prostor_cli.cli_utils.
-from prostor_cli.cli_utils import (
-    format_duration_compact,
-    format_token_count_compact,
-    strip_reasoning_tags as _strip_reasoning_tags,
-    assistant_content_as_text as _assistant_content_as_text,
-    assistant_copy_text as _assistant_copy_text,
-)
+def format_duration_compact(*args, **kwargs):
+    seconds = float(args[0] if args else kwargs.get("seconds", 0.0))
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    minutes = seconds / 60
+    if minutes < 60:
+        return f"{minutes:.0f}m"
+    hours = minutes / 60
+    if hours < 24:
+        remaining_min = int(minutes % 60)
+        return f"{int(hours)}h {remaining_min}m" if remaining_min else f"{int(hours)}h"
+    days = hours / 24
+    return f"{days:.1f}d"
+
+
+def format_token_count_compact(*args, **kwargs):
+    value = int(args[0] if args else kwargs.get("value", 0))
+    abs_value = abs(value)
+    if abs_value < 1_000:
+        return str(value)
+
+    sign = "-" if value < 0 else ""
+    units = ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K"))
+    for threshold, suffix in units:
+        if abs_value >= threshold:
+            scaled = abs_value / threshold
+            if scaled < 10:
+                text = f"{scaled:.2f}"
+            elif scaled < 100:
+                text = f"{scaled:.1f}"
+            else:
+                text = f"{scaled:.0f}"
+            if "." in text:
+                text = text.rstrip("0").rstrip(".")
+            return f"{sign}{text}{suffix}"
+
+    return f"{value:,}"
 
 
 def is_table_divider(*args, **kwargs):
@@ -135,31 +160,126 @@ def realign_markdown_tables(*args, **kwargs):
 # NOTE: `from agent.account_usage import ...` is deliberately NOT at module
 # top — it transitively pulls the OpenAI SDK chain (~230 ms cold) and is only
 # needed when the user runs `/limits`. Lazy-imported inside the handler below.
-from prostor_cli.banner import _format_context_length, format_banner_version_label
+from hermes_cli.banner import _format_context_length, format_banner_version_label
 
 _COMMAND_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 
 
 # Load .env from ~/.prostor/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
-from prostor_constants import get_prostor_home, display_prostor_home
-from prostor_cli.browser_connect import (
+from hermes_constants import get_hermes_home, display_hermes_home
+from hermes_cli.browser_connect import (
     DEFAULT_BROWSER_CDP_URL,
     is_browser_debug_ready,
     manual_chrome_debug_command,
     try_launch_chrome_debug,
 )
-from prostor_cli.env_loader import load_prostor_dotenv
+from hermes_cli.env_loader import load_hermes_dotenv
 from utils import base_url_host_matches
 
-_prostor_home = get_prostor_home()
+_hermes_home = get_hermes_home()
 _project_env = Path(__file__).parent / '.env'
-load_prostor_dotenv(prostor_home=_prostor_home, project_env=_project_env)
+load_hermes_dotenv(hermes_home=_hermes_home, project_env=_project_env)
 
 
-# _strip_reasoning_tags, _assistant_content_as_text, _assistant_copy_text
-# live in prostor_cli.cli_utils — re-imported above for backward compatibility
-# with internal call sites in this file.
+_REASONING_TAGS = (
+    "REASONING_SCRATCHPAD",
+    "think",
+    "thinking",
+    "reasoning",
+    "thought",
+)
+
+
+def _strip_reasoning_tags(text: str) -> str:
+    """Remove reasoning/thinking blocks from displayed text.
+
+    Handles every case:
+      * Closed pairs ``<tag>…</tag>`` (case-insensitive, multi-line).
+      * Unterminated open tags that run to end-of-text (e.g. truncated
+        generations on NIM/MiniMax where the close tag is dropped).
+      * Stray orphan close tags (``stuff</think>answer``) left behind by
+        partial-content dumps.
+
+    Covers the variants emitted by reasoning models today: ``<think>``,
+    ``<thinking>``, ``<reasoning>``, ``<REASONING_SCRATCHPAD>``, and
+    ``<thought>`` (Gemma 4).  Must stay in sync with
+    ``run_agent.py::_strip_think_blocks`` and the stream consumer's
+    ``_OPEN_THINK_TAGS`` / ``_CLOSE_THINK_TAGS`` tuples.
+
+    Also strips tool-call XML blocks some open models leak into visible
+    content (``<tool_call>``, ``<function_calls>``, Gemma-style
+    ``<function name="…">…</function>``). Ported from
+    openclaw/openclaw#67318.
+    """
+    cleaned = text
+    for tag in _REASONING_TAGS:
+        # Closed pair — case-insensitive so <THINK>…</THINK> is handled too.
+        cleaned = re.sub(
+            rf"<{tag}>.*?</{tag}>\s*",
+            "",
+            cleaned,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        # Unterminated open tag — strip from the tag to end of text.
+        cleaned = re.sub(
+            rf"<{tag}>.*$",
+            "",
+            cleaned,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        # Stray orphan close tag left behind by partial dumps.
+        cleaned = re.sub(
+            rf"</{tag}>\s*",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+    # Tool-call XML blocks (openclaw/openclaw#67318).
+    for tc_tag in ("tool_call", "tool_calls", "tool_result",
+                   "function_call", "function_calls"):
+        cleaned = re.sub(
+            rf"<{tc_tag}\b[^>]*>.*?</{tc_tag}>\s*",
+            "",
+            cleaned,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+    # <function name="..."> — boundary + attribute gated to avoid prose FPs.
+    cleaned = re.sub(
+        r'(?:(?<=^)|(?<=[\n\r.!?:]))[ \t]*'
+        r'<function\b[^>]*\bname\s*=[^>]*>'
+        r'(?:(?:(?!</function>).)*)</function>\s*',
+        '',
+        cleaned,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    # Stray tool-call close tags.
+    cleaned = re.sub(
+        r'</(?:tool_call|tool_calls|tool_result|function_call|function_calls|function)>\s*',
+        '',
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip()
+
+
+def _assistant_content_as_text(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [
+            str(part.get("text", ""))
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        ]
+        return "\n".join(p for p in parts if p)
+    return str(content)
+
+
+def _assistant_copy_text(content: Any) -> str:
+    return _strip_reasoning_tags(_assistant_content_as_text(content))
 
 
 # =============================================================================
@@ -179,7 +299,7 @@ def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
         return []
     path = Path(file_path).expanduser()
     if not path.is_absolute():
-        path = _prostor_home / path
+        path = _hermes_home / path
     if not path.exists():
         logger.warning("Prefill messages file not found: %s", path)
         return []
@@ -216,7 +336,7 @@ def _resolve_prefill_messages_file(config: Dict[str, Any]) -> str:
 
 def _parse_reasoning_config(effort: str) -> dict | None:
     """Parse a reasoning effort level into an OpenRouter reasoning config dict."""
-    from prostor_constants import parse_reasoning_effort
+    from hermes_constants import parse_reasoning_effort
     result = parse_reasoning_effort(effort)
     if effort and effort.strip() and result is None:
         logger.warning("Unknown reasoning_effort '%s', using default (medium)", effort)
@@ -251,7 +371,7 @@ def load_cli_config() -> Dict[str, Any]:
     behavioral/config settings.
     """
     # Check user config first ({PROSTOR_HOME}/config.yaml)
-    user_config_path = _prostor_home / 'config.yaml'
+    user_config_path = _hermes_home / 'config.yaml'
     project_config_path = Path(__file__).parent / 'cli-config.yaml'
 
     # --ignore-user-config: force-skip the user config.yaml (still honor project
@@ -325,13 +445,14 @@ def load_cli_config() -> Dict[str, Any]:
         "display": {
             "compact": False,
             "resume_display": "full",
-            # Recap tuning for /resume — see prostor_cli/config.py DEFAULT_CONFIG.
+            # Recap tuning for /resume — see hermes_cli/config.py DEFAULT_CONFIG.
             "resume_exchanges": 10,
             "resume_max_user_chars": 300,
             "resume_max_assistant_chars": 200,
             "resume_max_assistant_lines": 3,
             "resume_skip_tool_only": True,
             "show_reasoning": False,
+            "reasoning_full": False,
             "streaming": True,
             "busy_input_mode": "interrupt",
             "persistent_output": True,
@@ -387,7 +508,7 @@ def load_cli_config() -> Dict[str, Any]:
     if config_path.exists():
         try:
             with open(config_path, "r", encoding="utf-8") as f:
-                from prostor_cli.config import _normalize_root_model_keys
+                from hermes_cli.config import _normalize_root_model_keys
 
                 file_config = _normalize_root_model_keys(yaml.safe_load(f) or {})
             
@@ -406,7 +527,7 @@ def load_cli_config() -> Dict[str, Any]:
                     # choice isn't shadowed by the hardcoded default.  Without this,
                     # profile configs that only set "model:" (not "default:") silently
                     # fall back to claude-opus because the merge preserves the
-                    # hardcoded default and ProstorCLI.__init__ checks "default" first.
+                    # hardcoded default and HermesCLI.__init__ checks "default" first.
                     if "model" in file_config["model"] and "default" not in file_config["model"]:
                         defaults["model"]["default"] = file_config["model"]["model"]
 
@@ -439,25 +560,25 @@ def load_cli_config() -> Dict[str, Any]:
             logger.warning("Failed to load cli-config.yaml: %s", e)
 
     # Expand ${ENV_VAR} references in config values before bridging to env vars.
-    from prostor_cli.config import _expand_env_vars
+    from hermes_cli.config import _expand_env_vars
     defaults = _expand_env_vars(defaults)
 
     # Managed scope: overlay administrator-pinned values LAST so they win over
     # the user's config here too. cli.py builds its config independently of
-    # prostor_cli.config._load_config_impl (which has its own managed merge), so
+    # hermes_cli.config._load_config_impl (which has its own managed merge), so
     # without this the entire interactive CLI/TUI surface — skin, display prefs,
     # etc. read from CLI_CONFIG — would silently ignore managed scope while
     # `prostor config`/`doctor`/guards (which use load_config) honor it. The
     # shared helper mirrors _load_config_impl (env-only expansion, root-model
     # normalization, leaf-merge) and is fail-open.
-    from prostor_cli import managed_scope
+    from hermes_cli import managed_scope
 
     defaults = managed_scope.apply_managed_overlay(defaults)
 
     # Apply terminal config to environment variables (so terminal_tool picks them up)
     terminal_config = defaults.get("terminal", {})
     
-    # Normalize config key: the new config system (prostor_cli/config.py) and all
+    # Normalize config key: the new config system (hermes_cli/config.py) and all
     # documentation use "backend", the legacy cli-config.yaml uses "env_type".
     # Accept both, with "backend" taking precedence (it's the documented key).
     if "backend" in terminal_config:
@@ -500,6 +621,7 @@ def load_cli_config() -> Dict[str, Any]:
         "container_persistent": "TERMINAL_CONTAINER_PERSISTENT",
         "docker_volumes": "TERMINAL_DOCKER_VOLUMES",
         "docker_env": "TERMINAL_DOCKER_ENV",
+        "docker_extra_args": "TERMINAL_DOCKER_EXTRA_ARGS",
         "docker_mount_cwd_to_workspace": "TERMINAL_DOCKER_MOUNT_CWD_TO_WORKSPACE",
         "docker_run_as_host_user": "TERMINAL_DOCKER_RUN_AS_HOST_USER",
         "docker_persist_across_processes": "TERMINAL_DOCKER_PERSIST_ACROSS_PROCESSES",
@@ -512,9 +634,9 @@ def load_cli_config() -> Dict[str, Any]:
     }
     
     # Bridge config → env vars for terminal_tool. TERMINAL_CWD is force-exported
-    # UNLESS we're inside a gateway process (detected by _PROSTOR_GATEWAY marker)
+    # UNLESS we're inside a gateway process (detected by _HERMES_GATEWAY marker)
     # where it was already set correctly by gateway/run.py's config bridge.
-    _is_gateway = os.environ.get("_PROSTOR_GATEWAY") == "1"
+    _is_gateway = os.environ.get("_HERMES_GATEWAY") == "1"
     for config_key, env_var in env_mappings.items():
         if config_key in terminal_config:
             if env_var == "TERMINAL_CWD":
@@ -602,21 +724,21 @@ CLI_CONFIG = load_cli_config()
 # Initialize centralized logging early — agent.log + errors.log in ~/.prostor/logs/.
 # This ensures CLI sessions produce a log trail even before AIAgent is instantiated.
 try:
-    from prostor_logging import setup_logging
+    from hermes_logging import setup_logging
     setup_logging(mode="cli")
 except Exception:
     pass  # Logging setup is best-effort — don't crash the CLI
 
 # Validate config structure early — print warnings before user hits cryptic errors
 try:
-    from prostor_cli.config import print_config_warnings
+    from hermes_cli.config import print_config_warnings
     print_config_warnings()
 except Exception:
     pass
 
 # Initialize the skin engine from config
 try:
-    from prostor_cli.skin_engine import init_skin_from_config
+    from hermes_cli.skin_engine import init_skin_from_config
     init_skin_from_config(CLI_CONFIG)
 except Exception:
     pass  # Skin engine is optional — default skin used if unavailable
@@ -704,7 +826,7 @@ def AIAgent(*args, **kwargs):
 
 
 def get_tool_definitions(*args, **kwargs):
-    from prostor_cli.mcp_startup import wait_for_mcp_discovery
+    from hermes_cli.mcp_startup import wait_for_mcp_discovery
     from model_tools import get_tool_definitions as _get_tool_definitions
 
     wait_for_mcp_discovery()
@@ -717,8 +839,8 @@ def get_toolset_for_tool(*args, **kwargs):
     return _get_toolset_for_tool(*args, **kwargs)
 
 # Extracted CLI modules (Phase 3)
-from prostor_cli.banner import build_welcome_banner
-from prostor_cli.commands import SlashCommandCompleter, SlashCommandAutoSuggest
+from hermes_cli.banner import build_welcome_banner
+from hermes_cli.commands import SlashCommandCompleter, SlashCommandAutoSuggest
 
 
 def get_all_toolsets(*args, **kwargs):
@@ -752,7 +874,7 @@ def get_job(*args, **kwargs):
     return _get_job(*args, **kwargs)
 
 # Resource cleanup imports for safe shutdown (terminal VMs, browser sessions)
-from prostor_cli.callbacks import prompt_for_secret
+from hermes_cli.callbacks import prompt_for_secret
 
 
 def _cleanup_all_terminals(*args, **kwargs):
@@ -821,7 +943,7 @@ def _prepare_deferred_agent_startup() -> None:
         "on",
     }
     try:
-        from prostor_cli.plugins import discover_plugins
+        from hermes_cli.plugins import discover_plugins
 
         discover_plugins()
     except Exception:
@@ -830,7 +952,7 @@ def _prepare_deferred_agent_startup() -> None:
             exc_info=True,
         )
     try:
-        from prostor_cli.mcp_startup import start_background_mcp_discovery
+        from hermes_cli.mcp_startup import start_background_mcp_discovery
 
         start_background_mcp_discovery(
             logger=logger,
@@ -843,7 +965,7 @@ def _prepare_deferred_agent_startup() -> None:
         )
     try:
         from agent.shell_hooks import register_from_config
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         register_from_config(load_config(), accept_hooks=_accept_hooks)
     except Exception:
@@ -942,7 +1064,7 @@ def _notify_session_finalize(
     reason: str = "shutdown",
 ) -> None:
     try:
-        from prostor_cli.plugins import invoke_hook as _invoke_hook
+        from hermes_cli.plugins import invoke_hook as _invoke_hook
         _invoke_hook(
             "on_session_finalize",
             session_id=session_id,
@@ -972,7 +1094,7 @@ def _emit_interrupted_session_end(cli, *, reason: str = "keyboard_interrupt") ->
             pass
 
     try:
-        from prostor_cli.plugins import invoke_hook as _invoke_hook
+        from hermes_cli.plugins import invoke_hook as _invoke_hook
         _invoke_hook(
             "on_session_end",
             session_id=session_id,
@@ -1062,55 +1184,411 @@ def _reset_terminal_input_modes_on_exit() -> None:
 # Git Worktree Isolation (#652)
 # =============================================================================
 
-# Worktree management moved to prostor_cli.cli_worktree. The canonical
-# implementations live there; the stubs below delegate to those so any
-# external callers of cli._normalize_git_bash_path etc. keep working.
-# ``_active_worktree`` is re-exported from cli_worktree so the
-# ProstorCLI class can still read/write it through this module.
-from prostor_cli.cli_worktree import active_worktree as _active_worktree
+# Tracks the active worktree for cleanup on exit
+_active_worktree: Optional[Dict[str, str]] = None
 
 
 def _normalize_git_bash_path(p: Optional[str]) -> Optional[str]:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.normalize_git_bash_path."""
-    from prostor_cli.cli_worktree import normalize_git_bash_path as _real_impl
-    return _real_impl(p)
+    """Translate a Git Bash-style path (``/c/Users/...``) to the native
+    Windows form (``C:\\Users\\...``) that Python's ``subprocess.Popen``
+    and ``pathlib.Path`` accept.
+
+    No-op on non-Windows and for paths that already look native.  Git on
+    native Windows normally emits forward-slash Windows paths
+    (``C:/Users/...``) which both bash and Python handle, but certain
+    configurations (Git Bash shells, MSYS2, WSL-mounted repos) surface
+    ``/c/...`` or ``/cygdrive/c/...`` variants.
+    """
+    if not p:
+        return p
+    if sys.platform != "win32":
+        return p
+    import re as _re
+    # /c/Users/... or /C/Users/...
+    m = _re.match(r"^/([a-zA-Z])/(.*)$", p)
+    if m:
+        drive, rest = m.group(1), m.group(2)
+        return f"{drive.upper()}:\\{rest.replace('/', chr(92))}"
+    # /cygdrive/c/... or /mnt/c/...
+    m = _re.match(r"^/(?:cygdrive|mnt)/([a-zA-Z])/(.*)$", p)
+    if m:
+        drive, rest = m.group(1), m.group(2)
+        return f"{drive.upper()}:\\{rest.replace('/', chr(92))}"
+    return p
 
 
 def _git_repo_root() -> Optional[str]:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.git_repo_root."""
-    from prostor_cli.cli_worktree import git_repo_root as _real_impl
-    return _real_impl()
+    """Return the git repo root for CWD, or None if not in a repo.
+
+    Runs through :func:`_normalize_git_bash_path` so callers can pass
+    the result directly to ``Path``/``subprocess.Popen(cwd=...)`` on
+    Windows without hitting ``C:\\c\\Users\\...`` style resolution
+    mistakes.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return _normalize_git_bash_path(result.stdout.strip())
+    except Exception:
+        pass
+    return None
 
 
 def _path_is_within_root(path: Path, root: Path) -> bool:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.path_is_within_root."""
-    from prostor_cli.cli_worktree import path_is_within_root as _real_impl
-    return _real_impl(path, root)
+    """Return True when a resolved path stays within the expected root."""
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
-def _setup_worktree(repo_root: str = None) -> Optional[Dict[str, str]]:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.setup_worktree."""
-    from prostor_cli.cli_worktree import setup_worktree as _real_impl
-    return _real_impl(repo_root)
+def _resolve_worktree_base(repo_root: str) -> tuple:
+    """Resolve the freshest base ref to branch a new worktree from.
+
+    The standalone clone's ``HEAD`` can lag the remote by hundreds of commits
+    (the ``~/.prostor/prostor-agent`` clone is updated only by ``prostor update``,
+    not on every session). Branching a worktree from that stale ``HEAD`` roots
+    every new branch on an old base — so the PR diff GitHub computes against
+    current ``main`` balloons with unrelated changes, and the agent has to
+    discover the staleness via the pre-push gate and rebase. Branching from the
+    freshly-fetched remote tip instead means the worktree starts current.
+
+    Strategy (each step falls back to the next on failure):
+      1. If the current branch tracks an upstream, fetch and use that upstream
+         ref — so a deliberate feature-branch worktree tracks its own remote,
+         not the default branch.
+      2. Else fetch the remote's default branch (``origin/HEAD`` → e.g.
+         ``origin/main``) and use it.
+      3. Else fall back to ``HEAD`` (offline, no remote, or detached) — the
+         old behavior, never worse than before.
+
+    Returns ``(base_ref, label)`` where *base_ref* is a git revision suitable
+    for ``git worktree add ... <base_ref>`` and *label* is a short
+    human-readable description for the session banner.
+    """
+    import subprocess
+
+    def _git(args, timeout=20):
+        return subprocess.run(
+            ["git", *args],
+            capture_output=True, text=True, timeout=timeout, cwd=repo_root,
+        )
+
+    # 1. Current branch's upstream, if it tracks one.
+    try:
+        up = _git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+        if up.returncode == 0:
+            upstream = up.stdout.strip()  # e.g. "origin/main"
+            if upstream and "/" in upstream:
+                remote = upstream.split("/", 1)[0]
+                # Fetch just that branch; fail-soft if offline.
+                _git(["fetch", remote, upstream.split("/", 1)[1]], timeout=30)
+                return upstream, f"{upstream} (fetched)"
+    except Exception as e:
+        logger.debug("worktree base: upstream resolution failed: %s", e)
+
+    # 2. Remote default branch (origin/HEAD).
+    try:
+        # Resolve the remote's default branch symref.
+        head_ref = _git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
+        default_ref = ""
+        if head_ref.returncode == 0:
+            default_ref = head_ref.stdout.strip().replace("refs/remotes/", "", 1)
+        if not default_ref:
+            # origin/HEAD not set locally; ask the remote.
+            show = _git(["remote", "show", "origin"], timeout=30)
+            for line in show.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("HEAD branch:"):
+                    _branch = line.split(":", 1)[1].strip()
+                    # A remote with no default branch reports "(unknown)";
+                    # don't construct a bogus "origin/(unknown)" ref from it.
+                    if _branch and _branch != "(unknown)":
+                        default_ref = "origin/" + _branch
+                    break
+        if default_ref and "/" in default_ref:
+            remote, branch = default_ref.split("/", 1)
+            _git(["fetch", remote, branch], timeout=30)
+            return default_ref, f"{default_ref} (fetched)"
+    except Exception as e:
+        logger.debug("worktree base: default-branch resolution failed: %s", e)
+
+    # 3. Fall back to local HEAD (offline / no remote / detached).
+    return "HEAD", "HEAD (local — could not reach remote)"
+
+
+def _setup_worktree(repo_root: str = None, sync_base: bool = True) -> Optional[Dict[str, str]]:
+    """Create an isolated git worktree for this CLI session.
+
+    Returns a dict with worktree metadata on success, None on failure.
+    The dict contains: path, branch, repo_root.
+
+    When *sync_base* is True (default), the worktree branches from the
+    freshly-fetched remote tip rather than the (possibly stale) local ``HEAD``
+    — see ``_resolve_worktree_base``. Set ``worktree_sync: false`` in config to
+    branch from local ``HEAD`` (the pre-#10760-followup behavior).
+    """
+    import subprocess
+
+    repo_root = repo_root or _git_repo_root()
+    if not repo_root:
+        print("\033[31m✗ --worktree requires being inside a git repository.\033[0m")
+        print("  cd into your project repo first, then run prostor -w")
+        return None
+
+    short_id = uuid.uuid4().hex[:8]
+    wt_name = f"prostor-{short_id}"
+    branch_name = f"prostor/{wt_name}"
+
+    worktrees_dir = Path(repo_root) / ".worktrees"
+    worktrees_dir.mkdir(parents=True, exist_ok=True)
+
+    wt_path = worktrees_dir / wt_name
+
+    # Ensure .worktrees/ is in .gitignore
+    gitignore = Path(repo_root) / ".gitignore"
+    _ignore_entry = ".worktrees/"
+    try:
+        existing = gitignore.read_text() if gitignore.exists() else ""
+        if _ignore_entry not in existing.splitlines():
+            with open(gitignore, "a", encoding="utf-8") as f:
+                if existing and not existing.endswith("\n"):
+                    f.write("\n")
+                f.write(f"{_ignore_entry}\n")
+    except Exception as e:
+        logger.debug("Could not update .gitignore: %s", e)
+
+    # Resolve the base ref. By default branch from the freshly-fetched remote
+    # tip so the worktree starts current with the project, not from the
+    # (possibly stale) local HEAD of the standalone clone (#10760 follow-up).
+    if sync_base:
+        base_ref, base_label = _resolve_worktree_base(repo_root)
+    else:
+        base_ref, base_label = "HEAD", "HEAD (local — worktree_sync disabled)"
+
+    # Create the worktree
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "add", str(wt_path), "-b", branch_name, base_ref],
+            capture_output=True, text=True, timeout=30, cwd=repo_root,
+        )
+        if result.returncode != 0:
+            # If branching from the resolved remote ref failed for any reason
+            # (e.g. a partial fetch left the ref unusable), retry from local
+            # HEAD so worktree creation never hard-fails on a sync hiccup.
+            if base_ref != "HEAD":
+                logger.warning(
+                    "worktree add from %s failed (%s); retrying from local HEAD",
+                    base_ref, result.stderr.strip(),
+                )
+                base_ref, base_label = "HEAD", "HEAD (fallback — remote base failed)"
+                result = subprocess.run(
+                    ["git", "worktree", "add", str(wt_path), "-b", branch_name, base_ref],
+                    capture_output=True, text=True, timeout=30, cwd=repo_root,
+                )
+            if result.returncode != 0:
+                print(f"\033[31m✗ Failed to create worktree: {result.stderr.strip()}\033[0m")
+                return None
+    except Exception as e:
+        print(f"\033[31m✗ Failed to create worktree: {e}\033[0m")
+        return None
+
+    # Copy files listed in .worktreeinclude (gitignored files the agent needs)
+    include_file = Path(repo_root) / ".worktreeinclude"
+    if include_file.exists():
+        try:
+            repo_root_resolved = Path(repo_root).resolve()
+            wt_path_resolved = wt_path.resolve()
+            for line in include_file.read_text().splitlines():
+                entry = line.strip()
+                if not entry or entry.startswith("#"):
+                    continue
+                src = Path(repo_root) / entry
+                dst = wt_path / entry
+                # Prevent path traversal and symlink escapes: both the resolved
+                # source and the resolved destination must stay inside their
+                # expected roots before any file or symlink operation happens.
+                try:
+                    src_resolved = src.resolve(strict=False)
+                    dst_resolved = dst.resolve(strict=False)
+                except (OSError, ValueError):
+                    logger.debug("Skipping invalid .worktreeinclude entry: %s", entry)
+                    continue
+                if not _path_is_within_root(src_resolved, repo_root_resolved):
+                    logger.warning("Skipping .worktreeinclude entry outside repo root: %s", entry)
+                    continue
+                if not _path_is_within_root(dst_resolved, wt_path_resolved):
+                    logger.warning("Skipping .worktreeinclude entry that escapes worktree: %s", entry)
+                    continue
+                if src.is_file():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(src), str(dst))
+                elif src.is_dir():
+                    # Symlink directories (faster, saves disk).  On Windows,
+                    # symlink creation requires Developer Mode or elevation,
+                    # and fails with OSError otherwise — fall back to a
+                    # recursive copy so the worktree is still usable.  The
+                    # copy is slower and uses disk, but it doesn't require
+                    # admin and matches the Linux/macOS symlink outcome
+                    # functionally.
+                    if not dst.exists():
+                        dst.parent.mkdir(parents=True, exist_ok=True)
+                        try:
+                            os.symlink(str(src_resolved), str(dst))
+                        except (OSError, NotImplementedError) as _sym_err:
+                            if sys.platform == "win32":
+                                logger.info(
+                                    ".worktreeinclude: symlink failed (%s) — "
+                                    "falling back to copytree on Windows.",
+                                    _sym_err,
+                                )
+                                try:
+                                    shutil.copytree(
+                                        str(src_resolved),
+                                        str(dst),
+                                        symlinks=True,
+                                        dirs_exist_ok=False,
+                                    )
+                                except Exception as _copy_err:
+                                    logger.warning(
+                                        ".worktreeinclude: copy fallback "
+                                        "also failed for %s -> %s: %s",
+                                        src, dst, _copy_err,
+                                    )
+                            else:
+                                raise
+        except Exception as e:
+            logger.debug("Error copying .worktreeinclude entries: %s", e)
+
+    # Lock the worktree so other processes (and `git worktree remove`) can see
+    # it is actively in use.  Fail-soft: a lock failure never blocks the session.
+    try:
+        subprocess.run(
+            ["git", "worktree", "lock", "--reason", f"prostor pid={os.getpid()}", str(wt_path)],
+            capture_output=True, text=True, timeout=10, cwd=repo_root,
+        )
+        logger.debug("Worktree locked: %s (pid=%s)", wt_path, os.getpid())
+    except Exception as e:
+        logger.debug("git worktree lock failed (non-fatal): %s", e)
+
+    info = {
+        "path": str(wt_path),
+        "branch": branch_name,
+        "repo_root": repo_root,
+        "base": base_ref,
+    }
+
+    print(f"\033[32m✓ Worktree created:\033[0m {wt_path}")
+    print(f"  Branch: {branch_name}")
+    print(f"  Base:   {base_label}")
+
+    return info
 
 
 def _worktree_has_unpushed_commits(worktree_path: str, timeout: int = 10) -> bool:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.worktree_has_unpushed_commits."""
-    from prostor_cli.cli_worktree import worktree_has_unpushed_commits as _real_impl
-    return _real_impl(worktree_path, timeout)
+    """Return whether a worktree has commits not reachable from any remote branch.
+
+    ``git log HEAD --not --remotes`` compares against remote-tracking refs under
+    ``refs/remotes/*``. If a repo has no remote-tracking refs yet, there is no
+    usable remote baseline to compare against, so treat it as having no
+    "unpushed" commits.
+    """
+    import subprocess
+
+    try:
+        remote_refs = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/remotes"],
+            capture_output=True, text=True, timeout=timeout, cwd=worktree_path,
+        )
+        if remote_refs.returncode != 0:
+            return True
+        if not remote_refs.stdout.strip():
+            return False
+
+        result = subprocess.run(
+            ["git", "log", "--oneline", "HEAD", "--not", "--remotes"],
+            capture_output=True, text=True, timeout=timeout, cwd=worktree_path,
+        )
+        if result.returncode != 0:
+            return True
+        return bool(result.stdout.strip())
+    except Exception:
+        return True
 
 
 def _cleanup_worktree(info: Dict[str, str] = None) -> None:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.cleanup_worktree."""
-    from prostor_cli.cli_worktree import cleanup_worktree as _real_impl
-    _real_impl(info)
+    """Remove a worktree and its branch on exit.
+
+    Preserves the worktree only if it has unpushed commits (real work
+    that hasn't been pushed to any remote).  Uncommitted changes alone
+    (untracked files, test artifacts) are not enough to keep it — agent
+    work lives in commits/PRs, not the working tree.
+    """
+    global _active_worktree
+    info = info or _active_worktree
+    if not info:
+        return
+
+    import subprocess
+
+    wt_path = info["path"]
+    branch = info["branch"]
+    repo_root = info["repo_root"]
+
+    if not Path(wt_path).exists():
+        return
+
+    has_unpushed = _worktree_has_unpushed_commits(wt_path, timeout=10)
+
+    if has_unpushed:
+        print(f"\n\033[33m⚠ Worktree has unpushed commits, keeping: {wt_path}\033[0m")
+        print(f"  To clean up manually: git worktree remove --force {wt_path}")
+        _active_worktree = None
+        return
+
+    # Remove worktree (even if working tree is dirty — uncommitted
+    # changes without unpushed commits are just artifacts)
+    # Unlock first so `git worktree remove` isn't blocked by the lock we
+    # placed at creation time.  Fail-soft — never block cleanup.
+    try:
+        subprocess.run(
+            ["git", "worktree", "unlock", wt_path],
+            capture_output=True, text=True, timeout=10, cwd=repo_root,
+        )
+    except Exception as e:
+        logger.debug("git worktree unlock failed (non-fatal): %s", e)
+
+    try:
+        subprocess.run(
+            ["git", "worktree", "remove", wt_path, "--force"],
+            capture_output=True, text=True, timeout=15, cwd=repo_root,
+        )
+    except Exception as e:
+        logger.debug("Failed to remove worktree: %s", e)
+
+    # Delete the branch
+    try:
+        subprocess.run(
+            ["git", "branch", "-D", branch],
+            capture_output=True, text=True, timeout=10, cwd=repo_root,
+        )
+    except Exception as e:
+        logger.debug("Failed to delete branch %s: %s", branch, e)
+
+    _active_worktree = None
+    print(f"\033[32m✓ Worktree cleaned up: {wt_path}\033[0m")
 
 
 def _run_state_db_auto_maintenance(session_db) -> None:
     """Call ``SessionDB.maybe_auto_prune_and_vacuum`` using current config.
 
     Reads the ``sessions:`` section from config.yaml via
-    :func:`prostor_cli.config.load_config` (the authoritative loader that
+    :func:`hermes_cli.config.load_config` (the authoritative loader that
     deep-merges DEFAULT_CONFIG, so unmigrated configs still get default
     values). Honours ``auto_prune`` / ``retention_days`` /
     ``vacuum_after_prune`` / ``min_interval_hours``, and delegates to the
@@ -1119,15 +1597,15 @@ def _run_state_db_auto_maintenance(session_db) -> None:
     if session_db is None:
         return
     try:
-        from prostor_cli.config import load_config as _load_full_config
-        from prostor_constants import get_prostor_home as _get_prostor_home
-        _prostor_home_maint = _get_prostor_home()
+        from hermes_cli.config import load_config as _load_full_config
+        from hermes_constants import get_hermes_home as _get_hermes_home
+        _hermes_home_maint = _get_hermes_home()
 
         # One-time prune of empty TUI ghost sessions.
         try:
             if not session_db.get_meta("ghost_session_prune_v1"):
                 pruned = session_db.prune_empty_ghost_sessions(
-                    sessions_dir=_prostor_home_maint / "sessions"
+                    sessions_dir=_hermes_home_maint / "sessions"
                 )
                 session_db.set_meta("ghost_session_prune_v1", "1")
                 if pruned:
@@ -1154,7 +1632,7 @@ def _run_state_db_auto_maintenance(session_db) -> None:
             retention_days=int(cfg.get("retention_days", 90)),
             min_interval_hours=int(cfg.get("min_interval_hours", 24)),
             vacuum=bool(cfg.get("vacuum_after_prune", True)),
-            sessions_dir=_prostor_home_maint / "sessions",
+            sessions_dir=_hermes_home_maint / "sessions",
         )
     except Exception as exc:
         logger.debug("state.db auto-maintenance skipped: %s", exc)
@@ -1164,12 +1642,12 @@ def _run_checkpoint_auto_maintenance() -> None:
     """Call ``checkpoint_manager.maybe_auto_prune_checkpoints`` using current config.
 
     Reads the ``checkpoints:`` section from config.yaml via
-    :func:`prostor_cli.config.load_config`. Honours ``auto_prune`` /
+    :func:`hermes_cli.config.load_config`. Honours ``auto_prune`` /
     ``retention_days`` / ``delete_orphans`` / ``min_interval_hours``.
     Never raises — maintenance must never block interactive startup.
     """
     try:
-        from prostor_cli.config import load_config as _load_full_config
+        from hermes_cli.config import load_config as _load_full_config
         cfg = (_load_full_config().get("checkpoints") or {})
         if not cfg.get("auto_prune", False):
             return
@@ -1370,22 +1848,161 @@ def _hex_to_ansi(hex_color: str, *, bold: bool = False) -> str:
 #   5. OSC 11 query (\x1b]11;?\x1b\\) — ask the terminal directly
 #   6. Default: assume dark (matches the legacy Prostor assumption)
 #
-# Skin + light-mode helpers moved to prostor_cli.cli_skin. Re-imported
-# here as thin aliases so existing call sites inside cli.py keep working.
-from prostor_cli.cli_skin import (
-    hex_to_ansi as _hex_to_ansi,
-    luminance_from_hex as _luminance_from_hex,
-    query_osc11_background as _query_osc11_background,
-    detect_light_mode as _detect_light_mode,
-    maybe_remap_for_light_mode as _maybe_remap_for_light_mode,
-    install_skin_light_mode_hook as _install_skin_light_mode_hook,
-    SkinAwareAnsi as _SkinAwareAnsi,
-    b as _b,
-    d as _d,
-    accent_hex as _accent_hex,
-    ACCENT as _ACCENT,
-    DIM as _DIM,
-)
+# Cached after first call so we don't query the terminal repeatedly.
+_LIGHT_MODE_CACHE: bool | None = None
+_TRUE_RE = re.compile(r"^(1|true|on|yes|y)$")
+_FALSE_RE = re.compile(r"^(0|false|off|no|n)$")
+_LIGHT_DEFAULT_TERM_PROGRAMS = frozenset()  # Apple_Terminal doesn't reliably indicate; require explicit
+
+
+def _luminance_from_hex(hex_str: str) -> float | None:
+    s = (hex_str or "").strip().lstrip("#")
+    if len(s) == 3:
+        s = "".join(c * 2 for c in s)
+    if len(s) != 6 or not all(c in "0123456789abcdefABCDEF" for c in s):
+        return None
+    try:
+        r, g, b = int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
+    except ValueError:
+        return None
+    # Rec.709 luma
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+
+
+def _query_osc11_background() -> str | None:
+    """Ask the terminal for its background color via OSC 11.
+
+    Most modern terminals reply with \x1b]11;rgb:RRRR/GGGG/BBBB\x1b\\
+    within a few ms.  We wait up to 100ms total before giving up.
+    Returns "#RRGGBB" or None on timeout / non-tty.
+
+    Skipped over SSH: the round-trip routinely exceeds our 100ms budget, so a
+    late reply lands after prompt_toolkit has grabbed the tty — its payload
+    leaks in as typed text and the BEL terminator reads as Ctrl+G (open
+    editor), trapping the user in a stray editor. Remote sessions fall back to
+    COLORFGBG / env hints / the dark default instead.
+    """
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return None
+    if any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY")):
+        return None
+    try:
+        import termios
+        import tty
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+    except Exception:
+        return None
+    try:
+        try:
+            tty.setcbreak(fd)
+        except Exception:
+            return None
+        try:
+            sys.stdout.write("\x1b]11;?\x1b\\")
+            sys.stdout.flush()
+        except Exception:
+            return None
+        # Read up to ~50ms for the response
+        import select
+        deadline = time.monotonic() + 0.1
+        buf = b""
+        while time.monotonic() < deadline:
+            r, _, _ = select.select([fd], [], [], deadline - time.monotonic())
+            if not r:
+                continue
+            try:
+                chunk = os.read(fd, 64)
+            except OSError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+            if b"\x1b\\" in buf or b"\x07" in buf:
+                break
+        # Parse: \x1b]11;rgb:RRRR/GGGG/BBBB\x1b\\
+        m = re.search(rb"rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)", buf)
+        if not m:
+            return None
+        # Each component is 1-4 hex digits — normalize to 8-bit
+        def norm(h: bytes) -> int:
+            v = int(h, 16)
+            # Scale to 0-255 based on hex length
+            bits = len(h) * 4
+            return (v * 255) // ((1 << bits) - 1) if bits else 0
+        r, g, b = norm(m.group(1)), norm(m.group(2)), norm(m.group(3))
+        return f"#{r:02X}{g:02X}{b:02X}"
+    finally:
+        # TCSAFLUSH discards any unread input as it restores the original
+        # attributes — scrubs a slow/partial OSC 11 reply out of the tty
+        # buffer before prompt_toolkit can read it as keystrokes.
+        try:
+            termios.tcsetattr(fd, termios.TCSAFLUSH, old)
+        except Exception:
+            pass
+
+
+def _detect_light_mode() -> bool:
+    global _LIGHT_MODE_CACHE
+    if _LIGHT_MODE_CACHE is not None:
+        return _LIGHT_MODE_CACHE
+    result = False
+    try:
+        # 1. Explicit env override
+        for var in ("PROSTOR_LIGHT", "PROSTOR_TUI_LIGHT"):
+            v = (os.environ.get(var) or "").strip().lower()
+            if _TRUE_RE.match(v):
+                result = True
+                _LIGHT_MODE_CACHE = result
+                return result
+            if _FALSE_RE.match(v):
+                _LIGHT_MODE_CACHE = result
+                return result
+        # 2. Theme hint
+        theme = (os.environ.get("PROSTOR_TUI_THEME") or "").strip().lower()
+        if theme == "light":
+            result = True
+            _LIGHT_MODE_CACHE = result
+            return result
+        if theme == "dark":
+            _LIGHT_MODE_CACHE = result
+            return result
+        # 3. Explicit bg hex
+        bg_hint = os.environ.get("PROSTOR_TUI_BACKGROUND") or ""
+        bg_lum = _luminance_from_hex(bg_hint)
+        if bg_lum is not None:
+            result = bg_lum >= 0.5
+            _LIGHT_MODE_CACHE = result
+            return result
+        # 4. COLORFGBG (xterm/Konsole/urxvt)
+        cfgbg = (os.environ.get("COLORFGBG") or "").strip()
+        if cfgbg:
+            last = cfgbg.split(";")[-1] if ";" in cfgbg else cfgbg
+            if last.isdigit():
+                bg = int(last)
+                if bg in {7, 15}:
+                    result = True
+                    _LIGHT_MODE_CACHE = result
+                    return result
+                if 0 <= bg < 16:
+                    _LIGHT_MODE_CACHE = result
+                    return result
+        # 5. OSC 11 query (best-effort, only when stdin/stdout are TTY)
+        bg_color = _query_osc11_background()
+        if bg_color:
+            lum = _luminance_from_hex(bg_color)
+            if lum is not None:
+                result = lum >= 0.5
+                _LIGHT_MODE_CACHE = result
+                return result
+        # 6. TERM_PROGRAM allow-list (currently empty)
+        tp = (os.environ.get("TERM_PROGRAM") or "").strip()
+        if tp in _LIGHT_DEFAULT_TERM_PROGRAMS:
+            result = True
+    except Exception:
+        result = False
+    _LIGHT_MODE_CACHE = result
+    return result
 
 
 # Light-mode equivalents of skin colors that are unreadable on cream
@@ -1438,10 +2055,10 @@ def _install_skin_light_mode_hook() -> None:
     """Wrap SkinConfig.get_color at import time so EVERY skin color read goes
     through the light-mode remap.  Idempotent."""
     try:
-        from prostor_cli.skin_engine import SkinConfig  # type: ignore[import]
+        from hermes_cli.skin_engine import SkinConfig  # type: ignore[import]
     except Exception:
         return
-    if getattr(SkinConfig, "_prostor_light_mode_hook_installed", False):
+    if getattr(SkinConfig, "_hermes_light_mode_hook_installed", False):
         return
     _orig_get_color = SkinConfig.get_color
 
@@ -1453,10 +2070,9 @@ def _install_skin_light_mode_hook() -> None:
             return value
 
     SkinConfig.get_color = _wrapped_get_color  # type: ignore[method-assign]
-    SkinConfig._prostor_light_mode_hook_installed = True  # type: ignore[attr-defined]
+    SkinConfig._hermes_light_mode_hook_installed = True  # type: ignore[attr-defined]
 
 
-_install_skin_light_mode_hook()
 _install_skin_light_mode_hook()
 
 
@@ -1470,8 +2086,77 @@ except Exception:
     pass
 
 
-# _SkinAwareAnsi class, _ACCENT, _DIM, _b, _d, _accent_hex, _hex_to_ansi
-# moved to prostor_cli.cli_skin — re-imported above as aliases.
+
+class _SkinAwareAnsi:
+    """Lazy ANSI escape that resolves from the skin engine on first use.
+
+    Acts as a string in f-strings and concatenation.  Call ``.reset()`` to
+    force re-resolution after a ``/skin`` switch.
+    """
+
+    def __init__(self, skin_key: str, fallback_hex: str = "#FFD700", *, bold: bool = False):
+        self._skin_key = skin_key
+        self._fallback_hex = fallback_hex
+        self._bold = bold
+        self._cached: str | None = None
+
+    def __str__(self) -> str:
+        if self._cached is None:
+            try:
+                from hermes_cli.skin_engine import get_active_skin
+                self._cached = _hex_to_ansi(
+                    get_active_skin().get_color(self._skin_key, self._fallback_hex),
+                    bold=self._bold,
+                )
+            except Exception:
+                self._cached = _hex_to_ansi(self._fallback_hex, bold=self._bold)
+        return self._cached
+
+    def __add__(self, other: str) -> str:
+        return str(self) + other
+
+    def __radd__(self, other: str) -> str:
+        return other + str(self)
+
+    def reset(self) -> None:
+        """Clear cache so the next access re-reads the skin."""
+        self._cached = None
+
+
+_ACCENT = _SkinAwareAnsi("response_border", "#FFD700", bold=True)
+# Use ANSI dim+italic attributes (\x1b[2;3m) instead of a hardcoded
+# hex color so dim/thinking text inherits the terminal's default
+# foreground color and stays readable in both light and dark
+# Terminal.app modes.  Hardcoded skin colors like #B8860B
+# (dark goldenrod) become invisible against light cream backgrounds.
+_DIM = "\x1b[2;3m"
+
+
+def _b(s: str) -> str:
+    """Bold if stdout is a real TTY; plain text otherwise (slash-worker safe)."""
+    import sys as _sys
+    try:
+        return f"\x1b[1m{s}\x1b[0m" if _sys.stdout.isatty() else str(s)
+    except Exception:
+        return str(s)
+
+
+def _d(s: str) -> str:
+    """Dim-italic if stdout is a real TTY; plain text otherwise."""
+    import sys as _sys
+    try:
+        return f"\x1b[2;3m{s}\x1b[0m" if _sys.stdout.isatty() else str(s)
+    except Exception:
+        return str(s)
+
+
+def _accent_hex() -> str:
+    """Return the active skin accent color for legacy CLI output lines."""
+    try:
+        from hermes_cli.skin_engine import get_active_skin
+        return get_active_skin().get_color("ui_accent", "#FFBF00")
+    except Exception:
+        return "#FFBF00"
 
 
 def _rich_text_from_ansi(text: str) -> _RichText:
@@ -1827,7 +2512,7 @@ _IMAGE_EXTENSIONS = frozenset({
 })
 
 
-from prostor_constants import is_termux as _is_termux_environment
+from hermes_constants import is_termux as _is_termux_environment
 
 
 def _termux_example_image_path(filename: str = "cat.png") -> str:
@@ -2101,14 +2786,14 @@ def _apply_bracketed_paste_timeout_patch() -> None:
     parsing.  See upstream issue #16263.
 
     The patch is idempotent — repeated calls are no-ops via the
-    ``_prostor_bp_timeout_patched`` sentinel on the module.
+    ``_hermes_bp_timeout_patched`` sentinel on the module.
     """
     try:
         import prompt_toolkit.input.vt100_parser as _vt100_mod
         from prompt_toolkit.keys import Keys as _PtKeys
         from prompt_toolkit.key_binding.key_processor import KeyPress as _PtKeyPress
 
-        if getattr(_vt100_mod, "_prostor_bp_timeout_patched", False):
+        if getattr(_vt100_mod, "_hermes_bp_timeout_patched", False):
             return
 
         _BP_TIMEOUT_S = 2.0  # max time to wait for ESC[201~ before flushing
@@ -2129,19 +2814,19 @@ def _apply_bracketed_paste_timeout_patch() -> None:
                         end_index + len(end_mark):
                     ]
                     self_parser._paste_buffer = ""
-                    self_parser._prostor_bp_start = None
+                    self_parser._hermes_bp_start = None
                     if remaining:
                         _patched_vt100_feed(self_parser, remaining)
                 else:
-                    bp_start = getattr(self_parser, "_prostor_bp_start", None)
+                    bp_start = getattr(self_parser, "_hermes_bp_start", None)
                     now = time.monotonic()
                     if bp_start is None:
-                        self_parser._prostor_bp_start = now
+                        self_parser._hermes_bp_start = now
                     elif now - bp_start > _BP_TIMEOUT_S:
                         paste_content = self_parser._paste_buffer
                         self_parser._in_bracketed_paste = False
                         self_parser._paste_buffer = ""
-                        self_parser._prostor_bp_start = None
+                        self_parser._hermes_bp_start = None
                         if paste_content:
                             self_parser.feed_key_callback(
                                 _PtKeyPress(_PtKeys.BracketedPaste, paste_content)
@@ -2164,7 +2849,7 @@ def _apply_bracketed_paste_timeout_patch() -> None:
                     self_parser._input_parser.send(c)
 
         _vt100_mod.Vt100Parser.feed = _patched_vt100_feed
-        _vt100_mod._prostor_bp_timeout_patched = True
+        _vt100_mod._hermes_bp_timeout_patched = True
         logger.debug("Applied Vt100Parser bracketed-paste timeout patch (#16263)")
     except Exception as exc:  # noqa: BLE001 — defensive: never break startup
         logger.debug("Bracketed-paste timeout patch skipped: %s", exc)
@@ -2439,7 +3124,7 @@ class ChatConsole:
         ``ChatConsole()``, which historically only implemented ``print()``.
         Returning a silent context manager keeps slash commands compatible
         without duplicating the higher-level busy indicator already shown by
-        ``ProstorCLI._busy_command()``.
+        ``HermesCLI._busy_command()``.
         """
         yield self
 
@@ -2473,7 +3158,7 @@ PROSTOR_CADUCEUS = """[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡀⠀⣀⣀�
 def _build_compact_banner() -> str:
     """Build a compact banner that fits the current terminal width."""
     try:
-        from prostor_cli.skin_engine import get_active_skin
+        from hermes_cli.skin_engine import get_active_skin
         _skin = get_active_skin()
     except Exception:
         _skin = None
@@ -2492,8 +3177,8 @@ def _build_compact_banner() -> str:
         tiny_line = agent_name
 
     if os.environ.get("PROSTOR_FAST_STARTUP_BANNER") == "1":
-        from prostor_cli import __release_date__ as _release_date
-        from prostor_cli import __version__ as _version
+        from hermes_cli import __release_date__ as _release_date
+        from hermes_cli import __version__ as _version
 
         version_line = f"Prostor Agent v{_version} ({_release_date})"
     else:
@@ -2593,7 +3278,7 @@ def build_bundle_invocation_message(*args, **kwargs):
 def _get_plugin_cmd_handler_names() -> set:
     """Return plugin command names (without slash prefix) for dispatch matching."""
     try:
-        from prostor_cli.plugins import get_plugin_commands
+        from hermes_cli.plugins import get_plugin_commands
         return set(get_plugin_commands().keys())
     except Exception:
         return set()
@@ -2639,7 +3324,7 @@ def save_config_value(key_path: str, value: any) -> bool:
         True if successful, False otherwise
     """
     # Use the same precedence as load_cli_config: user config first, then project config
-    user_config_path = _prostor_home / 'config.yaml'
+    user_config_path = _hermes_home / 'config.yaml'
     project_config_path = Path(__file__).parent / 'cli-config.yaml'
     config_path = user_config_path if user_config_path.exists() else project_config_path
     
@@ -2667,10 +3352,10 @@ def save_config_value(key_path: str, value: any) -> bool:
 
 
 # ============================================================================
-# ProstorCLI Class
+# HermesCLI Class
 # ============================================================================
 
-class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
+class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
     """
     Interactive CLI for the Prostor Agent.
     
@@ -2722,6 +3407,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         self.bell_on_complete = CLI_CONFIG["display"].get("bell_on_complete", False)
         # show_reasoning: display model thinking/reasoning before the response
         self.show_reasoning = CLI_CONFIG["display"].get("show_reasoning", False)
+        # reasoning_full: when reasoning display is on, print the post-response
+        # recap box uncollapsed instead of clamping to the first 10 lines.
+        self.reasoning_full = CLI_CONFIG["display"].get("reasoning_full", False)
         _configure_output_history(
             enabled=CLI_CONFIG["display"].get("persistent_output", True),
             max_lines=CLI_CONFIG["display"].get("persistent_output_max_lines", 200),
@@ -2812,7 +3500,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if self.model == _DEFAULT_CONFIG_MODEL:
             _base_url = (_model_config.get("base_url") or "") if isinstance(_model_config, dict) else ""
             if "localhost" in _base_url or "127.0.0.1" in _base_url:
-                from prostor_cli.runtime_provider import _auto_detect_local_model
+                from hermes_cli.runtime_provider import _auto_detect_local_model
                 _detected = _auto_detect_local_model(_base_url)
                 if _detected:
                     self.model = _detected
@@ -2891,7 +3579,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         self.checkpoint_max_file_size_mb = cp_cfg.get("max_file_size_mb", 10)
         self.pass_session_id = pass_session_id
         # --ignore-rules: honor either the constructor flag or the env var set
-        # by `prostor chat --ignore-rules` in prostor_cli/main.py. When true we
+        # by `prostor chat --ignore-rules` in hermes_cli/main.py. When true we
         # pass skip_context_files=True and skip_memory=True to AIAgent so
         # AGENTS.md/SOUL.md/.cursorrules and persistent memory are not loaded.
         self.ignore_rules = ignore_rules or os.environ.get("PROSTOR_IGNORE_RULES") == "1"
@@ -2968,7 +3656,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         self._session_db = None
         self._session_db_unavailable = False
         try:
-            from prostor_state import SessionDB
+            from hermes_state import SessionDB
             self._session_db = SessionDB()
         except Exception as e:
             # #41386: a failed session store means the transcript is NOT
@@ -3021,7 +3709,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             self.session_id = f"{timestamp_str}_{short_uuid}"
         
         # History file for persistent input recall across sessions
-        self._history_file = _prostor_home / ".prostor_history"
+        self._history_file = _hermes_home / ".hermes_history"
         self._last_invalidate: float = 0.0  # throttle UI repaints
         self._app = None
 
@@ -3125,7 +3813,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if self._active_session_lease is not None:
             return True
         try:
-            from prostor_cli.active_sessions import try_acquire_active_session
+            from hermes_cli.active_sessions import try_acquire_active_session
 
             lease, message = try_acquire_active_session(
                 session_id=self.session_id,
@@ -3754,7 +4442,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         registered so the cached label always matches the live binding.
         """
         try:
-            from prostor_cli.voice import format_voice_record_key_for_status
+            from hermes_cli.voice import format_voice_record_key_for_status
             self._voice_record_key_display_cache = format_voice_record_key_for_status(raw_key)
         except Exception:
             self._voice_record_key_display_cache = "Ctrl+B"
@@ -3960,7 +4648,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         changed = False
 
         try:
-            from prostor_cli.model_normalize import (
+            from hermes_cli.model_normalize import (
                 _AGGREGATOR_PROVIDERS,
                 normalize_model_for_provider,
             )
@@ -3980,7 +4668,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
         if resolved_provider == "copilot":
             try:
-                from prostor_cli.models import copilot_model_api_mode, normalize_copilot_model_id
+                from hermes_cli.models import copilot_model_api_mode, normalize_copilot_model_id
 
                 canonical = normalize_copilot_model_id(current_model, api_key=self.api_key)
                 if canonical and canonical != current_model:
@@ -4002,7 +4690,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
         if resolved_provider in {"opencode-zen", "opencode-go"}:
             try:
-                from prostor_cli.models import normalize_opencode_model_id, opencode_model_api_mode
+                from hermes_cli.models import normalize_opencode_model_id, opencode_model_api_mode
 
                 canonical = normalize_opencode_model_id(resolved_provider, current_model)
                 if canonical and canonical != current_model:
@@ -4041,7 +4729,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if self._model_is_default:
             fallback_model = "gpt-5.3-codex"
             try:
-                from prostor_cli.codex_models import get_codex_model_ids
+                from hermes_cli.codex_models import get_codex_model_ids
 
                 available = get_codex_model_ids(
                     access_token=self.api_key if self.api_key else None,
@@ -4486,7 +5174,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 return
             self._stream_box_opened = True
             try:
-                from prostor_cli.skin_engine import get_active_skin
+                from hermes_cli.skin_engine import get_active_skin
                 _skin = get_active_skin()
                 label = _skin.get_branding("response_label", "⚕ Prostor")
                 _text_hex = _skin.get_color("banner_text", "#FFF8DC")
@@ -4505,7 +5193,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             if self.show_timestamps:
                 label = f"{label} {datetime.now().strftime('%H:%M')}"
             w = self._scrollback_box_width()
-            fill = w - 2 - ProstorCLI._status_bar_display_width(label)
+            fill = w - 2 - HermesCLI._status_bar_display_width(label)
             _cprint(f"\n{_ACCENT}╭─{label}{'─' * max(fill - 1, 0)}╮{_RST}")
 
         self._stream_buf += text
@@ -4691,11 +5379,85 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             # Set skip flag (again) so the text-change event fired when the
             # editor closes does not re-collapse the returned content.
             self._skip_paste_collapse = True
-            target_buffer.open_in_editor(validate_and_handle=False)
+            # Open the editor, then submit the saved draft on a clean exit —
+            # matching the TUI's Ctrl+G (openEditor), which sends the buffer
+            # instead of requiring a second Enter. Submission in this CLI is
+            # driven by the custom `enter` keybinding, NOT the buffer's
+            # accept_handler, so validate_and_handle can't route through it;
+            # chain a done-callback on the returned Task that re-uses the
+            # real submit pipeline via _submit_editor_buffer().
+            task = target_buffer.open_in_editor(validate_and_handle=False)
+            if task is not None and hasattr(task, "add_done_callback"):
+                task.add_done_callback(
+                    lambda _t, b=target_buffer: self._submit_editor_buffer(b)
+                )
             return True
         except Exception as exc:
             _cprint(f"{_DIM}Failed to open external editor: {exc}{_RST}")
             return False
+
+    def _submit_editor_buffer(self, buffer) -> None:
+        """Submit the draft an external editor left in ``buffer``.
+
+        Invoked from the Ctrl+G done-callback so saving the editor sends the
+        prompt (TUI parity) instead of leaving it sitting in the input area.
+        Mirrors the idle/queue branches of the `enter` keybinding handler:
+        an empty save is ignored (never submits a blank turn), a slash command
+        is dispatched, otherwise the text is routed through the same input
+        queues the normal Enter path uses. Runs on the prompt_toolkit event
+        loop via the Task callback, so it must be cheap and non-blocking.
+        """
+        try:
+            text = (getattr(buffer, "text", "") or "").strip()
+        except Exception:
+            return
+        if not text:
+            # Editor saved empty / was cleared — match the TUI, which drops
+            # an empty draft instead of submitting a blank turn.
+            return
+
+        app = getattr(self, "_app", None)
+
+        # Slash commands: dispatch directly, same as the Enter handler's
+        # _looks_like_slash_command branch.
+        if _looks_like_slash_command(text):
+            try:
+                if not self.process_command(text):
+                    self._should_exit = True
+                    if app is not None and app.is_running:
+                        app.exit()
+            except Exception as exc:
+                _cprint(f"  {_DIM}Command failed: {exc}{_RST}")
+            finally:
+                self._reset_input_buffer(buffer)
+                if app is not None:
+                    app.invalidate()
+            return
+
+        # Regular prompt: route through the same queues the Enter handler uses.
+        if self._agent_running:
+            # Agent busy → honour the configured busy-input behaviour by
+            # queueing for the next turn (the safe default; interrupt/steer
+            # remain reachable via the normal Enter path).
+            self._interrupt_queue.put(text) if self.busy_input_mode == "interrupt" else self._pending_input.put(text)
+            preview = text[:80] + ("..." if len(text) > 80 else "")
+            _cprint(f"  Queued for the next turn: {preview}")
+        else:
+            self._pending_input.put(text)
+
+        self._reset_input_buffer(buffer)
+        if app is not None:
+            app.invalidate()
+
+    def _reset_input_buffer(self, buffer) -> None:
+        """Clear an input buffer after a programmatic submit (best-effort)."""
+        try:
+            buffer.reset(append_to_history=True)
+        except Exception:
+            try:
+                buffer.text = ""
+            except Exception:
+                pass
 
 
 
@@ -4745,7 +5507,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         small.
         """
         try:
-            from prostor_cli.security_advisories import (
+            from hermes_cli.security_advisories import (
                 detect_compromised,
                 startup_banner,
             )
@@ -4825,10 +5587,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 )
 
         # Warn if the configured model is a Nous Prostor LLM (not agentic)
-        from prostor_cli.model_switch import is_nous_prostor_non_agentic
+        from hermes_cli.model_switch import is_nous_hermes_non_agentic
 
         model_name = getattr(self, "model", "") or ""
-        if is_nous_prostor_non_agentic(model_name):
+        if is_nous_hermes_non_agentic(model_name):
             self._console_print()
             self._console_print(
                 "[bold yellow]⚠  Nous Research Prostor 3 & 4 models are NOT agentic and are not "
@@ -4922,9 +5684,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         Saves the image to ~/.prostor/images/ and appends the path to
         ``_attached_images``.  Returns True if an image was attached.
         """
-        from prostor_cli.clipboard import save_clipboard_image
+        from hermes_cli.clipboard import save_clipboard_image
 
-        img_dir = get_prostor_home() / "images"
+        img_dir = get_hermes_home() / "images"
         self._image_counter += 1
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         img_path = img_dir / f"clip_{ts}_{self._image_counter}.png"
@@ -5114,7 +5876,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
         # Build status line with proper markup — skin-aware colors
         try:
-            from prostor_cli.skin_engine import get_active_skin
+            from hermes_cli.skin_engine import get_active_skin
             skin = get_active_skin()
             separator_color = skin.get_color("banner_dim", "#B8860B")
             accent_color = skin.get_color("ui_accent", "#FFBF00")
@@ -5175,7 +5937,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             "Prostor CLI Status",
             "",
             f"Session ID: {self.session_id}",
-            f"Path: {display_prostor_home()}",
+            f"Path: {display_hermes_home()}",
         ]
         if title:
             lines.append(f"Title: {title}")
@@ -5190,7 +5952,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     
     def _fast_command_available(self) -> bool:
         try:
-            from prostor_cli.models import model_supports_fast_mode
+            from hermes_cli.models import model_supports_fast_mode
         except Exception:
             return False
         agent = getattr(self, "agent", None)
@@ -5204,10 +5966,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
     def show_help(self):
         """Display help information with categorized commands."""
-        from prostor_cli.commands import COMMANDS_BY_CATEGORY
+        from hermes_cli.commands import COMMANDS_BY_CATEGORY
 
         try:
-            from prostor_cli.skin_engine import get_active_help_header
+            from hermes_cli.skin_engine import get_active_help_header
             header = get_active_help_header("(^_^)? Available Commands")
         except Exception:
             header = "(^_^)? Available Commands"
@@ -5344,7 +6106,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         terminal_cwd = os.getenv("TERMINAL_CWD", os.getcwd())
         terminal_timeout = os.getenv("TERMINAL_TIMEOUT", "60")
         
-        user_config_path = _prostor_home / 'config.yaml'
+        user_config_path = _hermes_home / 'config.yaml'
         project_config_path = Path(__file__).parent / 'cli-config.yaml'
         if user_config_path.exists():
             config_path = user_config_path
@@ -5400,7 +6162,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if not self._session_db:
             return []
         try:
-            from prostor_cli.session_listing import query_session_listing
+            from hermes_cli.session_listing import query_session_listing
 
             return query_session_listing(
                 self._session_db,
@@ -5423,7 +6185,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if not sessions:
             return False
 
-        from prostor_cli.main import _relative_time
+        from hermes_cli.main import _relative_time
 
         print()
         if reason == "history":
@@ -5454,6 +6216,22 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         preview_limit = 400
         visible_index = 0
         hidden_tool_messages = 0
+        show_ts = bool(getattr(self, "show_timestamps", False))
+
+        def _ts_suffix(message: dict) -> str:
+            # Messages restored from SessionDB carry a unix `timestamp`; live
+            # unsaved turns may not. Only annotate when both the toggle is on
+            # and the turn actually has a stored time — never fabricate one.
+            if not show_ts:
+                return ""
+            ts = message.get("timestamp")
+            if not ts:
+                return ""
+            try:
+                from datetime import datetime
+                return f"  [{datetime.fromtimestamp(float(ts)).strftime('%H:%M')}]"
+            except (ValueError, OSError, TypeError):
+                return ""
 
         def flush_tool_summary():
             nonlocal hidden_tool_messages
@@ -5487,13 +6265,13 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             content_text = "" if content is None else str(content)
 
             if role == "user":
-                print(f"\n  [You #{visible_index}]")
+                print(f"\n  [You #{visible_index}]{_ts_suffix(msg)}")
                 print(
                     f"    {content_text[:preview_limit]}{'...' if len(content_text) > preview_limit else ''}"
                 )
                 continue
 
-            print(f"\n  [Prostor #{visible_index}]")
+            print(f"\n  [Prostor #{visible_index}]{_ts_suffix(msg)}")
             tool_calls = msg.get("tool_calls") or []
             if content_text:
                 preview = content_text[:preview_limit]
@@ -5518,7 +6296,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         lifecycle point (shutdown, /new, /reset).
         """
         try:
-            from prostor_cli.plugins import invoke_hook as _invoke_hook
+            from hermes_cli.plugins import invoke_hook as _invoke_hook
             _invoke_hook(
                 event_type,
                 session_id=self.agent.session_id if self.agent else None,
@@ -5547,7 +6325,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if getattr(self, "conversation_history", None):
             return False
         try:
-            from prostor_constants import get_prostor_home as _ghh
+            from hermes_constants import get_hermes_home as _ghh
             return self._session_db.delete_session_if_empty(
                 session_id, sessions_dir=_ghh() / "sessions"
             )
@@ -5629,7 +6407,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 except Exception:
                     pass
                 if title and self._session_db:
-                    from prostor_state import SessionDB
+                    from hermes_state import SessionDB
                     try:
                         sanitized = SessionDB.sanitize_title(title)
                     except ValueError as e:
@@ -5729,13 +6507,13 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             return
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        saved_dir = get_prostor_home() / "sessions" / "saved"
+        saved_dir = get_hermes_home() / "sessions" / "saved"
         try:
             saved_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             print(f"(x_x) Failed to create save directory {saved_dir}: {e}")
             return
-        path = saved_dir / f"prostor_conversation_{timestamp}.json"
+        path = saved_dir / f"hermes_conversation_{timestamp}.json"
 
         try:
             with open(path, "w", encoding="utf-8") as f:
@@ -5934,7 +6712,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     def _run_curses_picker(self, title: str, items: list[str], default_index: int = 0) -> int | None:
         """Run curses_single_select via run_in_terminal so prompt_toolkit handles terminal ownership cleanly."""
         import threading
-        from prostor_cli.curses_ui import curses_single_select
+        from hermes_cli.curses_ui import curses_single_select
 
         result = [None]
 
@@ -6283,7 +7061,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if not getattr(result, "success", False):
             return True
         try:
-            from prostor_cli.model_cost_guard import expensive_model_warning
+            from hermes_cli.model_cost_guard import expensive_model_warning
 
             warning = expensive_model_warning(
                 result.new_model,
@@ -6357,7 +7135,35 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             _cprint(f"  ✗ {result.error_message}")
             return
 
+        if self.agent is not None:
+            try:
+                from hermes_cli.context_switch_guard import merge_preflight_compression_warning
+
+                merge_preflight_compression_warning(
+                    result,
+                    agent=self.agent,
+                    messages=list(self.conversation_history or []),
+                    config_context_length=getattr(self.agent, "_config_context_length", None),
+                )
+            except Exception as exc:
+                logger.debug("preflight-compression switch warning failed: %s", exc)
+
         old_model = self.model
+        # Snapshot the CLI-level credential/runtime fields BEFORE mutating them
+        # so a failed in-place agent swap can roll the whole CLI back to the old
+        # working model.  Otherwise the broken credentials staged below leak into
+        # the next turn's resolution even though the agent itself rolled back
+        # (#50163).
+        _cli_snapshot = {
+            "model": self.model,
+            "provider": self.provider,
+            "requested_provider": self.requested_provider,
+            "_explicit_api_key": getattr(self, "_explicit_api_key", None),
+            "_explicit_base_url": getattr(self, "_explicit_base_url", None),
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "api_mode": self.api_mode,
+        }
         self.model = result.new_model
         self.provider = result.target_provider
         self.requested_provider = result.target_provider
@@ -6383,7 +7189,17 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     api_mode=result.api_mode,
                 )
             except Exception as exc:
-                _cprint(f"  ⚠ Agent swap failed ({exc}); change applied to next session.")
+                # The agent rolled itself back to the old working model/client.
+                # Roll the CLI's own staged fields back too and abort the rest
+                # of the commit (note + success print) so a failed switch is a
+                # no-op rather than a dead session (#50163).
+                for _k, _v in _cli_snapshot.items():
+                    setattr(self, _k, _v)
+                _cprint(
+                    f"  ⚠ Model switch to {result.new_model} failed ({exc}); "
+                    f"staying on {old_model}."
+                )
+                return
 
         self._pending_model_switch_note = (
             f"[Note: model was just switched from {old_model} to {result.new_model} "
@@ -6400,7 +7216,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # (e.g. gpt-5.5 is 1.05M on openai but 272K on Codex OAuth).
         mi = result.model_info
         try:
-            from prostor_cli.model_switch import resolve_display_context_length
+            from hermes_cli.model_switch import resolve_display_context_length
             ctx = resolve_display_context_length(
                 result.new_model,
                 result.target_provider,
@@ -6455,7 +7271,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             model_list = provider_data.get("models", [])
             if not model_list:
                 try:
-                    from prostor_cli.models import provider_model_ids
+                    from hermes_cli.models import provider_model_ids
                     live = provider_model_ids(provider_data["slug"])
                     if live:
                         model_list = live
@@ -6481,7 +7297,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 self._close_model_picker()
                 return
             if selected < len(model_list):
-                from prostor_cli.model_switch import switch_model
+                from hermes_cli.model_switch import switch_model
                 chosen_model = model_list[selected]
                 result = switch_model(
                     raw_input=chosen_model,
@@ -6520,12 +7336,12 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         Persistence defaults to on (``model.persist_switch_by_default`` in
         config.yaml, default True). Use ``--session`` for a one-off switch.
         """
-        from prostor_cli.model_switch import (
+        from hermes_cli.model_switch import (
             switch_model,
             parse_model_flags,
             resolve_persist_behavior,
         )
-        from prostor_cli.providers import get_label
+        from hermes_cli.providers import get_label
 
         # Parse args from the original command
         parts = cmd_original.split(None, 1)  # split off '/model'
@@ -6550,7 +7366,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # /v1/models endpoint on this open.
         if force_refresh:
             try:
-                from prostor_cli.models import clear_provider_models_cache
+                from hermes_cli.models import clear_provider_models_cache
                 clear_provider_models_cache()
                 _cprint("  Cleared model picker cache. Refreshing...")
             except Exception:
@@ -6560,7 +7376,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # dashboard / TUI used to duplicate. Overlay live session state
         # via with_overrides (truthy-only) so empty self.* attrs don't
         # clobber disk config.
-        from prostor_cli.inventory import build_models_payload, load_picker_context
+        from hermes_cli.inventory import build_models_payload, load_picker_context
 
         try:
             ctx = load_picker_context().with_overrides(
@@ -6623,6 +7439,19 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             _cprint(f"  ✗ {result.error_message}")
             return
 
+        if self.agent is not None:
+            try:
+                from hermes_cli.context_switch_guard import merge_preflight_compression_warning
+
+                merge_preflight_compression_warning(
+                    result,
+                    agent=self.agent,
+                    messages=list(self.conversation_history or []),
+                    config_context_length=getattr(self.agent, "_config_context_length", None),
+                )
+            except Exception as exc:
+                logger.debug("preflight-compression switch warning failed: %s", exc)
+
         if not self._confirm_expensive_model_switch(result):
             _cprint("  Model switch cancelled.")
             return
@@ -6631,6 +7460,18 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # Update requested_provider so _ensure_runtime_credentials() doesn't
         # overwrite the switch on the next turn (it re-resolves from this).
         old_model = self.model
+        # Snapshot CLI-level fields before mutation so a failed in-place swap
+        # rolls the whole CLI back to the old working model (#50163).
+        _cli_snapshot = {
+            "model": self.model,
+            "provider": self.provider,
+            "requested_provider": self.requested_provider,
+            "_explicit_api_key": getattr(self, "_explicit_api_key", None),
+            "_explicit_base_url": getattr(self, "_explicit_base_url", None),
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "api_mode": self.api_mode,
+        }
         self.model = result.new_model
         self.provider = result.target_provider
         self.requested_provider = result.target_provider
@@ -6657,7 +7498,15 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     api_mode=result.api_mode,
                 )
             except Exception as exc:
-                _cprint(f"  ⚠ Agent swap failed ({exc}); change applied to next session.")
+                # Agent rolled itself back; roll the CLI back too and abort so a
+                # failed switch is a no-op rather than a dead session (#50163).
+                for _k, _v in _cli_snapshot.items():
+                    setattr(self, _k, _v)
+                _cprint(
+                    f"  ⚠ Model switch to {result.new_model} failed ({exc}); "
+                    f"staying on {old_model}."
+                )
+                return
 
         # Store a note to prepend to the next user message so the model
         # knows a switch occurred (avoids injecting system messages mid-history
@@ -6677,7 +7526,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # Copilot, and Nous-enforced caps win over the raw models.dev entry
         # (e.g. gpt-5.5 is 1.05M on openai but 272K on Codex OAuth).
         mi = result.model_info
-        from prostor_cli.model_switch import resolve_display_context_length
+        from hermes_cli.model_switch import resolve_display_context_length
         ctx = resolve_display_context_length(
             result.new_model,
             result.target_provider,
@@ -6725,7 +7574,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             /codex-runtime codex_app_server      — hand turns to codex subprocess
             /codex-runtime on / off              — synonyms for the above
         """
-        from prostor_cli import codex_runtime_switch as crs
+        from hermes_cli import codex_runtime_switch as crs
 
         parts = cmd_original.split(None, 1)
         raw_args = parts[1].strip() if len(parts) > 1 else ""
@@ -6737,7 +7586,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
         # Load + persist via the existing config helpers
         try:
-            from prostor_cli.config import load_config, save_config
+            from hermes_cli.config import load_config, save_config
         except Exception as exc:
             _cprint(f"❌ could not load config: {exc}")
             return
@@ -6761,7 +7610,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if not text or has_images or not _looks_like_slash_command(text):
             return False
         try:
-            from prostor_cli.commands import resolve_command
+            from hermes_cli.commands import resolve_command
             base = text.split(None, 1)[0].lower().lstrip('/')
             cmd = resolve_command(base)
             return bool(cmd and cmd.name == "model")
@@ -6785,7 +7634,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if not getattr(self, "_agent_running", False):
             return False
         try:
-            from prostor_cli.commands import resolve_command
+            from hermes_cli.commands import resolve_command
             base = text.split(None, 1)[0].lower().lstrip('/')
             cmd = resolve_command(base)
             return bool(cmd and cmd.name == "steer")
@@ -6863,7 +7712,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             print("  To start the gateway:")
             print("    python cli.py --gateway")
             print()
-            print(f"  Configuration file: {display_prostor_home()}/config.yaml")
+            print(f"  Configuration file: {display_hermes_home()}/config.yaml")
             print()
             
         except Exception as e:
@@ -6873,7 +7722,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             print("    1. Set environment variables:")
             print("       TELEGRAM_BOT_TOKEN=your_token")
             print("       DISCORD_BOT_TOKEN=your_token")
-            print(f"    2. Or configure settings in {display_prostor_home()}/config.yaml")
+            print(f"    2. Or configure settings in {display_hermes_home()}/config.yaml")
             print()
     
     def process_command(self, command: str) -> bool:
@@ -6891,8 +7740,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         cmd_original = command.strip()
 
         # Resolve aliases via central registry so adding an alias is a one-line
-        # change in prostor_cli/commands.py instead of touching every dispatch site.
-        from prostor_cli.commands import resolve_command as _resolve_cmd
+        # change in hermes_cli/commands.py instead of touching every dispatch site.
+        from hermes_cli.commands import resolve_command as _resolve_cmd
         _base_word = cmd_lower.split()[0].lstrip("/")
         _cmd_def = _resolve_cmd(_base_word)
         canonical = _cmd_def.name if _cmd_def else _base_word
@@ -6980,10 +7829,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 _cprint("  ✨ (◕‿◕)✨ Fresh start! Screen cleared and conversation reset.\n")
                 # Show a random tip on new session
                 try:
-                    from prostor_cli.tips import get_random_tip
+                    from hermes_cli.tips import get_random_tip
                     _tip = get_random_tip()
                     try:
-                        from prostor_cli.skin_engine import get_active_skin
+                        from hermes_cli.skin_engine import get_active_skin
                         _tip_color = get_active_skin().get_color("banner_dim", "#B8860B")
                     except Exception:
                         _tip_color = "#B8860B"
@@ -6995,10 +7844,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 print("  ✨ (◕‿◕)✨ Fresh start! Screen cleared and conversation reset.\n")
                 # Show a random tip on new session
                 try:
-                    from prostor_cli.tips import get_random_tip
+                    from hermes_cli.tips import get_random_tip
                     _tip = get_random_tip()
                     try:
-                        from prostor_cli.skin_engine import get_active_skin
+                        from hermes_cli.skin_engine import get_active_skin
                         _tip_color = get_active_skin().get_color("banner_dim", "#B8860B")
                     except Exception:
                         _tip_color = "#B8860B"
@@ -7015,7 +7864,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     if self._session_db:
                         # Sanitize the title early so feedback matches what gets stored
                         try:
-                            from prostor_state import SessionDB
+                            from hermes_state import SessionDB
                             new_title = SessionDB.sanitize_title(raw_title)
                         except ValueError as e:
                             _cprint(f"  {e}")
@@ -7041,7 +7890,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                                 self._pending_title = new_title
                                 _cprint(f"  Session title queued: {new_title} (will be saved on first message)")
                     else:
-                        from prostor_state import format_session_db_unavailable
+                        from hermes_state import format_session_db_unavailable
                         _cprint(f"  {format_session_db_unavailable()}")
                 else:
                     _cprint("  Usage: /title <your session title>")
@@ -7056,7 +7905,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 else:
                     _cprint("  No title set. Usage: /title <your session title>")
             else:
-                from prostor_state import format_session_db_unavailable
+                from hermes_state import format_session_db_unavailable
                 _cprint(f"  {format_session_db_unavailable()}")
         elif canonical == "handoff":
             if not self._handle_handoff_command(cmd_original):
@@ -7083,8 +7932,6 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             self._handle_model_switch(cmd_original)
         elif canonical == "codex-runtime":
             self._handle_codex_runtime(cmd_original)
-        elif canonical == "gquota":
-            self._handle_gquota_command(cmd_original)
 
         elif canonical == "personality":
             # Use original case (handler lowercases the personality name itself)
@@ -7094,6 +7941,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             if retry_msg and hasattr(self, '_pending_input'):
                 # Re-queue the message so process_loop sends it to the agent
                 self._pending_input.put(retry_msg)
+        elif canonical == "prompt":
+            self._handle_prompt_compose_command(cmd_original)
         elif canonical == "undo":
             # Parse optional turn count: "/undo" → 1, "/undo 3" → 3.
             _undo_n = 1
@@ -7145,6 +7994,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             self._status_bar_visible = not self._status_bar_visible
             state = "visible" if self._status_bar_visible else "hidden"
             self._console_print(f"  Status bar {state}")
+        elif canonical == "timestamps":
+            self._handle_timestamps_command(cmd_original)
         elif canonical == "verbose":
             self._toggle_verbose()
         elif canonical == "footer":
@@ -7173,7 +8024,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             if self._handle_update_command():
                 return False
         elif canonical == "version":
-            from prostor_cli.main import _print_version_info
+            from hermes_cli.main import _print_version_info
 
             _print_version_info(check_updates=True)
         elif canonical == "paste":
@@ -7181,7 +8032,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         elif canonical == "image":
             self._handle_image_command(cmd_original)
         elif canonical == "reload":
-            from prostor_cli.config import reload_env
+            from hermes_cli.config import reload_env
             count = reload_env()
             print(f"  Reloaded .env ({count} var(s) updated)")
         elif canonical == "reload-mcp":
@@ -7203,7 +8054,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 # too. The plugin manager only knows about *loaded* plugins, so
                 # using it alone made freshly-installed, not-yet-enabled plugins
                 # look like "nothing installed".
-                from prostor_cli.plugins_cmd import (
+                from hermes_cli.plugins_cmd import (
                     _discover_all_plugins,
                     _get_disabled_set,
                     _get_enabled_set,
@@ -7224,7 +8075,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 if not user_entries:
                     print("No user plugins installed.")
                     print("  Install one: prostor plugins install owner/repo")
-                    print(f"  Or drop a plugin directory into {display_prostor_home()}/plugins/")
+                    print(f"  Or drop a plugin directory into {display_hermes_home()}/plugins/")
                     if bundled_count:
                         print(f"  ({bundled_count} bundled plugins available — see: prostor plugins list)")
                 else:
@@ -7232,7 +8083,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     # keyed by name, when available.
                     loaded: dict = {}
                     try:
-                        from prostor_cli.plugins import get_plugin_manager
+                        from hermes_cli.plugins import get_plugin_manager
                         for p in get_plugin_manager().list_plugins():
                             loaded[p["name"]] = p
                     except Exception:
@@ -7359,7 +8210,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     self._console_print(f"[bold red]Quick command '{base_cmd}' has unsupported type (supported: 'exec', 'alias')[/]")
             # Check for plugin-registered slash commands
             elif base_cmd.lstrip("/") in _get_plugin_cmd_handler_names():
-                from prostor_cli.plugins import (
+                from hermes_cli.plugins import (
                     get_plugin_command_handler,
                     resolve_plugin_command_result,
                 )
@@ -7415,7 +8266,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 # Prefix matching: if input uniquely identifies one command, execute it.
                 # Matches against both built-in COMMANDS and installed skill commands so
                 # that execution-time resolution agrees with tab-completion.
-                from prostor_cli.commands import COMMANDS
+                from hermes_cli.commands import COMMANDS
                 typed_base = cmd_lower.split()[0]
                 all_known = set(COMMANDS) | set(skill_commands) | set(skill_bundles)
                 matches = [c for c in all_known if c.startswith(typed_base)]
@@ -7479,8 +8330,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         session split).
         """
         try:
-            from prostor_cli.goals import GoalManager
-            from prostor_cli.config import load_config
+            from hermes_cli.goals import GoalManager
+            from hermes_cli.config import load_config
         except Exception as exc:
             logging.debug("goal manager unavailable: %s", exc)
             return None
@@ -7609,7 +8460,17 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if not last_response.strip():
             return
 
-        decision = mgr.evaluate_after_turn(last_response, user_initiated=True)
+        try:
+            from hermes_cli.goals import gather_background_processes as _gather_bg
+            _bg_procs = _gather_bg()
+        except Exception:
+            _bg_procs = None
+
+        decision = mgr.evaluate_after_turn(
+            last_response,
+            user_initiated=True,
+            background_processes=_bg_procs,
+        )
         msg = decision.get("message") or ""
         if msg:
             _cprint(f"  {msg}")
@@ -7652,7 +8513,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # prompt_toolkit's renderer.  self.console.print() with Rich markup
         # writes directly to stdout which patch_stdout's StdoutProxy mangles
         # into garbled sequences like '?[33mTool progress: NEW?[0m' (#2262).
-        from prostor_cli.colors import Colors as _Colors
+        from hermes_cli.colors import Colors as _Colors
         labels = {
             "off": f"{_Colors.DIM}Tool progress: OFF{_Colors.RESET} — silent mode, just the final response.",
             "new": f"{_Colors.YELLOW}Tool progress: NEW{_Colors.RESET} — show each new tool (skip repeats).",
@@ -7731,7 +8592,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         ``set_current_session_key`` so the bypass takes effect on the very
         next dangerous command in this run.
         """
-        from prostor_cli.colors import Colors as _Colors
+        from hermes_cli.colors import Colors as _Colors
         from tools.approval import (
             disable_session_yolo,
             enable_session_yolo,
@@ -7792,7 +8653,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             print("(._.) Compression is disabled in config.")
             return
 
-        from prostor_cli.partial_compress import (
+        from hermes_cli.partial_compress import (
             parse_partial_compress_args,
             rejoin_compressed_head_and_tail,
             split_history_for_partial_compress,
@@ -8039,7 +8900,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             # above the file handler level filters records before they
             # reach handlers, so agent.log / errors.log lose visibility
             # into stream-retry events, credential rotations, etc.
-            # Console quietness is enforced by prostor_logging not
+            # Console quietness is enforced by hermes_logging not
             # installing a console StreamHandler in non-verbose mode.
 
     def _print_nous_credits_block(self) -> bool:
@@ -8419,7 +9280,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             return
 
         # Submit the charge with a fresh idempotency key (reused on retry).
-        from prostor_cli.nous_billing import (
+        from hermes_cli.nous_billing import (
             BillingError,
             BillingScopeRequired,
             post_charge,
@@ -8447,7 +9308,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         import time as _time
 
         from agent.billing_view import format_money
-        from prostor_cli.nous_billing import (
+        from hermes_cli.nous_billing import (
             BillingError,
             BillingRateLimited,
             get_charge_status,
@@ -8502,7 +9363,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
     def _billing_render_charge_error(self, state, exc):
         """Render a typed BillingError at submit time (pre-poll)."""
-        from prostor_cli.nous_billing import BillingRateLimited
+        from hermes_cli.nous_billing import BillingRateLimited
 
         code = getattr(exc, "error", None)
         portal_url = getattr(exc, "portal_url", None) or getattr(state, "portal_url", None)
@@ -8552,7 +9413,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             print("  🟡 Cancelled.")
             return
         try:
-            from prostor_cli.auth import step_up_nous_billing_scope
+            from hermes_cli.auth import step_up_nous_billing_scope
 
             granted = step_up_nous_billing_scope(open_browser=True)
         except Exception as exc:
@@ -8700,7 +9561,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             print("  🟡 Cancelled.")
             return
 
-        from prostor_cli.nous_billing import (
+        from hermes_cli.nous_billing import (
             BillingError,
             BillingScopeRequired,
             patch_auto_top_up,
@@ -8725,7 +9586,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         The endpoint requires ``threshold``/``topUpAmount`` in the body even when
         disabling, so we echo back the current values (falling back to 0).
         """
-        from prostor_cli.nous_billing import (
+        from hermes_cli.nous_billing import (
             BillingError,
             BillingScopeRequired,
             patch_auto_top_up,
@@ -8791,7 +9652,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 i += 1
 
         try:
-            from prostor_state import SessionDB
+            from hermes_state import SessionDB
             from agent.insights import InsightsEngine
 
             db = SessionDB()
@@ -8819,7 +9680,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             return
         self._last_config_check = now
 
-        from prostor_cli.config import get_config_path as _get_config_path
+        from hermes_cli.config import get_config_path as _get_config_path
         cfg_path = _get_config_path()
         if not cfg_path.exists():
             return
@@ -9314,7 +10175,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                         if not is_seen(CLI_CONFIG, TOOL_PROGRESS_FLAG):
                             self._long_tool_hint_fired = True
                             _cprint(f"  {_DIM}{tool_progress_hint_cli()}{_RST}")
-                            mark_seen(_prostor_home / "config.yaml", TOOL_PROGRESS_FLAG)
+                            mark_seen(_hermes_home / "config.yaml", TOOL_PROGRESS_FLAG)
                             CLI_CONFIG.setdefault("onboarding", {}).setdefault("seen", {})[TOOL_PROGRESS_FLAG] = True
                 except Exception:
                     pass
@@ -9416,7 +10277,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # instead of crashing on ``.get()``.
         voice_cfg: dict = {}
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             _cfg = load_config().get("voice")
             voice_cfg = _cfg if isinstance(_cfg, dict) else {}
         except Exception:
@@ -9527,7 +10388,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             # Get STT model from config
             stt_model = None
             try:
-                from prostor_cli.config import load_config
+                from hermes_cli.config import load_config
                 stt_config = load_config().get("stt", {})
                 stt_model = stt_config.get("model")
             except Exception:
@@ -9632,9 +10493,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
             # Use MP3 output for CLI playback (afplay doesn't handle OGG well).
             # The TTS tool may auto-convert MP3->OGG, but the original MP3 remains.
-            os.makedirs(os.path.join(tempfile.gettempdir(), "prostor_voice"), exist_ok=True)
+            os.makedirs(os.path.join(tempfile.gettempdir(), "hermes_voice"), exist_ok=True)
             mp3_path = os.path.join(
-                tempfile.gettempdir(), "prostor_voice",
+                tempfile.gettempdir(), "hermes_voice",
                 f"tts_{time.strftime('%Y%m%d_%H%M%S')}.mp3",
             )
 
@@ -9661,7 +10522,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     def _voice_beeps_enabled(self) -> bool:
         """Return whether CLI voice mode should play record start/stop beeps."""
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             voice_cfg = load_config().get("voice", {})
             if isinstance(voice_cfg, dict):
                 return bool(voice_cfg.get("beep_enabled", True))
@@ -9705,7 +10566,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # Check config for auto_tts (shape-safe — malformed ``voice:`` YAML
         # leaves ``voice_config`` as a non-dict, so guard before .get()).
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             _raw_voice = load_config().get("voice")
             voice_config = _raw_voice if isinstance(_raw_voice, dict) else {}
             if voice_config.get("auto_tts", False):
@@ -10330,7 +11191,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     build_native_content_parts,
                     decide_image_input_mode,
                 )
-                from prostor_cli.config import load_config
+                from hermes_cli.config import load_config
 
                 _img_mode = decide_image_input_mode(
                     (self.provider or "").strip(),
@@ -10466,7 +11327,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                         label = " ⚕ Prostor "
                         if self.show_timestamps:
                             label = f"{label}{datetime.now().strftime('%H:%M')} "
-                        fill = w - 2 - ProstorCLI._status_bar_display_width(label)
+                        fill = w - 2 - HermesCLI._status_bar_display_width(label)
                         _cprint(f"\n{_ACCENT}╭─{label}{'─' * max(fill - 1, 0)}╮{_RST}")
                     _cprint(f"{_STREAM_PAD}{sentence.rstrip()}")
 
@@ -10616,7 +11477,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                             self.agent.interrupt(interrupt_msg)
                             # Debug: log to file (stdout may be devnull from redirect_stdout)
                             try:
-                                _dbg = _prostor_home / "interrupt_debug.log"
+                                _dbg = _hermes_home / "interrupt_debug.log"
                                 with open(_dbg, "a", encoding="utf-8") as _f:
                                     _f.write(f"{time.strftime('%H:%M:%S')} interrupt fired: msg={str(interrupt_msg)[:60]!r}, "
                                              f"children={len(self.agent._active_children)}, "
@@ -10791,11 +11652,12 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     r_fill = w - 2 - len(r_label)
                     r_top = f"{_DIM}┌─{r_label}{'─' * max(r_fill - 1, 0)}┐{_RST}"
                     r_bot = f"{_DIM}└{'─' * (w - 2)}┘{_RST}"
-                    # Collapse long reasoning: show first 10 lines
+                    # Collapse long reasoning to the first 10 lines unless the
+                    # user opted into full display via /reasoning full.
                     lines = reasoning.strip().splitlines()
-                    if len(lines) > 10:
+                    if len(lines) > 10 and not getattr(self, "reasoning_full", False):
                         display_reasoning = "\n".join(lines[:10])
-                        display_reasoning += f"\n{_DIM}  ... ({len(lines) - 10} more lines){_RST}"
+                        display_reasoning += f"\n{_DIM}  ... ({len(lines) - 10} more lines — /reasoning full to show){_RST}"
                     else:
                         display_reasoning = reasoning.strip()
                     _cprint(f"\n{r_top}\n{_DIM}{display_reasoning}{_RST}\n{r_bot}")
@@ -10803,7 +11665,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             if response and not response_previewed:
                 # Use skin engine for label/color with fallback
                 try:
-                    from prostor_cli.skin_engine import get_active_skin
+                    from hermes_cli.skin_engine import get_active_skin
                     _skin = get_active_skin()
                     label = _skin.get_branding("response_label", "⚕ Prostor")
                     _resp_color = _maybe_remap_for_light_mode(_skin.get_color("response_border", "#CD7F32"))
@@ -10945,6 +11807,36 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         except Exception:
             pass
 
+    def _persist_active_session_before_close(self):
+        """Best-effort SQLite/JSON flush before the CLI marks a session closed.
+
+        ``run_conversation()`` normally persists at turn boundaries, but a
+        terminal close/SIGHUP/SIGTERM can unwind the prompt_toolkit app while
+        the agent thread still holds the current turn only in memory.  Flush the
+        agent's live ``_session_messages`` before ``end_session()`` so resume,
+        session_search, and state.db do not lose the interrupted turn.
+        """
+        agent = getattr(self, "agent", None)
+        if not agent or not hasattr(agent, "_persist_session"):
+            return
+
+        messages = getattr(agent, "_session_messages", None)
+        if not isinstance(messages, list):
+            messages = getattr(self, "conversation_history", None)
+        if not isinstance(messages, list) or not messages:
+            return
+
+        conversation_history = getattr(self, "conversation_history", None)
+        if not isinstance(conversation_history, list):
+            conversation_history = messages
+
+        try:
+            agent._persist_session(messages, conversation_history)
+            if getattr(agent, "session_id", None):
+                self.session_id = agent.session_id
+        except (Exception, KeyboardInterrupt) as e:
+            logger.debug("Could not persist active CLI session before close: %s", e)
+
     def _print_exit_summary(self):
         """Print session resume info on exit, similar to Claude Code."""
         # Clear the screen + scrollback before printing the summary so the
@@ -10988,7 +11880,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             # session on the next invocation. The "default" and "custom"
             # profile names use the standard PROSTOR_HOME, so no -p needed.
             try:
-                from prostor_cli.profiles import get_active_profile_name
+                from hermes_cli.profiles import get_active_profile_name
                 _active_profile = get_active_profile_name()
             except Exception:
                 _active_profile = "default"
@@ -11006,7 +11898,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             print(f"Messages:       {msg_count} ({user_msgs} user, {tool_calls} tool calls)")
         else:
             try:
-                from prostor_cli.skin_engine import get_active_goodbye
+                from hermes_cli.skin_engine import get_active_goodbye
                 goodbye = get_active_goodbye("Goodbye! ⚕")
             except Exception:
                 goodbye = "Goodbye! ⚕"
@@ -11023,7 +11915,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         prepended to the prompt symbol: ``coder ❯`` instead of ``❯``.
         """
         try:
-            from prostor_cli.skin_engine import get_active_prompt_symbol
+            from hermes_cli.skin_engine import get_active_prompt_symbol
             symbol = get_active_prompt_symbol("❯ ")
         except Exception:
             symbol = "❯ "
@@ -11032,7 +11924,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
         # Prepend profile name when not default
         try:
-            from prostor_cli.profiles import get_active_profile_name
+            from hermes_cli.profiles import get_active_profile_name
             profile = get_active_profile_name()
             if profile not in {"default", "custom"}:
                 symbol = f"{profile} {symbol}"
@@ -11117,7 +12009,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         """
         style_dict = dict(getattr(self, "_tui_style_base", {}) or {})
         try:
-            from prostor_cli.skin_engine import get_prompt_toolkit_style_overrides
+            from hermes_cli.skin_engine import get_prompt_toolkit_style_overrides
             style_dict.update(get_prompt_toolkit_style_overrides())
         except Exception:
             pass
@@ -11267,7 +12159,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 self._display_resumed_history()
 
         try:
-            from prostor_cli.skin_engine import get_active_skin
+            from hermes_cli.skin_engine import get_active_skin
             _welcome_skin = get_active_skin()
             _welcome_text = _welcome_skin.get_branding("welcome", "Welcome to Prostor Agent! Type your message or /help for commands.")
             _welcome_color = _welcome_skin.get_color("banner_text", "#FFF8DC")
@@ -11281,7 +12173,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # otherwise blocks ~1-2s on serial /v1/models fetches the first time
         # it's opened in a session. Fire-and-forget, guarded once-per-process.
         try:
-            from prostor_cli.model_switch import prewarm_picker_cache_async
+            from hermes_cli.model_switch import prewarm_picker_cache_async
             prewarm_picker_cache_async()
         except Exception:
             pass
@@ -11321,7 +12213,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     _resid_color = "#B8860B"
                 self._console_print(f"[{_resid_color}]{openclaw_residue_hint_cli()}[/]")
                 try:
-                    from prostor_cli.config import get_config_path as _get_cfg_path_resid
+                    from hermes_cli.config import get_config_path as _get_cfg_path_resid
                     mark_seen(_get_cfg_path_resid(), OPENCLAW_RESIDUE_FLAG)
                 except Exception:
                     pass  # best-effort — banner will fire again next session
@@ -11329,7 +12221,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             pass  # banner is non-critical — never break startup
         # Show a random tip to help users discover features
         try:
-            from prostor_cli.tips import get_random_tip
+            from hermes_cli.tips import get_random_tip
             _tip = get_random_tip()
             try:
                 _tip_color = _welcome_skin.get_color("banner_dim", "#B8860B")
@@ -11372,11 +12264,11 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         self._last_ctrl_c_time = 0  # Track double Ctrl+C for force exit
 
         # Give plugin manager a CLI reference so plugins can inject messages
-        from prostor_cli.plugins import get_plugin_manager
+        from hermes_cli.plugins import get_plugin_manager
         get_plugin_manager()._cli_ref = self
 
         # Config file watcher — detect mcp_servers changes and auto-reload
-        from prostor_cli.config import get_config_path as _get_config_path
+        from hermes_cli.config import get_config_path as _get_config_path
         _cfg_path = _get_config_path()
         self._config_mtime: float = _cfg_path.stat().st_mtime if _cfg_path.exists() else 0.0
         self._config_mcp_servers: dict = self.config.get("mcp_servers") or {}
@@ -11444,7 +12336,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         def handle_ignored_terminal_sequence(event):
             """Consume parser-level ignored terminal sequences before self-insert.
 
-            install_ignored_terminal_sequences() in prostor_cli.pt_input_extras
+            install_ignored_terminal_sequences() in hermes_cli.pt_input_extras
             registers focus reports (CSI I / CSI O) as Keys.Ignore at the
             VT100 parser level. Without this no-op binding the default
             self-insert path would still fire and the bytes would land in
@@ -11506,7 +12398,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 try:
                     # Picker selections persist by default (same default as
                     # /model <name>); honour model.persist_switch_by_default.
-                    from prostor_cli.model_switch import resolve_persist_behavior
+                    from hermes_cli.model_switch import resolve_persist_behavior
 
                     self._handle_model_picker_selection(
                         persist_global=resolve_persist_behavior(False, False)
@@ -11621,7 +12513,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                         self._interrupt_queue.put(payload)
                         # Debug: log to file when message enters interrupt queue
                         try:
-                            _dbg = _prostor_home / "interrupt_debug.log"
+                            _dbg = _hermes_home / "interrupt_debug.log"
                             with open(_dbg, "a", encoding="utf-8") as _f:
                                 _f.write(f"{time.strftime('%H:%M:%S')} ENTER: queued interrupt msg={str(payload)[:60]!r}, "
                                          f"agent_running={self._agent_running}\n")
@@ -11641,7 +12533,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                         )
                         if not is_seen(CLI_CONFIG, BUSY_INPUT_FLAG):
                             _cprint(f"  {_DIM}{busy_input_hint_cli(self.busy_input_mode)}{_RST}")
-                            mark_seen(_prostor_home / "config.yaml", BUSY_INPUT_FLAG)
+                            mark_seen(_hermes_home / "config.yaml", BUSY_INPUT_FLAG)
                             CLI_CONFIG.setdefault("onboarding", {}).setdefault("seen", {})[BUSY_INPUT_FLAG] = True
                     except Exception:
                         pass
@@ -12115,7 +13007,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 return
             import signal as _sig
             from prompt_toolkit.application import run_in_terminal
-            from prostor_cli.skin_engine import get_active_skin
+            from hermes_cli.skin_engine import get_active_skin
             agent_name = get_active_skin().get_branding("agent_name", "Prostor Agent")
             msg = f"\n{agent_name} has been suspended. Run `fg` to bring {agent_name} back."
             def _suspend():
@@ -12134,8 +13026,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # TUI/CLI split instead of a silent mismatch (round-11).
         _raw_key: object = "ctrl+b"
         try:
-            from prostor_cli.config import load_config
-            from prostor_cli.voice import (
+            from hermes_cli.config import load_config
+            from hermes_cli.voice import (
                 normalize_voice_record_key_for_prompt_toolkit,
                 voice_record_key_from_config,
             )
@@ -12264,7 +13156,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 chars_hit = char_threshold > 0 and len(pasted_text) >= char_threshold
                 if (lines_hit or chars_hit) and not buf.text.strip().startswith('/'):
                     _paste_counter[0] += 1
-                    paste_dir = _prostor_home / "pastes"
+                    paste_dir = _hermes_home / "pastes"
                     paste_dir.mkdir(parents=True, exist_ok=True)
                     paste_file = paste_dir / f"paste_{_paste_counter[0]}_{datetime.now().strftime('%H%M%S')}.txt"
                     paste_file.write_text(pasted_text, encoding="utf-8")
@@ -12435,7 +13327,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             chars_hit = char_threshold > 0 and len(text) >= char_threshold
             if (lines_hit or chars_hit) and is_paste and not text.startswith('/'):
                 _paste_counter[0] += 1
-                paste_dir = _prostor_home / "pastes"
+                paste_dir = _hermes_home / "pastes"
                 paste_dir.mkdir(parents=True, exist_ok=True)
                 paste_file = paste_dir / f"paste_{_paste_counter[0]}_{datetime.now().strftime('%H%M%S')}.txt"
                 paste_file.write_text(text, encoding="utf-8")
@@ -12932,7 +13824,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 term_rows = get_app().output.get_size().rows
             except Exception:
                 term_rows = shutil.get_terminal_size((100, 24)).lines
-            scroll_offset, visible = ProstorCLI._compute_model_picker_viewport(
+            scroll_offset, visible = HermesCLI._compute_model_picker_viewport(
                 selected, state.get("_scroll_offset", 0), len(choices), term_rows,
             )
             state["_scroll_offset"] = scroll_offset
@@ -13166,7 +14058,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             import prompt_toolkit.renderer as _pt_renderer
             from prompt_toolkit.renderer import _output_screen_diff as _orig_osd
 
-            if not getattr(_pt_renderer, "_prostor_osd_patched", False):
+            if not getattr(_pt_renderer, "_hermes_osd_patched", False):
                 def _patched_output_screen_diff(
                     app, output, screen, current_pos, color_depth,
                     previous_screen, last_style, is_done, full_screen,
@@ -13204,7 +14096,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     )
 
                 _pt_renderer._output_screen_diff = _patched_output_screen_diff
-                _pt_renderer._prostor_osd_patched = True
+                _pt_renderer._hermes_osd_patched = True
         except Exception:
             pass
 
@@ -13641,6 +14533,12 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             set_sudo_password_callback(None)
             set_approval_callback(None)
             set_secret_capture_callback(None)
+            # Flush any in-memory turn transcript before marking the session
+            # closed.  On SIGHUP/SIGTERM/window close the agent thread may not
+            # reach its normal run_conversation() persistence path before the
+            # daemon thread is reaped.
+            self._persist_active_session_before_close()
+
             # Close session in SQLite
             if hasattr(self, '_session_db') and self._session_db and self.agent:
                 try:
@@ -13660,7 +14558,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 # and SQLite history. Ported from google-gemini/gemini-cli#19332.
                 if getattr(self, '_delete_session_on_exit', False):
                     try:
-                        from prostor_constants import get_prostor_home as _ghh
+                        from hermes_constants import get_hermes_home as _ghh
                         _sessions_dir = _ghh() / "sessions"
                         _sid = self.agent.session_id
                         if self._session_db.delete_session(_sid, sessions_dir=_sessions_dir):
@@ -13675,7 +14573,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             # the exit occurred, meaning run_conversation's hook didn't fire.
             if self.agent and getattr(self, '_agent_running', False):
                 try:
-                    from prostor_cli.plugins import invoke_hook as _invoke_hook
+                    from hermes_cli.plugins import invoke_hook as _invoke_hook
                     _invoke_hook(
                         "on_session_end",
                         session_id=self.agent.session_id,
@@ -13697,7 +14595,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # thread (which would skip terminal cleanup on POSIX and only exit
         # the worker thread on Windows).
         if getattr(self, '_pending_relaunch', None):
-            from prostor_cli.relaunch import relaunch
+            from hermes_cli.relaunch import relaunch
             relaunch(self._pending_relaunch, preserve_inherited=False)
 
 
@@ -13705,7 +14603,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 # Main Entry Point
 # ============================================================================
 
-def _run_kanban_goal_loop_q(cli: "ProstorCLI", first_response: str) -> None:
+def _run_kanban_goal_loop_q(cli: "HermesCLI", first_response: str) -> None:
     """Drive a kanban goal_mode worker through the Ralph-style goal loop.
 
     Called from the quiet single-query path AFTER the worker's first turn,
@@ -13721,8 +14619,8 @@ def _run_kanban_goal_loop_q(cli: "ProstorCLI", first_response: str) -> None:
     if not task_id:
         return
 
-    from prostor_cli import kanban_db as _kb
-    from prostor_cli.goals import run_kanban_goal_loop as _run_loop, DEFAULT_MAX_TURNS as _DEF_TURNS
+    from hermes_cli import kanban_db as _kb
+    from hermes_cli.goals import run_kanban_goal_loop as _run_loop, DEFAULT_MAX_TURNS as _DEF_TURNS
 
     # Resolve goal text from the card (title + body = the acceptance
     # criteria the judge evaluates against).
@@ -13859,7 +14757,7 @@ def main(
     # Rich console prints Unicode box-drawing characters that would
     # UnicodeEncodeError on cp1252.  No-op on Linux/macOS.
     try:
-        from prostor_cli.stdio import configure_windows_stdio
+        from hermes_cli.stdio import configure_windows_stdio
         configure_windows_stdio()
     except Exception:
         pass
@@ -13888,7 +14786,11 @@ def main(
             _repo = _git_repo_root()
             if _repo:
                 _prune_stale_worktrees(_repo)
-            wt_info = _setup_worktree()
+            # Branch the worktree from the freshly-fetched remote tip by
+            # default so it starts current with the project. Opt out with
+            # worktree_sync: false to branch from local HEAD instead.
+            _sync_base = CLI_CONFIG.get("worktree_sync", True)
+            wt_info = _setup_worktree(sync_base=_sync_base)
             if wt_info:
                 _active_worktree = wt_info
                 os.environ["TERMINAL_CWD"] = wt_info["path"]
@@ -13931,13 +14833,13 @@ def main(
             toolsets_list = _coding
         else:
             # Use the shared resolver so MCP servers are included at runtime
-            from prostor_cli.tools_config import _get_platform_tools
+            from hermes_cli.tools_config import _get_platform_tools
             toolsets_list = sorted(_get_platform_tools(CLI_CONFIG, "cli"))
     
     parsed_skills = _parse_skills_argument(skills)
 
     # Create CLI instance
-    cli = ProstorCLI(
+    cli = HermesCLI(
         model=model,
         toolsets=toolsets_list,
         provider=provider,
@@ -13992,7 +14894,7 @@ def main(
     atexit.register(_run_cleanup)
 
     # Also install signal handlers in single-query / `-q` mode.  Interactive
-    # mode registers its own inside ProstorCLI.run(), but `-q` runs
+    # mode registers its own inside HermesCLI.run(), but `-q` runs
     # cli.agent.run_conversation() below and AIAgent spawns worker threads
     # for tools — so when SIGTERM arrives on the main thread, raising
     # KeyboardInterrupt only unwinds the main thread, not the worker
@@ -14080,7 +14982,7 @@ def main(
             _kanban_task_id = os.environ.get("PROSTOR_KANBAN_TASK", "").strip()
             if _kanban_task_id:
                 try:
-                    from prostor_cli import kanban_db as _kb
+                    from hermes_cli import kanban_db as _kb
                     from agent.image_routing import extract_image_refs as _extract_refs
 
                     _conn = _kb.connect()
@@ -14126,7 +15028,7 @@ def main(
                                 build_native_content_parts as _build_parts,  # noqa: F811
                             )
                             from agent.image_routing import decide_image_input_mode
-                            from prostor_cli.config import load_config
+                            from hermes_cli.config import load_config
 
                             _img_mode = decide_image_input_mode(
                                 (cli.provider or "").strip(),
@@ -14249,7 +15151,7 @@ def main(
                                 "failure_reason"
                             ) in ("rate_limit", "billing"):
                                 try:
-                                    from prostor_cli.kanban_db import (
+                                    from hermes_cli.kanban_db import (
                                         KANBAN_RATE_LIMIT_EXIT_CODE as _RL_CODE,
                                     )
                                     _exit_code = _RL_CODE

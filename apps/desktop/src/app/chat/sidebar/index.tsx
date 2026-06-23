@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tip } from '@/components/ui/tooltip'
+import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/prostor'
 import { useWorktreeInfo } from '@/hooks/use-worktree-info'
 import { useI18n } from '@/i18n'
 import { comboTokens } from '@/lib/keybinds/combo'
@@ -42,7 +43,6 @@ import { profileColor } from '@/lib/profile-color'
 import { sessionMatchesSearch } from '@/lib/session-search'
 import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source'
 import { cn } from '@/lib/utils'
-import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/prostor'
 import { $cronJobs } from '@/store/cron'
 import {
   $panesFlipped,
@@ -533,7 +533,6 @@ export function ChatSidebar({
 
     if (!next.length && agentOrderIds.length) {
       setSidebarSessionOrderIds([])
-
       return
     }
 

@@ -7,12 +7,13 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 
 from tools.environments.base import BaseEnvironment, _pipe_stdin
-from prostor_cli._subprocess_compat import windows_hide_flags
+from hermes_cli._subprocess_compat import windows_hide_flags
 
 _IS_WINDOWS = platform.system() == "Windows"
 
@@ -73,7 +74,7 @@ def _resolve_safe_cwd(cwd: str) -> str:
 
 
 # Prostor-internal env vars that should NOT leak into terminal subprocesses.
-_PROSTOR_PROVIDER_ENV_FORCE_PREFIX = "_PROSTOR_FORCE_"
+_HERMES_PROVIDER_ENV_FORCE_PREFIX = "_HERMES_FORCE_"
 
 # Prostor-managed AWS *inference* credentials for ``auth_type="aws_sdk"``
 # providers (Bedrock).  Scoped DELIBERATELY NARROW: this lists only the
@@ -102,7 +103,7 @@ def _build_provider_env_blocklist() -> frozenset:
     blocked: set[str] = set()
 
     try:
-        from prostor_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.auth import PROVIDER_REGISTRY
         for pconfig in PROVIDER_REGISTRY.values():
             blocked.update(pconfig.api_key_env_vars)
             if pconfig.auth_type == "aws_sdk":
@@ -113,7 +114,7 @@ def _build_provider_env_blocklist() -> frozenset:
         pass
 
     try:
-        from prostor_cli.config import OPTIONAL_ENV_VARS
+        from hermes_cli.config import OPTIONAL_ENV_VARS
         for name, metadata in OPTIONAL_ENV_VARS.items():
             category = metadata.get("category")
             if category in {"tool", "messaging"}:
@@ -131,6 +132,7 @@ def _build_provider_env_blocklist() -> frozenset:
         "OPENAI_ORGANIZATION",
         "OPENROUTER_API_KEY",
         "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_API_KEY",
         "ANTHROPIC_TOKEN",
         "CLAUDE_CODE_OAUTH_TOKEN",
         "LLM_MODEL",
@@ -188,15 +190,15 @@ def _build_provider_env_blocklist() -> frozenset:
     return frozenset(blocked)
 
 
-_PROSTOR_PROVIDER_ENV_BLOCKLIST = _build_provider_env_blocklist()
+_HERMES_PROVIDER_ENV_BLOCKLIST = _build_provider_env_blocklist()
 
 
-def _inject_context_prostor_home(env: dict) -> None:
+def _inject_context_hermes_home(env: dict) -> None:
     """Bridge the context-local Prostor home override into subprocess env."""
     try:
-        from prostor_constants import get_prostor_home_override
+        from hermes_constants import get_hermes_home_override
 
-        value = get_prostor_home_override()
+        value = get_hermes_home_override()
         if value:
             env["PROSTOR_HOME"] = value
     except Exception:
@@ -213,21 +215,21 @@ def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = Non
     sanitized: dict[str, str] = {}
 
     for key, value in (base_env or {}).items():
-        if key.startswith(_PROSTOR_PROVIDER_ENV_FORCE_PREFIX):
+        if key.startswith(_HERMES_PROVIDER_ENV_FORCE_PREFIX):
             continue
-        if key not in _PROSTOR_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
+        if key not in _HERMES_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
             sanitized[key] = value
 
     for key, value in (extra_env or {}).items():
-        if key.startswith(_PROSTOR_PROVIDER_ENV_FORCE_PREFIX):
-            real_key = key[len(_PROSTOR_PROVIDER_ENV_FORCE_PREFIX):]
+        if key.startswith(_HERMES_PROVIDER_ENV_FORCE_PREFIX):
+            real_key = key[len(_HERMES_PROVIDER_ENV_FORCE_PREFIX):]
             sanitized[real_key] = value
-        elif key not in _PROSTOR_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
+        elif key not in _HERMES_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
             sanitized[key] = value
 
-    _inject_context_prostor_home(sanitized)
+    _inject_context_hermes_home(sanitized)
 
-    from prostor_constants import apply_subprocess_home_env
+    from hermes_constants import apply_subprocess_home_env
     apply_subprocess_home_env(sanitized)
 
     return sanitized
@@ -258,11 +260,11 @@ def _find_bash() -> str:
     #   PortableGit: %LOCALAPPDATA%\prostor\git\bin\bash.exe   (primary)
     #   MinGit:      %LOCALAPPDATA%\prostor\git\usr\bin\bash.exe (legacy/32-bit fallback)
     _local_appdata = os.environ.get("LOCALAPPDATA", "")
-    _prostor_portable_git = os.path.join(_local_appdata, "prostor", "git") if _local_appdata else ""
-    if _prostor_portable_git:
+    _hermes_portable_git = os.path.join(_local_appdata, "prostor", "git") if _local_appdata else ""
+    if _hermes_portable_git:
         for candidate in (
-            os.path.join(_prostor_portable_git, "bin", "bash.exe"),        # PortableGit (primary)
-            os.path.join(_prostor_portable_git, "usr", "bin", "bash.exe"), # MinGit fallback
+            os.path.join(_hermes_portable_git, "bin", "bash.exe"),        # PortableGit (primary)
+            os.path.join(_hermes_portable_git, "usr", "bin", "bash.exe"), # MinGit fallback
         ):
             if os.path.isfile(candidate):
                 return candidate
@@ -295,6 +297,85 @@ _SANE_PATH = (
     "/opt/homebrew/bin:/opt/homebrew/sbin:"
     "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
+
+# Cached directory containing the ``prostor`` console-script.
+# ``_SENTINEL`` distinguishes "not resolved yet" from a resolved ``None``.
+_SENTINEL = object()
+_HERMES_BIN_DIR: "str | None | object" = _SENTINEL
+
+
+def _resolve_hermes_bin_dir() -> str | None:
+    """Return the directory holding the ``prostor`` console-script, or None.
+
+    The terminal tool runs in a freshly-spawned subshell whose PATH is the
+    agent process's PATH plus a static set of system dirs (``_SANE_PATH``).
+    When the gateway is launched by something that does NOT source the user's
+    shell rc — systemd, a service manager, a desktop launcher, cron — the
+    prostor install dir (``~/.local/bin``, the venv ``bin``/``Scripts``, pipx,
+    nix) is absent from that PATH, so plugins shelling out to bare ``prostor``
+    via the terminal tool hit ``command not found`` (exit 127) even though
+    ``prostor`` works fine in the user's own interactive terminal.
+
+    We resolve the install dir once (it never changes within a process) and
+    prepend-if-missing it to the subshell PATH so bare ``prostor`` resolves
+    regardless of how the gateway was started.
+
+    Resolution order (cheap, no heavy imports):
+      1. ``shutil.which("prostor")`` — normal PATH-installed shim.
+      2. The directory of ``sys.argv[0]`` when it's an absolute path to a
+         real ``prostor`` executable (covers nix-store / venv wrappers).
+      3. The directory of ``sys.executable`` — the running interpreter's
+         venv ``bin``/``Scripts`` is where its console-scripts live.
+    """
+    global _HERMES_BIN_DIR
+    if _HERMES_BIN_DIR is not _SENTINEL:
+        return _HERMES_BIN_DIR  # type: ignore[return-value]
+
+    candidate: str | None = None
+
+    which = shutil.which("prostor")
+    if which:
+        candidate = os.path.dirname(which)
+
+    if candidate is None:
+        argv0 = sys.argv[0] if sys.argv else ""
+        base = os.path.basename(argv0).lower()
+        if (
+            os.path.isabs(argv0)
+            and (base == "prostor" or base.startswith("prostor."))
+            and os.path.isfile(argv0)
+        ):
+            candidate = os.path.dirname(argv0)
+
+    if candidate is None:
+        exe_dir = os.path.dirname(sys.executable) if sys.executable else ""
+        if exe_dir:
+            shim = "prostor.exe" if _IS_WINDOWS else "prostor"
+            if os.path.isfile(os.path.join(exe_dir, shim)):
+                candidate = exe_dir
+
+    if candidate and not os.path.isdir(candidate):
+        candidate = None
+
+    _HERMES_BIN_DIR = candidate
+    return candidate
+
+
+def _prepend_hermes_bin_dir(existing_path: str) -> str:
+    """Prepend the prostor install dir to ``existing_path`` if it's missing.
+
+    Cross-platform (uses ``os.pathsep``). First-occurrence wins, so a PATH
+    that already contains the dir is returned unchanged. Returns the input
+    unchanged when the install dir can't be resolved.
+    """
+    bin_dir = _resolve_hermes_bin_dir()
+    if not bin_dir:
+        return existing_path
+    sep = os.pathsep
+    entries = [e for e in existing_path.split(sep) if e] if existing_path else []
+    if bin_dir in entries:
+        return existing_path
+    return sep.join([bin_dir, *entries])
 
 
 def _append_missing_sane_path_entries(existing_path: str) -> str:
@@ -373,18 +454,22 @@ def _make_run_env(env: dict) -> dict:
     merged = dict(os.environ | env)
     run_env = {}
     for k, v in merged.items():
-        if k.startswith(_PROSTOR_PROVIDER_ENV_FORCE_PREFIX):
-            real_key = k[len(_PROSTOR_PROVIDER_ENV_FORCE_PREFIX):]
+        if k.startswith(_HERMES_PROVIDER_ENV_FORCE_PREFIX):
+            real_key = k[len(_HERMES_PROVIDER_ENV_FORCE_PREFIX):]
             run_env[real_key] = v
-        elif k not in _PROSTOR_PROVIDER_ENV_BLOCKLIST or _is_passthrough(k):
+        elif k not in _HERMES_PROVIDER_ENV_BLOCKLIST or _is_passthrough(k):
             run_env[k] = v
     path_key = _path_env_key(run_env)
     if path_key is not None:
-        run_env[path_key] = _append_missing_sane_path_entries(run_env.get(path_key, ""))
+        new_path = _append_missing_sane_path_entries(run_env.get(path_key, ""))
+        # Ensure the prostor install dir is reachable so plugins can shell out
+        # to bare ``prostor`` via the terminal tool even when the gateway was
+        # launched without it on PATH (systemd, service managers, cron, etc.).
+        run_env[path_key] = _prepend_hermes_bin_dir(new_path)
 
-    _inject_context_prostor_home(run_env)
+    _inject_context_hermes_home(run_env)
 
-    from prostor_constants import apply_subprocess_home_env
+    from hermes_constants import apply_subprocess_home_env
     apply_subprocess_home_env(run_env)
 
     # Inject ContextVar-based session vars into subprocess env.
@@ -408,7 +493,7 @@ def _read_terminal_shell_init_config() -> tuple[list[str], bool]:
     execution never breaks because the config file is unreadable.
     """
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         cfg = load_config() or {}
         terminal_cfg = cfg.get("terminal") or {}
@@ -524,10 +609,10 @@ class LocalEnvironment(BaseEnvironment):
             # accepts forward slashes in filesystem paths, and we control
             # the path so we can guarantee no spaces.
             try:
-                from prostor_constants import get_prostor_home
-                cache_dir = get_prostor_home() / "cache" / "terminal"
+                from hermes_constants import get_hermes_home
+                cache_dir = get_hermes_home() / "cache" / "terminal"
             except Exception:
-                cache_dir = Path(tempfile.gettempdir()) / "prostor_terminal"
+                cache_dir = Path(tempfile.gettempdir()) / "hermes_terminal"
             cache_dir.mkdir(parents=True, exist_ok=True)
             # Force forward slashes so the same string serves both contexts.
             return str(cache_dir).replace("\\", "/")
@@ -607,7 +692,7 @@ class LocalEnvironment(BaseEnvironment):
         )
         if not _IS_WINDOWS:
             try:
-                proc._prostor_pgid = os.getpgid(proc.pid)
+                proc._hermes_pgid = os.getpgid(proc.pid)
             except ProcessLookupError:
                 pass
 
@@ -655,7 +740,7 @@ class LocalEnvironment(BaseEnvironment):
                 try:
                     pgid = os.getpgid(proc.pid)
                 except ProcessLookupError:
-                    pgid = getattr(proc, "_prostor_pgid", None)
+                    pgid = getattr(proc, "_hermes_pgid", None)
                     if pgid is None:
                         raise
 

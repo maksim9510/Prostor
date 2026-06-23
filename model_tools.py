@@ -34,6 +34,10 @@ from toolsets import resolve_toolset, validate_toolset
 
 logger = logging.getLogger(__name__)
 
+# Tracks platform-bundle names already flagged in disabled_toolsets so the
+# advisory (#33924) is logged once per name, not on every tool recompute.
+_WARNED_DISABLED_BUNDLES: set = set()
+
 
 # =============================================================================
 # Async Bridging  (single source of truth -- used by registry.dispatch too)
@@ -188,13 +192,13 @@ discover_builtin_tools()
 #
 # Each entry point now runs discovery explicitly at its own startup:
 #   - gateway/run.py            -> start_gateway() uses run_in_executor
-#   - cli.py, prostor_cli/*      -> inline on startup (no event loop)
+#   - cli.py, hermes_cli/*      -> inline on startup (no event loop)
 #   - tui_gateway/server.py     -> inline on startup (no event loop)
 #   - acp_adapter/server.py     -> asyncio.to_thread on session init
 
 # Plugin tool discovery (user/project/pip plugins)
 try:
-    from prostor_cli.plugins import discover_plugins
+    from hermes_cli.plugins import discover_plugins
     discover_plugins()
 except Exception as e:
     logger.debug("Plugin discovery failed: %s", e)
@@ -303,7 +307,7 @@ def get_tool_definitions(
     # invalidate hook on every config-writer.
     if quiet_mode:
         try:
-            from prostor_cli.config import get_config_path
+            from hermes_cli.config import get_config_path
             cfg_path = get_config_path()
             cfg_stat = cfg_path.stat()
             cfg_fp = (cfg_stat.st_mtime_ns, cfg_stat.st_size)
@@ -392,8 +396,29 @@ def _compute_tool_definitions(
     if disabled_toolsets:
         for toolset_name in disabled_toolsets:
             if validate_toolset(toolset_name):
-                resolved = resolve_toolset(toolset_name)
-                tools_to_include.difference_update(resolved)
+                if toolset_name.startswith("prostor-"):
+                    # Platform bundles (prostor-*) include _HERMES_CORE_TOOLS, so
+                    # subtracting the whole bundle would strip core tools shared
+                    # by other enabled toolsets and empty the tool list (#33924).
+                    # Subtract only the bundle's non-core delta; keep core.
+                    from toolsets import bundle_non_core_tools
+                    to_remove = bundle_non_core_tools(toolset_name)
+                    tools_to_include.difference_update(to_remove)
+                    resolved = sorted(to_remove)
+                    if not quiet_mode and toolset_name not in _WARNED_DISABLED_BUNDLES:
+                        _WARNED_DISABLED_BUNDLES.add(toolset_name)
+                        logger.info(
+                            "agent.disabled_toolsets contains platform-bundle "
+                            "name '%s'; core tools are preserved and only its "
+                            "platform-specific tools (%s) are removed. Bundle "
+                            "names usually belong in `toolsets:`, not "
+                            "`disabled_toolsets` (#33924).",
+                            toolset_name,
+                            ", ".join(resolved) if resolved else "none",
+                        )
+                else:
+                    resolved = resolve_toolset(toolset_name)
+                    tools_to_include.difference_update(resolved)
                 if not quiet_mode:
                     print(f"🚫 Disabled toolset '{toolset_name}': {', '.join(resolved) if resolved else 'no tools'}")
             elif toolset_name in _LEGACY_TOOLSET_MAP:
@@ -507,7 +532,7 @@ def _compute_tool_definitions(
     # Conditionally replace MCP + plugin (non-core) tools with three bridge
     # tools (tool_search / tool_describe / tool_call) when the deferrable
     # surface exceeds the configured threshold (default 10% of context
-    # window). Core Prostor tools (toolsets._PROSTOR_CORE_TOOLS) are NEVER
+    # window). Core Prostor tools (toolsets._HERMES_CORE_TOOLS) are NEVER
     # deferred. See tools/tool_search.py for full design notes.
     #
     # This is deliberately the last step before returning — sanitization
@@ -543,7 +568,7 @@ def _resolve_active_context_length() -> int:
     back to a fixed token cutoff in that case.
     """
     try:
-        from prostor_cli.config import load_config as _load
+        from hermes_cli.config import load_config as _load
         cfg = _load() or {}
         model_cfg = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
         if not isinstance(model_cfg, dict):
@@ -848,7 +873,7 @@ def _emit_post_tool_call_hook(
     listener will actually consume it).
     """
     try:
-        from prostor_cli.plugins import has_hook, invoke_hook
+        from hermes_cli.plugins import has_hook, invoke_hook
         if not has_hook("post_tool_call"):
             return
         if status is None:
@@ -997,7 +1022,7 @@ def handle_function_call(
     _tool_original_args = dict(function_args)
     if not skip_tool_request_middleware:
         try:
-            from prostor_cli.middleware import apply_tool_request_middleware
+            from hermes_cli.middleware import apply_tool_request_middleware
 
             _tool_request_mw = apply_tool_request_middleware(
                 function_name,
@@ -1031,7 +1056,7 @@ def handle_function_call(
         if not skip_pre_tool_call_hook:
             block_message: Optional[str] = None
             try:
-                from prostor_cli.plugins import get_pre_tool_call_block_message
+                from hermes_cli.plugins import get_pre_tool_call_block_message
                 block_message = get_pre_tool_call_block_message(
                     function_name,
                     function_args,
@@ -1126,7 +1151,7 @@ def handle_function_call(
                         session_id=session_id,
                         user_task=user_task,
                     )
-            from prostor_cli.middleware import run_tool_execution_middleware
+            from hermes_cli.middleware import run_tool_execution_middleware
 
             result = run_tool_execution_middleware(
                 function_name,
@@ -1169,7 +1194,7 @@ def handle_function_call(
         # Gated on has_hook so the no-listener path skips both the result
         # field derivation and the payload dispatch.
         try:
-            from prostor_cli.plugins import has_hook, invoke_hook
+            from hermes_cli.plugins import has_hook, invoke_hook
             if has_hook("transform_tool_result"):
                 status, error_type, error_message = _tool_result_observer_fields(result)
                 hook_results = invoke_hook(

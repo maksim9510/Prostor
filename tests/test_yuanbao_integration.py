@@ -112,9 +112,9 @@ class TestGatewayRunnerRegistration:
         # Stub out heavy dependencies if not already present
         stubs = [
             "dotenv",
-            "prostor_cli.env_loader",
-            "prostor_cli.config",
-            "prostor_constants",
+            "hermes_cli.env_loader",
+            "hermes_cli.config",
+            "hermes_constants",
         ]
         _orig = {}
         for mod in stubs:

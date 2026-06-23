@@ -1,9 +1,9 @@
 # nix/desktop.nix — Prostor Desktop (Electron) app build + wrapper
 #
-# `prostorAgent` is the fully-built `.#default` package — it ships the
+# `hermesAgent` is the fully-built `.#default` package — it ships the
 # `prostor` binary with the venv, runtime PATH, bundled skills/plugins, etc.
 # already wired up.  We point the desktop at it via the existing
-# `PROSTOR_DESKTOP_PROSTOR` override env var, so the desktop's resolver
+# `PROSTOR_DESKTOP_HERMES` override env var, so the desktop's resolver
 # uses our fully wrapped binary at step 4 ("existing Prostor CLI").
 # No reimplementation of the agent resolution in this wrapper.
 {
@@ -11,13 +11,13 @@
   lib,
   stdenv,
   makeWrapper,
-  prostorNpmLib,
+  hermesNpmLib,
   electron,
-  prostorAgent,
+  hermesAgent,
   ...
 }:
 let
-  npm = prostorNpmLib.mkNpmPassthru {
+  npm = hermesNpmLib.mkNpmPassthru {
     folder = "apps/desktop";
     attr = "desktop";
     pname = "prostor-desktop";
@@ -124,14 +124,14 @@ stdenv.mkDerivation {
       --replace-fail "process.resourcesPath" "'$out/share/prostor-desktop'"
 
     # Wrap the nixpkgs electron binary to launch our app.  Set
-    # PROSTOR_DESKTOP_PROSTOR to the absolute path of the nix-built `prostor`
+    # PROSTOR_DESKTOP_HERMES to the absolute path of the nix-built `prostor`
     # binary so the desktop's resolver step 4 ("existing Prostor CLI on
     # PATH") uses our fully wrapped binary — venv with all deps,
     # bundled skills/plugins, runtime PATH (ripgrep/git/ffmpeg/etc).
     # No reimplementation of the agent resolver in the wrapper.
     makeWrapper ${lib.getExe electron} $out/bin/prostor-desktop \
       --add-flags "$out/share/prostor-desktop" \
-      --set PROSTOR_DESKTOP_PROSTOR "${lib.getExe prostorAgent}" \
+      --set PROSTOR_DESKTOP_HERMES "${lib.getExe hermesAgent}" \
       --set ELECTRON_IS_DEV 0
 
     runHook postInstall

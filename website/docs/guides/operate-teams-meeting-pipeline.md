@@ -19,7 +19,7 @@ This page covers:
 ### Validate the config snapshot
 
 ```bash
-prostor teams-pipeline validate
+hermes teams-pipeline validate
 ```
 
 Use this first after any config change.
@@ -27,8 +27,8 @@ Use this first after any config change.
 ### Inspect token health
 
 ```bash
-prostor teams-pipeline token-health
-prostor teams-pipeline token-health --force-refresh
+hermes teams-pipeline token-health
+hermes teams-pipeline token-health --force-refresh
 ```
 
 Use `--force-refresh` when you suspect stale auth state.
@@ -36,14 +36,14 @@ Use `--force-refresh` when you suspect stale auth state.
 ### Inspect subscriptions
 
 ```bash
-prostor teams-pipeline subscriptions
+hermes teams-pipeline subscriptions
 ```
 
 ### Renew near-expiry subscriptions
 
 ```bash
-prostor teams-pipeline maintain-subscriptions
-prostor teams-pipeline maintain-subscriptions --dry-run
+hermes teams-pipeline maintain-subscriptions
+hermes teams-pipeline maintain-subscriptions --dry-run
 ```
 
 ### Automating subscription renewal (REQUIRED for production)
@@ -52,23 +52,23 @@ prostor teams-pipeline maintain-subscriptions --dry-run
 
 You MUST run `maintain-subscriptions` on a schedule. Pick one of these three options:
 
-#### Option 1: Prostor cron (recommended if you already run the Prostor gateway)
+#### Option 1: Hermes cron (recommended if you already run the Hermes gateway)
 
-Prostor ships a built-in cron scheduler. The `--no-agent` mode runs a script as the job (rather than using an LLM), and `--script` must point at a file under `~/.prostor/scripts/`. First create the script:
+Hermes ships a built-in cron scheduler. The `--no-agent` mode runs a script as the job (rather than using an LLM), and `--script` must point at a file under `~/.hermes/scripts/`. First create the script:
 
 ```bash
-mkdir -p ~/.prostor/scripts
-cat > ~/.prostor/scripts/maintain-teams-subscriptions.sh <<'EOF'
+mkdir -p ~/.hermes/scripts
+cat > ~/.hermes/scripts/maintain-teams-subscriptions.sh <<'EOF'
 #!/usr/bin/env bash
-exec prostor teams-pipeline maintain-subscriptions
+exec hermes teams-pipeline maintain-subscriptions
 EOF
-chmod +x ~/.prostor/scripts/maintain-teams-subscriptions.sh
+chmod +x ~/.hermes/scripts/maintain-teams-subscriptions.sh
 ```
 
 Then register a script-only cron job that runs every 12 hours (gives 6x headroom against the 72h expiry window):
 
 ```bash
-prostor cron create "0 */12 * * *" \
+hermes cron create "0 */12 * * *" \
   --name "teams-pipeline-maintain-subscriptions" \
   --no-agent \
   --script maintain-teams-subscriptions.sh \
@@ -78,31 +78,31 @@ prostor cron create "0 */12 * * *" \
 Verify it was registered and inspect the next run time:
 
 ```bash
-prostor cron list
-prostor cron status        # scheduler status
+hermes cron list
+hermes cron status        # scheduler status
 ```
 
 #### Option 2: systemd timer (recommended for Linux production deployments)
 
-Create `/etc/systemd/system/prostor-teams-pipeline-maintain.service`:
+Create `/etc/systemd/system/hermes-teams-pipeline-maintain.service`:
 
 ```ini
 [Unit]
-Description=Prostor Teams pipeline subscription maintenance
+Description=Hermes Teams pipeline subscription maintenance
 After=network-online.target
 
 [Service]
 Type=oneshot
-User=prostor
-EnvironmentFile=/etc/prostor/env
-ExecStart=/usr/local/bin/prostor teams-pipeline maintain-subscriptions
+User=hermes
+EnvironmentFile=/etc/hermes/env
+ExecStart=/usr/local/bin/hermes teams-pipeline maintain-subscriptions
 ```
 
-And `/etc/systemd/system/prostor-teams-pipeline-maintain.timer`:
+And `/etc/systemd/system/hermes-teams-pipeline-maintain.timer`:
 
 ```ini
 [Unit]
-Description=Run Prostor Teams pipeline subscription maintenance every 12 hours
+Description=Run Hermes Teams pipeline subscription maintenance every 12 hours
 
 [Timer]
 OnBootSec=5min
@@ -117,25 +117,25 @@ Enable:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now prostor-teams-pipeline-maintain.timer
-systemctl list-timers prostor-teams-pipeline-maintain.timer
+sudo systemctl enable --now hermes-teams-pipeline-maintain.timer
+systemctl list-timers hermes-teams-pipeline-maintain.timer
 ```
 
 #### Option 3: Plain crontab
 
 ```cron
-0 */12 * * * /usr/local/bin/prostor teams-pipeline maintain-subscriptions >> /var/log/prostor/teams-pipeline-maintain.log 2>&1
+0 */12 * * * /usr/local/bin/hermes teams-pipeline maintain-subscriptions >> /var/log/hermes/teams-pipeline-maintain.log 2>&1
 ```
 
-Make sure the cron environment has the `MSGRAPH_*` credentials. Simplest fix: source `~/.prostor/.env` at the top of a wrapper script that crontab calls.
+Make sure the cron environment has the `MSGRAPH_*` credentials. Simplest fix: source `~/.hermes/.env` at the top of a wrapper script that crontab calls.
 
 #### Verifying renewal is working
 
 After you've set up the schedule, check renewal activity after the first scheduled run:
 
 ```bash
-prostor teams-pipeline subscriptions   # should show expirationDateTime advanced
-prostor teams-pipeline maintain-subscriptions --dry-run   # should show "0 expiring soon" most of the time
+hermes teams-pipeline subscriptions   # should show expirationDateTime advanced
+hermes teams-pipeline maintain-subscriptions --dry-run   # should show "0 expiring soon" most of the time
 ```
 
 If you ever see your Graph webhook mysteriously "stop working" after exactly ~72 hours, this is the first thing to check: did the renewal job actually run?
@@ -143,22 +143,22 @@ If you ever see your Graph webhook mysteriously "stop working" after exactly ~72
 ### Inspect recent jobs
 
 ```bash
-prostor teams-pipeline list
-prostor teams-pipeline list --status failed
-prostor teams-pipeline show <job-id>
+hermes teams-pipeline list
+hermes teams-pipeline list --status failed
+hermes teams-pipeline show <job-id>
 ```
 
 ### Replay a stored job
 
 ```bash
-prostor teams-pipeline run <job-id>
+hermes teams-pipeline run <job-id>
 ```
 
 ### Dry-run meeting artifact fetches
 
 ```bash
-prostor teams-pipeline fetch --meeting-id <meeting-id>
-prostor teams-pipeline fetch --join-web-url "<join-url>"
+hermes teams-pipeline fetch --meeting-id <meeting-id>
+hermes teams-pipeline fetch --join-web-url "<join-url>"
 ```
 
 ## Routine Runbook
@@ -168,28 +168,28 @@ prostor teams-pipeline fetch --join-web-url "<join-url>"
 Run these in order:
 
 ```bash
-prostor teams-pipeline validate
-prostor teams-pipeline token-health --force-refresh
-prostor teams-pipeline subscriptions
+hermes teams-pipeline validate
+hermes teams-pipeline token-health --force-refresh
+hermes teams-pipeline subscriptions
 ```
 
 Then trigger or wait for a real meeting event and confirm:
 
 ```bash
-prostor teams-pipeline list
-prostor teams-pipeline show <job-id>
+hermes teams-pipeline list
+hermes teams-pipeline show <job-id>
 ```
 
 ### Daily or periodic checks
 
-- run `prostor teams-pipeline maintain-subscriptions --dry-run`
-- inspect `prostor teams-pipeline list --status failed`
+- run `hermes teams-pipeline maintain-subscriptions --dry-run`
+- inspect `hermes teams-pipeline list --status failed`
 - verify the Teams delivery target is still the correct chat or channel
 
 ### Before changing webhook URLs or delivery targets
 
 - update the public notification URL or Teams target config
-- run `prostor teams-pipeline validate`
+- run `hermes teams-pipeline validate`
 - renew or recreate affected subscriptions
 - confirm new events land in the expected sink
 
@@ -223,7 +223,7 @@ Check:
 ### Duplicate or unexpected replays
 
 Check:
-- whether you manually replayed a job with `prostor teams-pipeline run`
+- whether you manually replayed a job with `hermes teams-pipeline run`
 - whether the sink record already exists for that meeting
 - whether you intentionally enabled a resend path in your local config
 
@@ -237,9 +237,9 @@ Check:
 - [ ] `ffmpeg` is installed if recording fallback is enabled
 - [ ] Teams outbound delivery target is configured and verified
 - [ ] Notion and Linear sinks are configured only if actually needed
-- [ ] `prostor teams-pipeline validate` returns an OK snapshot
-- [ ] `prostor teams-pipeline token-health --force-refresh` succeeds
-- [ ] **`maintain-subscriptions` is scheduled** (Prostor cron, systemd timer, or crontab — see [Automating subscription renewal](#automating-subscription-renewal-required-for-production)). Without this, Graph subscriptions silently expire within 72 hours.
+- [ ] `hermes teams-pipeline validate` returns an OK snapshot
+- [ ] `hermes teams-pipeline token-health --force-refresh` succeeds
+- [ ] **`maintain-subscriptions` is scheduled** (Hermes cron, systemd timer, or crontab — see [Automating subscription renewal](#automating-subscription-renewal-required-for-production)). Without this, Graph subscriptions silently expire within 72 hours.
 - [ ] a real end-to-end meeting event has produced a stored job
 - [ ] at least one summary has reached the intended delivery sink
 

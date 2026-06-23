@@ -67,7 +67,7 @@
         lib.mapAttrsToList (name: value:
           if builtins.isPath value || lib.isStorePath value
           then "cp ${value} $out/${name}"
-          else "cat > $out/${name} <<'PROSTOR_DOC_EOF'\n${value}\nPROSTOR_DOC_EOF"
+          else "cat > $out/${name} <<'PROSTOR_DOC_EOF'\n${value}\nHERMES_DOC_EOF"
         ) cfg.documents
       )
     );
@@ -285,7 +285,7 @@
         description = ''
           Paths to environment files containing secrets (API keys, tokens).
           Contents are merged into $PROSTOR_HOME/.env at activation time.
-          Prostor reads this file on every startup via load_prostor_dotenv().
+          Prostor reads this file on every startup via load_hermes_dotenv().
         '';
       };
 
@@ -774,7 +774,7 @@
     backend=${cfg.container.backend}
     container_name=${containerName}
     exec_user=${cfg.user}
-    prostor_bin=${containerDataDir}/current-package/bin/prostor
+    hermes_bin=${containerDataDir}/current-package/bin/prostor
     PROSTOR_CONTAINER_MODE_EOF
             chown ${cfg.user}:${cfg.group} ${cfg.stateDir}/.prostor/.container-mode
             chmod 0644 ${cfg.stateDir}/.prostor/.container-mode
@@ -830,7 +830,7 @@
           ''}
 
           # Seed .env from Nix-declared environment + environmentFiles.
-          # Prostor reads $PROSTOR_HOME/.env at startup via load_prostor_dotenv(),
+          # Prostor reads $PROSTOR_HOME/.env at startup via load_hermes_dotenv(),
           # so this is the single source of truth for both native and container mode.
           ${lib.optionalString (cfg.environment != {} || cfg.environmentFiles != []) ''
             ENV_FILE="${cfg.stateDir}/.prostor/.env"
@@ -892,7 +892,7 @@
             WorkingDirectory = cfg.workingDirectory;
 
             # cfg.environment and cfg.environmentFiles are written to
-            # $PROSTOR_HOME/.env by the activation script. load_prostor_dotenv()
+            # $PROSTOR_HOME/.env by the activation script. load_hermes_dotenv()
             # reads them at Python startup — no systemd EnvironmentFile needed.
 
             ExecStart = lib.concatStringsSep " " ([

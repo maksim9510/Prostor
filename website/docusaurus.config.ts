@@ -3,15 +3,15 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Prostor Agent',
+  title: 'Hermes Agent',
   tagline: 'The self-improving AI agent',
   favicon: 'img/favicon.ico',
 
-  url: 'https://maksim9510.github.io',
-  baseUrl: '/Prostor/docs/',
+  url: 'https://hermes-agent.nousresearch.com',
+  baseUrl: '/docs/',
 
-  organizationName: 'maksim9510',
-  projectName: 'prostor-agent',
+  organizationName: 'NousResearch',
+  projectName: 'hermes-agent',
 
   onBrokenLinks: 'warn',
 
@@ -90,7 +90,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',  // Docs at the root of /docs/
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/maksim9510/Prostor/edit/main/website/',
+          editUrl: 'https://github.com/NousResearch/hermes-agent/edit/main/website/',
         },
         blog: false,
         theme: {
@@ -101,7 +101,7 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/prostor-agent-banner.png',
+    image: 'img/hermes-agent-banner.png',
     colorMode: {
       defaultMode: 'dark',
       respectPrefersColorScheme: true,
@@ -113,9 +113,9 @@ const config: Config = {
       },
     },
     navbar: {
-      title: 'Prostor Agent',
+      title: 'Hermes Agent',
       logo: {
-        alt: 'Prostor Agent',
+        alt: 'Hermes Agent',
         src: 'img/logo.png',
       },
       items: [
@@ -131,7 +131,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/maksim9510/Prostor/',
+          href: 'https://hermes-agent.nousresearch.com/',
           label: 'Download',
           position: 'left',
         },
@@ -140,17 +140,17 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: 'https://github.com/maksim9510/Prostor',
+          href: 'https://hermes-agent.nousresearch.com',
           label: 'Home',
           position: 'right',
         },
         {
-          href: 'https://github.com/maksim9510/Prostor',
+          href: 'https://github.com/NousResearch/hermes-agent',
           label: 'GitHub',
           position: 'right',
         },
         {
-          href: 'https://discord.gg/maksim9510',
+          href: 'https://discord.gg/NousResearch',
           label: 'Discord',
           position: 'right',
         },
@@ -171,16 +171,16 @@ const config: Config = {
         {
           title: 'Community',
           items: [
-            { label: 'Discord', href: 'https://discord.gg/maksim9510' },
-            { label: 'GitHub Issues', href: 'https://github.com/maksim9510/Prostor/issues' },
+            { label: 'Discord', href: 'https://discord.gg/NousResearch' },
+            { label: 'GitHub Issues', href: 'https://github.com/NousResearch/hermes-agent/issues' },
             { label: 'Skills Hub', href: 'https://agentskills.io' },
           ],
         },
         {
           title: 'More',
           items: [
-            { label: 'Desktop Download', href: 'https://github.com/maksim9510/Prostor/' },
-            { label: 'GitHub', href: 'https://github.com/maksim9510/Prostor' },
+            { label: 'Desktop Download', href: 'https://hermes-agent.nousresearch.com/' },
+            { label: 'GitHub', href: 'https://github.com/NousResearch/hermes-agent' },
             { label: 'Nous Research', href: 'https://nousresearch.com' },
           ],
         },

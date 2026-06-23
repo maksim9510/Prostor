@@ -7,7 +7,7 @@ license: MIT
 dependencies: [flash-attn, torch, transformers]
 platforms: [linux, macos]
 metadata:
-  prostor:
+  hermes:
     tags: [Optimization, Flash Attention, Attention Optimization, Memory Efficiency, Speed Optimization, Long Context, PyTorch, SDPA, H100, FP8, Transformers]
 
 ---

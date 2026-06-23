@@ -26,9 +26,9 @@ const {
 // --- uninstallArgsForMode ---
 
 test('uninstallArgsForMode maps each mode to the module-runner argv', () => {
-  assert.deepEqual(uninstallArgsForMode('gui'), ['-m', 'prostor_cli.uninstall', '--mode', 'gui'])
-  assert.deepEqual(uninstallArgsForMode('lite'), ['-m', 'prostor_cli.uninstall', '--mode', 'lite'])
-  assert.deepEqual(uninstallArgsForMode('full'), ['-m', 'prostor_cli.uninstall', '--mode', 'full'])
+  assert.deepEqual(uninstallArgsForMode('gui'), ['-m', 'hermes_cli.uninstall', '--mode', 'gui'])
+  assert.deepEqual(uninstallArgsForMode('lite'), ['-m', 'hermes_cli.uninstall', '--mode', 'lite'])
+  assert.deepEqual(uninstallArgsForMode('full'), ['-m', 'hermes_cli.uninstall', '--mode', 'full'])
 })
 
 test('uninstallArgsForMode throws on an unknown mode (no silent full wipe)', () => {
@@ -95,7 +95,7 @@ test('resolveRemovableAppPath returns null for an unrecognized Windows dir', () 
 
 test('resolveRemovableAppPath uses APPIMAGE on Linux when set', () => {
   assert.equal(
-    resolveRemovableAppPath('/tmp/.mount_ProstorXXXX/prostor', 'linux', { APPIMAGE: '/home/x/Apps/Prostor.AppImage' }),
+    resolveRemovableAppPath('/tmp/.mount_HermesXXXX/prostor', 'linux', { APPIMAGE: '/home/x/Apps/Prostor.AppImage' }),
     '/home/x/Apps/Prostor.AppImage'
   )
 })
@@ -131,16 +131,16 @@ test('buildPosixCleanupScript waits for the PID, runs the uninstall module, remo
     pythonExe: '/home/x/.prostor/prostor-agent/venv/bin/python',
     pythonPath: null,
     agentRoot: '/home/x/.prostor/prostor-agent',
-    uninstallArgs: ['-m', 'prostor_cli.uninstall', '--mode', 'gui'],
+    uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'gui'],
     appPath: '/opt/prostor/linux-unpacked',
-    prostorHome: '/home/x/.prostor'
+    hermesHome: '/home/x/.prostor'
   })
   assert.match(script, /^#!\/bin\/bash/)
   assert.match(script, /pid=4321/)
   assert.match(script, /kill -0 "\$pid"/)
   // bounded wait (~30s), not unbounded
   assert.match(script, /seq 1 60/)
-  assert.match(script, /'-m' 'prostor_cli\.uninstall' '--mode' 'gui'/)
+  assert.match(script, /'-m' 'hermes_cli\.uninstall' '--mode' 'gui'/)
   assert.match(script, /rm -rf '\/opt\/prostor\/linux-unpacked'/)
   assert.match(script, /export PROSTOR_HOME='\/home\/x\/\.prostor'/)
 })
@@ -151,14 +151,14 @@ test('buildPosixCleanupScript exports PYTHONPATH when pythonPath is set (lite/fu
     pythonExe: '/usr/bin/python3',
     pythonPath: '/home/x/.prostor/prostor-agent',
     agentRoot: '/home/x/.prostor/prostor-agent',
-    uninstallArgs: ['-m', 'prostor_cli.uninstall', '--mode', 'full'],
+    uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'full'],
     appPath: null,
-    prostorHome: '/home/x/.prostor'
+    hermesHome: '/home/x/.prostor'
   })
-  // System python + source on PYTHONPATH so import prostor_cli works while the
+  // System python + source on PYTHONPATH so import hermes_cli works while the
   // venv is torn down.
   assert.match(script, /export PYTHONPATH='\/home\/x\/\.prostor\/prostor-agent'/)
-  assert.match(script, /'\/usr\/bin\/python3' '-m' 'prostor_cli\.uninstall' '--mode' 'full'/)
+  assert.match(script, /'\/usr\/bin\/python3' '-m' 'hermes_cli\.uninstall' '--mode' 'full'/)
 })
 
 test('buildPosixCleanupScript omits PYTHONPATH when pythonPath is null (gui)', () => {
@@ -167,9 +167,9 @@ test('buildPosixCleanupScript omits PYTHONPATH when pythonPath is null (gui)', (
     pythonExe: '/p/python',
     pythonPath: null,
     agentRoot: '/a',
-    uninstallArgs: ['-m', 'prostor_cli.uninstall', '--mode', 'gui'],
+    uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    prostorHome: '/h'
+    hermesHome: '/h'
   })
   assert.doesNotMatch(script, /export PYTHONPATH/)
 })
@@ -180,13 +180,13 @@ test('buildPosixCleanupScript omits the bundle rm when appPath is null', () => {
     pythonExe: '/p/python',
     pythonPath: null,
     agentRoot: '/a',
-    uninstallArgs: ['-m', 'prostor_cli.uninstall', '--mode', 'lite'],
+    uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'lite'],
     appPath: null,
-    prostorHome: '/h'
+    hermesHome: '/h'
   })
   assert.doesNotMatch(script, /rm -rf '\//)
   // Still runs the uninstall.
-  assert.match(script, /'-m' 'prostor_cli\.uninstall' '--mode' 'lite'/)
+  assert.match(script, /'-m' 'hermes_cli\.uninstall' '--mode' 'lite'/)
 })
 
 test('buildPosixCleanupScript single-quote-escapes paths with apostrophes', () => {
@@ -195,9 +195,9 @@ test('buildPosixCleanupScript single-quote-escapes paths with apostrophes', () =
     pythonExe: "/home/o'brien/python",
     pythonPath: null,
     agentRoot: '/a',
-    uninstallArgs: ['-m', 'prostor_cli.uninstall', '--mode', 'gui'],
+    uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    prostorHome: '/h'
+    hermesHome: '/h'
   })
   // The apostrophe is closed-escaped-reopened so the shell sees the literal.
   assert.match(script, /'\/home\/o'\\''brien\/python'/)
@@ -211,15 +211,15 @@ test('buildWindowsCleanupScript waits (bounded) for PID, runs uninstall, rmdir b
     pythonExe: 'C:\\Python313\\python.exe',
     pythonPath: 'C:\\prostor',
     agentRoot: 'C:\\prostor',
-    uninstallArgs: ['-m', 'prostor_cli.uninstall', '--mode', 'full'],
+    uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'full'],
     appPath: 'C:\\Users\\x\\AppData\\Local\\Programs\\Prostor',
-    prostorHome: 'C:\\Users\\x\\AppData\\Local\\prostor'
+    hermesHome: 'C:\\Users\\x\\AppData\\Local\\prostor'
   })
   assert.match(script, /@echo off/)
   assert.match(script, /set "PID=9988"/)
-  // PYTHONPATH set so a system python can import prostor_cli from source.
+  // PYTHONPATH set so a system python can import hermes_cli from source.
   assert.match(script, /set "PYTHONPATH=C:\\prostor;%PYTHONPATH%"/)
-  assert.match(script, /"C:\\Python313\\python.exe" "-m" "prostor_cli\.uninstall" "--mode" "full"/)
+  assert.match(script, /"C:\\Python313\\python.exe" "-m" "hermes_cli\.uninstall" "--mode" "full"/)
   // Bounded wait-loop (no infinite loop), whole-token PID match (no substring).
   assert.match(script, /if %waited% geq 60 goto waited_done/)
   assert.match(script, /findstr \/r \/c:" %PID% "/)
@@ -237,9 +237,9 @@ test('buildWindowsCleanupScript omits PYTHONPATH + rmdir when not needed (gui, n
     pythonExe: 'C:\\h\\venv\\Scripts\\python.exe',
     pythonPath: null,
     agentRoot: 'C:\\h',
-    uninstallArgs: ['-m', 'prostor_cli.uninstall', '--mode', 'gui'],
+    uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    prostorHome: 'C:\\h'
+    hermesHome: 'C:\\h'
   })
   assert.doesNotMatch(script, /rmdir/)
   assert.doesNotMatch(script, /set "PYTHONPATH=/)

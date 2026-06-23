@@ -32,26 +32,26 @@ def _restore_tool_and_agent_modules():
     original_modules = {
         name: module
         for name, module in sys.modules.items()
-        if name in {"tools", "agent", "prostor_cli"}
+        if name in {"tools", "agent", "hermes_cli"}
         or name.startswith("tools.")
         or name.startswith("agent.")
-        or name.startswith("prostor_cli.")
+        or name.startswith("hermes_cli.")
     }
     try:
         yield
     finally:
-        _reset_modules(("tools", "agent", "prostor_cli"))
+        _reset_modules(("tools", "agent", "hermes_cli"))
         sys.modules.update(original_modules)
 
 
 def _install_fake_tools_package(*, credential_mounts=None):
-    _reset_modules(("tools", "agent", "prostor_cli"))
+    _reset_modules(("tools", "agent", "hermes_cli"))
 
-    prostor_cli = types.ModuleType("prostor_cli")
-    prostor_cli.__path__ = []  # type: ignore[attr-defined]
-    sys.modules["prostor_cli"] = prostor_cli
-    sys.modules["prostor_cli.config"] = types.SimpleNamespace(
-        get_prostor_home=lambda: Path(tempfile.gettempdir()) / "prostor-home",
+    hermes_cli = types.ModuleType("hermes_cli")
+    hermes_cli.__path__ = []  # type: ignore[attr-defined]
+    sys.modules["hermes_cli"] = hermes_cli
+    sys.modules["hermes_cli.config"] = types.SimpleNamespace(
+        get_hermes_home=lambda: Path(tempfile.gettempdir()) / "prostor-home",
     )
 
     tools_package = types.ModuleType("tools")

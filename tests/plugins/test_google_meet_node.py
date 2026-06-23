@@ -18,10 +18,10 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _isolate_home(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
-    yield prostor_home
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
+    yield hermes_home
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ def test_registry_resolve_by_name(tmp_path):
     assert r.resolve("ghost") is None
 
 
-def test_registry_defaults_to_prostor_home(tmp_path, monkeypatch):
+def test_registry_defaults_to_hermes_home(tmp_path, monkeypatch):
     from plugins.google_meet.node.registry import NodeRegistry
 
     # _isolate_home already set PROSTOR_HOME to tmp_path/.prostor; the

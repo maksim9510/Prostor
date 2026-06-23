@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
+import { deleteSession, listAllProfileSessions, setSessionArchived } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import { triggerHaptic } from '@/lib/haptics'
 import { Archive, ArchiveOff, FolderOpen, Loader2, Trash2 } from '@/lib/icons'
-import { deleteSession, listAllProfileSessions, setSessionArchived } from '@/prostor'
 import { notify, notifyError } from '@/store/notifications'
 import { applyConfiguredDefaultProjectDir, ensureDefaultWorkspaceCwd, setSessions } from '@/store/session'
 import type { SessionInfo } from '@/types/prostor'
@@ -177,11 +177,11 @@ function DefaultProjectDirSetting() {
 
   useEffect(() => {
     // The bridge is only present when running inside Electron. In a Vitest
-    // / Storybook / non-Electron context `window.prostorDesktop` is
+    // / Storybook / non-Electron context `window.hermesDesktop` is
     // undefined, so guard the WHOLE call chain rather than chaining
     // `?.settings.getDefaultProjectDir().then(...)` (the latter would
     // short-circuit to `undefined.then(...)` and throw at runtime).
-    const settings = window.prostorDesktop?.settings
+    const settings = window.hermesDesktop?.settings
 
     if (!settings) {
       return
@@ -205,7 +205,7 @@ function DefaultProjectDirSetting() {
   }, [])
 
   const choose = useCallback(async () => {
-    const settings = window.prostorDesktop?.settings
+    const settings = window.hermesDesktop?.settings
 
     if (!settings) {
       return
@@ -232,7 +232,7 @@ function DefaultProjectDirSetting() {
   }, [s])
 
   const clear = useCallback(async () => {
-    const settings = window.prostorDesktop?.settings
+    const settings = window.hermesDesktop?.settings
 
     if (!settings) {
       return

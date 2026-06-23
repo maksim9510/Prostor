@@ -5,7 +5,7 @@
 > validated it. Evolution during the experimental phase is **additive-only**,
 > gated by `contract_version`. A breaking change updates both repos in lockstep.
 
-This document is the formal interface between the **Prostor gateway** (Python,
+This document is the formal interface between the **Hermes gateway** (Python,
 `gateway/relay/`) and the **connector** (Node/TypeScript,
 `NousResearch/gateway-gateway`). The connector implementer's first action is to
 read this file.
@@ -93,6 +93,16 @@ Frames (connector → gateway, over the WS):
 
 - `{"type":"inbound", "event": <MessageEvent>, "bufferId"?}`
 - `{"type":"interrupt_inbound", "session_key", "chat_id"}` (§5)
+- `{"type":"passthrough_forward", "forward": <PassthroughForward>, "bufferId"?}` (§5.1)
+
+`PassthroughForward` is the wire form of a forwarded passthrough-plane request
+(Class-2/3 webhooks — Discord interactions, Twilio): `{platform, botId, method,
+path, headers: [[k,v],…], bodyB64}`. The body is base64-encoded so arbitrary
+bytes survive the newline-delimited-JSON transport; the gateway base64-decodes
+back to the exact bytes the connector forwarded (the connector already verified
+the provider signature and stripped any shared-identity credential at the edge —
+§6 — so the gateway re-processes a sanitized, token-free body and acts on it via
+the token-less `follow_up` path). See §3.1.
 
 **Trust.** The WS upgrade is authenticated with the gateway's per-gateway secret
 (§6.1), so the channel is trusted end to end — inbound frames are not separately
@@ -106,9 +116,24 @@ old HTTP path needed). The relay-bus hop is inside the connector trust domain
 > every gateway to expose a reachable inbound URL — impossible for hosted
 > gateways, which have no public IP. The WS back-channel above replaces it; the
 > per-tenant delivery key is retained at provision for forward-compat but is no
-> longer used for inbound. `gatewayEndpoint` remains only for the **passthrough
-> plane** (Class-2/3 webhooks like Discord interactions / Twilio), which is a
-> separate synchronous-forward path and out of scope for this section.
+> longer used for inbound. The **passthrough plane** (Class-2/3 webhooks like
+> Discord interactions / Twilio) historically still used `gatewayEndpoint` for
+> its post-ACK forward; Phase 5 §5.1 moves that forward onto the WS too (the
+> `passthrough_forward` frame above), so a hosted gateway needs zero public
+> inbound surface and `gatewayEndpoint` is retired once the cutover lands.
+
+### 3.1 Passthrough-plane forward (§5.1)
+
+The passthrough plane answers the provider's latency-critical ACK at the
+connector EDGE (e.g. Discord's deferred interaction response within ~3s), then
+does a **fire-and-forget** forward of the real request to the gateway. That
+forward needs no response back (the provider was already satisfied), so it rides
+the same outbound WS as `inbound` via a `passthrough_forward` frame rather than
+an HTTP POST. The gateway processes the decoded request through its normal agent
+path (a Discord interaction is decoded to a `MessageEvent` and handled like a
+message; the reply egresses over the outbound / `follow_up` path). `bufferId` is
+present when the forward was buffered (Phase 5 §5.3 buffered-only flip) and the
+gateway acks it after durable handoff.
 
 
 
@@ -256,7 +281,7 @@ only in transport. See `docs/capability-trust-boundary.md` (connector repo:
 A2 makes the connector the sole holder of platform secrets while the gateway may
 be **customer-managed and internet-exposed**, so the connector⇄gateway channel
 is itself authenticated. The gateway holds an enrollment- or provision-issued
-**per-gateway secret** (`prostor gateway enroll` → connector `/relay/enroll`, or
+**per-gateway secret** (`hermes gateway enroll` → connector `/relay/enroll`, or
 managed self-provision → `/relay/provision`) that authenticates its outbound WS
 upgrade. It is an HMAC-SHA256 scheme with a multi-secret rotation verify list
 (gateway side: `gateway/relay/auth.py`; connector side:

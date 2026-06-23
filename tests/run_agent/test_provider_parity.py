@@ -56,6 +56,15 @@ class _FakeOpenAI:
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_auxiliary_provider_state():
+    from agent.auxiliary_client import _reset_aux_unhealthy_cache
+
+    _reset_aux_unhealthy_cache()
+    yield
+    _reset_aux_unhealthy_cache()
+
+
 def _make_agent(monkeypatch, provider, api_mode="chat_completions", base_url="https://openrouter.ai/api/v1", model=None):
     monkeypatch.setattr("run_agent.get_tool_definitions", lambda **kw: _tool_defs("web_search", "terminal"))
     monkeypatch.setattr("run_agent.check_toolset_requirements", lambda: {})
@@ -1028,7 +1037,7 @@ class TestAuxiliaryClientProviderPriority:
         }
         with patch("agent.auxiliary_client._read_nous_auth", return_value=nous_auth), \
              patch("agent.auxiliary_client.OpenAI") as mock, \
-             patch("prostor_cli.models.get_nous_recommended_aux_model", return_value=None):
+             patch("hermes_cli.models.get_nous_recommended_aux_model", return_value=None):
             client, model = get_text_auxiliary_client()
         assert model == "google/gemini-3-flash-preview"
 

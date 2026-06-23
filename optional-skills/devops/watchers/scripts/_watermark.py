@@ -33,8 +33,8 @@ def _state_dir() -> Path:
     if override:
         return Path(override)
     # Default: $PROSTOR_HOME/watcher-state/, falling back to ~/.prostor/watcher-state/.
-    prostor_home = os.environ.get("PROSTOR_HOME") or str(Path.home() / ".prostor")
-    return Path(prostor_home) / "watcher-state"
+    hermes_home = os.environ.get("PROSTOR_HOME") or str(Path.home() / ".prostor")
+    return Path(hermes_home) / "watcher-state"
 
 
 class Watermark:

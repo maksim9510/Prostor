@@ -6,7 +6,7 @@ description: "消息 gateway 如何启动、授权用户、路由会话以及投
 
 # Gateway 内部机制
 
-消息 gateway 是一个长期运行的进程，通过统一架构将 Prostor 连接到 20 余个外部消息平台。
+消息 gateway 是一个长期运行的进程，通过统一架构将 Hermes 连接到 20 余个外部消息平台。
 
 ## 关键文件
 
@@ -112,7 +112,7 @@ Gateway: "Paired! You're now authorized."
 
 Gateway 中所有斜杠命令均经过相同的解析流程：
 
-1. `prostor_cli/commands.py` 中的 `resolve_command()` 将输入映射为规范名称（处理别名、前缀匹配）
+1. `hermes_cli/commands.py` 中的 `resolve_command()` 将输入映射为规范名称（处理别名、前缀匹配）
 2. 规范名称与 `GATEWAY_KNOWN_COMMANDS` 进行比对
 3. `_handle_message()` 中的处理器根据规范名称进行分发
 4. 部分命令受配置门控（`CommandDef` 上的 `gateway_config_gate`）
@@ -135,40 +135,45 @@ Gateway 从多个来源读取配置：
 
 | 来源 | 提供内容 |
 |--------|-----------------|
-| `~/.prostor/.env` | API 密钥、bot token、平台凭据 |
-| `~/.prostor/config.yaml` | 模型设置、工具配置、显示选项 |
+| `~/.hermes/.env` | API 密钥、bot token、平台凭据 |
+| `~/.hermes/config.yaml` | 模型设置、工具配置、显示选项 |
 | 环境变量 | 覆盖上述任意配置 |
 
 与 CLI（使用带硬编码默认值的 `load_cli_config()`）不同，gateway 通过 YAML 加载器直接读取 `config.yaml`。这意味着存在于 CLI 默认值字典但不在用户配置文件中的配置键，在 CLI 和 gateway 之间可能表现不同。
 
 ## 平台适配器
 
-每个消息平台在 `gateway/platforms/` 下均有对应适配器：
+大多数消息平台以插件适配器形式位于 `plugins/platforms/<name>/adapter.py`；少数旧适配器仍直接位于 `gateway/platforms/`。它们都继承 `gateway/platforms/base.py` 中的 `BasePlatformAdapter`：
 
 ```text
-gateway/platforms/
-├── base.py              # BaseAdapter — 所有平台的共享逻辑
-├── telegram.py          # Telegram Bot API（长轮询或 webhook）
-├── discord.py           # Discord bot（通过 discord.py）
-├── slack.py             # Slack Socket Mode
-├── whatsapp.py          # WhatsApp Business Cloud API
+plugins/platforms/                  # 插件打包的适配器（每个一个目录）
+├── telegram/adapter.py     # Telegram Bot API（长轮询或 webhook）
+├── discord/adapter.py      # Discord bot（通过 discord.py）
+├── slack/adapter.py        # Slack Socket Mode
+├── whatsapp/adapter.py     # WhatsApp Business Cloud API
+├── matrix/adapter.py       # Matrix（通过 mautrix，可选 E2EE）
+├── mattermost/adapter.py   # Mattermost WebSocket API
+├── email/adapter.py        # 电子邮件（通过 IMAP/SMTP）
+├── sms/adapter.py          # 短信（通过 Twilio）
+├── dingtalk/adapter.py     # 钉钉 WebSocket
+├── feishu/adapter.py       # 飞书/Lark WebSocket 或 webhook
+├── wecom/adapter.py        # 企业微信（WeCom）回调
+├── line/adapter.py         # LINE Messaging API
+├── teams/adapter.py        # Microsoft Teams
+├── irc/adapter.py          # IRC（作用域锁的标准示例）
+├── homeassistant/adapter.py # Home Assistant 对话集成
+└── …                       # google_chat、ntfy、photon、raft、simplex 等
+
+gateway/platforms/                  # 核心 base 与旧的直接适配器
+├── base.py              # BasePlatformAdapter — 所有平台的共享逻辑
 ├── signal.py            # Signal（通过 signal-cli REST API）
-├── matrix.py            # Matrix（通过 mautrix，可选 E2EE）
-├── mattermost.py        # Mattermost WebSocket API
-├── email.py             # 电子邮件（通过 IMAP/SMTP）
-├── sms.py               # 短信（通过 Twilio）
-├── dingtalk.py          # 钉钉 WebSocket
-├── feishu.py            # 飞书/Lark WebSocket 或 webhook
-├── wecom.py             # 企业微信（WeCom）回调
 ├── weixin.py            # 微信（个人版，通过 iLink Bot API）
 ├── bluebubbles.py       # Apple iMessage（通过 BlueBubbles macOS 服务端）
-├── qqbot/               # QQ Bot（腾讯 QQ，通过官方 API v2，子包：adapter.py、crypto.py、keyboards.py 等）
+├── qqbot/               # QQ Bot（腾讯 QQ，通过官方 API v2，子包）
 ├── yuanbao.py           # 元宝（腾讯）私信/群组适配器
-├── feishu_comment.py    # 飞书文档/云盘评论回复处理器
 ├── msgraph_webhook.py   # Microsoft Graph 变更通知 webhook（Teams、Outlook 等）
 ├── webhook.py           # 入站/出站 webhook 适配器
-├── api_server.py        # REST API 服务器适配器
-└── homeassistant.py     # Home Assistant 对话集成
+└── api_server.py        # REST API 服务器适配器
 ```
 
 适配器实现统一接口：
@@ -186,7 +191,7 @@ gateway/platforms/
 
 - **直接回复** — 将响应发回原始聊天
 - **主频道投递** — 将 cron 任务输出和后台结果路由至已配置的主频道
-- **显式目标投递** — `send_message` 工具指定 `telegram:-1001234567890`，或通过 [`prostor send` CLI](/guides/pipe-script-output) 封装同一工具供 shell 脚本使用
+- **显式目标投递** — `send_message` 工具指定 `telegram:-1001234567890`，或通过 [`hermes send` CLI](/guides/pipe-script-output) 封装同一工具供 shell 脚本使用
 - **跨平台投递** — 投递至与原始消息不同的平台
 
 Cron 任务投递**不会**镜像到 gateway 会话历史中 — 它们仅存在于各自的 cron 会话中。这是有意为之的设计选择，以避免消息交替违规。
@@ -208,7 +213,7 @@ Gateway hook 是响应生命周期事件的 Python 模块。
 | `agent:end` | Agent 完成并返回响应时 |
 | `command:*` | 任意斜杠命令被执行时 |
 
-Hook 从 `gateway/builtin_hooks/`（扩展点 — 当前发行版中为空；`_register_builtin_hooks()` 是一个空操作存根）和 `~/.prostor/hooks/`（用户安装）中发现。每个 hook 是一个包含 `HOOK.yaml` 清单和 `handler.py` 的目录。
+Hook 从 `gateway/builtin_hooks/`（扩展点 — 当前发行版中为空；`_register_builtin_hooks()` 是一个空操作存根）和 `~/.hermes/hooks/`（用户安装）中发现。每个 hook 是一个包含 `HOOK.yaml` 清单和 `handler.py` 的目录。
 
 ## 内存提供者集成
 
@@ -247,11 +252,11 @@ Gateway 在处理消息的同时运行周期性维护任务：
 
 Gateway 作为长期运行进程运行，管理方式如下：
 
-- `prostor gateway start` / `prostor gateway stop` — 手动控制
+- `hermes gateway start` / `hermes gateway stop` — 手动控制
 - `systemctl`（Linux）或 `launchctl`（macOS）— 服务管理
-- PID 文件位于 `~/.prostor/gateway.pid` — 面向 profile 的进程追踪
+- PID 文件位于 `~/.hermes/gateway.pid` — 面向 profile 的进程追踪
 
-**Profile 范围 vs 全局**：`start_gateway()` 使用 profile 范围的 PID 文件。`prostor gateway stop` 仅停止当前 profile 的 gateway。`prostor gateway stop --all` 使用全局 `ps aux` 扫描来终止所有 gateway 进程（用于更新时）。
+**Profile 范围 vs 全局**：`start_gateway()` 使用 profile 范围的 PID 文件。`hermes gateway stop` 仅停止当前 profile 的 gateway。`hermes gateway stop --all` 使用全局 `ps aux` 扫描来终止所有 gateway 进程（用于更新时）。
 
 ## 相关文档
 

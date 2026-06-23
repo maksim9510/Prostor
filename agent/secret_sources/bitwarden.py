@@ -6,7 +6,7 @@ so they don't have to live in plaintext in ``~/.prostor/.env``.
 Design summary
 --------------
 
-* The ``bws`` binary is auto-installed into ``<prostor_home>/bin/bws`` on
+* The ``bws`` binary is auto-installed into ``<hermes_home>/bin/bws`` on
   first use.  Prostor pins one version (``_BWS_VERSION``) and downloads
   the matching asset from the official GitHub Releases page, verifying
   the SHA-256 against the release's published checksum file.
@@ -67,7 +67,7 @@ _BWS_CHECKSUM_NAME = f"bws-sha256-checksums-{_BWS_VERSION}.txt"
 _BWS_DOWNLOAD_TIMEOUT = 60
 _BWS_RUN_TIMEOUT = 30
 
-# In-process cache so repeated load_prostor_dotenv() calls (CLI startup,
+# In-process cache so repeated load_hermes_dotenv() calls (CLI startup,
 # gateway hot-reload, test suites) don't re-fetch from BSM.
 _CacheKey = Tuple[str, str, str]  # (access_token_fingerprint, project_id, server_url)
 _CACHE: Dict[_CacheKey, "_CachedFetch"] = {}
@@ -78,7 +78,7 @@ _CACHE: Dict[_CacheKey, "_CachedFetch"] = {}
 # fetches WITHIN one process; this saves repeated fetches ACROSS processes.
 #
 # Layout: one JSON object per cache key, written atomically with mode 0600 in
-# <prostor_home>/cache/bws_cache.json. The file holds only the secret VALUES,
+# <hermes_home>/cache/bws_cache.json. The file holds only the secret VALUES,
 # never the access token. It's plaintext-equivalent to ~/.prostor/.env (which
 # we already accept) but kept out of the .env file so users editing it won't
 # accidentally commit BSM-sourced secrets.
@@ -86,9 +86,9 @@ _DISK_CACHE_BASENAME = "bws_cache.json"
 
 
 def _disk_cache_path(home_path: Optional[Path] = None) -> Path:
-    """Return the disk cache path under prostor_home/cache/.
+    """Return the disk cache path under hermes_home/cache/.
 
-    `home_path` is what `load_prostor_dotenv()` already resolved; falling back
+    `home_path` is what `load_hermes_dotenv()` already resolved; falling back
     to `$PROSTOR_HOME` / `~/.prostor` keeps direct callers working too.
     """
     if home_path is None:
@@ -206,24 +206,24 @@ class FetchResult:
 # ---------------------------------------------------------------------------
 
 
-def _prostor_bin_dir() -> Path:
+def _hermes_bin_dir() -> Path:
     """Where Prostor stores its managed binaries.  Profile-aware."""
-    from prostor_core import get_prostor_home
+    from hermes_constants import get_hermes_home
 
-    return get_prostor_home() / "bin"
+    return get_hermes_home() / "bin"
 
 
 def find_bws(*, install_if_missing: bool = False) -> Optional[Path]:
     """Return a path to a usable ``bws`` binary, or None.
 
     Resolution order:
-      1. ``<prostor_home>/bin/bws``  (our managed copy — preferred)
+      1. ``<hermes_home>/bin/bws``  (our managed copy — preferred)
       2. ``shutil.which("bws")``    (system PATH)
 
     When ``install_if_missing`` is True and neither resolves, this calls
     :func:`install_bws` to download and verify the pinned version.
     """
-    managed = _prostor_bin_dir() / _platform_binary_name()
+    managed = _hermes_bin_dir() / _platform_binary_name()
     if managed.exists() and os.access(managed, os.X_OK):
         return managed
 
@@ -295,7 +295,7 @@ def install_bws(*, force: bool = False) -> Path:
     path catch these; the user-facing ``prostor secrets bitwarden setup``
     surface lets them propagate so the wizard can show a clear error.
     """
-    bin_dir = _prostor_bin_dir()
+    bin_dir = _hermes_bin_dir()
     bin_dir.mkdir(parents=True, exist_ok=True)
     target = bin_dir / _platform_binary_name()
 
@@ -458,7 +458,7 @@ def fetch_bitwarden_secrets(
 
     Caching is a two-layer LRU: an in-process dict (for hot-reload paths
     inside one process) and a disk-persisted JSON file under
-    ``<prostor_home>/cache/bws_cache.json`` (for back-to-back CLI invocations).
+    ``<hermes_home>/cache/bws_cache.json`` (for back-to-back CLI invocations).
     Both share the same TTL.  Pass ``home_path`` so disk cache lookups find
     the right directory in tests / non-standard installs; otherwise we fall
     back to ``$PROSTOR_HOME`` / ``~/.prostor``.
@@ -584,7 +584,7 @@ def _is_valid_env_name(name: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Public entry point — called from prostor_cli.env_loader
+# Public entry point — called from hermes_cli.env_loader
 # ---------------------------------------------------------------------------
 
 
@@ -601,7 +601,7 @@ def apply_bitwarden_secrets(
 ) -> FetchResult:
     """Pull secrets from BSM and set them on ``os.environ``.
 
-    This is the function ``load_prostor_dotenv()`` calls after the .env
+    This is the function ``load_hermes_dotenv()`` calls after the .env
     files have loaded.  It is intentionally defensive — any failure
     returns a :class:`FetchResult` with ``error`` set; it never raises.
 

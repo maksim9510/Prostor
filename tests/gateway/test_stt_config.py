@@ -17,14 +17,14 @@ def test_gateway_config_stt_disabled_from_dict_nested():
 
 
 def test_load_gateway_config_bridges_stt_enabled_from_config_yaml(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         yaml.dump({"stt": {"enabled": False}}),
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     config = load_gateway_config()

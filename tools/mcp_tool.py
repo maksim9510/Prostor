@@ -136,8 +136,8 @@ def _get_mcp_stderr_log() -> Any:
         if _mcp_stderr_log_fh is not None:
             return _mcp_stderr_log_fh
         try:
-            from prostor_constants import get_prostor_home
-            log_dir = get_prostor_home() / "logs"
+            from hermes_constants import get_hermes_home
+            log_dir = get_hermes_home() / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
             log_path = log_dir / "mcp-stderr.log"
             # Line-buffered so server output lands on disk promptly; errors=
@@ -415,6 +415,13 @@ def _is_method_not_found_error(exc: BaseException) -> bool:
     an empty result. Structurally inspect ``McpError.error.code`` first, then
     fall back to a substring match so detection survives SDK version drift and
     servers that surface the condition as a plain message.
+
+    The substring fallback matters when a server reports method-not-found
+    without a structural ``-32601`` code (e.g. surfaced as a plain exception
+    string). Besides the canonical "method not found", many JSON-RPC
+    implementations phrase it as "Unknown method: <name>" — agentmemory's MCP
+    server is one such case (#50028). Without matching that phrasing the
+    ping→list_tools fallback never latches and the keepalive reconnect-loops.
     """
     # Structural: mcp.shared.exceptions.McpError carries ErrorData.code.
     err = getattr(exc, "error", None)
@@ -427,6 +434,7 @@ def _is_method_not_found_error(exc: BaseException) -> bool:
     return (
         str(_JSONRPC_METHOD_NOT_FOUND) in msg
         or "method not found" in msg
+        or "unknown method" in msg
         or "not found: ping" in msg
     )
 
@@ -512,13 +520,13 @@ def _resolve_stdio_command(command: str, env: dict) -> tuple[str, dict]:
         if which_hit:
             resolved_command = which_hit
         elif resolved_command in {"npx", "npm", "node"}:
-            prostor_home = os.path.expanduser(
+            hermes_home = os.path.expanduser(
                 os.getenv(
                     "PROSTOR_HOME", os.path.join(os.path.expanduser("~"), ".prostor")
                 )
             )
             candidates = [
-                os.path.join(prostor_home, "node", "bin", resolved_command),
+                os.path.join(hermes_home, "node", "bin", resolved_command),
                 os.path.join(os.path.expanduser("~"), ".local", "bin", resolved_command),
                 # /usr/local/bin is the canonical install location for Node on
                 # Linux from-source builds, the upstream node:bookworm-slim
@@ -2894,24 +2902,24 @@ def _wrap_with_home_override(coro: "Coroutine") -> "Coroutine":
     carrying different scopes don't interfere.
     """
     try:
-        from prostor_constants import (
-            get_prostor_home_override,
-            reset_prostor_home_override,
-            set_prostor_home_override,
+        from hermes_constants import (
+            get_hermes_home_override,
+            reset_hermes_home_override,
+            set_hermes_home_override,
         )
 
-        home_override = get_prostor_home_override()
+        home_override = get_hermes_home_override()
     except Exception:
         return coro
     if not home_override:
         return coro
 
     async def _scoped():
-        token = set_prostor_home_override(home_override)
+        token = set_hermes_home_override(home_override)
         try:
             return await coro
         finally:
-            reset_prostor_home_override(token)
+            reset_hermes_home_override(token)
 
     return _scoped()
 
@@ -2944,7 +2952,7 @@ def _run_on_mcp_loop(coro_or_factory, timeout: float = 30):
     # loop thread, so they copy the loop thread's context — not the
     # scheduling thread's. A per-request profile scope (the dashboard's
     # ?profile= endpoints, e.g. the MCP "Test server" probe) would silently
-    # vanish here: OAuth token stores and any other get_prostor_home()
+    # vanish here: OAuth token stores and any other get_hermes_home()
     # resolution inside the coroutine would read the process home instead
     # of the selected profile's. Re-establish the override inside the
     # task's own context (task-local — concurrent calls carrying different
@@ -3020,7 +3028,7 @@ def _interpolate_env_vars(value):
 def _filter_suspicious_mcp_servers(servers: Dict[str, dict]) -> Dict[str, dict]:
     """Drop exfiltration-shaped MCP configs before any stdio spawn path."""
     try:
-        from prostor_cli.mcp_security import validate_mcp_server_entry as _validate_mcp_server_entry
+        from hermes_cli.mcp_security import validate_mcp_server_entry as _validate_mcp_server_entry
     except Exception:
         _validate_mcp_server_entry: Callable[[str, dict[str, Any]], list[str]] | None = None
 
@@ -3056,7 +3064,7 @@ def _load_mcp_config() -> Dict[str, dict]:
     ``os.environ`` (which includes ``~/.prostor/.env`` loaded at startup).
     """
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         # Safe mode (--safe-mode / PROSTOR_SAFE_MODE=1): troubleshooting run
         # with all customizations disabled — no MCP servers connect.
         from utils import env_var_enabled as _env_enabled
@@ -3068,8 +3076,8 @@ def _load_mcp_config() -> Dict[str, dict]:
             return {}
         # Ensure .env vars are available for interpolation
         try:
-            from prostor_cli.env_loader import load_prostor_dotenv
-            load_prostor_dotenv()
+            from hermes_cli.env_loader import load_hermes_dotenv
+            load_hermes_dotenv()
         except Exception:
             pass
         safe_servers: Dict[str, dict] = {}

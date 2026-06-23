@@ -186,6 +186,15 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     # call site uses prompt=False so it can never raise a blocking input()
     # prompt mid-session (#40490).
     "tool.vision": ("Pillow==12.2.0",),
+    # Computer Use (cua-driver) — the MCP client SDK used to spawn and talk
+    # to the cua-driver process over stdio. Matches the `mcp` / `computer-use`
+    # extras in pyproject.toml. The one-liner installer pulls this in via
+    # `[all]`; lazy-installing here covers lean / partial / broken-extra
+    # installs so computer_use never dead-ends on `No module named 'mcp'`.
+    "tool.computer_use": (
+        "mcp==1.26.0",
+        "starlette==1.0.1",  # CVE-2026-48710 — keep in sync with pyproject [computer-use]
+    ),
 }
 
 
@@ -244,7 +253,7 @@ def _allow_lazy_installs() -> bool:
     if os.environ.get("PROSTOR_DISABLE_LAZY_INSTALLS") == "1":
         return False
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
     except Exception:
         return True
@@ -355,7 +364,7 @@ def _is_present(spec: str) -> bool:
 def _venv_pip_install(specs: tuple[str, ...], *, timeout: int = 300) -> _InstallResult:
     """Install ``specs`` into the active venv using uv → pip → ensurepip ladder.
 
-    Mirrors the strategy in ``prostor_cli.tools_config._pip_install`` but
+    Mirrors the strategy in ``hermes_cli.tools_config._pip_install`` but
     kept independent here so this module has no CLI dependency.
     """
     if not specs:

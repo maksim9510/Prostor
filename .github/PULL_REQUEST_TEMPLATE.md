@@ -1,65 +1,75 @@
-## Summary
+## What does this PR do?
 
-<!-- Опишите, что меняет этот PR и зачем. 1-3 предложения. -->
+<!-- Describe the change clearly. What problem does it solve? Why is this approach the right one? -->
 
-## Related issue
 
-<!-- Ссылка на issue, который закрывает этот PR: Fixes #123, Closes #456 -->
 
-## Type of change
+## Related Issue
 
-<!-- Поставьте x в подходящий пункт. -->
+<!-- Link the issue this PR addresses. If no issue exists, consider creating one first. -->
+
+Fixes #
+
+## Type of Change
+
+<!-- Check the one that applies. -->
 
 - [ ] 🐛 Bug fix (non-breaking change that fixes an issue)
 - [ ] ✨ New feature (non-breaking change that adds functionality)
-- [ ] 💥 Breaking change (fix or feature that would break existing functionality)
-- [ ] 📝 Documentation / README update
-- [ ] 🧹 Refactor (no functional changes)
-- [ ] ⚡ Performance improvement
-- [ ] 🧪 Tests only
+- [ ] 🔒 Security fix
+- [ ] 📝 Documentation update
+- [ ] ✅ Tests (adding or improving test coverage)
+- [ ] ♻️ Refactor (no behavior change)
+- [ ] 🎯 New skill (bundled or hub)
 
-## Affected areas
+## Changes Made
 
-<!-- Какие зоны репо затрагивает PR (поставить x в нужные). -->
+<!-- List the specific changes. Include file paths for code changes. -->
 
-- [ ] `area:agents` (`agent/`, `run_agent.py`)
-- [ ] `area:tools` (`tools/`, hashline, batch_*)
-- [ ] `area:gateway` (Telegram/Discord/etc)
-- [ ] `area:ui` (Desktop / TUI)
-- [ ] `area:cli` (`prostor_cli`)
-- [ ] `area:skills` (`skills/`, Skills Hub)
-- [ ] `area:ci` (`.github/workflows`)
-- [ ] `area:docs` (`docs/`, `website/`)
-- [ ] `area:i18n` (русский перевод)
-- [ ] `area:release` (packaging, installers)
+- 
 
-## How to test
+## How to Test
 
-<!-- Как проверить, что PR работает. Пошагово, с командами. -->
+<!-- Steps to verify this change works. For bugs: reproduction steps + proof that the fix works. -->
 
-1.
-2.
-3.
+1. 
+2. 
+3. 
 
 ## Checklist
 
-<!-- Автор PR — поставь x в подходящие пункты. -->
+<!-- Complete these before requesting review. -->
 
-- [ ] Мои изменения не ломают обратной совместимости (или описаны в "Breaking changes")
-- [ ] Я добавил/обновил тесты, где это уместно
-- [ ] Локально прогнал `pytest` / `npm test` — всё проходит
-- [ ] Я прочитал [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md)
-- [ ] Я прочитал [AGENTS.md](../blob/main/AGENTS.md) (особенно "Рубрика контрибуции")
-- [ ] Для больших изменений я приложил описание в commit message и PR body
+### Code
 
-## Screenshots / Logs (если применимо)
+- [ ] I've read the [Contributing Guide](https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md)
+- [ ] My commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`fix(scope):`, `feat(scope):`, etc.)
+- [ ] I searched for [existing PRs](https://github.com/NousResearch/hermes-agent/pulls) to make sure this isn't a duplicate
+- [ ] My PR contains **only** changes related to this fix/feature (no unrelated commits)
+- [ ] I've run `pytest tests/ -q` and all tests pass
+- [ ] I've added tests for my changes (required for bug fixes, strongly encouraged for features)
+- [ ] I've tested on my platform: <!-- e.g. Ubuntu 24.04, macOS 15.2, Windows 11 -->
 
-<!-- Перетащите картинку или приложите код вывода. -->
+### Documentation & Housekeeping
 
-```
+<!-- Check all that apply. It's OK to check "N/A" if a category doesn't apply to your change. -->
 
-```
+- [ ] I've updated relevant documentation (README, `docs/`, docstrings) — or N/A
+- [ ] I've updated `cli-config.yaml.example` if I added/changed config keys — or N/A
+- [ ] I've updated `CONTRIBUTING.md` or `AGENTS.md` if I changed architecture or workflows — or N/A
+- [ ] I've considered cross-platform impact (Windows, macOS) per the [compatibility guide](https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md#cross-platform-compatibility) — or N/A
+- [ ] I've updated tool descriptions/schemas if I changed tool behavior — or N/A
 
-## Additional context
+## For New Skills
 
-<!-- Любая дополнительная информация, которая поможет reviewer'ам. -->
+<!-- Only fill this out if you're adding a skill. Delete this section otherwise. -->
+
+- [ ] This skill is **broadly useful** to most users (if bundled) — see [Contributing Guide](https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md#should-the-skill-be-bundled)
+- [ ] SKILL.md follows the [standard format](https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md#skillmd-format) (frontmatter, trigger conditions, steps, pitfalls)
+- [ ] No external dependencies that aren't already available (prefer stdlib, curl, existing Hermes tools)
+- [ ] I've tested the skill end-to-end: `hermes --toolsets skills -q "Use the X skill to do Y"`
+
+## Screenshots / Logs
+
+<!-- If applicable, add screenshots or log output showing the fix/feature in action. -->
+

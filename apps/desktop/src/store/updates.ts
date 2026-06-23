@@ -13,9 +13,9 @@ import type {
   DesktopUpdateStatus,
   DesktopVersionInfo
 } from '@/global'
+import { checkHermesUpdate, getActionStatus, updateHermes } from '@/prostor'
 import { translateNow } from '@/i18n'
 import { persistString, storedString } from '@/lib/storage'
-import { checkProstorUpdate, getActionStatus, updateProstor } from '@/prostor'
 import { dismissNotification, notify } from '@/store/notifications'
 import { $connection } from '@/store/session'
 import type { BackendUpdateCheckResponse } from '@/types/prostor'
@@ -57,13 +57,11 @@ export type UpdateTarget = 'client' | 'backend'
 export const $updateOverlayTarget = atom<UpdateTarget>('client')
 
 export const setUpdateOverlayOpen = (open: boolean) => $updateOverlayOpen.set(open)
-
 export const openUpdateOverlayFor = (target: UpdateTarget) => {
   $updateOverlayTarget.set(target)
   $updateOverlayOpen.set(true)
   void (target === 'backend' ? checkBackendUpdates() : checkUpdates())
 }
-
 export const resetUpdateApplyState = () => {
   $updateApply.set(IDLE)
   $backendUpdateApply.set(IDLE)
@@ -136,7 +134,7 @@ export function reportBackendContract(contract: number | undefined): void {
 
   notify({
     action: {
-      label: translateNow('notifications.updateProstor'),
+      label: translateNow('notifications.updateHermes'),
       onClick: () => {
         snoozeSkewToast()
         void applyBackendUpdate()
@@ -197,6 +195,20 @@ export function openUpdatesWindow(): void {
   openUpdateOverlayFor(isRemoteMode() ? 'backend' : 'client')
 }
 
+/**
+ * Start applying the available update for the active target right away. Opens
+ * the updates overlay first so the user sees apply progress (the overlay
+ * renders ApplyingView once `applying` flips true), then kicks off the install.
+ * Used by the "Update now" affordance on the About panel, which would otherwise
+ * only be able to open the changelog overlay.
+ */
+export function startActiveUpdate(): void {
+  const target: UpdateTarget = isRemoteMode() ? 'backend' : 'client'
+  $updateOverlayTarget.set(target)
+  $updateOverlayOpen.set(true)
+  void (target === 'backend' ? applyBackendUpdate() : applyUpdates())
+}
+
 /** Re-read the running app's version from the Electron main process and
  *  publish it on `$desktopVersion`. Called when the About panel mounts, the
  *  update flow finishes, and the window regains focus, so the About text
@@ -213,7 +225,7 @@ export async function refreshDesktopVersion(): Promise<DesktopVersionInfo | null
   // mid-reload, or the bridge not yet ready on first paint) would surface
   // as an unhandled promise rejection in the renderer. Swallow it.
   try {
-    const next = await window.prostorDesktop?.getVersion?.()
+    const next = await window.hermesDesktop?.getVersion?.()
 
     if (next) {
       $desktopVersion.set(next)
@@ -250,7 +262,7 @@ export async function checkBackendUpdates(): Promise<DesktopUpdateStatus | null>
   $backendUpdateChecking.set(true)
 
   try {
-    const status = mapBackendCheck(await checkProstorUpdate(true))
+    const status = mapBackendCheck(await checkHermesUpdate(true))
     $backendUpdateStatus.set(status)
     maybeNotifyUpdateAvailable(status)
 
@@ -272,7 +284,7 @@ export async function checkBackendUpdates(): Promise<DesktopUpdateStatus | null>
 }
 
 export async function checkUpdates(): Promise<DesktopUpdateStatus | null> {
-  const bridge = window.prostorDesktop?.updates
+  const bridge = window.hermesDesktop?.updates
 
   if (!bridge || $updateChecking.get()) {
     return $updateStatus.get()
@@ -307,7 +319,7 @@ export async function checkUpdates(): Promise<DesktopUpdateStatus | null> {
 }
 
 export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promise<DesktopUpdateApplyResult> {
-  const bridge = window.prostorDesktop?.updates
+  const bridge = window.hermesDesktop?.updates
 
   if (!bridge) {
     return { ok: false, error: 'unavailable', message: 'Desktop bridge unavailable.' }
@@ -330,6 +342,70 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
         message: result.command ?? 'prostor update',
         command: result.command ?? 'prostor update'
       })
+
+      return result
+    }
+
+    // A detached relauncher took over (macOS bundle swap / Linux re-exec): the
+    // app is about to quit and reopen, so hold the "Restarting…" view until it
+    // does. Every other resolved outcome MUST land on a terminal, closeable
+    // state: the apply IPC resolves here, but the progress stream may have left
+    // us on a non-terminal stage (e.g. 'done'/'rebuild'), which renders as a
+    // spinner with no close button — the exact hang this guards against.
+    // Linux GUI/backend skew (#45205): the backend was updated but the running
+    // desktop app PACKAGE was not changed (AppImage/.deb/.rpm). We must NOT tell
+    // the user "the new version loads next launch" — that's false; this packaged
+    // shell keeps running old GUI code against the new backend. Land on the
+    // dedicated, closeable guiSkew terminal state telling them to update/reinstall
+    // the desktop app.
+    if (result?.guiSkew) {
+      $updateApply.set({
+        ...IDLE,
+        applying: false,
+        stage: 'guiSkew',
+        message: result.message ?? translateNow('updates.guiSkewBody')
+      })
+
+      return result
+    }
+
+    // Backend updated but the app couldn't auto-relaunch (e.g. the rebuilt
+    // sandbox helper isn't launchable): keep a closeable manual-restart state so
+    // the user keeps a working window instead of a dead app or a stuck spinner.
+    if (result?.ok && result?.manualRestart) {
+      $updateApply.set({
+        ...IDLE,
+        applying: false,
+        stage: 'manual',
+        message: result.message ?? translateNow('updates.manualPickedUp')
+      })
+
+      return result
+    }
+
+    if (!result?.handedOff) {
+      if (result?.ok) {
+        // Updated, but couldn't relaunch in place (AppImage / dev run). Dismiss
+        // the overlay and let the user know the new version loads next launch
+        // rather than stranding them on an un-closeable spinner.
+        setUpdateOverlayOpen(false)
+        resetUpdateApplyState()
+        notify({
+          durationMs: 8000,
+          id: UPDATE_TOAST_ID,
+          kind: 'success',
+          message: translateNow('updates.manualPickedUp'),
+          title: translateNow('updates.allSetTitle')
+        })
+      } else {
+        $updateApply.set({
+          ...$updateApply.get(),
+          applying: false,
+          stage: 'error',
+          error: result?.error ?? 'apply-failed',
+          message: result?.message ?? translateNow('updates.errorBody')
+        })
+      }
     }
 
     return result
@@ -347,9 +423,8 @@ const BACKEND_RETURN_MAX_ATTEMPTS = 40
 async function waitForBackendReturn(): Promise<boolean> {
   for (let attempt = 0; attempt < BACKEND_RETURN_MAX_ATTEMPTS; attempt += 1) {
     await new Promise(resolve => globalThis.setTimeout(resolve, BACKEND_RETURN_POLL_MS))
-
     try {
-      await checkProstorUpdate()
+      await checkHermesUpdate()
 
       return true
     } catch {
@@ -385,7 +460,7 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
   $backendUpdateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: translateNow('updates.applyStatus.preparing') })
 
   try {
-    const started = await updateProstor()
+    const started = await updateHermes()
 
     if (!started.ok) {
       const message = (started as { message?: string }).message || translateNow('updates.applyStatus.notAvailable')
@@ -398,10 +473,8 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
     $backendUpdateApply.set({ ...IDLE, applying: true, stage: 'pull', message: translateNow('updates.applyStatus.pulling') })
 
     let last: Awaited<ReturnType<typeof getActionStatus>> | null = null
-
     for (let attempt = 0; attempt < 30; attempt += 1) {
       await new Promise(resolve => globalThis.setTimeout(resolve, 1500))
-
       try {
         last = await getActionStatus(started.name, 200)
       } catch {
@@ -422,7 +495,6 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
     }
 
     const ok = !!last && (last.exit_code ?? 1) === 0
-
     if (ok) {
       $backendUpdateApply.set({ ...$backendUpdateApply.get(), applying: true, stage: 'restart', message: translateNow('updates.applyStatus.restarting') })
 
@@ -449,7 +521,11 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
 function ingestProgress(payload: DesktopUpdateProgress): void {
   const current = $updateApply.get()
   const log = [...current.log, { stage: payload.stage, message: payload.message, at: payload.at }].slice(-50)
-  const terminal = payload.stage === 'error' || payload.stage === 'restart' || payload.stage === 'manual'
+  const terminal =
+    payload.stage === 'error' ||
+    payload.stage === 'restart' ||
+    payload.stage === 'manual' ||
+    payload.stage === 'guiSkew'
 
   $updateApply.set({
     applying: !terminal,
@@ -475,7 +551,7 @@ export function startUpdatePoller(): void {
     return
   }
 
-  const bridge = window.prostorDesktop?.updates
+  const bridge = window.hermesDesktop?.updates
 
   if (!bridge) {
     return
@@ -494,9 +570,7 @@ export function startUpdatePoller(): void {
     if (conn?.mode === lastConnectionMode) {
       return
     }
-
     lastConnectionMode = conn?.mode
-
     if (conn?.mode === 'remote') {
       void checkBackendUpdates()
     }

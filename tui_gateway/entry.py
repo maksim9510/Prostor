@@ -2,7 +2,7 @@ import os
 import sys
 
 # Guard against a local utils/ (or other package) in CWD shadowing installed
-# prostor modules.  prostor_cli sets PROSTOR_PYTHON_SRC_ROOT before spawning this
+# prostor modules.  hermes_cli sets PROSTOR_PYTHON_SRC_ROOT before spawning this
 # subprocess; inserting it first ensures the installed packages win.
 _src_root = os.environ.get("PROSTOR_PYTHON_SRC_ROOT", "")
 if _src_root and _src_root not in sys.path:
@@ -130,6 +130,19 @@ def _log_signal(signum: int, frame) -> None:
     timer.daemon = True
     timer.start()
 
+    # ── Flush sessions before exit ───────────────────────────────────
+    # The atexit handler (_shutdown_sessions) is registered in
+    # tui_gateway/server.py, but a worker thread holding the GIL or
+    # _stdout_lock can block atexit from completing within the grace
+    # window.  Explicitly finalize sessions here so that unpersisted
+    # messages reach state.db before the hard-exit timer fires.
+    try:
+        from tui_gateway.server import _shutdown_sessions
+
+        _shutdown_sessions()
+    except Exception:
+        pass
+
     try:
         sys.exit(0)
     except SystemExit:
@@ -206,13 +219,13 @@ def wait_for_mcp_discovery(timeout: "float | None" = None) -> None:
     waited on beyond the bound.  No-op when no discovery thread was started.
 
     The bound comes from ``mcp_discovery_timeout`` in config (shared with the
-    CLI path via ``prostor_cli.mcp_startup``); ``timeout`` overrides it.
+    CLI path via ``hermes_cli.mcp_startup``); ``timeout`` overrides it.
     """
     thread = _mcp_discovery_thread
     if thread is None or not thread.is_alive():
         return
     try:
-        from prostor_cli.mcp_startup import _resolve_discovery_timeout
+        from hermes_cli.mcp_startup import _resolve_discovery_timeout
 
         bound = _resolve_discovery_timeout(timeout)
     except Exception:
@@ -271,7 +284,7 @@ def main():
     # thread when there's actually MCP work to do, so the import cost stays
     # off the path entirely for the common case.
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         _mcp_servers = (read_raw_config() or {}).get("mcp_servers")
         _has_mcp_servers = isinstance(_mcp_servers, dict) and len(_mcp_servers) > 0
     except Exception:

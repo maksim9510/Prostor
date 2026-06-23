@@ -3,7 +3,7 @@
 PR #11383's consolidation fixed external-refresh reloading (mtime disk-watch)
 and 401 dedup, but left two underlying latent bugs in place:
 
-1. ``ProstorTokenStorage.set_tokens`` persisted only relative ``expires_in``,
+1. ``HermesTokenStorage.set_tokens`` persisted only relative ``expires_in``,
    which is meaningless after a process restart.
 2. The MCP SDK's ``OAuthContext._initialize`` loads ``current_tokens`` from
    storage but does NOT call ``update_token_expiry``, so
@@ -23,7 +23,7 @@ These tests pin the contract for Fix A:
 - ``set_tokens`` persists an absolute ``expires_at`` wall-clock timestamp.
 - ``get_tokens`` reconstructs ``expires_in`` from ``expires_at - now`` so
   the SDK's ``update_token_expiry`` computes the correct absolute expiry.
-- ``ProstorMCPOAuthProvider._initialize`` seeds ``context.token_expiry_time``
+- ``HermesMCPOAuthProvider._initialize`` seeds ``context.token_expiry_time``
   after loading, so ``is_token_valid()`` reports True only for tokens that
   are actually still valid, and the SDK's preemptive refresh fires for
   expired tokens with a live refresh_token.
@@ -44,7 +44,7 @@ pytest.importorskip("mcp.client.auth.oauth2", reason="MCP SDK 1.26.0+ required")
 
 
 # ---------------------------------------------------------------------------
-# ProstorTokenStorage — absolute expiry persistence
+# HermesTokenStorage — absolute expiry persistence
 # ---------------------------------------------------------------------------
 
 
@@ -54,9 +54,9 @@ class TestSetTokensAbsoluteExpiry:
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         from mcp.shared.auth import OAuthToken
 
-        from tools.mcp_oauth import ProstorTokenStorage
+        from tools.mcp_oauth import HermesTokenStorage
 
-        storage = ProstorTokenStorage("srv")
+        storage = HermesTokenStorage("srv")
         before = time.time()
         asyncio.run(
             storage.set_tokens(
@@ -87,9 +87,9 @@ class TestSetTokensAbsoluteExpiry:
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         from mcp.shared.auth import OAuthToken
 
-        from tools.mcp_oauth import ProstorTokenStorage
+        from tools.mcp_oauth import HermesTokenStorage
 
-        storage = ProstorTokenStorage("srv")
+        storage = HermesTokenStorage("srv")
         asyncio.run(
             storage.set_tokens(
                 OAuthToken(
@@ -114,9 +114,9 @@ class TestGetTokensReconstructsExpiresIn:
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         from mcp.shared.auth import OAuthToken
 
-        from tools.mcp_oauth import ProstorTokenStorage
+        from tools.mcp_oauth import HermesTokenStorage
 
-        storage = ProstorTokenStorage("srv")
+        storage = HermesTokenStorage("srv")
         asyncio.run(
             storage.set_tokens(
                 OAuthToken(
@@ -142,7 +142,7 @@ class TestGetTokensReconstructsExpiresIn:
     ):
         """An already-expired token reloaded from disk must report expires_in=0."""
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
-        from tools.mcp_oauth import ProstorTokenStorage, _get_token_dir
+        from tools.mcp_oauth import HermesTokenStorage, _get_token_dir
 
         token_dir = _get_token_dir()
         token_dir.mkdir(parents=True, exist_ok=True)
@@ -159,7 +159,7 @@ class TestGetTokensReconstructsExpiresIn:
             )
         )
 
-        storage = ProstorTokenStorage("srv")
+        storage = HermesTokenStorage("srv")
         reloaded = asyncio.run(storage.get_tokens())
         assert reloaded is not None
         assert reloaded.expires_in == 0, (
@@ -179,7 +179,7 @@ class TestGetTokensReconstructsExpiresIn:
         legacy-format file (mtime = now) keeps most of its TTL.
         """
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
-        from tools.mcp_oauth import ProstorTokenStorage, _get_token_dir
+        from tools.mcp_oauth import HermesTokenStorage, _get_token_dir
 
         token_dir = _get_token_dir()
         token_dir.mkdir(parents=True, exist_ok=True)
@@ -201,7 +201,7 @@ class TestGetTokensReconstructsExpiresIn:
 
         os.utime(legacy_path, (stale_time, stale_time))
 
-        storage = ProstorTokenStorage("srv")
+        storage = HermesTokenStorage("srv")
         reloaded = asyncio.run(storage.get_tokens())
         assert reloaded is not None
         assert reloaded.expires_in == 0, (
@@ -211,7 +211,7 @@ class TestGetTokensReconstructsExpiresIn:
 
 
 # ---------------------------------------------------------------------------
-# ProstorMCPOAuthProvider._initialize — seed token_expiry_time
+# HermesMCPOAuthProvider._initialize — seed token_expiry_time
 # ---------------------------------------------------------------------------
 
 
@@ -229,13 +229,13 @@ async def test_initialize_seeds_token_expiry_time_from_stored_tokens(
     from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
     from pydantic import AnyUrl
 
-    from tools.mcp_oauth import ProstorTokenStorage
-    from tools.mcp_oauth_manager import _PROSTOR_PROVIDER_CLS, reset_manager_for_tests
+    from tools.mcp_oauth import HermesTokenStorage
+    from tools.mcp_oauth_manager import _HERMES_PROVIDER_CLS, reset_manager_for_tests
 
-    assert _PROSTOR_PROVIDER_CLS is not None
+    assert _HERMES_PROVIDER_CLS is not None
     reset_manager_for_tests()
 
-    storage = ProstorTokenStorage("srv")
+    storage = HermesTokenStorage("srv")
     await storage.set_tokens(
         OAuthToken(
             access_token="a",
@@ -260,7 +260,7 @@ async def test_initialize_seeds_token_expiry_time_from_stored_tokens(
         redirect_uris=[AnyUrl("http://127.0.0.1:12345/callback")],
         client_name="Prostor Agent",
     )
-    provider = _PROSTOR_PROVIDER_CLS(
+    provider = _HERMES_PROVIDER_CLS(
         server_name="srv",
         server_url="https://example.com/mcp",
         client_metadata=metadata,
@@ -294,10 +294,10 @@ async def test_initialize_flags_expired_token_as_invalid(tmp_path, monkeypatch):
     from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata
     from pydantic import AnyUrl
 
-    from tools.mcp_oauth import ProstorTokenStorage, _get_token_dir
-    from tools.mcp_oauth_manager import _PROSTOR_PROVIDER_CLS, reset_manager_for_tests
+    from tools.mcp_oauth import HermesTokenStorage, _get_token_dir
+    from tools.mcp_oauth_manager import _HERMES_PROVIDER_CLS, reset_manager_for_tests
 
-    assert _PROSTOR_PROVIDER_CLS is not None
+    assert _HERMES_PROVIDER_CLS is not None
     reset_manager_for_tests()
 
     # Write an already-expired token directly so we control the wall-clock.
@@ -315,7 +315,7 @@ async def test_initialize_flags_expired_token_as_invalid(tmp_path, monkeypatch):
         )
     )
 
-    storage = ProstorTokenStorage("srv")
+    storage = HermesTokenStorage("srv")
     await storage.set_client_info(
         OAuthClientInformationFull(
             client_id="test-client",
@@ -330,7 +330,7 @@ async def test_initialize_flags_expired_token_as_invalid(tmp_path, monkeypatch):
         redirect_uris=[AnyUrl("http://127.0.0.1:12345/callback")],
         client_name="Prostor Agent",
     )
-    provider = _PROSTOR_PROVIDER_CLS(
+    provider = _HERMES_PROVIDER_CLS(
         server_name="srv",
         server_url="https://example.com/mcp",
         client_metadata=metadata,
@@ -390,13 +390,13 @@ async def test_initialize_prefetches_oauth_metadata_when_missing(
     )
     from pydantic import AnyUrl
 
-    from tools.mcp_oauth import ProstorTokenStorage
-    from tools.mcp_oauth_manager import _PROSTOR_PROVIDER_CLS, reset_manager_for_tests
+    from tools.mcp_oauth import HermesTokenStorage
+    from tools.mcp_oauth_manager import _HERMES_PROVIDER_CLS, reset_manager_for_tests
 
-    assert _PROSTOR_PROVIDER_CLS is not None
+    assert _HERMES_PROVIDER_CLS is not None
     reset_manager_for_tests()
 
-    storage = ProstorTokenStorage("srv")
+    storage = HermesTokenStorage("srv")
     await storage.set_tokens(
         OAuthToken(
             access_token="a",
@@ -466,7 +466,7 @@ async def test_initialize_prefetches_oauth_metadata_when_missing(
         redirect_uris=[AnyUrl("http://127.0.0.1:12345/callback")],
         client_name="Prostor Agent",
     )
-    provider = _PROSTOR_PROVIDER_CLS(
+    provider = _HERMES_PROVIDER_CLS(
         server_name="srv",
         server_url="https://mcp.example.com",
         client_metadata=metadata,
@@ -502,10 +502,10 @@ async def test_initialize_skips_prefetch_when_no_tokens(tmp_path, monkeypatch):
     from mcp.shared.auth import OAuthClientMetadata
     from pydantic import AnyUrl
 
-    from tools.mcp_oauth_manager import _PROSTOR_PROVIDER_CLS, reset_manager_for_tests
-    from tools.mcp_oauth import ProstorTokenStorage
+    from tools.mcp_oauth_manager import _HERMES_PROVIDER_CLS, reset_manager_for_tests
+    from tools.mcp_oauth import HermesTokenStorage
 
-    assert _PROSTOR_PROVIDER_CLS is not None
+    assert _HERMES_PROVIDER_CLS is not None
     reset_manager_for_tests()
 
     calls: list[str] = []
@@ -525,12 +525,12 @@ async def test_initialize_skips_prefetch_when_no_tokens(tmp_path, monkeypatch):
 
     monkeypatch.setattr(real_httpx, "AsyncClient", patched)
 
-    storage = ProstorTokenStorage("srv")  # empty — no tokens on disk
+    storage = HermesTokenStorage("srv")  # empty — no tokens on disk
     metadata = OAuthClientMetadata(
         redirect_uris=[AnyUrl("http://127.0.0.1:12345/callback")],
         client_name="Prostor Agent",
     )
-    provider = _PROSTOR_PROVIDER_CLS(
+    provider = _HERMES_PROVIDER_CLS(
         server_name="srv",
         server_url="https://mcp.example.com",
         client_metadata=metadata,

@@ -7,28 +7,28 @@ from pathlib import Path
 from typing import Optional
 
 
-def _prostor_home_path() -> Path:
+def _hermes_home_path() -> Path:
     """Resolve the active PROSTOR_HOME (profile-aware) without circular imports."""
     try:
-        from prostor_core import get_prostor_home  # local import to avoid cycles
-        return get_prostor_home()
+        from hermes_constants import get_hermes_home  # local import to avoid cycles
+        return get_hermes_home()
     except Exception:
         return Path(os.path.expanduser("~/.prostor"))
 
 
-def _prostor_root_path() -> Path:
+def _hermes_root_path() -> Path:
     """Resolve the Prostor root dir (always the parent of any profile, never per-profile)."""
     try:
-        from prostor_constants import get_default_prostor_root  # local import to avoid cycles
-        return get_default_prostor_root()
+        from hermes_constants import get_default_hermes_root  # local import to avoid cycles
+        return get_default_hermes_root()
     except Exception:
         return Path(os.path.expanduser("~/.prostor"))
 
 
 def build_write_denied_paths(home: str) -> set[str]:
     """Return exact sensitive paths that must never be written."""
-    prostor_home = _prostor_home_path()
-    prostor_root = _prostor_root_path()
+    hermes_home = _hermes_home_path()
+    hermes_root = _hermes_root_path()
     return {
         os.path.realpath(p)
         for p in [
@@ -37,15 +37,15 @@ def build_write_denied_paths(home: str) -> set[str]:
             os.path.join(home, ".ssh", "id_ed25519"),
             os.path.join(home, ".ssh", "config"),
             # Active profile .env (or top-level .env when not in profile mode).
-            str(prostor_home / ".env"),
+            str(hermes_home / ".env"),
             # Top-level .env, even when running under a profile — overwriting it
             # leaks credentials across every profile that inherits from root (#15981).
-            str(prostor_root / ".env"),
+            str(hermes_root / ".env"),
             # Active profile Anthropic PKCE credential store.
-            str(prostor_home / ".anthropic_oauth.json"),
+            str(hermes_home / ".anthropic_oauth.json"),
             # Top-level Anthropic PKCE credential store remains sensitive even
             # when a profile is active; default/non-profile sessions still read it.
-            str(prostor_root / ".anthropic_oauth.json"),
+            str(hermes_root / ".anthropic_oauth.json"),
             os.path.join(home, ".netrc"),
             os.path.join(home, ".pgpass"),
             os.path.join(home, ".npmrc"),
@@ -101,16 +101,16 @@ def is_write_denied(path: str) -> bool:
 
     mcp_tokens_dir_name = "mcp-tokens"
 
-    prostor_dirs = []
-    for base in (_prostor_home_path(), _prostor_root_path()):
+    hermes_dirs = []
+    for base in (_hermes_home_path(), _hermes_root_path()):
         try:
             real = os.path.realpath(base)
-            if real not in prostor_dirs:
-                prostor_dirs.append(real)
+            if real not in hermes_dirs:
+                hermes_dirs.append(real)
         except Exception:
             continue
 
-    for base_real in prostor_dirs:
+    for base_real in hermes_dirs:
         try:
             mcp_real = os.path.realpath(os.path.join(base_real, mcp_tokens_dir_name))
             if resolved == mcp_real or resolved.startswith(mcp_real + os.sep):
@@ -197,17 +197,17 @@ def get_read_block_error(path: str) -> Optional[str]:
     # blocked when running under a profile (PROSTOR_HOME points at
     # <root>/profiles/<name> in profile mode). Same shape as the write
     # deny widening (#15981, #14157).
-    prostor_dirs: list[Path] = []
-    for base in (_prostor_home_path(), _prostor_root_path()):
+    hermes_dirs: list[Path] = []
+    for base in (_hermes_home_path(), _hermes_root_path()):
         try:
             real = base.resolve()
-            if real not in prostor_dirs:
-                prostor_dirs.append(real)
+            if real not in hermes_dirs:
+                hermes_dirs.append(real)
         except Exception:
             continue
 
     # Skills .hub: prompt-injection carriers.
-    for hd in prostor_dirs:
+    for hd in hermes_dirs:
         blocked_dirs = [
             hd / "skills" / ".hub" / "index-cache",
             hd / "skills" / ".hub",
@@ -237,7 +237,7 @@ def get_read_block_error(path: str) -> Optional[str]:
         # was introduced by #31968 but not added to this guard.
         os.path.join("cache", "bws_cache.json"),
     )
-    for hd in prostor_dirs:
+    for hd in hermes_dirs:
         for name in credential_file_names:
             try:
                 blocked = (hd / name).resolve()
@@ -254,7 +254,7 @@ def get_read_block_error(path: str) -> Optional[str]:
 
     # mcp-tokens/: directory prefix match — anything inside is OAuth
     # token material.
-    for hd in prostor_dirs:
+    for hd in hermes_dirs:
         try:
             mcp_tokens = (hd / "mcp-tokens").resolve()
         except Exception:
@@ -329,8 +329,8 @@ def _resolve_active_profile_name() -> str:
     never raises into the tool path.
     """
     try:
-        home_real = _prostor_home_path().resolve()
-        root_real = _prostor_root_path().resolve()
+        home_real = _hermes_home_path().resolve()
+        root_real = _hermes_root_path().resolve()
     except (OSError, RuntimeError):
         return "default"
     profiles_dir = root_real / "profiles"
@@ -363,7 +363,7 @@ def classify_cross_profile_target(path: str) -> Optional[dict]:
     """
     try:
         target = Path(os.path.expanduser(str(path))).resolve()
-        root_real = _prostor_root_path().resolve()
+        root_real = _hermes_root_path().resolve()
     except (OSError, RuntimeError):
         return None
 

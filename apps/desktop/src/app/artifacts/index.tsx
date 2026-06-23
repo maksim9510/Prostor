@@ -18,13 +18,13 @@ import {
 } from '@/components/ui/pagination'
 import { TextTab, TextTabMeta } from '@/components/ui/text-tab'
 import { Tip } from '@/components/ui/tooltip'
+import { getSessionMessages, listAllProfileSessions } from '@/prostor'
 import { type Translations, useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import { ExternalLink, ExternalLinkIcon, hostPathLabel, urlSlugTitleLabel, useLinkTitle } from '@/lib/external-link'
 import { FileImage, FileText, FolderOpen, Link2 } from '@/lib/icons'
 import { mediaExternalUrl } from '@/lib/media'
 import { cn } from '@/lib/utils'
-import { getSessionMessages, listAllProfileSessions } from '@/prostor'
 import { notifyError } from '@/store/notifications'
 import type { SessionInfo, SessionMessage } from '@/types/prostor'
 
@@ -479,8 +479,8 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
 
   const openArtifact = useCallback(async (href: string) => {
     try {
-      if (window.prostorDesktop?.openExternal) {
-        await window.prostorDesktop.openExternal(href)
+      if (window.hermesDesktop?.openExternal) {
+        await window.hermesDesktop.openExternal(href)
       } else {
         window.open(href, '_blank', 'noopener,noreferrer')
       }

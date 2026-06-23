@@ -3,8 +3,8 @@
   "name": "Prostor Agent",
   "version": "0.17.0",
   "description": "Self-improving open-source AI agent by Nous Research with ACP editor integration, persistent memory, skills, and rich tool support.",
-  "repository": "https://github.com/maksim9510/Prostor",
-  "website": "https://github.com/maksim9510/Prostor/docs/user-guide/features/acp",
+  "repository": "https://github.com/NousResearch/prostor-agent",
+  "website": "https://prostor-agent.nousresearch.com/docs/user-guide/features/acp",
   "authors": ["Nous Research"],
   "license": "MIT",
   "distribution": {

@@ -132,7 +132,7 @@ async function fallbackRootFor(cwd: string): Promise<string | null> {
     return null
   }
 
-  const sanitize = window.prostorDesktop?.sanitizeWorkspaceCwd
+  const sanitize = window.hermesDesktop?.sanitizeWorkspaceCwd
 
   if (!sanitize) {
     return null

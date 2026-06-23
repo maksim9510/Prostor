@@ -7,7 +7,7 @@
   perSystem = { pkgs, lib, self', ... }:
     let
       prostor-agent = self'.packages.default;
-      prostorVenv = prostor-agent.prostorVenv;
+      hermesVenv = prostor-agent.hermesVenv;
 
       configMergeScript = pkgs.callPackage ./configMergeScript.nix { };
 
@@ -15,9 +15,9 @@
       configKeys = pkgs.runCommand "prostor-config-keys" {} ''
         set -euo pipefail
         export HOME=$TMPDIR
-        ${prostorVenv}/bin/python3 -c '
+        ${hermesVenv}/bin/python3 -c '
 import json, sys
-from prostor_cli.config import DEFAULT_CONFIG
+from hermes_cli.config import DEFAULT_CONFIG
 
 def leaf_paths(d, prefix=""):
     paths = []
@@ -183,7 +183,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           echo "=== Rendering via the wrapper override (PROSTOR_BUNDLED_LOCALES) ==="
           export HOME=$(mktemp -d)
           RENDERED=$(cd "$HOME" && PROSTOR_BUNDLED_LOCALES=${prostor-agent}/share/prostor-agent/locales \
-            ${prostorVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
+            ${hermesVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
           echo "rendered: $RENDERED"
           test "$RENDERED" != "gateway.reset.header_default" || (echo "FAIL: i18n returned the raw key with PROSTOR_BUNDLED_LOCALES set"; exit 1)
           echo "PASS: i18n renders a human string via the wrapper override"
@@ -194,8 +194,8 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           # the wrapper override above would mask the regression at runtime while
           # `pip install`/other sealed paths silently break — this catches it.
           echo "=== Rendering WITHOUT the env var (data-files materialization) ==="
-          BARE_DIR=$(cd "$HOME" && ${prostorVenv}/bin/python3 -c "from agent import i18n; print(i18n._locales_dir())")
-          BARE=$(cd "$HOME" && ${prostorVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
+          BARE_DIR=$(cd "$HOME" && ${hermesVenv}/bin/python3 -c "from agent import i18n; print(i18n._locales_dir())")
+          BARE=$(cd "$HOME" && ${hermesVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
           echo "resolved dir (no env var): $BARE_DIR"
           echo "rendered: $BARE"
           test "$BARE" != "gateway.reset.header_default" || \
@@ -276,18 +276,18 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         # Verify extraPythonPackages PYTHONPATH injection
         extra-python-packages = let
           testPkg = pkgs.python312Packages.pyfiglet;
-          prostorWithExtra = prostor-agent.override {
+          hermesWithExtra = prostor-agent.override {
             extraPythonPackages = [ testPkg ];
           };
         in pkgs.runCommand "prostor-extra-python-packages" { } ''
           set -e
           echo "=== Checking extraPythonPackages PYTHONPATH injection ==="
 
-          grep -q "PYTHONPATH" ${prostorWithExtra}/bin/prostor || \
+          grep -q "PYTHONPATH" ${hermesWithExtra}/bin/prostor || \
             (echo "FAIL: PYTHONPATH not in wrapper"; exit 1)
           echo "PASS: PYTHONPATH present in wrapper"
 
-          grep -q "${testPkg}" ${prostorWithExtra}/bin/prostor || \
+          grep -q "${testPkg}" ${hermesWithExtra}/bin/prostor || \
             (echo "FAIL: test package path not in PYTHONPATH"; exit 1)
           echo "PASS: test package path found in wrapper"
 
@@ -304,7 +304,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
 
         # Verify extraDependencyGroups passes through to python.nix
         extra-dependency-groups = let
-          prostorWithGroups = prostor-agent.override {
+          hermesWithGroups = prostor-agent.override {
             extraDependencyGroups = [ "honcho" ];
           };
         in pkgs.runCommand "prostor-extra-dependency-groups" { } ''
@@ -314,8 +314,8 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           # Eval-only: verify the override produces valid derivation paths
           # without building the full venv (which is expensive and redundant
           # since the mechanism is just list concatenation into python.nix).
-          echo "derivation: ${prostorWithGroups}"
-          echo "venv: ${prostorWithGroups.prostorVenv}"
+          echo "derivation: ${hermesWithGroups}"
+          echo "venv: ${hermesWithGroups.hermesVenv}"
           echo "PASS: extraDependencyGroups override evaluates cleanly"
 
           echo "=== All extraDependencyGroups checks passed ==="
@@ -329,7 +329,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         messaging-variant = pkgs.runCommand "prostor-messaging-variant" { } ''
           set -e
           echo "=== Checking discord.py importable from messaging variant ==="
-          ${self'.packages.messaging.prostorVenv}/bin/python3 -c \
+          ${self'.packages.messaging.hermesVenv}/bin/python3 -c \
             "import discord; print(discord.__version__)"
           echo "PASS: discord.py importable from messaging variant venv"
           mkdir -p $out
@@ -407,12 +407,12 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
 
           # Helper: run merge then load with Python, output merged JSON
           merge_and_load() {
-            local prostor_home="$1"
-            export PROSTOR_HOME="$prostor_home"
-            ${configMergeScript} ${nixSettings} "$prostor_home/config.yaml"
-            ${prostorVenv}/bin/python3 -c '
+            local hermes_home="$1"
+            export PROSTOR_HOME="$hermes_home"
+            ${configMergeScript} ${nixSettings} "$hermes_home/config.yaml"
+            ${hermesVenv}/bin/python3 -c '
 import json, sys
-from prostor_cli.config import load_config
+from hermes_cli.config import load_config
 json.dump(load_config(), sys.stdout, default=str)
 '
           }

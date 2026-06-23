@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from prostor_cli.profiles import _get_default_prostor_home
+from hermes_cli.profiles import _get_default_hermes_home
 
 import pytest
 
@@ -341,19 +341,19 @@ class TestResolveSessionName:
 
 
 class TestResolveConfigPath:
-    def test_prefers_prostor_home_when_exists(self, tmp_path):
-        prostor_home = tmp_path / "prostor"
-        prostor_home.mkdir()
-        local_cfg = prostor_home / "honcho.json"
+    def test_prefers_hermes_home_when_exists(self, tmp_path):
+        hermes_home = tmp_path / "prostor"
+        hermes_home.mkdir()
+        local_cfg = hermes_home / "honcho.json"
         local_cfg.write_text('{"apiKey": "local"}')
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
             result = resolve_config_path()
         assert result == local_cfg
 
     def test_falls_back_to_default_profile_when_no_local(self, tmp_path, monkeypatch):
         # Profile mode: PROSTOR_HOME points at ~/.prostor/profiles/<name>, so
-        # _get_default_prostor_home() must resolve back to ~/.prostor — that's
+        # _get_default_hermes_home() must resolve back to ~/.prostor — that's
         # the bug the HOME-anchored helper fixes (vs. blindly using Path.home()).
         fake_home = tmp_path / "fakehome"
         fake_home.mkdir()
@@ -368,10 +368,10 @@ class TestResolveConfigPath:
 
         result = resolve_config_path()
 
-        assert _get_default_prostor_home() == default_home
+        assert _get_default_hermes_home() == default_home
         assert result == default_cfg
 
-    def test_falls_back_to_global_without_prostor_home_env(self, tmp_path):
+    def test_falls_back_to_global_without_hermes_home_env(self, tmp_path):
         fake_home = tmp_path / "fakehome"
         fake_home.mkdir()
 
@@ -384,10 +384,10 @@ class TestResolveConfigPath:
     def test_global_fallback_uses_home_at_call_time(self, tmp_path):
         fake_home = tmp_path / "fakehome"
         fake_home.mkdir()
-        prostor_home = tmp_path / "prostor"
-        prostor_home.mkdir()
+        hermes_home = tmp_path / "prostor"
+        hermes_home.mkdir()
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}), \
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}), \
              patch.object(Path, "home", return_value=fake_home):
             assert resolve_global_config_path() == fake_home / ".honcho" / "config.json"
             assert resolve_config_path() == fake_home / ".honcho" / "config.json"
@@ -415,15 +415,15 @@ class TestResolveConfigPath:
         assert config.workspace_id == "default-ws"
 
     def test_from_global_config_uses_local_path(self, tmp_path):
-        prostor_home = tmp_path / "prostor"
-        prostor_home.mkdir()
-        local_cfg = prostor_home / "honcho.json"
+        hermes_home = tmp_path / "prostor"
+        hermes_home.mkdir()
+        local_cfg = hermes_home / "honcho.json"
         local_cfg.write_text(json.dumps({
             "apiKey": "***",
             "workspace": "local-ws",
         }))
 
-        with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}), \
+        with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}), \
              patch.object(Path, "home", return_value=tmp_path):
             config = HonchoClientConfig.from_global_config()
         assert config.api_key == "***"
@@ -432,10 +432,10 @@ class TestResolveConfigPath:
 
 class TestResolveActiveHost:
     def test_profile_host_key_uses_honcho_safe_separator(self):
-        assert profile_host_key("coder") == "prostor_coder"
+        assert profile_host_key("coder") == "hermes_coder"
         assert profile_host_key("default") == "prostor"
 
-    def test_default_returns_prostor(self):
+    def test_default_returns_hermes(self):
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("PROSTOR_HONCHO_HOST", None)
             os.environ.pop("PROSTOR_HOME", None)
@@ -448,44 +448,44 @@ class TestResolveActiveHost:
     def test_profile_name_derives_host(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PROSTOR_HONCHO_HOST", None)
-            with patch("prostor_cli.profiles.get_active_profile_name", return_value="coder"):
-                assert resolve_active_host() == "prostor_coder"
+            with patch("hermes_cli.profiles.get_active_profile_name", return_value="coder"):
+                assert resolve_active_host() == "hermes_coder"
 
-    def test_default_profile_returns_prostor(self):
+    def test_default_profile_returns_hermes(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PROSTOR_HONCHO_HOST", None)
-            with patch("prostor_cli.profiles.get_active_profile_name", return_value="default"):
+            with patch("hermes_cli.profiles.get_active_profile_name", return_value="default"):
                 assert resolve_active_host() == "prostor"
 
-    def test_custom_profile_returns_prostor(self):
+    def test_custom_profile_returns_hermes(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PROSTOR_HONCHO_HOST", None)
-            with patch("prostor_cli.profiles.get_active_profile_name", return_value="custom"):
+            with patch("hermes_cli.profiles.get_active_profile_name", return_value="custom"):
                 assert resolve_active_host() == "prostor"
 
     def test_profiles_import_failure_falls_back(self):
         import sys
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PROSTOR_HONCHO_HOST", None)
-            # Temporarily remove prostor_cli.profiles to simulate import failure
-            saved = sys.modules.get("prostor_cli.profiles")
-            sys.modules["prostor_cli.profiles"] = None  # type: ignore
+            # Temporarily remove hermes_cli.profiles to simulate import failure
+            saved = sys.modules.get("hermes_cli.profiles")
+            sys.modules["hermes_cli.profiles"] = None  # type: ignore
             try:
                 assert resolve_active_host() == "prostor"
             finally:
                 if saved is not None:
-                    sys.modules["prostor_cli.profiles"] = saved
+                    sys.modules["hermes_cli.profiles"] = saved
                 else:
-                    sys.modules.pop("prostor_cli.profiles", None)
+                    sys.modules.pop("hermes_cli.profiles", None)
 
 
 class TestProfileScopedConfig:
     def test_from_env_uses_profile_host(self):
         with patch.dict(os.environ, {"HONCHO_API_KEY": "key"}):
-            config = HonchoClientConfig.from_env(host="prostor_coder")
-        assert config.host == "prostor_coder"
+            config = HonchoClientConfig.from_env(host="hermes_coder")
+        assert config.host == "hermes_coder"
         assert config.workspace_id == "prostor"  # shared workspace
-        assert config.ai_peer == "prostor_coder"
+        assert config.ai_peer == "hermes_coder"
 
     def test_from_env_default_workspace_preserved_for_default_host(self):
         with patch.dict(os.environ, {"HONCHO_API_KEY": "key"}):
@@ -499,19 +499,19 @@ class TestProfileScopedConfig:
             "apiKey": "shared-key",
             "hosts": {
                 "prostor": {"aiPeer": "prostor", "peerName": "alice"},
-                "prostor_coder": {
-                    "aiPeer": "prostor_coder",
+                "hermes_coder": {
+                    "aiPeer": "hermes_coder",
                     "peerName": "alice-coder",
                     "workspace": "coder-ws",
                 },
             },
         }))
         config = HonchoClientConfig.from_global_config(
-            host="prostor_coder", config_path=config_file,
+            host="hermes_coder", config_path=config_file,
         )
-        assert config.host == "prostor_coder"
+        assert config.host == "hermes_coder"
         assert config.workspace_id == "coder-ws"
-        assert config.ai_peer == "prostor_coder"
+        assert config.ai_peer == "hermes_coder"
         assert config.peer_name == "alice-coder"
 
     def test_from_global_config_auto_resolves_host(self, tmp_path):
@@ -519,12 +519,12 @@ class TestProfileScopedConfig:
         config_file.write_text(json.dumps({
             "apiKey": "key",
             "hosts": {
-                "prostor_dreamer": {"peerName": "dreamer-user"},
+                "hermes_dreamer": {"peerName": "dreamer-user"},
             },
         }))
-        with patch("plugins.memory.honcho.client.resolve_active_host", return_value="prostor_dreamer"):
+        with patch("plugins.memory.honcho.client.resolve_active_host", return_value="hermes_dreamer"):
             config = HonchoClientConfig.from_global_config(config_path=config_file)
-        assert config.host == "prostor_dreamer"
+        assert config.host == "hermes_dreamer"
         assert config.peer_name == "dreamer-user"
 
     def test_from_global_config_reads_legacy_dot_profile_host_block(self, tmp_path):
@@ -536,12 +536,12 @@ class TestProfileScopedConfig:
             },
         }))
         config = HonchoClientConfig.from_global_config(
-            host="prostor_dreamer",
+            host="hermes_dreamer",
             config_path=config_file,
         )
-        assert config.host == "prostor_dreamer"
+        assert config.host == "hermes_dreamer"
         assert config.peer_name == "dreamer-user"
-        assert config.workspace_id == "prostor_dreamer"
+        assert config.workspace_id == "hermes_dreamer"
 
 
 class TestObservationModeMigration:
@@ -635,7 +635,7 @@ class TestGetHonchoClient:
         not importlib.util.find_spec("honcho"),
         reason="honcho SDK not installed"
     )
-    def test_prostor_config_timeout_override_used_when_config_timeout_missing(self):
+    def test_hermes_config_timeout_override_used_when_config_timeout_missing(self):
         fake_honcho = MagicMock(name="Honcho")
         cfg = HonchoClientConfig(
             api_key="test-key",
@@ -644,7 +644,7 @@ class TestGetHonchoClient:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={"honcho": {"timeout": 88}}):
+             patch("hermes_cli.config.load_config", return_value={"honcho": {"timeout": 88}}):
             client = get_honcho_client(cfg)
 
         assert client is fake_honcho
@@ -666,7 +666,7 @@ class TestGetHonchoClient:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={}):
+             patch("hermes_cli.config.load_config", return_value={}):
             client = get_honcho_client(cfg)
 
         assert client is fake_honcho
@@ -677,7 +677,7 @@ class TestGetHonchoClient:
         not importlib.util.find_spec("honcho"),
         reason="honcho SDK not installed"
     )
-    def test_prostor_request_timeout_alias_used(self):
+    def test_hermes_request_timeout_alias_used(self):
         fake_honcho = MagicMock(name="Honcho")
         cfg = HonchoClientConfig(
             api_key="test-key",
@@ -686,7 +686,7 @@ class TestGetHonchoClient:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={"honcho": {"request_timeout": "77.5"}}):
+             patch("hermes_cli.config.load_config", return_value={"honcho": {"request_timeout": "77.5"}}):
             client = get_honcho_client(cfg)
 
         assert client is fake_honcho
@@ -711,15 +711,17 @@ class TestResolveSessionNameGatewayKey:
         )
         assert result == "agent-main-telegram-dm-8439114563"
 
-    def test_session_title_still_wins_over_gateway_key(self):
-        """Explicit /title remap takes priority over gateway_session_key."""
+    def test_gateway_key_not_remapped_by_title(self):
+        """A title never remaps a stable identifier — the gateway per-chat key
+        wins over the title so a generated title can't split a live conversation
+        onto a new Honcho session."""
         config = HonchoClientConfig(session_strategy="per-session")
         result = config.resolve_session_name(
             session_title="my-custom-title",
             session_id="20260412_171002_69bb38",
             gateway_session_key="agent:main:telegram:dm:8439114563",
         )
-        assert result == "my-custom-title"
+        assert result == "agent-main-telegram-dm-8439114563"
 
     def test_per_session_fallback_without_gateway_key(self):
         """Without gateway_session_key, per-session returns session_id (CLI path)."""
@@ -941,7 +943,7 @@ class TestGetHonchoClientBaseUrlDoublePrefixFix:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={}):
+             patch("hermes_cli.config.load_config", return_value={}):
             get_honcho_client(cfg)
 
         mock_honcho.assert_called_once()
@@ -965,7 +967,7 @@ class TestGetHonchoClientBaseUrlDoublePrefixFix:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={}):
+             patch("hermes_cli.config.load_config", return_value={}):
             get_honcho_client(cfg)
 
         mock_honcho.assert_called_once()
@@ -989,7 +991,7 @@ class TestGetHonchoClientBaseUrlDoublePrefixFix:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={}):
+             patch("hermes_cli.config.load_config", return_value={}):
             get_honcho_client(cfg)
 
         mock_honcho.assert_called_once()
@@ -1014,7 +1016,7 @@ class TestGetHonchoClientBaseUrlDoublePrefixFix:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={}):
+             patch("hermes_cli.config.load_config", return_value={}):
             get_honcho_client(cfg)
 
         mock_honcho.assert_called_once()
@@ -1057,7 +1059,7 @@ class TestGetHonchoClientBaseUrlDoublePrefixFix:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={}):
+             patch("hermes_cli.config.load_config", return_value={}):
             get_honcho_client(cfg)
 
         mock_honcho.assert_called_once()
@@ -1081,7 +1083,7 @@ class TestGetHonchoClientBaseUrlDoublePrefixFix:
         )
 
         with patch("honcho.Honcho", return_value=fake_honcho) as mock_honcho, \
-             patch("prostor_cli.config.load_config", return_value={}):
+             patch("hermes_cli.config.load_config", return_value={}):
             get_honcho_client(cfg)
 
         mock_honcho.assert_called_once()

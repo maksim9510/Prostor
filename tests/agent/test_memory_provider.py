@@ -541,10 +541,10 @@ class TestUserInstalledProviderDiscovery:
         """User plugins may import sibling modules with relative imports.
 
         Regression: _load_provider_from_dir() imports user plugins under the
-        synthetic ``_prostor_user_memory.<name>`` package but never registered
+        synthetic ``_hermes_user_memory.<name>`` package but never registered
         that parent namespace in sys.modules, so any relative import inside
         the plugin raised
-        ``ModuleNotFoundError: No module named '_prostor_user_memory'``.
+        ``ModuleNotFoundError: No module named '_hermes_user_memory'``.
         """
         from plugins.memory import load_memory_provider
         plugin_dir = tmp_path / "plugins" / "relimport"
@@ -612,7 +612,7 @@ class TestUserInstalledProviderCli:
 
     Mirror of the relative-import regression above:
     discover_plugin_cli_commands() imports the active provider's cli.py as
-    ``_prostor_user_memory.<name>.cli`` without registering the parent
+    ``_hermes_user_memory.<name>.cli`` without registering the parent
     packages, so a cli.py with a relative import could never load.
     """
 
@@ -791,7 +791,7 @@ class TestSequentialDispatchRouting:
 
 class TestSetupFieldFiltering:
     """Test the 'when' clause and 'default_from' logic used by the
-    memory setup wizard in prostor_cli/memory_setup.py.
+    memory setup wizard in hermes_cli/memory_setup.py.
 
     These features are generic — any memory plugin can use them in
     get_config_schema(). Currently used by the hindsight plugin.
@@ -1172,16 +1172,12 @@ class TestOnMemoryWriteBridge:
         mgr.on_memory_write("replace", "user", "updated pref")
         assert p.memory_writes == [("replace", "user", "updated pref")]
 
-    def test_on_memory_write_remove_not_bridged(self):
-        """The bridge intentionally skips 'remove' — only add/replace notify."""
-        # This tests the contract that run_agent.py checks:
-        #   function_args.get("action") in ("add", "replace")
+    def test_on_memory_write_remove_supported_by_manager(self):
+        """The manager forwards remove actions when a caller elects to bridge them."""
         mgr = MemoryManager()
         p = FakeMemoryProvider("ext")
         mgr.add_provider(p)
 
-        # Manager itself doesn't filter — run_agent.py does.
-        # But providers should handle remove gracefully.
         mgr.on_memory_write("remove", "memory", "old fact")
         assert p.memory_writes == [("remove", "memory", "old fact")]
 

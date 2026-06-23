@@ -423,9 +423,9 @@ function SkillCard({
               </div>
             )}
             <div className={styles.installHint}>
-              <code>{skill.installCmd || `prostor skills install ${skill.name}`}</code>
+              <code>{skill.installCmd || `hermes skills install ${skill.name}`}</code>
               <CopyButton
-                text={skill.installCmd || `prostor skills install ${skill.name}`}
+                text={skill.installCmd || `hermes skills install ${skill.name}`}
               />
             </div>
             <div className={styles.cardLinks}>
@@ -642,13 +642,13 @@ export default function SkillsDashboard() {
   return (
     <Layout
       title="Skills Hub"
-      description="Browse all skills and plugins available for Prostor Agent"
+      description="Browse all skills and plugins available for Hermes Agent"
     >
       <div className={styles.page}>
         <header className={styles.hero}>
           <div className={styles.heroGlow} />
           <div className={styles.heroContent}>
-            <p className={styles.heroEyebrow}>Prostor Agent</p>
+            <p className={styles.heroEyebrow}>Hermes Agent</p>
             <h1 className={styles.heroTitle}>Skills Hub</h1>
             <p className={styles.heroSub}>
               Discover, search, and install from{" "}

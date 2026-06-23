@@ -2,6 +2,7 @@ import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
+import { getProfiles, transcribeAudio } from '@/prostor'
 import { translateNow, type Translations, useI18n } from '@/i18n'
 import { stripAnsi } from '@/lib/ansi'
 import { branchGroupForUser, type ChatMessage, chatMessageText, textPart } from '@/lib/chat-messages'
@@ -26,7 +27,6 @@ import { triggerHaptic } from '@/lib/haptics'
 import { setMutableRef } from '@/lib/mutable-ref'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { setSessionYolo } from '@/lib/yolo-session'
-import { getProfiles, transcribeAudio } from '@/prostor'
 import {
   $composerAttachments,
   clearComposerAttachments,
@@ -37,6 +37,7 @@ import {
   updateComposerAttachment
 } from '@/store/composer'
 import { resetSessionBackground } from '@/store/composer-status'
+import { clearPreviewArtifacts } from '@/store/preview-status'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
 import { requestDesktopOnboarding } from '@/store/onboarding'
 import { $activeGatewayProfile, $newChatProfile, ensureGatewayProfile, normalizeProfileKey } from '@/store/profile'
@@ -58,8 +59,8 @@ import { clearSessionSubagents } from '@/store/subagents'
 import { clearSessionTodos } from '@/store/todos'
 
 import type {
-  BrowserManageResponse,
   ClientSessionState,
+  BrowserManageResponse,
   FileAttachResponse,
   HandoffFailResponse,
   HandoffRequestResponse,
@@ -169,7 +170,7 @@ function imageFilenameFromPath(filePath: string): string {
 async function readImageForRemoteAttach(
   filePath: string
 ): Promise<{ contentBase64: string; filename: string } | null> {
-  const dataUrl = await window.prostorDesktop?.readFileDataUrl(filePath)
+  const dataUrl = await window.hermesDesktop?.readFileDataUrl(filePath)
   const contentBase64 = dataUrl ? base64FromDataUrl(dataUrl) : ''
 
   return contentBase64 ? { contentBase64, filename: imageFilenameFromPath(filePath) } : null
@@ -178,7 +179,7 @@ async function readImageForRemoteAttach(
 // Read a non-image file as a data URL for upload via file.attach. Returns null
 // when the desktop bridge can't read the file (e.g. it was moved/deleted).
 async function readFileDataUrlForAttach(filePath: string): Promise<string | null> {
-  const reader = window.prostorDesktop?.readFileDataUrl
+  const reader = window.hermesDesktop?.readFileDataUrl
 
   if (!reader) {
     return null
@@ -1391,7 +1392,6 @@ export function usePromptActions({
 
   const cancelRun = useCallback(async () => {
     const sessionId = activeSessionId || activeSessionIdRef.current
-
     const releaseBusy = () => {
       setMutableRef(busyRef, false)
       setBusy(false)
@@ -1644,6 +1644,7 @@ export function usePromptActions({
       // rows (and kill the live processes) before the fresh run repopulates.
       clearSessionTodos(sessionId)
       resetSessionBackground(sessionId)
+      clearPreviewArtifacts(sessionId)
 
       clearNotifications()
       setMutableRef(busyRef, true)
@@ -1706,6 +1707,7 @@ export function usePromptActions({
       // processes) before the re-run repopulates them.
       clearSessionTodos(sessionId)
       resetSessionBackground(sessionId)
+      clearPreviewArtifacts(sessionId)
 
       clearNotifications()
       setMutableRef(busyRef, true)

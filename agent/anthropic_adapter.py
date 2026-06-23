@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
-from prostor_core import get_prostor_home
+from hermes_constants import get_hermes_home
 from typing import Any, Dict, List, Optional, Tuple
 from utils import base_url_host_matches, normalize_proxy_env_vars
 
@@ -1159,6 +1159,46 @@ def _prefer_refreshable_claude_code_token(env_token: str, creds: Optional[Dict[s
     return None
 
 
+def _resolve_anthropic_pool_token() -> Optional[str]:
+    """Return the first available Anthropic OAuth token from credential_pool.
+
+    Read-only: enumerates with ``clear_expired=False, refresh=False`` so a bare
+    token *resolve* (which runs from diagnostic/read-only call sites such as
+    ``account_usage`` and ``prostor models``) never mutates ``~/.prostor/auth.json``
+    or makes a network refresh call. Refresh-on-expiry is owned by the API call
+    path's pool recovery, not the resolver.
+    """
+    try:
+        from agent.credential_pool import AUTH_TYPE_OAUTH, load_pool
+    except Exception:
+        return None
+
+    try:
+        pool = load_pool("anthropic")
+        # Enumerate read-only (clear_expired=False, refresh=False): never persist
+        # to auth.json or trigger a network refresh from a bare resolve. select()
+        # is deliberately NOT used — it runs clear_expired=True, refresh=True,
+        # which would violate this read-only contract.
+        entries = pool._available_entries(clear_expired=False, refresh=False)
+    except Exception:
+        logger.debug("Failed to read Anthropic credential_pool", exc_info=True)
+        return None
+
+    for entry in entries:
+        if getattr(entry, "auth_type", None) != AUTH_TYPE_OAUTH:
+            continue
+        # access_token is a declared field but a persisted entry can carry an
+        # explicit null (or a partially-written OAuth entry), so coerce before
+        # strip — a bare None.strip() here would escape the try/excepts above
+        # and crash the whole resolver, taking down the source #5 fallback too.
+        # Matches the aux-client analog (auxiliary_client.py: str(key or "")).
+        token = (getattr(entry, "access_token", None) or "").strip()
+        if token:
+            return token
+
+    return None
+
+
 def resolve_anthropic_token() -> Optional[str]:
     """Resolve an Anthropic token from all available sources.
 
@@ -1167,7 +1207,8 @@ def resolve_anthropic_token() -> Optional[str]:
       2. CLAUDE_CODE_OAUTH_TOKEN env var
       3. Claude Code credentials (~/.claude.json or ~/.claude/.credentials.json)
          — with automatic refresh if expired and a refresh token is available
-      4. ANTHROPIC_API_KEY env var (regular API key, or legacy fallback)
+      4. Anthropic credential_pool OAuth entry (~/.prostor/auth.json)
+      5. ANTHROPIC_API_KEY env var (regular API key, or legacy fallback)
 
     Returns the token string or None.
     """
@@ -1194,7 +1235,12 @@ def resolve_anthropic_token() -> Optional[str]:
     if resolved_claude_token:
         return resolved_claude_token
 
-    # 4. Regular API key, or a legacy OAuth token saved in ANTHROPIC_API_KEY.
+    # 4. Prostor credential_pool OAuth entry.
+    resolved_pool_token = _resolve_anthropic_pool_token()
+    if resolved_pool_token:
+        return resolved_pool_token
+
+    # 5. Regular API key, or a legacy OAuth token saved in ANTHROPIC_API_KEY.
     # This remains as a compatibility fallback for pre-migration Prostor configs.
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     if api_key:
@@ -1254,7 +1300,7 @@ _OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 _OAUTH_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
 _OAUTH_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback"
 _OAUTH_SCOPES = "org:create_api_key user:profile user:inference"
-_PROSTOR_OAUTH_FILE = get_prostor_home() / ".anthropic_oauth.json"
+_HERMES_OAUTH_FILE = get_hermes_home() / ".anthropic_oauth.json"
 
 
 def _generate_pkce() -> tuple:
@@ -1270,7 +1316,7 @@ def _generate_pkce() -> tuple:
     return verifier, challenge
 
 
-def run_prostor_oauth_login_pure() -> Optional[Dict[str, Any]]:
+def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     """Run Prostor-native OAuth PKCE flow and return credential state."""
     import secrets
     import time
@@ -1305,7 +1351,7 @@ def run_prostor_oauth_login_pure() -> Optional[Dict[str, Any]]:
     print()
 
     try:
-        from prostor_cli.auth import _can_open_graphical_browser as _can_open_gui
+        from hermes_cli.auth import _can_open_graphical_browser as _can_open_gui
     except Exception:
         _can_open_gui = lambda: True  # noqa: E731 — degrade to prior behavior
 
@@ -1381,11 +1427,11 @@ def run_prostor_oauth_login_pure() -> Optional[Dict[str, Any]]:
     }
 
 
-def read_prostor_oauth_credentials() -> Optional[Dict[str, Any]]:
+def read_hermes_oauth_credentials() -> Optional[Dict[str, Any]]:
     """Read Prostor-managed OAuth credentials from ~/.prostor/.anthropic_oauth.json."""
-    if _PROSTOR_OAUTH_FILE.exists():
+    if _HERMES_OAUTH_FILE.exists():
         try:
-            data = json.loads(_PROSTOR_OAUTH_FILE.read_text(encoding="utf-8"))
+            data = json.loads(_HERMES_OAUTH_FILE.read_text(encoding="utf-8"))
             if data.get("accessToken"):
                 return data
         except (json.JSONDecodeError, OSError, IOError) as e:

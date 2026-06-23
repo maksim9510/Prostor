@@ -17,7 +17,7 @@ Usage::
 Output: ``website/static/api/model-catalog.json``
 
 Live URL (after ``deploy-site.yml`` runs on merge to main):
-``https://github.com/maksim9510/Prostor/docs/api/model-catalog.json``
+``https://prostor-agent.nousresearch.com/docs/api/model-catalog.json``
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ sys.path.insert(0, REPO_ROOT)
 # Ensure PROSTOR_HOME is set for imports that touch it at module level.
 os.environ.setdefault("PROSTOR_HOME", os.path.join(os.path.expanduser("~"), ".prostor"))
 
-from prostor_cli.models import OPENROUTER_MODELS, _PROVIDER_MODELS  # noqa: E402
+from hermes_cli.models import OPENROUTER_MODELS, _PROVIDER_MODELS  # noqa: E402
 
 OUTPUT_PATH = os.path.join(REPO_ROOT, "website", "static", "api", "model-catalog.json")
 CATALOG_VERSION = 1
@@ -45,7 +45,7 @@ def build_catalog() -> dict:
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "metadata": {
             "source": "prostor-agent repo",
-            "docs": "https://github.com/maksim9510/Prostor/docs/reference/model-catalog",
+            "docs": "https://prostor-agent.nousresearch.com/docs/reference/model-catalog",
         },
         "providers": {
             "openrouter": {

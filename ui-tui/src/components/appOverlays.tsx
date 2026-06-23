@@ -1,5 +1,5 @@
-import { useStore } from '@nanostores/react'
 import { Box, Text } from '@prostor/ink'
+import { useStore } from '@nanostores/react'
 
 import { useGateway } from '../app/gatewayContext.js'
 import type { AppOverlaysProps } from '../app/interfaces.js'

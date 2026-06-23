@@ -55,7 +55,8 @@ CHANNEL_ID = "C0AQWDLHY9M"
 OTHER_CHANNEL_ID = "C9999999999"
 
 
-def _make_adapter(require_mention=None, strict_mention=None, free_response_channels=None, allowed_channels=None):
+def _make_adapter(require_mention=None, strict_mention=None, free_response_channels=None,
+                  allowed_channels=None, mention_patterns=None):
     extra = {}
     if require_mention is not None:
         extra["require_mention"] = require_mention
@@ -65,6 +66,8 @@ def _make_adapter(require_mention=None, strict_mention=None, free_response_chann
         extra["free_response_channels"] = free_response_channels
     if allowed_channels is not None:
         extra["allowed_channels"] = allowed_channels
+    if mention_patterns is not None:
+        extra["mention_patterns"] = mention_patterns
 
     adapter = object.__new__(SlackAdapter)
     adapter.platform = Platform.SLACK
@@ -249,7 +252,10 @@ def _would_process(adapter, *, is_dm=False, channel_id=CHANNEL_ID,
     bot_uid = adapter._team_bot_user_ids.get("T1", adapter._bot_user_id)
     if mentioned:
         text = f"<@{bot_uid}> {text}"
-    is_mentioned = bot_uid and f"<@{bot_uid}>" in text
+    is_mentioned = bool(
+        (bot_uid and f"<@{bot_uid}>" in text)
+        or adapter._slack_message_matches_mention_patterns(text)
+    )
 
     if not is_dm and bot_uid:
         # allowed_channels check (whitelist — must pass before other gating)
@@ -353,9 +359,9 @@ def test_bot_uid_none_processes_channel_message():
 def test_config_bridges_slack_free_response_channels(monkeypatch, tmp_path):
     from gateway.config import load_gateway_config
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         "slack:\n"
         "  require_mention: false\n"
         "  free_response_channels:\n"
@@ -364,7 +370,7 @@ def test_config_bridges_slack_free_response_channels(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.delenv("SLACK_REQUIRE_MENTION", raising=False)
     monkeypatch.delenv("SLACK_FREE_RESPONSE_CHANNELS", raising=False)
 
@@ -383,15 +389,15 @@ def test_config_bridges_slack_free_response_channels(monkeypatch, tmp_path):
 def test_top_level_slack_settings_do_not_disable_env_token_setup(monkeypatch, tmp_path):
     from gateway.config import load_gateway_config
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         "slack:\n"
         "  require_mention: false\n",
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
     monkeypatch.delenv("SLACK_REQUIRE_MENTION", raising=False)
 
@@ -407,16 +413,16 @@ def test_top_level_slack_settings_do_not_disable_env_token_setup(monkeypatch, tm
 def test_explicit_top_level_slack_enabled_false_wins_over_env_token(monkeypatch, tmp_path):
     from gateway.config import load_gateway_config
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         "slack:\n"
         "  enabled: false\n"
         "  require_mention: false\n",
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
     monkeypatch.delenv("SLACK_REQUIRE_MENTION", raising=False)
 
@@ -432,9 +438,9 @@ def test_explicit_top_level_slack_enabled_false_wins_over_env_token(monkeypatch,
 def test_explicit_platforms_slack_enabled_false_wins_over_env_token(monkeypatch, tmp_path):
     from gateway.config import load_gateway_config
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         "platforms:\n"
         "  slack:\n"
         "    enabled: false\n"
@@ -443,7 +449,7 @@ def test_explicit_platforms_slack_enabled_false_wins_over_env_token(monkeypatch,
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
 
     config = load_gateway_config()
@@ -458,15 +464,15 @@ def test_explicit_platforms_slack_enabled_false_wins_over_env_token(monkeypatch,
 def test_config_bridges_slack_reply_in_thread(monkeypatch, tmp_path):
     from gateway.config import load_gateway_config
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         "slack:\n"
         "  reply_in_thread: false\n",
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
 
     config = load_gateway_config()
@@ -498,15 +504,15 @@ def test_config_bridges_slack_reply_in_thread(monkeypatch, tmp_path):
 def test_config_bridges_slack_strict_mention(monkeypatch, tmp_path):
     from gateway.config import load_gateway_config
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         "slack:\n"
         "  strict_mention: true\n",
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.delenv("SLACK_STRICT_MENTION", raising=False)
 
     config = load_gateway_config()
@@ -648,9 +654,9 @@ def test_allowed_channels_env_var_blocks_channel(monkeypatch):
 def test_config_bridges_slack_allowed_channels(monkeypatch, tmp_path):
     from gateway.config import load_gateway_config
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         "slack:\n"
         "  allowed_channels:\n"
         f"    - {CHANNEL_ID}\n"
@@ -658,7 +664,7 @@ def test_config_bridges_slack_allowed_channels(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.delenv("SLACK_ALLOWED_CHANNELS", raising=False)
 
     load_gateway_config()
@@ -671,15 +677,15 @@ def test_config_bridges_slack_allowed_channels_env_takes_precedence(monkeypatch,
     """Env var set before load_gateway_config() should not be overwritten."""
     from gateway.config import load_gateway_config
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         "slack:\n"
         f"  allowed_channels: {CHANNEL_ID}\n",
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("SLACK_ALLOWED_CHANNELS", OTHER_CHANNEL_ID)  # already set
 
     load_gateway_config()
@@ -687,3 +693,61 @@ def test_config_bridges_slack_allowed_channels_env_takes_precedence(monkeypatch,
     import os as _os
     # env var must not be overwritten by config.yaml
     assert _os.environ["SLACK_ALLOWED_CHANNELS"] == OTHER_CHANNEL_ID
+
+
+# ---------------------------------------------------------------------------
+# Tests: mention_patterns (wake words) — parity with other adapters (#50732)
+# ---------------------------------------------------------------------------
+
+def test_mention_patterns_default_no_match(monkeypatch):
+    monkeypatch.delenv("SLACK_MENTION_PATTERNS", raising=False)
+    adapter = _make_adapter()
+    assert adapter._slack_mention_patterns() == []
+    assert adapter._slack_message_matches_mention_patterns("hello there") is False
+
+
+def test_mention_patterns_list_matches():
+    adapter = _make_adapter(mention_patterns=["hey prostor", "prostor,"])
+    assert adapter._slack_message_matches_mention_patterns("hey prostor, you there?") is True
+    assert adapter._slack_message_matches_mention_patterns("just chatting") is False
+
+
+def test_mention_patterns_case_insensitive():
+    adapter = _make_adapter(mention_patterns=["hey prostor"])
+    assert adapter._slack_message_matches_mention_patterns("HEY PROSTOR!") is True
+
+
+def test_mention_patterns_single_string():
+    adapter = _make_adapter(mention_patterns="^prostor")
+    assert adapter._slack_message_matches_mention_patterns("prostor do this") is True
+    assert adapter._slack_message_matches_mention_patterns("ok prostor") is False
+
+
+def test_mention_patterns_invalid_regex_skipped_without_crash():
+    # An invalid pattern is dropped; valid siblings still work.
+    adapter = _make_adapter(mention_patterns=["(unclosed", "hey prostor"])
+    assert adapter._slack_message_matches_mention_patterns("hey prostor") is True
+
+
+def test_mention_patterns_env_var_fallback(monkeypatch):
+    monkeypatch.setenv("SLACK_MENTION_PATTERNS", '["hey prostor", "prostor,"]')
+    adapter = _make_adapter()  # no config value -> falls back to env
+    assert adapter._slack_message_matches_mention_patterns("hey prostor") is True
+
+
+def test_mention_patterns_env_var_csv_fallback_splits_patterns(monkeypatch):
+    monkeypatch.setenv("SLACK_MENTION_PATTERNS", "hey prostor,prostor,")
+    adapter = _make_adapter()  # no config value -> falls back to env
+
+    patterns = adapter._slack_mention_patterns()
+
+    assert [pattern.pattern for pattern in patterns] == ["hey prostor", "prostor"]
+    assert adapter._slack_message_matches_mention_patterns("hey prostor") is True
+
+
+def test_mention_patterns_trigger_in_channel_without_literal_mention():
+    """A wake word triggers the bot in a channel even with require_mention on."""
+    adapter = _make_adapter(require_mention=True, mention_patterns=["hey prostor"])
+    assert _would_process(adapter, text="hey prostor what's the status") is True
+    # Unrelated channel chatter is still ignored.
+    assert _would_process(adapter, text="lunch anyone?") is False

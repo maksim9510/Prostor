@@ -66,6 +66,28 @@ from .whatsapp_identity import (
 )
 from utils import atomic_replace
 
+# Session keys/ids flow into filesystem paths downstream (e.g.
+# ``sessions_dir / f"{session_id}.json"`` in hermes_state, request-dump
+# filenames in agent_runtime_helpers). Any value that could escape the
+# sessions directory as a path must be rejected at the entry boundary.
+# Rejects: parent traversal (``..``), a path separator anywhere (``/`` or
+# ``\``, so a non-leading Windows separator can't slip through), and a
+# leading Windows drive letter (``C:``). Legitimate session keys are
+# colon-delimited multi-segment ids (``agent:main:<platform>:...``) and
+# never contain these, so there are no false positives in practice.
+def _is_path_unsafe(value: object) -> bool:
+    """Return True if ``value`` could traverse outside the sessions dir."""
+    if not value:
+        return False
+    s = str(value)
+    if ".." in s or "/" in s or "\\" in s:
+        return True
+    # Leading Windows drive path, e.g. "C:\..." or "d:/...". A bare "x:"
+    # with no following separator isn't a usable absolute path, and the
+    # separator forms are already caught above — but keep an explicit guard
+    # for the drive-letter prefix in case a separator was normalized away.
+    return len(s) >= 2 and s[0].isalpha() and s[1] == ":"
+
 
 @dataclass
 class SessionSource:
@@ -228,8 +250,8 @@ def _discord_tools_loaded() -> bool:
     if not (os.environ.get("DISCORD_BOT_TOKEN") or "").strip():
         return False
     try:
-        from prostor_cli.config import load_config
-        from prostor_cli.tools_config import _get_platform_tools
+        from hermes_cli.config import load_config
+        from hermes_cli.tools_config import _get_platform_tools
         cfg = load_config()
         enabled = _get_platform_tools(cfg, "discord", include_default_mcp_servers=False)
         return "discord" in enabled or "discord_admin" in enabled
@@ -420,7 +442,7 @@ def build_session_context_prompt(
     lines.append("")
     lines.append("**Delivery options for scheduled tasks:**")
 
-    from prostor_constants import display_prostor_home
+    from hermes_constants import display_hermes_home
 
     # Origin delivery
     if context.source.platform == Platform.LOCAL:
@@ -433,7 +455,7 @@ def build_session_context_prompt(
 
     # Local always available
     lines.append(
-        f"- `\"local\"` → Save to local files only ({display_prostor_home()}/cron/output/)"
+        f"- `\"local\"` → Save to local files only ({display_hermes_home()}/cron/output/)"
     )
 
     # Platform home channels
@@ -573,9 +595,19 @@ class SessionEntry:
             except (TypeError, ValueError):
                 last_resume_marked_at = None
 
+        session_key = data["session_key"]
+        session_id = data["session_id"]
+
+        # Validate path-sensitive fields to prevent directory traversal (CWE-22)
+        for _field, _val in (("session_key", session_key), ("session_id", session_id)):
+            if _is_path_unsafe(_val):
+                raise ValueError(
+                    f"Invalid {_field}: potential directory traversal detected"
+                )
+
         return cls(
-            session_key=data["session_key"],
-            session_id=data["session_id"],
+            session_key=session_key,
+            session_id=session_id,
             created_at=datetime.fromisoformat(data["created_at"]),
             updated_at=datetime.fromisoformat(data["updated_at"]),
             origin=origin,
@@ -754,7 +786,7 @@ class SessionStore:
         # Initialize SQLite session database
         self._db = None
         try:
-            from prostor_state import SessionDB
+            from hermes_state import SessionDB
             self._db = SessionDB()
         except Exception as e:
             print(f"[gateway] Warning: SQLite session store unavailable, falling back to JSONL: {e}")
@@ -776,12 +808,11 @@ class SessionStore:
             try:
                 with open(sessions_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    for key, entry_data in data.items():
-                        try:
-                            self._entries[key] = SessionEntry.from_dict(entry_data)
-                        except (ValueError, KeyError):
-                            # Skip entries with unknown/removed platform values
-                            continue
+                for key, entry_data in data.items():
+                    try:
+                        self._entries[key] = SessionEntry.from_dict(entry_data)
+                    except (ValueError, KeyError) as e:
+                        logger.warning("Skipping invalid session entry %r: %s", key, e)
             except Exception as e:
                 print(f"[gateway] Warning: Failed to load sessions: {e}")
 
@@ -824,7 +855,7 @@ class SessionStore:
         if source is not None and source.profile:
             return source.profile
         try:
-            from prostor_cli.profiles import get_active_profile_name
+            from hermes_cli.profiles import get_active_profile_name
             return get_active_profile_name() or "default"
         except Exception:
             return None

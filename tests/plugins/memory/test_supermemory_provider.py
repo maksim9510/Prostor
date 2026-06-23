@@ -59,7 +59,7 @@ def provider(monkeypatch, tmp_path):
     monkeypatch.setenv("SUPERMEMORY_API_KEY", "test-key")
     monkeypatch.setattr("plugins.memory.supermemory._SupermemoryClient", FakeClient)
     p = SupermemoryMemoryProvider()
-    p.initialize("session-1", prostor_home=str(tmp_path), platform="cli")
+    p.initialize("session-1", hermes_home=str(tmp_path), platform="cli")
     return p
 
 
@@ -310,8 +310,8 @@ def test_identity_template_resolved_in_container_tag(monkeypatch, tmp_path):
     monkeypatch.setattr("plugins.memory.supermemory._SupermemoryClient", FakeClient)
     _save_supermemory_config({"container_tag": "prostor-{identity}"}, str(tmp_path))
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli", agent_identity="coder")
-    assert p._container_tag == "prostor_coder"
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli", agent_identity="coder")
+    assert p._container_tag == "hermes_coder"
 
 
 def test_identity_template_default_profile(monkeypatch, tmp_path):
@@ -320,8 +320,8 @@ def test_identity_template_default_profile(monkeypatch, tmp_path):
     monkeypatch.setattr("plugins.memory.supermemory._SupermemoryClient", FakeClient)
     _save_supermemory_config({"container_tag": "prostor-{identity}"}, str(tmp_path))
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli")
-    assert p._container_tag == "prostor_default"
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
+    assert p._container_tag == "hermes_default"
 
 
 def test_container_tag_env_var_override(monkeypatch, tmp_path):
@@ -330,7 +330,7 @@ def test_container_tag_env_var_override(monkeypatch, tmp_path):
     monkeypatch.setenv("SUPERMEMORY_CONTAINER_TAG", "env-override")
     monkeypatch.setattr("plugins.memory.supermemory._SupermemoryClient", FakeClient)
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli")
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
     assert p._container_tag == "env_override"
 
 
@@ -343,7 +343,7 @@ def test_search_mode_config_passed_to_client(monkeypatch, tmp_path):
     monkeypatch.setattr("plugins.memory.supermemory._SupermemoryClient", FakeClient)
     _save_supermemory_config({"search_mode": "memories"}, str(tmp_path))
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli")
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
     assert p._search_mode == "memories"
     assert p._client.search_mode == "memories"
 
@@ -354,7 +354,7 @@ def test_invalid_search_mode_falls_back_to_default(monkeypatch, tmp_path):
     monkeypatch.setattr("plugins.memory.supermemory._SupermemoryClient", FakeClient)
     _save_supermemory_config({"search_mode": "invalid_mode"}, str(tmp_path))
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli")
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
     assert p._search_mode == "hybrid"
 
 
@@ -378,7 +378,7 @@ def test_multi_container_enabled_adds_schema_param(monkeypatch, tmp_path):
         "custom_containers": ["project-alpha", "shared"],
     }, str(tmp_path))
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli")
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
     assert p._enable_custom_containers is True
     assert p._allowed_containers == ["prostor", "project_alpha", "shared"]
     schemas = p.get_tool_schemas()
@@ -395,7 +395,7 @@ def test_multi_container_tool_store_with_custom_tag(monkeypatch, tmp_path):
         "custom_containers": ["project-alpha"],
     }, str(tmp_path))
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli")
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
     result = json.loads(p.handle_tool_call("supermemory_store", {
         "content": "test memory",
         "container_tag": "project-alpha",
@@ -414,7 +414,7 @@ def test_multi_container_rejects_unlisted_tag(monkeypatch, tmp_path):
         "custom_containers": ["allowed-tag"],
     }, str(tmp_path))
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli")
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
     result = json.loads(p.handle_tool_call("supermemory_store", {
         "content": "test",
         "container_tag": "forbidden-tag",
@@ -433,7 +433,7 @@ def test_multi_container_system_prompt_includes_instructions(monkeypatch, tmp_pa
         "custom_container_instructions": "Use docs for documentation context.",
     }, str(tmp_path))
     p = SupermemoryMemoryProvider()
-    p.initialize("s1", prostor_home=str(tmp_path), platform="cli")
+    p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
     block = p.system_prompt_block()
     assert "Multi-container mode enabled" in block
     assert "docs" in block

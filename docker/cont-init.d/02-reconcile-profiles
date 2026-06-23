@@ -12,7 +12,7 @@
 # $PROSTOR_HOME/profiles/ live on the persistent VOLUME. This script
 # walks the persistent profiles, recreates the s6 service slots,
 # and auto-starts only those whose last recorded state was
-# `running` — see prostor_cli/container_boot.py.
+# `running` — see hermes_cli/container_boot.py.
 #
 # Phase 4 also needs prostor-user writes to /run/service/ (so the
 # profile create/delete hooks can register/unregister at runtime),
@@ -43,5 +43,5 @@ if [ -d /run/service/.s6-svscan ]; then
 fi
 
 # Skip the drop when already non-root.
-[ "$(id -u)" = 0 ] || exec /opt/prostor/.venv/bin/python -m prostor_cli.container_boot
-exec s6-setuidgid prostor /opt/prostor/.venv/bin/python -m prostor_cli.container_boot
+[ "$(id -u)" = 0 ] || exec /opt/prostor/.venv/bin/python -m hermes_cli.container_boot
+exec s6-setuidgid prostor /opt/prostor/.venv/bin/python -m hermes_cli.container_boot

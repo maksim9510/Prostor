@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 
 # File + directory layout (under $PROSTOR_HOME):
 #
@@ -37,7 +37,7 @@ from prostor_constants import get_prostor_home
 
 
 def _root() -> Path:
-    return Path(get_prostor_home()) / "workspace" / "meetings"
+    return Path(get_hermes_home()) / "workspace" / "meetings"
 
 
 def _active_file() -> Path:

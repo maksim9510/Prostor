@@ -26,11 +26,14 @@ import { codiconForLanguage, isLikelyProseCodeBlock, sanitizeLanguageTag } from 
  * `react-shiki` full bundle so all `bundledLanguages` work; theme switches
  * follow the document `color-scheme` via `defaultColor="light-dark()"`.
  */
-interface ProstorSyntaxHighlighterProps extends SyntaxHighlighterProps {
+interface HermesSyntaxHighlighterProps extends SyntaxHighlighterProps {
   defer?: boolean
 }
 
-const SHIKI_THEME = { dark: 'github-dark-default', light: 'github-light-default' } as const
+// `github-dark-dimmed` is GitHub's lower-contrast dark palette — the vivid
+// `github-dark-default` tokens read harsh at our small code size. Shared by the
+// inline diff renderer too (see diff-lines.tsx) so code + diffs match.
+export const SHIKI_THEME = { dark: 'github-dark-dimmed', light: 'github-light-default' } as const
 
 /**
  * `github-light-default` colors comments `#6e7781` (~4.2:1 against the code
@@ -112,7 +115,7 @@ const PlainCode: FC<{ code: string }> = ({ code }) => {
   )
 }
 
-export const SyntaxHighlighter: FC<ProstorSyntaxHighlighterProps> = ({
+export const SyntaxHighlighter: FC<HermesSyntaxHighlighterProps> = ({
   components: { Pre },
   language,
   code,

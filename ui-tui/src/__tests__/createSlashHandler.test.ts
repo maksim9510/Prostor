@@ -4,7 +4,6 @@ import { createSlashHandler } from '../app/createSlashHandler.js'
 import { getOverlayState, resetOverlayState } from '../app/overlayStore.js'
 import { DASHBOARD_EXIT_DISABLED_MESSAGE, DASHBOARD_UPDATE_DISABLED_MESSAGE } from '../app/slash/commands/core.js'
 import { getUiState, patchUiState, resetUiState } from '../app/uiStore.js'
-import type * as EnvModuleNS from '../config/env.js'
 import { TUI_SESSION_MODEL_FLAG } from '../domain/slash.js'
 
 // DASHBOARD_TUI_MODE resolves once at module load from PROSTOR_TUI_DASHBOARD,
@@ -12,7 +11,7 @@ import { TUI_SESSION_MODEL_FLAG } from '../domain/slash.js'
 // export (everything else stays real) and flip the holder per test.
 const envState = { dashboardTuiMode: false }
 vi.mock('../config/env.js', async importActual => {
-  const actual = (await importActual()) as typeof EnvModuleNS
+  const actual = await importActual<typeof import('../config/env.js')>()
 
   return {
     ...actual,
@@ -76,6 +75,22 @@ describe('createSlashHandler', () => {
     expect(createSlashHandler(ctx)('/redraw')).toBe(true)
     expect(ctx.gateway.gw.request).not.toHaveBeenCalled()
     expect(ctx.transcript.sys).toHaveBeenCalledWith('ui redrawn')
+  })
+
+  it('opens the editor locally for /prompt without slash worker fallback', () => {
+    const ctx = buildCtx()
+
+    expect(createSlashHandler(ctx)('/prompt')).toBe(true)
+    expect(ctx.composer.openEditor).toHaveBeenCalledTimes(1)
+    expect(ctx.gateway.gw.request).not.toHaveBeenCalled()
+  })
+
+  it('routes /compose to the editor and seeds inline text', () => {
+    const ctx = buildCtx()
+
+    expect(createSlashHandler(ctx)('/compose draft text')).toBe(true)
+    expect(ctx.composer.setInput).toHaveBeenCalledWith('draft text')
+    expect(ctx.composer.openEditor).toHaveBeenCalledTimes(1)
   })
 
   it('exits locally for /quit', () => {
@@ -203,7 +218,6 @@ describe('createSlashHandler', () => {
 
   it('applies /reasoning hide to the thinking section immediately', async () => {
     patchUiState({ sections: { thinking: 'expanded' }, showReasoning: true, sid: 'sid-abc' })
-
     const ctx = buildCtx({
       gateway: {
         ...buildGateway(),
@@ -226,7 +240,6 @@ describe('createSlashHandler', () => {
 
   it('applies /reasoning show to the thinking section immediately', async () => {
     patchUiState({ sections: { thinking: 'hidden' }, showReasoning: false, sid: 'sid-abc' })
-
     const ctx = buildCtx({
       gateway: {
         ...buildGateway(),
@@ -333,14 +346,11 @@ describe('createSlashHandler', () => {
       if (method === 'skills.reload') {
         return Promise.resolve({ output: '42 skill(s) available' })
       }
-
       if (method === 'commands.catalog') {
         return Promise.resolve({ canon: { '/new-skill': '/new-skill' }, pairs: [['/new-skill', 'demo']] })
       }
-
       return Promise.resolve({})
     })
-
     const ctx = buildCtx({ gateway: { ...buildGateway(), rpc } })
 
     createSlashHandler(ctx)('/reload-skills')
@@ -775,7 +785,7 @@ describe('createSlashHandler', () => {
   it('/save forwards to session.save RPC and reports the returned file', async () => {
     patchUiState({ sid: 'sid-abc' })
 
-    const rpc = vi.fn(() => Promise.resolve({ file: '/tmp/prostor_conversation_test.json' }))
+    const rpc = vi.fn(() => Promise.resolve({ file: '/tmp/hermes_conversation_test.json' }))
 
     const ctx = buildCtx({
       gateway: { ...buildGateway(), rpc },
@@ -795,7 +805,7 @@ describe('createSlashHandler', () => {
     expect(rpc).toHaveBeenCalledWith('session.save', { session_id: 'sid-abc' })
 
     await vi.waitFor(() => {
-      expect(ctx.transcript.sys).toHaveBeenCalledWith('conversation saved to: /tmp/prostor_conversation_test.json')
+      expect(ctx.transcript.sys).toHaveBeenCalledWith('conversation saved to: /tmp/hermes_conversation_test.json')
     })
   })
 
@@ -881,6 +891,7 @@ const buildCtx = (overrides: Partial<Ctx> = {}): Ctx => ({
 const buildComposer = () => ({
   enqueue: vi.fn(),
   hasSelection: false,
+  openEditor: vi.fn(async () => {}),
   paste: vi.fn(),
   queueRef: { current: [] as string[] },
   selection: { copySelection: vi.fn(async () => '') },

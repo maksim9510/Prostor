@@ -14,13 +14,13 @@ from unittest.mock import MagicMock
 import pytest
 
 import cli as cli_mod
-from cli import ProstorCLI
+from cli import HermesCLI
 
 
 @pytest.fixture
 def bare_cli():
-    """A ProstorCLI with no __init__ — we only exercise the redraw helper."""
-    cli = object.__new__(ProstorCLI)
+    """A HermesCLI with no __init__ — we only exercise the redraw helper."""
+    cli = object.__new__(HermesCLI)
     return cli
 
 
@@ -31,7 +31,7 @@ class TestForceFullRedraw:
         bare_cli._force_full_redraw()  # must not raise
 
     def test_missing_app_attr_is_safe(self, bare_cli):
-        # Simulate ProstorCLI before the TUI has ever been constructed.
+        # Simulate HermesCLI before the TUI has ever been constructed.
         bare_cli._force_full_redraw()  # must not raise
 
     def test_sends_full_clear_replays_then_invalidates(self, bare_cli, monkeypatch):

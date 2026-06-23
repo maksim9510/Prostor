@@ -2,11 +2,11 @@
 name: codebase-inspection
 description: "Inspect codebases w/ pygount: LOC, languages, ratios."
 version: 1.0.0
-author: Prostor Agent
+author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  prostor:
+  hermes:
     tags: [LOC, Code Analysis, pygount, Codebase, Metrics, Repository]
     related_skills: [github-repo-management]
 prerequisites:

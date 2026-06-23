@@ -229,9 +229,9 @@ def normalize_reference_images(value: Any) -> Optional[List[str]]:
 
 def _images_cache_dir() -> Path:
     """Return ``$PROSTOR_HOME/cache/images/``, creating parents as needed."""
-    from prostor_core import get_prostor_home
+    from hermes_constants import get_hermes_home
 
-    path = get_prostor_home() / "cache" / "images"
+    path = get_hermes_home() / "cache" / "images"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

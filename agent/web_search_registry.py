@@ -98,7 +98,7 @@ def get_provider(name: str) -> Optional[WebSearchProvider]:
 def _read_config_key(*path: str) -> Optional[str]:
     """Resolve a dotted config key from ``config.yaml``. Returns None on miss."""
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         cfg = load_config()
         cur = cfg

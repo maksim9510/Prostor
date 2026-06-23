@@ -28,7 +28,7 @@ import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from prostor_constants import get_bundled_skills_dir, get_prostor_home, get_optional_skills_dir
+from hermes_constants import get_bundled_skills_dir, get_hermes_home, get_optional_skills_dir
 from agent.skill_utils import is_excluded_skill_path
 from typing import Dict, List, Optional, Tuple
 from utils import atomic_replace
@@ -36,7 +36,7 @@ from utils import atomic_replace
 logger = logging.getLogger(__name__)
 
 
-PROSTOR_HOME = get_prostor_home()
+PROSTOR_HOME = get_hermes_home()
 SKILLS_DIR = PROSTOR_HOME / "skills"
 MANIFEST_FILE = SKILLS_DIR / ".bundled_manifest"
 
@@ -45,7 +45,7 @@ MANIFEST_FILE = SKILLS_DIR / ".bundled_manifest"
 # When present in PROSTOR_HOME, sync_skills() is a no-op so neither the
 # installer, `prostor update`, nor a direct sync re-injects bundled skills.
 # Delete the file to opt back in. Mirrors
-# prostor_cli.profiles.NO_BUNDLED_SKILLS_MARKER (kept as a literal here to
+# hermes_cli.profiles.NO_BUNDLED_SKILLS_MARKER (kept as a literal here to
 # avoid importing the CLI layer into this low-level sync module).
 NO_BUNDLED_SKILLS_MARKER = ".no-bundled-skills"
 

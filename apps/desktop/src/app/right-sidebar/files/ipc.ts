@@ -1,9 +1,9 @@
 import ignore from 'ignore'
 
-import type { ProstorReadDirEntry, ProstorReadDirResult } from '@/global'
 import { desktopFsCacheKey, desktopGitRoot, readDesktopDir, readDesktopFileDataUrl } from '@/lib/desktop-fs'
+import type { HermesReadDirEntry, HermesReadDirResult } from '@/global'
 
-export type ProjectTreeEntry = ProstorReadDirEntry
+export type ProjectTreeEntry = HermesReadDirEntry
 
 interface GitignoreRule {
   base: string
@@ -104,7 +104,7 @@ async function gitignoreFor(dir: string) {
   return cached
 }
 
-function ignoredBy(rules: GitignoreRule[], entry: ProstorReadDirEntry) {
+function ignoredBy(rules: GitignoreRule[], entry: HermesReadDirEntry) {
   return rules.some(rule => {
     const rel = relativeTo(rule.base, entry.path)
 
@@ -116,7 +116,7 @@ function ignoredBy(rules: GitignoreRule[], entry: ProstorReadDirEntry) {
   })
 }
 
-async function filterIgnored(entries: ProstorReadDirEntry[], rootPath: string, dirPath: string) {
+async function filterIgnored(entries: HermesReadDirEntry[], rootPath: string, dirPath: string) {
   const root = await gitRootFor(rootPath)
 
   if (!root) {
@@ -130,8 +130,8 @@ async function filterIgnored(entries: ProstorReadDirEntry[], rootPath: string, d
   return rules.length > 0 ? entries.filter(entry => !ignoredBy(rules, entry)) : entries
 }
 
-export async function readProjectDir(dirPath: string, rootPath = dirPath): Promise<ProstorReadDirResult> {
-  if (!window.prostorDesktop) {
+export async function readProjectDir(dirPath: string, rootPath = dirPath): Promise<HermesReadDirResult> {
+  if (!window.hermesDesktop) {
     return { entries: [], error: 'no-bridge' }
   }
 

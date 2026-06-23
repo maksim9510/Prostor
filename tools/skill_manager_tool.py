@@ -39,11 +39,11 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from prostor_constants import get_prostor_home, display_prostor_home
+from hermes_constants import get_hermes_home, display_hermes_home
 from typing import Dict, Any, List, Optional, Tuple
 
 from utils import atomic_replace, is_truthy_value
-from prostor_cli.config import cfg_get
+from hermes_cli.config import cfg_get
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def _guard_agent_created_enabled() -> bool:
     on via `prostor config set skills.guard_agent_created true`.
     """
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
         return is_truthy_value(
             cfg_get(cfg, "skills", "guard_agent_created"),
@@ -105,7 +105,7 @@ import yaml
 
 
 # All skills live in ~/.prostor/skills/ (single source of truth)
-PROSTOR_HOME = get_prostor_home()
+PROSTOR_HOME = get_hermes_home()
 SKILLS_DIR = PROSTOR_HOME / "skills"
 
 MAX_NAME_LENGTH = 64
@@ -380,13 +380,13 @@ def _find_skill_in_other_profiles(name: str) -> List[Tuple[str, Path]]:
     """
     matches: List[Tuple[str, Path]] = []
     try:
-        from prostor_constants import get_default_prostor_root
+        from hermes_constants import get_default_hermes_root
         from agent.skill_utils import is_excluded_skill_path
     except Exception:
         return matches
 
     try:
-        root = get_default_prostor_root()
+        root = get_default_hermes_root()
     except Exception:
         return matches
 
@@ -1101,7 +1101,7 @@ SKILL_MANAGE_SCHEMA = {
     "description": (
         "Manage skills (create, update, delete). Skills are your procedural "
         "memory — reusable approaches for recurring task types. "
-        f"New skills go to {display_prostor_home()}/skills/; existing skills can be modified wherever they live.\n\n"
+        f"New skills go to {display_hermes_home()}/skills/; existing skills can be modified wherever they live.\n\n"
         "Actions: create (full SKILL.md + optional category), "
         "patch (old_string/new_string — preferred for fixes), "
         "edit (full SKILL.md rewrite — major overhauls only), "

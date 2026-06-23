@@ -51,7 +51,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 from tools.registry import registry, tool_error
-from tools.xai_http import prostor_xai_user_agent, resolve_xai_http_credentials
+from tools.xai_http import hermes_xai_user_agent, resolve_xai_http_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ MAX_HANDLES = 10
 
 def _load_x_search_config() -> Dict[str, Any]:
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         return load_config().get("x_search", {}) or {}
     except Exception:
@@ -128,7 +128,7 @@ def check_x_search_requirements() -> bool:
     """Return True when xAI credentials are available AND valid.
 
     ``resolve_xai_http_credentials`` calls
-    :func:`prostor_cli.auth.resolve_xai_oauth_runtime_credentials` which
+    :func:`hermes_cli.auth.resolve_xai_oauth_runtime_credentials` which
     auto-refreshes the OAuth access token if it's expiring; a successful
     return therefore implies a usable bearer.
     """
@@ -335,7 +335,7 @@ def x_search_tool(
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
-                        "User-Agent": prostor_xai_user_agent(),
+                        "User-Agent": hermes_xai_user_agent(),
                     },
                     json=payload,
                     timeout=timeout_seconds,

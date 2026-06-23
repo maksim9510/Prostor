@@ -1,29 +1,29 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ProstorReadDirResult } from '@/global'
+import type { HermesReadDirResult } from '@/global'
 import { $connection, setCurrentCwd } from '@/store/session'
 
 import { resetProjectTreeState } from './files/use-project-tree'
 
 import { RightSidebarPane } from './index'
 
-const readDir = vi.fn<(path: string) => Promise<ProstorReadDirResult>>()
+const readDir = vi.fn<(path: string) => Promise<HermesReadDirResult>>()
 const selectPaths = vi.fn()
 
-function ok(entries: { name: string; path: string; isDirectory: boolean }[]): ProstorReadDirResult {
+function ok(entries: { name: string; path: string; isDirectory: boolean }[]): HermesReadDirResult {
   return { entries }
 }
 
 function installBridge() {
   ;(
     window as unknown as {
-      prostorDesktop: {
+      hermesDesktop: {
         readDir: typeof readDir
         selectPaths: typeof selectPaths
       }
     }
-  ).prostorDesktop = { readDir, selectPaths }
+  ).hermesDesktop = { readDir, selectPaths }
 }
 
 describe('RightSidebarPane', () => {
@@ -43,7 +43,7 @@ describe('RightSidebarPane', () => {
     $connection.set(null)
     setCurrentCwd('')
     resetProjectTreeState()
-    delete (window as unknown as { prostorDesktop?: unknown }).prostorDesktop
+    delete (window as unknown as { hermesDesktop?: unknown }).hermesDesktop
   })
 
   it('refreshes the current tree without opening the folder picker', async () => {

@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
 
-import type { ProstorConnection } from '@/global'
+import type { HermesConnection } from '@/global'
+import { HermesGateway } from '@/prostor'
 import { translateNow } from '@/i18n'
 import { desktopDefaultCwd } from '@/lib/desktop-fs'
 import { isGatewayReauthRequired, resolveGatewayWsUrl } from '@/lib/gateway-ws-url'
-import { ProstorGateway } from '@/prostor'
 import {
   $desktopBoot,
   applyDesktopBootProgress,
@@ -43,10 +43,10 @@ import type { RpcEvent } from '@/types/prostor'
 interface GatewayBootOptions {
   handleGatewayEvent: (event: RpcEvent) => void
   onConnectionReady: (
-    connection: Awaited<ReturnType<NonNullable<typeof window.prostorDesktop>['getConnection']>> | null
+    connection: Awaited<ReturnType<NonNullable<typeof window.hermesDesktop>['getConnection']>> | null
   ) => void
-  onGatewayReady: (gateway: ProstorGateway | null) => void
-  refreshProstorConfig: () => Promise<void>
+  onGatewayReady: (gateway: HermesGateway | null) => void
+  refreshHermesConfig: () => Promise<void>
   refreshSessions: () => Promise<void>
 }
 
@@ -54,14 +54,14 @@ export function useGatewayBoot({
   handleGatewayEvent,
   onConnectionReady,
   onGatewayReady,
-  refreshProstorConfig,
+  refreshHermesConfig,
   refreshSessions
 }: GatewayBootOptions) {
   const callbacksRef = useRef({
     handleGatewayEvent,
     onConnectionReady,
     onGatewayReady,
-    refreshProstorConfig,
+    refreshHermesConfig,
     refreshSessions
   })
 
@@ -69,15 +69,15 @@ export function useGatewayBoot({
     handleGatewayEvent,
     onConnectionReady,
     onGatewayReady,
-    refreshProstorConfig,
+    refreshHermesConfig,
     refreshSessions
   }
 
   useEffect(() => {
     let cancelled = false
-    const desktop = window.prostorDesktop
+    const desktop = window.hermesDesktop
 
-    const publish = (next: ProstorConnection | null) => {
+    const publish = (next: HermesConnection | null) => {
       callbacksRef.current.onConnectionReady(next)
       setConnection(next)
     }
@@ -156,7 +156,7 @@ export function useGatewayBoot({
 
         reconnectAttempt = 0
         // Resync state that may have moved on the backend while we were asleep.
-        await callbacksRef.current.refreshProstorConfig().catch(() => undefined)
+        await callbacksRef.current.refreshHermesConfig().catch(() => undefined)
         await callbacksRef.current.refreshSessions().catch(() => undefined)
       } catch (err) {
         // OAuth session expired mid-reconnect: surface the actionable "sign in
@@ -216,7 +216,7 @@ export function useGatewayBoot({
       progress: 6
     })
 
-    const gateway = new ProstorGateway()
+    const gateway = new HermesGateway()
     callbacksRef.current.onGatewayReady(gateway)
     setPrimaryGateway(gateway, normalizeProfileKey($activeGatewayProfile.get()))
     // Secondary (background-profile) sockets funnel into the same handler.
@@ -359,13 +359,11 @@ export function useGatewayBoot({
         })
         await ensureDefaultWorkspaceCwd()
         const remoteDefault = await desktopDefaultCwd().catch(() => null)
-
         if (remoteDefault?.cwd && !$activeSessionId.get() && !$currentCwd.get()) {
           setCurrentCwd(remoteDefault.cwd)
           setCurrentBranch(remoteDefault.branch || '')
         }
-
-        await callbacksRef.current.refreshProstorConfig()
+        await callbacksRef.current.refreshHermesConfig()
 
         if (cancelled) {
           return

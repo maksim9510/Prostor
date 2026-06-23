@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { canOpenSessionWindow, openNewSessionInNewWindow, openSessionInNewWindow } from './windows'
 
-const desktopWindow = window as unknown as { prostorDesktop?: Window['prostorDesktop'] }
-const initialProstorDesktop = desktopWindow.prostorDesktop
+const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
+const initialHermesDesktop = desktopWindow.hermesDesktop
 
 const notifyError = vi.fn()
 
@@ -12,13 +12,13 @@ vi.mock('./notifications', () => ({
 }))
 
 function installBridge(
-  openSessionWindow?: Window['prostorDesktop']['openSessionWindow'],
-  openNewSessionWindow?: Window['prostorDesktop']['openNewSessionWindow']
+  openSessionWindow?: Window['hermesDesktop']['openSessionWindow'],
+  openNewSessionWindow?: Window['hermesDesktop']['openNewSessionWindow']
 ) {
-  desktopWindow.prostorDesktop = {
+  desktopWindow.hermesDesktop = {
     ...(openSessionWindow ? { openSessionWindow } : {}),
     ...(openNewSessionWindow ? { openNewSessionWindow } : {})
-  } as unknown as Window['prostorDesktop']
+  } as unknown as Window['hermesDesktop']
 }
 
 beforeEach(() => {
@@ -26,16 +26,16 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (initialProstorDesktop) {
-    desktopWindow.prostorDesktop = initialProstorDesktop
+  if (initialHermesDesktop) {
+    desktopWindow.hermesDesktop = initialHermesDesktop
   } else {
-    delete desktopWindow.prostorDesktop
+    delete desktopWindow.hermesDesktop
   }
 })
 
 describe('canOpenSessionWindow', () => {
   it('is false when the desktop bridge is absent', () => {
-    delete desktopWindow.prostorDesktop
+    delete desktopWindow.hermesDesktop
     expect(canOpenSessionWindow()).toBe(false)
   })
 
@@ -62,7 +62,7 @@ describe('openSessionInNewWindow', () => {
   })
 
   it('no-ops gracefully when the bridge is absent (web fallback)', async () => {
-    delete desktopWindow.prostorDesktop
+    delete desktopWindow.hermesDesktop
 
     await openSessionInNewWindow('s1')
 
@@ -108,7 +108,7 @@ describe('openSessionInNewWindow', () => {
 
 describe('openNewSessionInNewWindow', () => {
   it('no-ops gracefully when the bridge is absent (web fallback)', async () => {
-    delete desktopWindow.prostorDesktop
+    delete desktopWindow.hermesDesktop
 
     await openNewSessionInNewWindow()
 

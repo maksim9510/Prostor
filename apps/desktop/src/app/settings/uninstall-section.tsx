@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import type { DesktopUninstallMode, DesktopUninstallSummary } from '@/global'
 import { AlertTriangle, Loader2, Trash2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import type { DesktopUninstallMode, DesktopUninstallSummary } from '@/global'
 
 import { SectionHeading } from './primitives'
 
@@ -54,14 +54,11 @@ export function UninstallSection() {
 
   useEffect(() => {
     let alive = true
-    const bridge = window.prostorDesktop?.uninstall
-
+    const bridge = window.hermesDesktop?.uninstall
     if (!bridge) {
       setLoading(false)
-
       return
     }
-
     void bridge
       .summary()
       .then(result => {
@@ -77,14 +74,12 @@ export function UninstallSection() {
           setLoading(false)
         }
       })
-
     return () => {
       alive = false
     }
   }, [])
 
-  const bridge = window.prostorDesktop?.uninstall
-
+  const bridge = window.hermesDesktop?.uninstall
   if (!bridge) {
     return null
   }
@@ -98,13 +93,10 @@ export function UninstallSection() {
     if (!pending) {
       return
     }
-
     setRunning(true)
     setError(null)
-
     try {
       const result = await bridge.run(pending)
-
       if (!result.ok) {
         setError(result.message || result.error || 'Uninstall could not start.')
         setRunning(false)

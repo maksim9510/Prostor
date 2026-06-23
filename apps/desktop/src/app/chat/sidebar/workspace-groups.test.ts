@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ProstorWorktreeInfo } from '@/global'
+import type { HermesWorktreeInfo } from '@/global'
 import type { SessionInfo } from '@/types/prostor'
 
 import { uniqueCwds, workspaceGroupsFor, workspaceTreeFor, type WorktreeResolver } from './workspace-groups'
@@ -68,7 +68,7 @@ describe('workspaceGroupsFor', () => {
   })
 })
 
-const info = (over: Partial<ProstorWorktreeInfo> & Pick<ProstorWorktreeInfo, 'repoRoot' | 'worktreeRoot'>): ProstorWorktreeInfo => ({
+const info = (over: Partial<HermesWorktreeInfo> & Pick<HermesWorktreeInfo, 'repoRoot' | 'worktreeRoot'>): HermesWorktreeInfo => ({
   branch: null,
   isMainWorktree: false,
   ...over

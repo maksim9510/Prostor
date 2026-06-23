@@ -306,6 +306,6 @@ class TestProfileBuildSeenFlag:
 
 class TestProfileBuildConfigDefault:
     def test_default_config_carries_ask(self):
-        from prostor_cli.config import DEFAULT_CONFIG
+        from hermes_cli.config import DEFAULT_CONFIG
 
         assert DEFAULT_CONFIG["onboarding"]["profile_build"] == "ask"

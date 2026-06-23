@@ -1,7 +1,7 @@
 import { atom } from 'nanostores'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ProstorConnection } from '@/global'
+import type { HermesConnection } from '@/global'
 
 // Keep profile.ts's side-effecting imports inert: the gateway socket layer and
 // the REST query client must not run for real in a unit test.
@@ -18,13 +18,13 @@ vi.mock('@/lib/query-client', () => ({ queryClient: { invalidateQueries: vi.fn()
 const { $activeGatewayProfile, ensureGatewayProfile } = await import('./profile')
 const { $connection } = await import('./session')
 
-const remoteConn = (over: Partial<ProstorConnection> = {}): ProstorConnection =>
-  ({ baseUrl: 'https://prostor-roy.tail.ts.net', mode: 'remote', profile: 'vps-remote', ...over }) as ProstorConnection
+const remoteConn = (over: Partial<HermesConnection> = {}): HermesConnection =>
+  ({ baseUrl: 'https://prostor-roy.tail.ts.net', mode: 'remote', profile: 'vps-remote', ...over }) as HermesConnection
 
-const localConn = (over: Partial<ProstorConnection> = {}): ProstorConnection =>
-  ({ baseUrl: '', mode: 'local', profile: 'default', ...over }) as ProstorConnection
+const localConn = (over: Partial<HermesConnection> = {}): HermesConnection =>
+  ({ baseUrl: '', mode: 'local', profile: 'default', ...over }) as HermesConnection
 
-const getConnection = vi.fn<(profile?: string | null) => Promise<ProstorConnection>>()
+const getConnection = vi.fn<(profile?: string | null) => Promise<HermesConnection>>()
 
 beforeEach(() => {
   getConnection.mockReset()
@@ -32,7 +32,7 @@ beforeEach(() => {
   $gateway.set({ id: 'live-socket' })
   $activeGatewayProfile.set('default')
   $connection.set(localConn())
-  vi.stubGlobal('window', { prostorDesktop: { getConnection } })
+  vi.stubGlobal('window', { hermesDesktop: { getConnection } })
 })
 
 afterEach(() => {

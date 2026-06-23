@@ -16,8 +16,8 @@ const getAuxiliaryModels = vi.fn()
 const setModelAssignment = vi.fn()
 const getRecommendedDefaultModel = vi.fn()
 const setEnvVar = vi.fn()
-const getProstorConfigRecord = vi.fn()
-const saveProstorConfig = vi.fn()
+const getHermesConfigRecord = vi.fn()
+const saveHermesConfig = vi.fn()
 const startManualProviderOAuth = vi.fn()
 
 vi.mock('@/prostor', () => ({
@@ -27,8 +27,8 @@ vi.mock('@/prostor', () => ({
   setModelAssignment: (body: unknown) => setModelAssignment(body),
   getRecommendedDefaultModel: (slug: string) => getRecommendedDefaultModel(slug),
   setEnvVar: (key: string, value: string) => setEnvVar(key, value),
-  getProstorConfigRecord: () => getProstorConfigRecord(),
-  saveProstorConfig: (config: unknown) => saveProstorConfig(config)
+  getHermesConfigRecord: () => getHermesConfigRecord(),
+  saveHermesConfig: (config: unknown) => saveHermesConfig(config)
 }))
 
 vi.mock('@/store/onboarding', () => ({
@@ -57,8 +57,8 @@ beforeEach(() => {
   setModelAssignment.mockResolvedValue({ provider: 'nous', model: 'prostor-4', gateway_tools: [] })
   getRecommendedDefaultModel.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-chat', free_tier: null })
   setEnvVar.mockResolvedValue({ ok: true })
-  getProstorConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
-  saveProstorConfig.mockResolvedValue({ ok: true })
+  getHermesConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
+  saveHermesConfig.mockResolvedValue({ ok: true })
 })
 
 afterEach(() => {
@@ -114,13 +114,13 @@ describe('ModelSettings', () => {
 
   it('writes the profile default speed (service_tier) when the fast switch is toggled', async () => {
     await renderModelSettings()
-    await waitFor(() => expect(getProstorConfigRecord).toHaveBeenCalled())
+    await waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
 
     const fastSwitch = await screen.findByRole('switch')
     fireEvent.click(fastSwitch)
 
     await waitFor(() =>
-      expect(saveProstorConfig).toHaveBeenCalledWith(
+      expect(saveHermesConfig).toHaveBeenCalledWith(
         expect.objectContaining({ agent: expect.objectContaining({ service_tier: 'fast' }) })
       )
     )
@@ -132,7 +132,7 @@ describe('ModelSettings', () => {
     })
 
     await renderModelSettings()
-    await waitFor(() => expect(getProstorConfigRecord).toHaveBeenCalled())
+    await waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
 
     expect(screen.queryByRole('switch')).toBeNull()
   })

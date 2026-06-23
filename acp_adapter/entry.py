@@ -13,12 +13,12 @@ Usage::
     prostor-acp
 """
 
-# IMPORTANT: prostor_bootstrap must be the very first import — UTF-8 stdio
-# on Windows.  No-op on POSIX.  See prostor_bootstrap.py for full rationale.
+# IMPORTANT: hermes_bootstrap must be the very first import — UTF-8 stdio
+# on Windows.  No-op on POSIX.  See hermes_bootstrap.py for full rationale.
 try:
-    import prostor_bootstrap  # noqa: F401
+    import hermes_bootstrap  # noqa: F401
 except ModuleNotFoundError:
-    # Graceful fallback when prostor_bootstrap isn't registered in the venv
+    # Graceful fallback when hermes_bootstrap isn't registered in the venv
     # yet — happens during partial ``prostor update`` where git-reset landed
     # new code but ``uv pip install -e .`` didn't finish.  Missing bootstrap
     # means UTF-8 stdio setup is skipped on Windows; POSIX is unaffected.
@@ -29,7 +29,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 
 
 # Methods clients send as periodic liveness probes. They are not part of the
@@ -95,16 +95,16 @@ def _setup_logging() -> None:
 
 def _load_env() -> None:
     """Load .env from PROSTOR_HOME (default ``~/.prostor``)."""
-    from prostor_cli.env_loader import load_prostor_dotenv
+    from hermes_cli.env_loader import load_hermes_dotenv
 
-    prostor_home = get_prostor_home()
-    loaded = load_prostor_dotenv(prostor_home=prostor_home)
+    hermes_home = get_hermes_home()
+    loaded = load_hermes_dotenv(hermes_home=hermes_home)
     if loaded:
         for env_file in loaded:
             logging.getLogger(__name__).info("Loaded env from %s", env_file)
     else:
         logging.getLogger(__name__).info(
-            "No .env found at %s, using system env", prostor_home / ".env"
+            "No .env found at %s, using system env", hermes_home / ".env"
         )
 
 
@@ -142,25 +142,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _print_version() -> None:
-    from prostor_cli import __version__ as prostor_version
+    from hermes_cli import __version__ as hermes_version
 
-    print(prostor_version)
+    print(hermes_version)
 
 
 def _run_check() -> None:
     import acp  # noqa: F401
-    from acp_adapter.server import ProstorACPAgent  # noqa: F401
+    from acp_adapter.server import HermesACPAgent  # noqa: F401
 
     print("Prostor ACP check OK")
 
 
 def _run_setup() -> None:
-    from prostor_cli.main import main as prostor_main
+    from hermes_cli.main import main as hermes_main
 
     old_argv = sys.argv[:]
     try:
         sys.argv = [old_argv[0] if old_argv else "prostor", "model"]
-        prostor_main()
+        hermes_main()
     finally:
         sys.argv = old_argv
 
@@ -189,7 +189,7 @@ def _run_setup_browser(assume_yes: bool = False) -> int:
 
     Returns 0 on success, 1 on failure.
     """
-    from prostor_cli.dep_ensure import ensure_dependency
+    from hermes_cli.dep_ensure import ensure_dependency
 
     try:
         node_ok = ensure_dependency("node", interactive=not assume_yes)
@@ -239,7 +239,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.path.insert(0, project_root)
 
     import acp
-    from .server import ProstorACPAgent
+    from .server import HermesACPAgent
 
     # MCP tool discovery from config.yaml — run before asyncio.run() so
     # it's safe to use blocking waits.  (ACP also registers per-session
@@ -252,7 +252,7 @@ def main(argv: list[str] | None = None) -> None:
     except Exception:
         logger.debug("MCP tool discovery failed at ACP startup", exc_info=True)
 
-    agent = ProstorACPAgent()
+    agent = HermesACPAgent()
     try:
         asyncio.run(acp.run_agent(agent, use_unstable_protocol=True))
     except KeyboardInterrupt:

@@ -5,7 +5,7 @@
 # Uses uv for fast Python provisioning and package management.
 #
 # Usage:
-#   iex (irm https://github.com/maksim9510/Prostor/install.ps1)
+#   iex (irm https://prostor-agent.nousresearch.com/install.ps1)
 #
 # Or download and run with options:
 #   .\install.ps1 -NoVenv -SkipSetup
@@ -23,7 +23,7 @@ param(
     # exact ref.  Precedence: Commit > Tag > Branch.
     [string]$Commit = "",
     [string]$Tag = "",
-    [string]$ProstorHome = $(if ($env:PROSTOR_HOME) { $env:PROSTOR_HOME } else { "$env:LOCALAPPDATA\prostor" }),
+    [string]$HermesHome = $(if ($env:PROSTOR_HOME) { $env:PROSTOR_HOME } else { "$env:LOCALAPPDATA\prostor" }),
     [string]$InstallDir = $(if ($env:PROSTOR_HOME) { "$env:PROSTOR_HOME\prostor-agent" } else { "$env:LOCALAPPDATA\prostor\prostor-agent" }),
 
     # --- Stage protocol (additive; default invocation behaves as before) ----
@@ -136,8 +136,8 @@ foreach ($tmpVar in @('TEMP', 'TMP')) {
 # Configuration
 # ============================================================================
 
-$RepoUrlSsh = "git@github.com:maksim9510/Prostor.git"
-$RepoUrlHttps = "https://github.com/maksim9510/Prostor.git"
+$RepoUrlSsh = "git@github.com:NousResearch/prostor-agent.git"
+$RepoUrlHttps = "https://github.com/NousResearch/prostor-agent.git"
 $PythonVersion = "3.11"
 $NodeVersion = "22"
 
@@ -301,10 +301,10 @@ function Find-SystemBrowser {
 
 function Write-BrowserEnv {
     param([string]$BrowserPath)
-    if (-not (Test-Path $ProstorHome)) {
-        New-Item -ItemType Directory -Force -Path $ProstorHome | Out-Null
+    if (-not (Test-Path $HermesHome)) {
+        New-Item -ItemType Directory -Force -Path $HermesHome | Out-Null
     }
-    $envFile = Join-Path $ProstorHome ".env"
+    $envFile = Join-Path $HermesHome ".env"
     if (-not (Test-Path $envFile)) {
         Set-Content -Path $envFile -Value "AGENT_BROWSER_EXECUTABLE_PATH=$BrowserPath" -Encoding UTF8
         return
@@ -323,7 +323,7 @@ function Install-AgentBrowser {
     }
 
     Write-Info "Installing agent-browser via npm -g --prefix..."
-    $prefixDir = Join-Path $ProstorHome "node"
+    $prefixDir = Join-Path $HermesHome "node"
     if (-not (Test-Path $prefixDir)) {
         New-Item -ItemType Directory -Path $prefixDir -Force | Out-Null
     }
@@ -405,11 +405,11 @@ function Get-PowerShellHostExe {
 }
 
 function Install-Uv {
-    # Prostor owns its own uv at $ProstorHome\bin\uv.exe.  Always install there —
+    # Prostor owns its own uv at $HermesHome\bin\uv.exe.  Always install there —
     # no PATH probing, no conda guards, no multi-location resolution chains.
-    # The runtime update path (prostor_cli/managed_uv.py) looks in the same
+    # The runtime update path (hermes_cli/managed_uv.py) looks in the same
     # place, so install.ps1 and `prostor update` stay in sync.
-    $managedUv = Join-Path $ProstorHome "bin\uv.exe"
+    $managedUv = Join-Path $HermesHome "bin\uv.exe"
 
     if (Test-Path $managedUv) {
         $script:UvCmd = $managedUv
@@ -418,15 +418,15 @@ function Install-Uv {
         return $true
     }
 
-    Write-Info "Installing managed uv into $ProstorHome\bin ..."
-    New-Item -ItemType Directory -Path (Join-Path $ProstorHome "bin") -Force | Out-Null
+    Write-Info "Installing managed uv into $HermesHome\bin ..."
+    New-Item -ItemType Directory -Path (Join-Path $HermesHome "bin") -Force | Out-Null
 
     # UV_INSTALL_DIR tells the astral installer to place the binary
-    # directly into $ProstorHome\bin instead of ~/.local/bin.
+    # directly into $HermesHome\bin instead of ~/.local/bin.
     $prevEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
-        $env:UV_INSTALL_DIR = Join-Path $ProstorHome "bin"
+        $env:UV_INSTALL_DIR = Join-Path $HermesHome "bin"
         # Spawn via the resolved host exe (see Get-PowerShellHostExe) rather
         # than a bare `powershell`, which isn't guaranteed to be on PATH under
         # PowerShell 7 / pwsh-only setups.
@@ -487,7 +487,7 @@ function Resolve-UvCmd {
     }
 
     # Check the managed location first — this is where Install-Uv puts it.
-    $managedUv = Join-Path $ProstorHome "bin\uv.exe"
+    $managedUv = Join-Path $HermesHome "bin\uv.exe"
     if (Test-Path $managedUv) {
         $script:UvCmd = $managedUv
         return
@@ -663,10 +663,10 @@ function Install-Git {
         return $true
     }
 
-    # Download PortableGit into $ProstorHome\git.  Always works as long as
+    # Download PortableGit into $HermesHome\git.  Always works as long as
     # we can reach github.com -- no admin, no winget, no reliance on the
     # user's possibly-broken system Git install.
-    Write-Info "Git not found -- downloading PortableGit to $ProstorHome\git\ ..."
+    Write-Info "Git not found -- downloading PortableGit to $HermesHome\git\ ..."
     Write-Info "(no admin rights required; isolated from any system Git install)"
 
     try {
@@ -710,7 +710,7 @@ function Install-Git {
         $downloadUrl = "https://github.com/git-for-windows/git/releases/download/$gitTag/$assetName"
         $downloadExt = if ($downloadIsZip) { "zip" } else { "7z.exe" }
         $tmpFile = "$env:TEMP\$assetName"
-        $gitDir = "$ProstorHome\git"
+        $gitDir = "$HermesHome\git"
 
         Write-Info "Downloading $assetName (Git for Windows $gitVerTag)..."
         Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
@@ -797,10 +797,10 @@ function Set-GitBashEnvVar {
     # this with a system-Git-only installation anyway.
     #
     # Layouts:
-    #   PortableGit (our default): $ProstorHome\git\bin\bash.exe
-    #   MinGit (32-bit fallback):  $ProstorHome\git\usr\bin\bash.exe
-    $candidates += "$ProstorHome\git\bin\bash.exe"       # PortableGit layout (primary)
-    $candidates += "$ProstorHome\git\usr\bin\bash.exe"   # MinGit / PortableGit usr\bin fallback
+    #   PortableGit (our default): $HermesHome\git\bin\bash.exe
+    #   MinGit (32-bit fallback):  $HermesHome\git\usr\bin\bash.exe
+    $candidates += "$HermesHome\git\bin\bash.exe"       # PortableGit layout (primary)
+    $candidates += "$HermesHome\git\usr\bin\bash.exe"   # MinGit / PortableGit usr\bin fallback
 
     # git.exe on PATH can tell us where the install root is
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
@@ -865,10 +865,10 @@ function Test-Node {
     }
 
     # Prefer a Prostor-managed Node from a previous run over a too-old system one.
-    $managedNode = "$ProstorHome\node\node.exe"
+    $managedNode = "$HermesHome\node\node.exe"
     if ((Test-Path $managedNode) -and (Test-NodeVersionOk (& $managedNode --version))) {
         $version = & $managedNode --version
-        $env:Path = "$ProstorHome\node;$env:Path"
+        $env:Path = "$HermesHome\node;$env:Path"
         Write-Success "Node.js $version found (Prostor-managed)"
         $script:HasNode = $true
         return $true
@@ -880,11 +880,11 @@ function Test-Node {
     # winget install OpenJS.NodeJS.LTS triggers a system-wide MSI install
     # which prompts UAC (the dialog often appears minimized in the taskbar
     # and the install silently waits for consent, looking like a hang).
-    # The portable zip path drops node.exe + npm into $ProstorHome\node\
+    # The portable zip path drops node.exe + npm into $HermesHome\node\
     # which is user-scoped and identical to how Install-Git handles
     # PortableGit.  Same UX guarantee: works on locked-down enterprise
     # machines with no admin rights.
-    Write-Info "Downloading portable Node.js $NodeVersion to $ProstorHome\node\ ..."
+    Write-Info "Downloading portable Node.js $NodeVersion to $HermesHome\node\ ..."
     Write-Info "(no admin rights required; isolated from any system Node install)"
     try {
         $arch = Get-WindowsArch
@@ -903,16 +903,16 @@ function Test-Node {
 
             $extractedDir = Get-ChildItem $tmpDir -Directory | Select-Object -First 1
             if ($extractedDir) {
-                if (Test-Path "$ProstorHome\node") { Remove-Item -Recurse -Force "$ProstorHome\node" }
-                Move-Item $extractedDir.FullName "$ProstorHome\node"
+                if (Test-Path "$HermesHome\node") { Remove-Item -Recurse -Force "$HermesHome\node" }
+                Move-Item $extractedDir.FullName "$HermesHome\node"
 
                 # Session PATH so the rest of this run sees node/npm.
-                $env:Path = "$ProstorHome\node;$env:Path"
+                $env:Path = "$HermesHome\node;$env:Path"
 
                 # Persist to User PATH so fresh shells (and future stages
                 # in cross-process driver mode) see it.  Matches the
                 # pattern Install-Git uses for PortableGit.
-                $nodeDir = "$ProstorHome\node"
+                $nodeDir = "$HermesHome\node"
                 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
                 $userPathItems = if ($userPath) { $userPath -split ";" } else { @() }
                 if ($userPathItems -notcontains $nodeDir) {
@@ -920,8 +920,8 @@ function Test-Node {
                     [Environment]::SetEnvironmentVariable("Path", ($userPathItems -join ";"), "User")
                 }
 
-                $version = & "$ProstorHome\node\node.exe" --version
-                Write-Success "Node.js $version installed to $ProstorHome\node\ (portable, user-scoped)"
+                $version = & "$HermesHome\node\node.exe" --version
+                Write-Success "Node.js $version installed to $HermesHome\node\ (portable, user-scoped)"
                 $script:HasNode = $true
 
                 Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue
@@ -1419,13 +1419,13 @@ function Install-Repository {
                 # for.  GitHub supports archive URLs for commits, tags, and
                 # branches; we honour Commit > Tag > Branch.
                 if ($Commit) {
-                    $zipUrl = "https://github.com/maksim9510/Prostor/archive/$Commit.zip"
+                    $zipUrl = "https://github.com/NousResearch/prostor-agent/archive/$Commit.zip"
                     $zipLabel = $Commit
                 } elseif ($Tag) {
-                    $zipUrl = "https://github.com/maksim9510/Prostor/archive/refs/tags/$Tag.zip"
+                    $zipUrl = "https://github.com/NousResearch/prostor-agent/archive/refs/tags/$Tag.zip"
                     $zipLabel = $Tag
                 } else {
-                    $zipUrl = "https://github.com/maksim9510/Prostor/archive/refs/heads/$Branch.zip"
+                    $zipUrl = "https://github.com/NousResearch/prostor-agent/archive/refs/heads/$Branch.zip"
                     $zipLabel = $Branch
                 }
                 $zipPath = "$env:TEMP\prostor-agent-$zipLabel.zip"
@@ -1780,22 +1780,22 @@ function Set-PathVariable {
     Write-Info "Setting up prostor command..."
     
     if ($NoVenv) {
-        $prostorBin = "$InstallDir"
+        $hermesBin = "$InstallDir"
     } else {
-        $prostorBin = "$InstallDir\venv\Scripts"
+        $hermesBin = "$InstallDir\venv\Scripts"
     }
     
     # Add the venv Scripts dir to user PATH so prostor is globally available
     # On Windows, the prostor.exe in venv\Scripts\ has the venv Python baked in
     $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
     
-    if ($currentPath -notlike "*$prostorBin*") {
+    if ($currentPath -notlike "*$hermesBin*") {
         [Environment]::SetEnvironmentVariable(
             "Path",
-            "$prostorBin;$currentPath",
+            "$hermesBin;$currentPath",
             "User"
         )
-        Write-Success "Added to user PATH: $prostorBin"
+        Write-Success "Added to user PATH: $hermesBin"
     } else {
         Write-Info "PATH already configured"
     }
@@ -1803,15 +1803,15 @@ function Set-PathVariable {
     # Set PROSTOR_HOME so the Python code finds config/data in the right place.
     # Only needed on Windows where we install to %LOCALAPPDATA%\prostor instead
     # of the Unix default ~/.prostor
-    $currentProstorHome = [Environment]::GetEnvironmentVariable("PROSTOR_HOME", "User")
-    if (-not $currentProstorHome -or $currentProstorHome -ne $ProstorHome) {
-        [Environment]::SetEnvironmentVariable("PROSTOR_HOME", $ProstorHome, "User")
-        Write-Success "Set PROSTOR_HOME=$ProstorHome"
+    $currentHermesHome = [Environment]::GetEnvironmentVariable("PROSTOR_HOME", "User")
+    if (-not $currentHermesHome -or $currentHermesHome -ne $HermesHome) {
+        [Environment]::SetEnvironmentVariable("PROSTOR_HOME", $HermesHome, "User")
+        Write-Success "Set PROSTOR_HOME=$HermesHome"
     }
-    $env:PROSTOR_HOME = $ProstorHome
+    $env:PROSTOR_HOME = $HermesHome
     
     # Update current session
-    $env:Path = "$prostorBin;$env:Path"
+    $env:Path = "$hermesBin;$env:Path"
     
     Write-Success "prostor command ready"
 }
@@ -1896,20 +1896,20 @@ function Write-BootstrapMarker {
 function Copy-ConfigTemplates {
     Write-Info "Setting up configuration files..."
     
-    # Create the PROSTOR_HOME directory structure ($ProstorHome, default %LOCALAPPDATA%\prostor)
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\cron" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\sessions" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\logs" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\pairing" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\hooks" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\image_cache" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\audio_cache" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\memories" | Out-Null
-    New-Item -ItemType Directory -Force -Path "$ProstorHome\skills" | Out-Null
+    # Create the PROSTOR_HOME directory structure ($HermesHome, default %LOCALAPPDATA%\prostor)
+    New-Item -ItemType Directory -Force -Path "$HermesHome\cron" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$HermesHome\sessions" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$HermesHome\logs" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$HermesHome\pairing" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$HermesHome\hooks" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$HermesHome\image_cache" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$HermesHome\audio_cache" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$HermesHome\memories" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$HermesHome\skills" | Out-Null
 
     
     # Create .env
-    $envPath = "$ProstorHome\.env"
+    $envPath = "$HermesHome\.env"
     if (-not (Test-Path $envPath)) {
         $examplePath = "$InstallDir\.env.example"
         if (Test-Path $examplePath) {
@@ -1924,7 +1924,7 @@ function Copy-ConfigTemplates {
     }
     
     # Create config.yaml
-    $configPath = "$ProstorHome\config.yaml"
+    $configPath = "$HermesHome\config.yaml"
     if (-not (Test-Path $configPath)) {
         $examplePath = "$InstallDir\cli-config.yaml.example"
         if (Test-Path $examplePath) {
@@ -1944,7 +1944,7 @@ function Copy-ConfigTemplates {
     # don't control which PowerShell version the user has.  Go direct
     # to .NET with an explicit UTF8Encoding($false) -- BOM-free on every
     # PowerShell version.
-    $soulPath = "$ProstorHome\SOUL.md"
+    $soulPath = "$HermesHome\SOUL.md"
     if (-not (Test-Path $soulPath)) {
         $soulContent = @"
 # Prostor Agent Persona
@@ -1968,22 +1968,22 @@ Delete the contents (or this file) to use the default personality.
         Write-Success "Created $soulPath (edit to customize personality)"
     }
     
-    Write-Success "Configuration directory ready: $ProstorHome"
+    Write-Success "Configuration directory ready: $HermesHome"
     
-    # Seed bundled skills into $ProstorHome\skills (manifest-based, one-time per skill)
-    Write-Info "Syncing bundled skills to $ProstorHome\skills ..."
+    # Seed bundled skills into $HermesHome\skills (manifest-based, one-time per skill)
+    Write-Info "Syncing bundled skills to $HermesHome\skills ..."
     $pythonExe = "$InstallDir\venv\Scripts\python.exe"
     if (Test-Path $pythonExe) {
         try {
             & $pythonExe "$InstallDir\tools\skills_sync.py" 2>$null
-            Write-Success "Skills synced to $ProstorHome\skills"
+            Write-Success "Skills synced to $HermesHome\skills"
         } catch {
             # Fallback: simple directory copy
             $bundledSkills = "$InstallDir\skills"
-            $userSkills = "$ProstorHome\skills"
+            $userSkills = "$HermesHome\skills"
             if ((Test-Path $bundledSkills) -and -not (Get-ChildItem $userSkills -Exclude '.bundled_manifest' -ErrorAction SilentlyContinue)) {
                 Copy-Item -Path "$bundledSkills\*" -Destination $userSkills -Recurse -Force -ErrorAction SilentlyContinue
-                Write-Success "Skills copied to $ProstorHome\skills"
+                Write-Success "Skills copied to $HermesHome\skills"
             }
         }
     }
@@ -2345,7 +2345,7 @@ function Install-Desktop {
     # itself, ~150MB), then run `npm run pack` in apps/desktop which
     # produces the unpacked binary at apps/desktop/release/<os>-unpacked/.
     #
-    # The Tauri bootstrap installer's launch_prostor_desktop command
+    # The Tauri bootstrap installer's launch_hermes_desktop command
     # resolves apps/desktop/release/win-unpacked/Prostor.exe directly,
     # so an "unpacked" build (electron-builder --dir) is enough — we
     # don't need to produce an NSIS/MSI artifact here.
@@ -2661,7 +2661,7 @@ function Install-PlatformSdks {
         return
     }
 
-    $envPath = "$ProstorHome\.env"
+    $envPath = "$HermesHome\.env"
     if (-not (Test-Path $envPath)) { return }
     $envLines = Get-Content $envPath -ErrorAction SilentlyContinue
 
@@ -2765,16 +2765,16 @@ function Invoke-SetupWizard {
 
     # Run prostor setup using the venv Python directly (no activation needed)
     if (-not $NoVenv) {
-        & ".\venv\Scripts\python.exe" -m prostor_cli.main setup
+        & ".\venv\Scripts\python.exe" -m hermes_cli.main setup
     } else {
-        python -m prostor_cli.main setup
+        python -m hermes_cli.main setup
     }
 
     Pop-Location
 }
 
 function Start-GatewayIfConfigured {
-    $envPath = "$ProstorHome\.env"
+    $envPath = "$HermesHome\.env"
     if (-not (Test-Path $envPath)) { return }
 
     $hasMessaging = $false
@@ -2786,14 +2786,14 @@ function Start-GatewayIfConfigured {
 
     if (-not $hasMessaging) { return }
 
-    $prostorCmd = "$InstallDir\venv\Scripts\prostor.exe"
-    if (-not (Test-Path $prostorCmd)) {
-        $prostorCmd = "prostor"
+    $hermesCmd = "$InstallDir\venv\Scripts\prostor.exe"
+    if (-not (Test-Path $hermesCmd)) {
+        $hermesCmd = "prostor"
     }
 
     # If WhatsApp is enabled but not yet paired, run foreground for QR scan
     $whatsappEnabled = $content | Where-Object { $_ -match "^WHATSAPP_ENABLED=true" }
-    $whatsappSession = "$ProstorHome\whatsapp\session\creds.json"
+    $whatsappSession = "$HermesHome\whatsapp\session\creds.json"
     if ($whatsappEnabled -and -not (Test-Path $whatsappSession)) {
         Write-Host ""
         Write-Info "WhatsApp is enabled but not yet paired."
@@ -2806,7 +2806,7 @@ function Start-GatewayIfConfigured {
             $response = Read-Host "Pair WhatsApp now? [Y/n]"
             if ($response -eq "" -or $response -match "^[Yy]") {
                 try {
-                    & $prostorCmd whatsapp
+                    & $hermesCmd whatsapp
                 } catch {
                     # Expected after pairing completes
                 }
@@ -2835,10 +2835,10 @@ function Start-GatewayIfConfigured {
     if ($response -eq "" -or $response -match "^[Yy]") {
         Write-Info "Starting gateway in background..."
         try {
-            $logFile = "$ProstorHome\logs\gateway.log"
-            Start-Process -FilePath $prostorCmd -ArgumentList "gateway" `
+            $logFile = "$HermesHome\logs\gateway.log"
+            Start-Process -FilePath $hermesCmd -ArgumentList "gateway" `
                 -RedirectStandardOutput $logFile `
-                -RedirectStandardError "$ProstorHome\logs\gateway-error.log" `
+                -RedirectStandardError "$HermesHome\logs\gateway-error.log" `
                 -WindowStyle Hidden
             Write-Success "Gateway started! Your bot is now online."
             Write-Info "Logs: $logFile"
@@ -2862,13 +2862,13 @@ function Write-Completion {
     Write-Host "* Your files:" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "   Config:    " -NoNewline -ForegroundColor Yellow
-    Write-Host "$ProstorHome\config.yaml"
+    Write-Host "$HermesHome\config.yaml"
     Write-Host "   API Keys:  " -NoNewline -ForegroundColor Yellow
-    Write-Host "$ProstorHome\.env"
+    Write-Host "$HermesHome\.env"
     Write-Host "   Data:      " -NoNewline -ForegroundColor Yellow
-    Write-Host "$ProstorHome\cron\, sessions\, logs\"
+    Write-Host "$HermesHome\cron\, sessions\, logs\"
     Write-Host "   Code:      " -NoNewline -ForegroundColor Yellow
-    Write-Host "$ProstorHome\prostor-agent\"
+    Write-Host "$HermesHome\prostor-agent\"
     Write-Host ""
     
     Write-Host "---------------------------------------------------------" -ForegroundColor Cyan
@@ -3286,7 +3286,7 @@ try {
     Write-Err "Installation failed: $_"
     Write-Host ""
     Write-Info "If the error is unclear, try downloading and running the script directly:"
-    Write-Host "  Invoke-WebRequest -Uri 'https://github.com/maksim9510/Prostor/install.ps1' -OutFile install.ps1" -ForegroundColor Yellow
+    Write-Host "  Invoke-WebRequest -Uri 'https://prostor-agent.nousresearch.com/install.ps1' -OutFile install.ps1" -ForegroundColor Yellow
     Write-Host "  .\install.ps1" -ForegroundColor Yellow
     Write-Host ""
 }

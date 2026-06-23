@@ -34,7 +34,7 @@ except ImportError:
 import sys
 from pathlib import Path as _Path
 
-sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.helpers import MessageDeduplicator
@@ -46,6 +46,7 @@ from gateway.platforms.base import (
     SendResult,
     SUPPORTED_DOCUMENT_TYPES,
     SUPPORTED_VIDEO_TYPES,
+    _TEXT_INJECT_EXTENSIONS,
     is_host_excluded_by_no_proxy,
     resolve_proxy_url,
     safe_url_for_log,
@@ -320,6 +321,7 @@ class SlackAdapter(BasePlatformAdapter):
 
     MAX_MESSAGE_LENGTH = 39000  # Slack API allows 40,000 chars; leave margin
     supports_code_blocks = True  # Slack mrkdwn renders fenced code blocks
+    splits_long_messages = True  # send() chunks via truncate_message(MAX_MESSAGE_LENGTH)
     # Slack blocks typed native slash commands inside threads ("/approve is
     # not supported in threads. Sorry!").  The adapter rewrites a leading
     # "!" to "/" for known commands (see _handle_slack_message), so "!" is
@@ -762,9 +764,9 @@ class SlackAdapter(BasePlatformAdapter):
         bot_tokens = [t.strip() for t in raw_token.split(",") if t.strip()]
 
         # Also load tokens from OAuth token file
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
 
-        tokens_file = get_prostor_home() / "slack_tokens.json"
+        tokens_file = get_hermes_home() / "slack_tokens.json"
         if tokens_file.exists():
             try:
                 saved = json.loads(tokens_file.read_text(encoding="utf-8"))
@@ -925,7 +927,7 @@ class SlackAdapter(BasePlatformAdapter):
             # routes the command event through the socket regardless of the
             # manifest's request URL, but it will not deliver an event for
             # a slash command the manifest doesn't declare.
-            from prostor_cli.commands import slack_native_slashes
+            from hermes_cli.commands import slack_native_slashes
             import re as _re
 
             _slash_names = [name for name, _d, _h in slack_native_slashes()]
@@ -937,7 +939,7 @@ class SlackAdapter(BasePlatformAdapter):
                 _slash_pattern = _re.compile(r"^/prostor$")
 
             @self._app.command(_slash_pattern)
-            async def handle_prostor_command(ack, command):
+            async def handle_hermes_command(ack, command):
                 slash = (command.get("command") or "").lstrip("/")
                 await ack(
                     response_type="ephemeral",
@@ -947,19 +949,19 @@ class SlackAdapter(BasePlatformAdapter):
 
             # Register Block Kit action handlers for approval buttons
             for _action_id in (
-                "prostor_approve_once",
-                "prostor_approve_session",
-                "prostor_approve_always",
-                "prostor_deny",
+                "hermes_approve_once",
+                "hermes_approve_session",
+                "hermes_approve_always",
+                "hermes_deny",
             ):
                 self._app.action(_action_id)(self._handle_approval_action)
 
             # Register Block Kit action handlers for slash-confirm buttons
             # (generic three-option prompts; see tools/slash_confirm.py).
             for _action_id in (
-                "prostor_confirm_once",
-                "prostor_confirm_always",
-                "prostor_confirm_cancel",
+                "hermes_confirm_once",
+                "hermes_confirm_always",
+                "hermes_confirm_cancel",
             ):
                 self._app.action(_action_id)(self._handle_slash_confirm_action)
 
@@ -974,7 +976,7 @@ class SlackAdapter(BasePlatformAdapter):
             # down the gateway: any exception inside the plugin handler is
             # caught and logged, and slack_bolt still sees a clean ack.
             try:
-                from prostor_cli.plugins import get_plugin_manager
+                from hermes_cli.plugins import get_plugin_manager
                 _plugin_handlers = get_plugin_manager().get_slack_action_handlers()
             except Exception as e:  # pragma: no cover - defensive
                 logger.warning(
@@ -2297,7 +2299,7 @@ class SlackAdapter(BasePlatformAdapter):
         # so casual messages like "!nice work" pass through unchanged.
         if original_text.startswith("!"):
             try:
-                from prostor_cli.commands import is_gateway_known_command
+                from hermes_cli.commands import is_gateway_known_command
 
                 first_token = original_text[1:].split(maxsplit=1)[0]
                 # Strip "@suffix" the same way get_command() does, so
@@ -2483,7 +2485,10 @@ class SlackAdapter(BasePlatformAdapter):
         #   4. There's an existing session for this thread (survives restarts)
         bot_uid = self._team_bot_user_ids.get(team_id, self._bot_user_id)
         routing_text = original_text or ""
-        is_mentioned = bot_uid and f"<@{bot_uid}>" in routing_text
+        is_mentioned = bool(
+            (bot_uid and f"<@{bot_uid}>" in routing_text)
+            or self._slack_message_matches_mention_patterns(routing_text)
+        )
         event_thread_ts = event.get("thread_ts")
         is_thread_reply = bool(event_thread_ts and event_thread_ts != ts)
 
@@ -2698,8 +2703,12 @@ class SlackAdapter(BasePlatformAdapter):
                         }
                         ext = mime_to_ext.get(mimetype, "")
 
-                    if ext not in SUPPORTED_DOCUMENT_TYPES:
-                        continue  # Skip unsupported file types silently
+                    # Any file type is accepted — authorization to message the
+                    # agent is the gate, not the file extension. Known types keep
+                    # their precise MIME; unknown types fall back to the source
+                    # mimetype or octet-stream so the agent reaches for terminal
+                    # tools.
+                    in_allowlist = ext in SUPPORTED_DOCUMENT_TYPES
 
                     # Check file size (Slack limit: 20 MB for bots)
                     file_size = f.get("size", 0)
@@ -2715,36 +2724,28 @@ class SlackAdapter(BasePlatformAdapter):
                         url, team_id=team_id
                     )
                     cached_path = cache_document_from_bytes(
-                        raw_bytes, original_filename or f"document{ext}"
+                        raw_bytes, original_filename or f"document{ext or '.bin'}"
                     )
-                    doc_mime = SUPPORTED_DOCUMENT_TYPES[ext]
+                    if in_allowlist:
+                        doc_mime = SUPPORTED_DOCUMENT_TYPES[ext]
+                    else:
+                        doc_mime = mimetype or "application/octet-stream"
                     media_urls.append(cached_path)
                     media_types.append(doc_mime)
-                    logger.debug("[Slack] Cached user document: %s", cached_path)
+                    logger.debug("[Slack] Cached user document: %s (%s)", cached_path, doc_mime)
 
                     # Inject small text-ish files directly into the prompt so
-                    # snippets like JSON/YAML/configs are actually visible to the agent.
+                    # snippets like JSON/YAML/configs are actually visible to the
+                    # agent. Gate on a text-like extension/MIME — NOT a blind
+                    # UTF-8 decode, since binary formats (PDF/zip/docx) can have
+                    # decodable ASCII headers. Binary files are surfaced as a
+                    # cached path only (run.py emits a path-pointing note).
                     MAX_TEXT_INJECT_BYTES = 100 * 1024
-                    TEXT_INJECT_EXTENSIONS = {
-                        ".md",
-                        ".txt",
-                        ".csv",
-                        ".log",
-                        ".json",
-                        ".xml",
-                        ".yaml",
-                        ".yml",
-                        ".toml",
-                        ".ini",
-                        ".cfg",
-                    }
-                    if (
-                        ext in TEXT_INJECT_EXTENSIONS
-                        and len(raw_bytes) <= MAX_TEXT_INJECT_BYTES
-                    ):
+                    _is_text = ext in _TEXT_INJECT_EXTENSIONS or (mimetype or "").startswith("text/")
+                    if _is_text and len(raw_bytes) <= MAX_TEXT_INJECT_BYTES:
                         try:
                             text_content = raw_bytes.decode("utf-8")
-                            display_name = original_filename or f"document{ext}"
+                            display_name = original_filename or f"document{ext or '.txt'}"
                             display_name = re.sub(r"[^\w.\- ]", "_", display_name)
                             injection = f"[Content of {display_name}]:\n{text_content}"
                             if text:
@@ -2903,26 +2904,26 @@ class SlackAdapter(BasePlatformAdapter):
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Allow Once"},
                             "style": "primary",
-                            "action_id": "prostor_approve_once",
+                            "action_id": "hermes_approve_once",
                             "value": session_key,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Allow Session"},
-                            "action_id": "prostor_approve_session",
+                            "action_id": "hermes_approve_session",
                             "value": session_key,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Always Allow"},
-                            "action_id": "prostor_approve_always",
+                            "action_id": "hermes_approve_always",
                             "value": session_key,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Deny"},
                             "style": "danger",
-                            "action_id": "prostor_deny",
+                            "action_id": "hermes_deny",
                             "value": session_key,
                         },
                     ],
@@ -2987,20 +2988,20 @@ class SlackAdapter(BasePlatformAdapter):
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Approve Once"},
                             "style": "primary",
-                            "action_id": "prostor_confirm_once",
+                            "action_id": "hermes_confirm_once",
                             "value": value,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Always Approve"},
-                            "action_id": "prostor_confirm_always",
+                            "action_id": "hermes_confirm_always",
                             "value": value,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Cancel"},
                             "style": "danger",
-                            "action_id": "prostor_confirm_cancel",
+                            "action_id": "hermes_confirm_cancel",
                             "value": value,
                         },
                     ],
@@ -3113,9 +3114,9 @@ class SlackAdapter(BasePlatformAdapter):
         session_key, confirm_id = value.split("|", 1)
 
         choice_map = {
-            "prostor_confirm_once": "once",
-            "prostor_confirm_always": "always",
-            "prostor_confirm_cancel": "cancel",
+            "hermes_confirm_once": "once",
+            "hermes_confirm_always": "always",
+            "hermes_confirm_cancel": "cancel",
         }
         choice = choice_map.get(action_id, "cancel")
 
@@ -3229,10 +3230,10 @@ class SlackAdapter(BasePlatformAdapter):
 
         # Map action_id to approval choice
         choice_map = {
-            "prostor_approve_once": "once",
-            "prostor_approve_session": "session",
-            "prostor_approve_always": "always",
-            "prostor_deny": "deny",
+            "hermes_approve_once": "once",
+            "hermes_approve_session": "session",
+            "hermes_approve_always": "always",
+            "hermes_deny": "deny",
         }
         choice = choice_map.get(action_id, "deny")
 
@@ -3515,7 +3516,7 @@ class SlackAdapter(BasePlatformAdapter):
             # Legacy /prostor <subcommand> [args] routing + free-form questions.
             # Empty slash_name falls into this branch for backward compat
             # with any caller that didn't populate command["command"].
-            from prostor_cli.commands import slack_subcommand_map
+            from hermes_cli.commands import slack_subcommand_map
 
             subcommand_map = slack_subcommand_map()
             subcommand_map["compact"] = "/compress"
@@ -3561,7 +3562,7 @@ class SlackAdapter(BasePlatformAdapter):
 
         # Stash the Slack response_url so the first reply for this
         # channel+user can be routed ephemerally (replaces the initial
-        # "Running /cmd…" ack shown by handle_prostor_command).
+        # "Running /cmd…" ack shown by handle_hermes_command).
         # Only stash for COMMAND events (text starts with "/") — free-form
         # questions via "/prostor <question>" must produce public replies so
         # the whole channel can see the agent's answer.
@@ -3814,6 +3815,60 @@ class SlackAdapter(BasePlatformAdapter):
             return {part.strip() for part in raw.split(",") if part.strip()}
         return set()
 
+    def _slack_mention_patterns(self) -> List["re.Pattern"]:
+        """Compile optional regex wake-word patterns for channel triggers.
+
+        Parity with the other adapters (Telegram, DingTalk, Mattermost,
+        WhatsApp, BlueBubbles, Photon): when ``require_mention`` is on, a
+        channel message matching one of these patterns triggers the bot even
+        without a literal ``<@BOTUID>`` mention. Reads ``slack.mention_patterns``
+        (a list or single string) or ``SLACK_MENTION_PATTERNS`` (a JSON list, or
+        newline/comma-separated values). Compiled patterns are cached on the
+        instance. Previously this documented field was silently dropped.
+        """
+        cached = getattr(self, "_compiled_mention_patterns", None)
+        if cached is not None:
+            return cached
+
+        patterns = self.config.extra.get("mention_patterns") if self.config.extra else None
+        if patterns is None:
+            raw = os.getenv("SLACK_MENTION_PATTERNS", "").strip()
+            if raw:
+                try:
+                    import json as _json
+                    patterns = _json.loads(raw)
+                except Exception:
+                    patterns = [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
+
+        if isinstance(patterns, str):
+            patterns = [patterns]
+
+        compiled: List["re.Pattern"] = []
+        if isinstance(patterns, list):
+            for pat in patterns:
+                if not isinstance(pat, str) or not pat.strip():
+                    continue
+                try:
+                    compiled.append(re.compile(pat, re.IGNORECASE))
+                except re.error as exc:
+                    logger.warning("[Slack] Invalid mention pattern %r: %s", pat, exc)
+        elif patterns is not None:
+            logger.warning(
+                "[Slack] mention_patterns must be a list or string; got %s",
+                type(patterns).__name__,
+            )
+
+        if compiled:
+            logger.info("[Slack] Loaded %d mention pattern(s)", len(compiled))
+        self._compiled_mention_patterns = compiled
+        return compiled
+
+    def _slack_message_matches_mention_patterns(self, text: str) -> bool:
+        """Return True when ``text`` matches a configured wake-word pattern."""
+        if not text:
+            return False
+        return any(pattern.search(text) for pattern in self._slack_mention_patterns())
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # Plugin migration glue (#41112 / #3823)
@@ -3826,7 +3881,7 @@ class SlackAdapter(BasePlatformAdapter):
 # the per-platform core touchpoints (the ``Platform.SLACK`` elif in
 # ``gateway/run.py``, the ``slack_cfg`` YAML→env block in ``gateway/config.py``,
 # the ``_setup_slack`` wizard + ``_PLATFORMS["slack"]`` static dict in
-# ``prostor_cli/{setup,gateway}.py``, and the ``_send_slack`` dispatch in
+# ``hermes_cli/{setup,gateway}.py``, and the ``_send_slack`` dispatch in
 # ``tools/send_message_tool.py``).
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -3909,11 +3964,11 @@ def interactive_setup() -> None:
     Mirrors Discord's ``interactive_setup`` shape: lazy-imports CLI helpers so
     the plugin's import surface stays small, generates and writes the Slack app
     manifest, prompts for the bot + app tokens, captures an allowlist, and
-    offers to set a home channel. Replaces ``prostor_cli/setup.py::_setup_slack``.
+    offers to set a home channel. Replaces ``hermes_cli/setup.py::_setup_slack``.
     """
     from pathlib import Path
-    from prostor_cli.config import get_env_value, save_env_value
-    from prostor_cli.cli_output import (
+    from hermes_cli.config import get_env_value, save_env_value
+    from hermes_cli.cli_output import (
         prompt,
         prompt_yes_no,
         print_header,
@@ -3926,15 +3981,15 @@ def interactive_setup() -> None:
         """Generate the Slack manifest, write it under PROSTOR_HOME, and print
         paste-into-Slack instructions. Failures are non-fatal."""
         try:
-            from prostor_cli.slack_cli import _build_full_manifest
-            from prostor_constants import get_prostor_home
+            from hermes_cli.slack_cli import _build_full_manifest
+            from hermes_constants import get_hermes_home
             import json as _json
 
             manifest = _build_full_manifest(
                 bot_name="Prostor",
                 bot_description="Your Prostor agent on Slack",
             )
-            target = Path(get_prostor_home()) / "slack-manifest.json"
+            target = Path(get_hermes_home()) / "slack-manifest.json"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(
                 _json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
@@ -3976,7 +4031,7 @@ def interactive_setup() -> None:
     print_info("   3. Install to Workspace: Settings → Install App")
     print_info("   4. After installing, invite the bot to channels: /invite @YourBot")
     print()
-    print_info("   Full guide: https://github.com/maksim9510/Prostor/docs/user-guide/messaging/slack/")
+    print_info("   Full guide: https://prostor-agent.nousresearch.com/docs/user-guide/messaging/slack/")
     print()
 
     # Generate and write manifest up-front so the user can paste it into
@@ -4059,12 +4114,12 @@ def _apply_yaml_config(yaml_cfg: dict, slack_cfg: dict) -> dict | None:
 def _is_connected(config) -> bool:
     """Slack is considered connected when SLACK_BOT_TOKEN is set.
 
-    Looks up via ``prostor_cli.gateway.get_env_value`` at call time (not via the
+    Looks up via ``hermes_cli.gateway.get_env_value`` at call time (not via the
     plugin's own bound import) so tests that patch ``gateway_mod.get_env_value``
     can suppress ambient ``SLACK_BOT_TOKEN`` env vars. Matches what the legacy
     ``Platform.SLACK`` connected-check did before this migration.
     """
-    import prostor_cli.gateway as gateway_mod
+    import hermes_cli.gateway as gateway_mod
 
     return bool((gateway_mod.get_env_value("SLACK_BOT_TOKEN") or "").strip())
 
@@ -4084,8 +4139,8 @@ def register(ctx) -> None:
         is_connected=_is_connected,
         required_env=["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"],
         install_hint="pip install 'prostor-agent[slack]'",
-        # Interactive setup wizard — replaces prostor_cli/setup.py::_setup_slack
-        # and the static _PLATFORMS["slack"] dict in prostor_cli/gateway.py.
+        # Interactive setup wizard — replaces hermes_cli/setup.py::_setup_slack
+        # and the static _PLATFORMS["slack"] dict in hermes_cli/gateway.py.
         setup_fn=interactive_setup,
         # YAML→env config bridge — owns the translation of config.yaml slack:
         # keys (require_mention, strict_mention, allow_bots,

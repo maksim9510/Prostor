@@ -865,7 +865,7 @@ class TestTerminalCWDIntegration:
 class TestOrphanedBranchPruning:
     """Test cleanup of orphaned prostor/* and pr-* branches."""
 
-    def test_prunes_orphaned_prostor_branch(self, git_repo):
+    def test_prunes_orphaned_hermes_branch(self, git_repo):
         """prostor/prostor-* branches with no worktree should be deleted."""
         # Create a branch that looks like a worktree branch but has no worktree
         subprocess.run(

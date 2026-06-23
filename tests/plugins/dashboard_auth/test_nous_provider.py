@@ -31,7 +31,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 import plugins.dashboard_auth.nous as nous_plugin
-from prostor_cli.dashboard_auth import (
+from hermes_cli.dashboard_auth import (
     InvalidCodeError,
     LoginStart,
     ProviderError,
@@ -255,7 +255,7 @@ class TestConfigYamlSource:
 
     @pytest.fixture
     def patch_config(self, monkeypatch):
-        """Yield a callable that replaces ``prostor_cli.config.load_config``
+        """Yield a callable that replaces ``hermes_cli.config.load_config``
         with a stub returning the given dict. Tests pass the intended
         ``dashboard.oauth`` block; the stub returns the wrapping structure."""
 
@@ -264,7 +264,7 @@ class TestConfigYamlSource:
             if oauth_block is not None:
                 cfg = {"dashboard": {"oauth": oauth_block}}
             monkeypatch.setattr(
-                "prostor_cli.config.load_config", lambda: cfg
+                "hermes_cli.config.load_config", lambda: cfg
             )
 
         return _set
@@ -374,7 +374,7 @@ class TestConfigYamlSource:
             raise OSError("config.yaml not readable")
 
         monkeypatch.setattr(
-            "prostor_cli.config.load_config", _broken_load
+            "hermes_cli.config.load_config", _broken_load
         )
         ctx = MagicMock()
         # Must not raise.
@@ -389,7 +389,7 @@ class TestConfigYamlSource:
         so a malformed user config doesn't crash startup."""
         monkeypatch.delenv("PROSTOR_DASHBOARD_OAUTH_CLIENT_ID", raising=False)
         monkeypatch.setattr(
-            "prostor_cli.config.load_config",
+            "hermes_cli.config.load_config",
             lambda: {"dashboard": {"oauth": "wrong type"}},
         )
         ctx = MagicMock()
@@ -442,8 +442,8 @@ class TestStartLogin:
         result = provider.start_login(
             redirect_uri="https://prostor.fly.dev/auth/callback"
         )
-        assert "prostor_session_pkce" in result.cookie_payload
-        pkce = result.cookie_payload["prostor_session_pkce"]
+        assert "hermes_session_pkce" in result.cookie_payload
+        pkce = result.cookie_payload["hermes_session_pkce"]
         # Shape: ``state=…;verifier=…`` (matches stub-provider convention so
         # the auth-route layer's parser works uniformly across providers).
         parts = dict(seg.split("=", 1) for seg in pkce.split(";") if "=" in seg)
@@ -457,7 +457,7 @@ class TestStartLogin:
         )
         parsed = urllib.parse.urlparse(result.redirect_url)
         params = dict(urllib.parse.parse_qsl(parsed.query))
-        pkce = result.cookie_payload["prostor_session_pkce"]
+        pkce = result.cookie_payload["hermes_session_pkce"]
         parts = dict(seg.split("=", 1) for seg in pkce.split(";") if "=" in seg)
         assert parts["state"] == params["state"]
 
@@ -467,7 +467,7 @@ class TestStartLogin:
         )
         parsed = urllib.parse.urlparse(result.redirect_url)
         params = dict(urllib.parse.parse_qsl(parsed.query))
-        pkce = result.cookie_payload["prostor_session_pkce"]
+        pkce = result.cookie_payload["hermes_session_pkce"]
         parts = dict(seg.split("=", 1) for seg in pkce.split(";") if "=" in seg)
         verifier = parts["verifier"]
         expected_challenge = (
@@ -486,8 +486,8 @@ class TestStartLogin:
         b = provider.start_login(
             redirect_uri="https://prostor.fly.dev/auth/callback"
         )
-        assert a.cookie_payload["prostor_session_pkce"] != b.cookie_payload[
-            "prostor_session_pkce"
+        assert a.cookie_payload["hermes_session_pkce"] != b.cookie_payload[
+            "hermes_session_pkce"
         ]
 
     def test_rejects_non_http_scheme(self, provider):

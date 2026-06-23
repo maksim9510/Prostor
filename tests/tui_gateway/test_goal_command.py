@@ -19,14 +19,14 @@ import pytest
 
 
 @pytest.fixture()
-def prostor_home(tmp_path, monkeypatch):
+def hermes_home(tmp_path, monkeypatch):
     home = tmp_path / ".prostor"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("PROSTOR_HOME", str(home))
 
     # Bust the goal-module DB cache so it re-resolves PROSTOR_HOME.
-    from prostor_cli import goals
+    from hermes_cli import goals
 
     goals._DB_CACHE.clear()
     yield home
@@ -34,12 +34,12 @@ def prostor_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def server(prostor_home):
+def server(hermes_home):
     with patch.dict(
         "sys.modules",
         {
-            "prostor_cli.env_loader": MagicMock(),
-            "prostor_cli.banner": MagicMock(),
+            "hermes_cli.env_loader": MagicMock(),
+            "hermes_cli.banner": MagicMock(),
         },
     ):
         mod = importlib.import_module("tui_gateway.server")
@@ -114,7 +114,7 @@ def test_goal_set_returns_send_with_notice(server, session):
     assert "20-turn budget" in result["notice"]
 
     # Persisted in SessionDB
-    from prostor_cli.goals import GoalManager
+    from hermes_cli.goals import GoalManager
 
     mgr = GoalManager(session_key)
     assert mgr.state is not None
@@ -129,7 +129,7 @@ def test_goal_pause_after_set(server, session):
     assert r["result"]["type"] == "exec"
     assert "paused" in r["result"]["output"].lower()
 
-    from prostor_cli.goals import GoalManager
+    from hermes_cli.goals import GoalManager
 
     assert GoalManager(session_key).state.status == "paused"
 
@@ -142,7 +142,7 @@ def test_goal_resume_reactivates(server, session):
     assert r["result"]["type"] == "exec"
     assert "resumed" in r["result"]["output"].lower()
 
-    from prostor_cli.goals import GoalManager
+    from hermes_cli.goals import GoalManager
 
     assert GoalManager(session_key).state.status == "active"
 
@@ -154,7 +154,7 @@ def test_goal_clear_removes_active_goal(server, session):
     assert r["result"]["type"] == "exec"
     assert "cleared" in r["result"]["output"].lower()
 
-    from prostor_cli.goals import GoalManager
+    from hermes_cli.goals import GoalManager
 
     # After clear the row is marked status=cleared (kept for audit);
     # ``has_goal()`` / ``is_active()`` return False so the goal loop

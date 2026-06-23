@@ -109,9 +109,9 @@ def _resolve_xai_credentials() -> Tuple[str, str]:
 
 def _xai_user_agent() -> str:
     try:
-        from tools.xai_http import prostor_xai_user_agent
+        from tools.xai_http import hermes_xai_user_agent
 
-        return prostor_xai_user_agent()
+        return hermes_xai_user_agent()
     except Exception:
         return "prostor-agent/video_gen"
 
@@ -270,7 +270,7 @@ class XAIVideoGenProvider(VideoGenProvider):
 
     def get_setup_schema(self) -> Dict[str, Any]:
         # Auth resolution lives entirely in the shared ``xai_grok`` post_setup
-        # hook (``prostor_cli/tools_config.py``) so the picker doesn't blindly
+        # hook (``hermes_cli/tools_config.py``) so the picker doesn't blindly
         # prompt for an API key when the user is already signed in via xAI
         # Grok OAuth (SuperGrok / Premium+) — TTS / image gen / video gen
         # all share the same credential resolver. The hook offers an

@@ -52,18 +52,18 @@ from pathlib import Path
 from typing import Callable, Dict, Any, Optional
 from urllib.parse import urljoin
 
-from prostor_constants import display_prostor_home
+from hermes_constants import display_hermes_home
 
 logger = logging.getLogger(__name__)
 def get_env_value(name, default=None):
     """Read env values through the live config module.
 
-    Tests may monkeypatch and later restore ``prostor_cli.config.get_env_value``
+    Tests may monkeypatch and later restore ``hermes_cli.config.get_env_value``
     before this module is imported. Resolve the helper at call time so TTS does
     not keep a stale imported function for the rest of the test process.
     """
     try:
-        from prostor_cli.config import get_env_value as _get_env_value
+        from hermes_cli.config import get_env_value as _get_env_value
     except ImportError:
         return os.getenv(name, default)
     value = _get_env_value(name)
@@ -75,7 +75,7 @@ from tools.tool_backend_helpers import (
     prefers_gateway,
     resolve_openai_audio_api_key,
 )
-from tools.xai_http import prostor_xai_user_agent
+from tools.xai_http import hermes_xai_user_agent
 
 # ---------------------------------------------------------------------------
 # Lazy imports -- providers are imported only when actually used to avoid
@@ -205,8 +205,8 @@ GEMINI_TTS_CHANNELS = 1
 GEMINI_TTS_SAMPLE_WIDTH = 2  # 16-bit PCM (L16)
 
 def _get_default_output_dir() -> str:
-    from prostor_constants import get_prostor_dir
-    return str(get_prostor_dir("cache/audio", "audio_cache"))
+    from hermes_constants import get_hermes_dir
+    return str(get_hermes_dir("cache/audio", "audio_cache"))
 
 DEFAULT_OUTPUT_DIR = _get_default_output_dir()
 
@@ -333,11 +333,11 @@ def _load_tts_config() -> Dict[str, Any]:
     for any missing fields.
     """
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         config = load_config()
         return config.get("tts", {})
     except ImportError:
-        logger.debug("prostor_cli.config not available, using default TTS config")
+        logger.debug("hermes_cli.config not available, using default TTS config")
         return {}
     except Exception as e:
         logger.warning("Failed to load TTS config: %s", e, exc_info=True)
@@ -506,7 +506,7 @@ def _dispatch_to_plugin_provider(
         return None
     try:
         from agent.tts_registry import get_provider
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         plugin_provider = get_provider(key)
@@ -690,7 +690,7 @@ def _render_command_tts_template(
 
     def replace_match(match: re.Match[str]) -> str:
         name = match.group("double") or match.group("single")
-        token = f"__PROSTOR_TTS_PLACEHOLDER_{len(replacements)}__"
+        token = f"__HERMES_TTS_PLACEHOLDER_{len(replacements)}__"
         replacements.append((
             token,
             _quote_command_tts_placeholder(
@@ -1262,7 +1262,7 @@ def _generate_xai_tts(text: str, output_path: str, tts_config: Dict[str, Any]) -
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "User-Agent": prostor_xai_user_agent(),
+            "User-Agent": hermes_xai_user_agent(),
         },
         json=payload,
         timeout=60,
@@ -1503,8 +1503,8 @@ def _resolve_gemini_persona_prompt_path(gemini_config: Dict[str, Any]) -> Option
     path = Path(expanded).expanduser()
     if not path.is_absolute():
         try:
-            from prostor_constants import get_prostor_home
-            path = get_prostor_home() / path
+            from hermes_constants import get_hermes_home
+            path = get_hermes_home() / path
         except Exception:
             path = Path.cwd() / path
     return path
@@ -1905,8 +1905,8 @@ def _get_piper_voices_dir() -> Path:
     Resolves to ``~/.prostor/cache/piper-voices/`` under the active
     PROSTOR_HOME so voice downloads follow profile boundaries.
     """
-    from prostor_constants import get_prostor_dir
-    root = Path(get_prostor_dir("cache/piper-voices", "piper_voices_cache"))
+    from hermes_constants import get_hermes_dir
+    root = Path(get_hermes_dir("cache/piper-voices", "piper_voices_cache"))
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -2825,7 +2825,7 @@ TTS_SCHEMA = {
             },
             "output_path": {
                 "type": "string",
-                "description": f"Optional custom file path to save the audio. Defaults to {display_prostor_home()}/audio_cache/<timestamp>.mp3"
+                "description": f"Optional custom file path to save the audio. Defaults to {display_hermes_home()}/audio_cache/<timestamp>.mp3"
             }
         },
         "required": ["text"]

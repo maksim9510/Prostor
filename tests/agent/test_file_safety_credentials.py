@@ -1,6 +1,6 @@
 """Tests for PROSTOR_HOME credential-file read blocking in file_safety.
 
-Regression for https://github.com/maksim9510/Prostor/issues/17656 —
+Regression for https://github.com/NousResearch/prostor-agent/issues/17656 —
 ``read_file`` was previously only sandboxed against ``PROSTOR_HOME`` itself,
 which left ``auth.json`` and ``.anthropic_oauth.json`` (plaintext provider
 keys + OAuth tokens) readable by the agent. A prompt-injection reaching
@@ -21,12 +21,12 @@ import pytest
 
 @pytest.fixture()
 def fake_home(tmp_path, monkeypatch):
-    """Point ``_prostor_home_path()`` at a tmp dir for isolated checks."""
+    """Point ``_hermes_home_path()`` at a tmp dir for isolated checks."""
     import agent.file_safety as fs
 
-    home = tmp_path / "prostor_home"
+    home = tmp_path / "hermes_home"
     home.mkdir()
-    monkeypatch.setattr(fs, "_prostor_home_path", lambda: home)
+    monkeypatch.setattr(fs, "_hermes_home_path", lambda: home)
     return home
 
 
@@ -76,7 +76,7 @@ def test_google_oauth_json_blocked(fake_home):
     assert "credential store" in err
 
 
-def test_arbitrary_prostor_home_file_not_blocked(fake_home):
+def test_arbitrary_hermes_home_file_not_blocked(fake_home):
     """Non-credential files inside PROSTOR_HOME stay readable."""
     from agent.file_safety import get_read_block_error
 
@@ -111,7 +111,7 @@ def test_path_traversal_resolves_to_blocked(fake_home, tmp_path):
     _create(fake_home, "auth.json")
     sibling = tmp_path / "elsewhere"
     sibling.mkdir()
-    traversal = sibling / ".." / "prostor_home" / "auth.json"
+    traversal = sibling / ".." / "hermes_home" / "auth.json"
     err = get_read_block_error(str(traversal))
     assert err is not None
     assert "credential store" in err
@@ -246,7 +246,7 @@ def test_mcp_tokens_dir_itself_blocked(fake_home):
     assert "MCP token" in err
 
 
-def test_identically_named_prostor_files_outside_home_not_blocked(
+def test_identically_named_hermes_files_outside_home_not_blocked(
     fake_home, tmp_path
 ):
     """Prostor-specific filenames (``auth.json``, ``mcp-tokens/``, ``google_oauth.json``)
@@ -304,8 +304,8 @@ def test_profile_mode_blocks_root_credentials(tmp_path, monkeypatch):
     root = tmp_path / "prostor"
     profile = root / "profiles" / "coder"
     profile.mkdir(parents=True)
-    monkeypatch.setattr(fs, "_prostor_home_path", lambda: profile)
-    monkeypatch.setattr(fs, "_prostor_root_path", lambda: root)
+    monkeypatch.setattr(fs, "_hermes_home_path", lambda: profile)
+    monkeypatch.setattr(fs, "_hermes_root_path", lambda: root)
 
     from agent.file_safety import get_read_block_error
 

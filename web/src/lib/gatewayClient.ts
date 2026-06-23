@@ -117,13 +117,13 @@ export class GatewayClient {
     if (token) {
       authParamName = "token";
       authParamValue = token;
-    } else if (window.__PROSTOR_AUTH_REQUIRED__) {
+    } else if (window.__HERMES_AUTH_REQUIRED__) {
       const { ticket } = await getWsTicket();
       authParamName = "ticket";
       authParamValue = ticket;
     } else {
       authParamName = "token";
-      authParamValue = window.__PROSTOR_SESSION_TOKEN__ ?? "";
+      authParamValue = window.__HERMES_SESSION_TOKEN__ ?? "";
       if (!authParamValue) {
         this.setState("error");
         throw new Error(
@@ -247,7 +247,7 @@ export class GatewayClient {
 
 declare global {
   interface Window {
-    __PROSTOR_SESSION_TOKEN__?: string;
-    __PROSTOR_AUTH_REQUIRED__?: boolean;
+    __HERMES_SESSION_TOKEN__?: string;
+    __HERMES_AUTH_REQUIRED__?: boolean;
   }
 }

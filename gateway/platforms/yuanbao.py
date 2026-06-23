@@ -103,12 +103,12 @@ logger = logging.getLogger(__name__)
 # Version / platform constants (used in AUTH_BIND and sign-token headers)
 # ---------------------------------------------------------------------------
 try:
-    from prostor_cli import __version__ as _PROSTOR_VERSION
+    from hermes_cli import __version__ as _HERMES_VERSION
 except ImportError:
-    _PROSTOR_VERSION = "0.0.0"
+    _HERMES_VERSION = "0.0.0"
 
-_APP_VERSION = _PROSTOR_VERSION
-_BOT_VERSION = _PROSTOR_VERSION
+_APP_VERSION = _HERMES_VERSION
+_BOT_VERSION = _HERMES_VERSION
 _YUANBAO_INSTANCE_ID = str(PROSTOR_INSTANCE_ID)  # single source: yuanbao_proto.PROSTOR_INSTANCE_ID
 _OPERATION_SYSTEM = sys.platform
 
@@ -1617,11 +1617,11 @@ class AutoSetHomeMiddleware(InboundMiddleware):
                 adapter._auto_sethome_done = True  # DM seen — no further upgrades needed
             if _should_set:
                 try:
-                    from prostor_core import get_prostor_home
+                    from hermes_constants import get_hermes_home
                     from utils import atomic_yaml_write
                     import yaml
 
-                    _home = get_prostor_home()
+                    _home = get_hermes_home()
                     config_path = _home / "config.yaml"
                     user_config: dict = {}
                     if config_path.exists():
@@ -4983,6 +4983,7 @@ class YuanbaoAdapter(BasePlatformAdapter):
 
     PLATFORM = Platform.YUANBAO
     MAX_TEXT_CHUNK: int = 4000  # Yuanbao single message character limit
+    splits_long_messages = True  # send() auto-chunks via truncate_message(MAX_TEXT_CHUNK)
     MEDIA_MAX_SIZE_MB: int = 50  # Max media file size in MB for upload validation
     REPLY_REF_MAX_ENTRIES: ClassVar[int] = 500  # Max capacity of reference dedup dict
 

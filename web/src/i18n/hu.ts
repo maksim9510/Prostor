@@ -120,8 +120,8 @@ export const hu: Translations = {
     starting: "Indul",
     startedInBackground: "Háttérben elindítva — kövesse a naplókat a folyamathoz",
     stopped: "Leállítva",
-    updateProstor: "Prostor frissítése",
-    updatingProstor: "Prostor frissítése…",
+    updateHermes: "Prostor frissítése",
+    updatingHermes: "Prostor frissítése…",
     waitingForOutput: "Várakozás a kimenetre…",
   },
 
@@ -505,7 +505,7 @@ export const hu: Translations = {
       highest_tier: "Legmagasabb szint",
       highest_tier_hint: "Copper → Silver → Gold → Diamond → Olympian",
       latest: "Legutóbbi",
-      latest_hint_empty: "futtasd többet a Prostort",
+      latest_hint_empty: "futtasd többet a Hermest",
       none_yet: "Még semmi",
     },
     state: {

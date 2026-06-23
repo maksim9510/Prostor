@@ -12,7 +12,7 @@ Tag shape (sent in OpenAI-compatible ``extra_body['tags']``):
         "client=prostor-client-v<__version__>",
     ]
 
-The version is sourced live from ``prostor_cli.__version__`` so it auto-aligns
+The version is sourced live from ``hermes_cli.__version__`` so it auto-aligns
 to whatever release is installed; the release script
 (``scripts/release.py``) regex-bumps that single string, and every Portal
 request picks up the new tag on the next process start.
@@ -26,7 +26,7 @@ Why one helper instead of inlining the literal at each site:
 
 Do NOT pre-compute these as module-level constants in the consumers. The
 version can change at runtime (editable installs, hot-reload tooling), and
-``prostor_cli.__version__`` is the canonical source of truth.
+``hermes_cli.__version__`` is the canonical source of truth.
 """
 
 from __future__ import annotations
@@ -34,25 +34,25 @@ from __future__ import annotations
 from typing import List
 
 
-def _prostor_version() -> str:
+def _hermes_version() -> str:
     """Return the current Prostor release version, e.g. ``"0.13.0"``.
 
-    Falls back to ``"unknown"`` if ``prostor_cli`` cannot be imported (should
+    Falls back to ``"unknown"`` if ``hermes_cli`` cannot be imported (should
     never happen in a real install — guarded for defensive testing).
     """
     try:
-        from prostor_cli import __version__
+        from hermes_cli import __version__
         return __version__
     except Exception:
         return "unknown"
 
 
-def prostor_client_tag() -> str:
+def hermes_client_tag() -> str:
     """Return the ``client=...`` tag for Nous Portal requests.
 
     Format: ``client=prostor-client-v<MAJOR>.<MINOR>.<PATCH>``.
     """
-    return f"client=prostor-client-v{_prostor_version()}"
+    return f"client=prostor-client-v{_hermes_version()}"
 
 
 def nous_portal_tags() -> List[str]:
@@ -61,4 +61,4 @@ def nous_portal_tags() -> List[str]:
     Always returns a fresh list so callers can mutate it freely
     (e.g. ``merged_extra.setdefault("tags", []).extend(nous_portal_tags())``).
     """
-    return ["product=prostor-agent", prostor_client_tag()]
+    return ["product=prostor-agent", hermes_client_tag()]

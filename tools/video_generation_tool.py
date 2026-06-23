@@ -167,7 +167,7 @@ VIDEO_GENERATE_SCHEMA: Dict[str, Any] = {
 
 def _read_video_gen_section() -> Dict[str, Any]:
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         cfg = load_config()
         section = cfg.get("video_gen") if isinstance(cfg, dict) else None
@@ -204,7 +204,7 @@ def check_video_generation_requirements() -> bool:
     """
     try:
         from agent.video_gen_registry import list_providers
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         for provider in list_providers():
@@ -231,7 +231,7 @@ def _resolve_active_provider():
     """
     try:
         from agent.video_gen_registry import get_active_provider
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         provider = get_active_provider()
@@ -419,9 +419,11 @@ _GENERIC_DESCRIPTION = (
     "endpoint. The backend and model family are user-configured via "
     "`prostor tools` → Video Generation; the agent does not pick them. "
     "Long-running generations may take 30 seconds to several minutes — "
-    "the call blocks until the video is ready. Returns either an HTTP "
-    "URL or an absolute file path in the `video` field; display it with "
-    "markdown ![description](url-or-path) and the gateway will deliver it."
+    "the call blocks until the video is ready. Returns the result in the "
+    "`video` field — either an HTTP URL or an absolute file path. To show "
+    "it to the user, reference that path/URL in your response using the "
+    "file-delivery convention for the current platform (your platform "
+    "guidance describes how files are delivered here)."
 )
 
 
@@ -476,7 +478,7 @@ def _build_dynamic_video_schema() -> Dict[str, Any]:
 
     try:
         from agent.video_gen_registry import get_provider
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         provider = get_provider(configured)

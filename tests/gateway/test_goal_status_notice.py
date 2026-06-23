@@ -8,7 +8,7 @@ from gateway.config import Platform
 from gateway.platforms.base import MessageEvent, MessageType
 from gateway.run import GatewayRunner
 from gateway.session import SessionSource
-from prostor_cli.goals import CONTINUATION_PROMPT_TEMPLATE
+from hermes_cli.goals import CONTINUATION_PROMPT_TEMPLATE
 
 
 class FakeAdapter:

@@ -17,10 +17,10 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
     """Redirect PROSTOR_HOME so load_config() reads our test config.yaml."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
-    (prostor_home / "config.yaml").write_text("model:\n  default: test-model\n")
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
+    (hermes_home / "config.yaml").write_text("model:\n  default: test-model\n")
 
 
 def _write_config(tmp_path, config_dict):

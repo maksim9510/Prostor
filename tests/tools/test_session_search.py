@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from prostor_state import SessionDB
+from hermes_state import SessionDB
 from tools.session_search_tool import (
     SESSION_SEARCH_SCHEMA,
     _HIDDEN_SESSION_SOURCES,
@@ -97,6 +97,14 @@ class TestSchema:
         # The new design never calls an LLM
         desc = SESSION_SEARCH_SCHEMA["description"].lower()
         assert "no llm" in desc
+
+    def test_schema_description_enforces_source_first_limit(self):
+        desc = SESSION_SEARCH_SCHEMA["description"].lower()
+        assert "source-first limit" in desc
+        assert "conversation history only" in desc
+        assert "direct source" in desc
+        assert "session_search as secondary" in desc
+        assert "not found" in desc
 
 
 class TestHiddenSources:
@@ -445,7 +453,7 @@ class TestReadShape:
 
 class TestCrossProfileRead:
     def _patch_profiles(self, monkeypatch, home, exists=True):
-        from prostor_cli import profiles as profiles_mod
+        from hermes_cli import profiles as profiles_mod
         monkeypatch.setattr(profiles_mod, "normalize_profile_name", lambda n: n)
         monkeypatch.setattr(profiles_mod, "validate_profile_name", lambda n: None)
         monkeypatch.setattr(profiles_mod, "profile_exists", lambda n: exists)
@@ -481,7 +489,7 @@ class TestCrossProfileRead:
         other._conn.commit()
 
         from collections import namedtuple
-        from prostor_cli import profiles as profiles_mod
+        from hermes_cli import profiles as profiles_mod
         Info = namedtuple("Info", "name path")
         monkeypatch.setattr(profiles_mod, "get_profile_dir", lambda n: tmp_path / "default_home")
         monkeypatch.setattr(profiles_mod, "list_profiles", lambda: [Info("asdf", other_home)])

@@ -19,8 +19,8 @@ export async function writeClipboardText(text: string) {
     return
   }
 
-  if (window.prostorDesktop?.writeClipboard) {
-    await window.prostorDesktop.writeClipboard(text)
+  if (window.hermesDesktop?.writeClipboard) {
+    await window.hermesDesktop.writeClipboard(text)
 
     return
   }
@@ -158,7 +158,6 @@ export function CopyButton({
 
   const feedbackLabel =
     status === 'copied' ? t.common.copied : status === 'error' ? resolvedErrorMessage : (title ?? resolvedLabel)
-
   const ariaLabel = status === 'idle' ? resolvedLabel : feedbackLabel
 
   if (appearance === 'menu-item' || appearance === 'context-menu-item') {

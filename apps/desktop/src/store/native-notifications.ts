@@ -153,7 +153,7 @@ export function dispatchNativeNotification(input: NativeNotificationInput): void
     return
   }
 
-  void window.prostorDesktop?.notify({
+  void window.hermesDesktop?.notify({
     actions: input.actions,
     body: input.body,
     kind: input.kind,
@@ -189,7 +189,7 @@ export async function respondToApprovalAction(sessionId: null | string, actionId
 // Settings "send test" — bypasses gating. Returns whether the OS accepted it so
 // the panel can flag a silent permission failure instead of looking dead.
 export async function sendTestNativeNotification(title: string, body: string): Promise<boolean> {
-  const bridge = window.prostorDesktop
+  const bridge = window.hermesDesktop
 
   if (!bridge?.notify) {
     return false

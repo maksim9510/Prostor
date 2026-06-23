@@ -13,6 +13,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import { useSkinCommand } from '@/themes/use-skin-command'
 
 import { formatRefValue } from '../components/assistant-ui/directive-text'
+import { getCronJobs, getSessionMessages, listAllProfileSessions, type SessionInfo, triggerCronJob } from '../prostor'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '../lib/chat-messages'
 import { storedSessionIdForNotification } from '../lib/session-ids'
 import {
@@ -22,7 +23,6 @@ import {
   normalizeSessionSource
 } from '../lib/session-source'
 import { latestSessionTodos } from '../lib/todos'
-import { getCronJobs, getSessionMessages, listAllProfileSessions, type SessionInfo, triggerCronJob } from '../prostor'
 import { setCronFocusJobId, setCronJobs } from '../store/cron'
 import {
   $panesFlipped,
@@ -33,6 +33,7 @@ import {
   FILE_BROWSER_MAX_WIDTH,
   FILE_BROWSER_MIN_WIDTH,
   pinSession,
+  PREVIEW_PANE_ID,
   setSidebarOverlayMounted,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
@@ -56,8 +57,8 @@ import {
   $gatewayState,
   $messages,
   $messagingSessions,
-  $resumeExhaustedSessionId,
   $resumeFailedSessionId,
+  $resumeExhaustedSessionId,
   $selectedStoredSessionId,
   $sessions,
   $workingSessionIds,
@@ -112,11 +113,11 @@ import { SessionPickerOverlay } from './session-picker-overlay'
 import { SessionSwitcher } from './session-switcher'
 import { useContextSuggestions } from './session/hooks/use-context-suggestions'
 import { useCwdActions } from './session/hooks/use-cwd-actions'
+import { useHermesConfig } from './session/hooks/use-prostor-config'
 import { useMessageStream } from './session/hooks/use-message-stream'
 import { useModelControls } from './session/hooks/use-model-controls'
 import { usePreviewRouting } from './session/hooks/use-preview-routing'
 import { usePromptActions } from './session/hooks/use-prompt-actions'
-import { useProstorConfig } from './session/hooks/use-prostor-config'
 import { useRouteResume } from './session/hooks/use-route-resume'
 import { useSessionActions } from './session/hooks/use-session-actions'
 import { useSessionStateCache } from './session/hooks/use-session-state-cache'
@@ -265,12 +266,12 @@ export function DesktopController() {
   const { connectionRef, gatewayRef, requestGateway } = useGatewayRequest()
 
   useEffect(() => {
-    window.prostorDesktop?.setPreviewShortcutActive?.(Boolean(chatOpen && (filePreviewTarget || previewTarget)))
+    window.hermesDesktop?.setPreviewShortcutActive?.(Boolean(chatOpen && (filePreviewTarget || previewTarget)))
   }, [chatOpen, filePreviewTarget, previewTarget])
 
   useEffect(() => {
     startUpdatePoller()
-    const unsubscribe = window.prostorDesktop?.onOpenUpdatesRequested?.(() => openUpdatesWindow())
+    const unsubscribe = window.hermesDesktop?.onOpenUpdatesRequested?.(() => openUpdatesWindow())
 
     return () => {
       unsubscribe?.()
@@ -284,7 +285,7 @@ export function DesktopController() {
   // resumes a non-existent stored session ("session not found") and strands the
   // user. Translate runtime -> stored before navigating.
   useEffect(() => {
-    const unsubscribe = window.prostorDesktop?.onFocusSession?.(sessionId => {
+    const unsubscribe = window.hermesDesktop?.onFocusSession?.(sessionId => {
       if (sessionId) {
         navigate(sessionRoute(storedSessionIdForNotification(sessionId, runtimeIdByStoredSessionIdRef.current)))
       }
@@ -295,7 +296,7 @@ export function DesktopController() {
 
   // Notification action button (Approve/Reject) — resolve in place, no navigation.
   useEffect(() => {
-    const unsubscribe = window.prostorDesktop?.onNotificationAction?.(({ actionId, sessionId }) => {
+    const unsubscribe = window.hermesDesktop?.onNotificationAction?.(({ actionId, sessionId }) => {
       void respondToApprovalAction(sessionId ?? null, actionId)
     })
 
@@ -308,7 +309,7 @@ export function DesktopController() {
   // the shared command handler) creates the job. Signal readiness so a link
   // that arrived during boot is flushed exactly once.
   useEffect(() => {
-    const unsubscribe = window.prostorDesktop?.onDeepLink?.(payload => {
+    const unsubscribe = window.hermesDesktop?.onDeepLink?.(payload => {
       if (!payload || payload.kind !== 'blueprint' || !payload.name) {
         return
       }
@@ -327,7 +328,7 @@ export function DesktopController() {
     })
 
     // Tell the main process the renderer is ready to receive deep links.
-    void window.prostorDesktop?.signalDeepLinkReady?.()
+    void window.hermesDesktop?.signalDeepLinkReady?.()
 
     return () => unsubscribe?.()
   }, [])
@@ -345,7 +346,7 @@ export function DesktopController() {
       }
     }
 
-    const unsubscribe = window.prostorDesktop?.onClosePreviewRequested?.(closeActiveRightRailTab)
+    const unsubscribe = window.hermesDesktop?.onClosePreviewRequested?.(closeActiveRightRailTab)
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
 
@@ -553,7 +554,7 @@ export function DesktopController() {
     requestGateway
   })
 
-  const { refreshProstorConfig, sttEnabled, voiceMaxRecordingSeconds } = useProstorConfig({
+  const { refreshHermesConfig, sttEnabled, voiceMaxRecordingSeconds } = useHermesConfig({
     activeSessionIdRef,
     refreshProjectBranch
   })
@@ -643,7 +644,7 @@ export function DesktopController() {
     activeSessionIdRef,
     hydrateFromStoredSession,
     queryClient,
-    refreshProstorConfig,
+    refreshHermesConfig,
     refreshSessions,
     sessionStateByRuntimeIdRef,
     updateSessionState
@@ -848,7 +849,7 @@ export function DesktopController() {
     onGatewayReady: g => {
       gatewayRef.current = g
     },
-    refreshProstorConfig,
+    refreshHermesConfig,
     refreshSessions
   })
 
@@ -886,9 +887,9 @@ export function DesktopController() {
   useEffect(() => {
     if (gatewayState === 'open' && !activeSessionId && freshDraftReady) {
       void refreshCurrentModel()
-      void refreshProstorConfig()
+      void refreshHermesConfig()
     }
-  }, [activeSessionId, freshDraftReady, gatewayState, refreshCurrentModel, refreshProstorConfig])
+  }, [activeSessionId, freshDraftReady, gatewayState, refreshCurrentModel, refreshHermesConfig])
 
   useRouteResume({
     activeSessionId,
@@ -963,7 +964,7 @@ export function DesktopController() {
         <DesktopOnboardingOverlay
           enabled={gatewayState === 'open'}
           onCompleted={() => {
-            void refreshProstorConfig()
+            void refreshHermesConfig()
             void refreshCurrentModel()
             void queryClient.invalidateQueries({ queryKey: ['model-options'] })
           }}
@@ -985,7 +986,7 @@ export function DesktopController() {
             gateway={gatewayRef.current}
             onClose={closeOverlayToPreviousRoute}
             onConfigSaved={() => {
-              void refreshProstorConfig()
+              void refreshHermesConfig()
               void refreshCurrentModel()
               void queryClient.invalidateQueries({ queryKey: ['model-options'] })
             }}
@@ -1077,7 +1078,7 @@ export function DesktopController() {
   const previewPane = (
     <Pane
       disabled={!chatOpen || (!previewTarget && !filePreviewTarget)}
-      id="preview"
+      id={PREVIEW_PANE_ID}
       key="preview"
       maxWidth={PREVIEW_RAIL_MAX_WIDTH}
       minWidth={PREVIEW_RAIL_MIN_WIDTH}

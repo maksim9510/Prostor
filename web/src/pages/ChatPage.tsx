@@ -11,7 +11,7 @@
  *              ▼                                                          .
  *     WebSocket /api/pty?token=<session>                                  .
  *          ▼                                                              .
- *     FastAPI pty_ws  (prostor_cli/web_server.py)                          .
+ *     FastAPI pty_ws  (hermes_cli/web_server.py)                          .
  *          ▼                                                              .
  *     POSIX PTY → `node ui-tui/dist/entry.js` → tui_gateway + AIAgent     .
  */
@@ -36,6 +36,7 @@ import { ChatSessionList } from "@/components/ChatSessionList";
 import { usePageHeader } from "@/contexts/usePageHeader";
 import { useI18n } from "@/i18n";
 import { api } from "@/lib/api";
+import { normalizeSessionTitle } from "@/lib/chat-title";
 import { PluginSlot } from "@/plugins";
 import { useTheme } from "@/themes";
 import { useProfileScope } from "@/contexts/useProfileScope";
@@ -63,11 +64,14 @@ function buildWsUrl(
 // (subscriber).  Generated once per mount so a tab refresh starts a fresh
 // channel — the previous PTY child terminates with the old WS, and its
 // channel auto-evicts when no subscribers remain.
-function generateChannelId(): string {
+function generateChannelId(scope?: string): string {
+  const prefix = scope ? "chat" : "chat-fresh";
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
+    return `${prefix}-${crypto.randomUUID()}`;
   }
-  return `chat-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+  return `${prefix}-${Math.random().toString(36).slice(2)}-${Date.now().toString(
+    36,
+  )}`;
 }
 
 // Colors for the terminal body.  Matches the dashboard's dark teal canvas
@@ -133,8 +137,8 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
   // so a missing token there is expected, not an error.
   const [banner, setBanner] = useState<string | null>(() =>
     typeof window !== "undefined" &&
-    !window.__PROSTOR_SESSION_TOKEN__ &&
-    !window.__PROSTOR_AUTH_REQUIRED__
+    !window.__HERMES_SESSION_TOKEN__ &&
+    !window.__HERMES_AUTH_REQUIRED__
       ? "Session token unavailable. Open this page through `prostor dashboard`, not directly."
       : null,
   );
@@ -173,7 +177,11 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
   // tabs because the dep wouldn't change on tab switch.
   const [mobilePanelOpenRaw, setMobilePanelOpenRaw] = useState(false);
   const mobilePanelOpen = isActive && mobilePanelOpenRaw;
-  const { setEnd } = usePageHeader();
+  const { setEnd, setTitle } = usePageHeader();
+  const [sessionTitleState, setSessionTitleState] = useState<{
+    scope: string;
+    title: string | null;
+  }>({ scope: "", title: null });
   const { t } = useI18n();
   const closeMobilePanel = useCallback(() => setMobilePanelOpenRaw(false), []);
   const modelToolsLabel = useMemo(
@@ -207,7 +215,47 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
   // management profile. Changing it remounts the terminal (key below /
   // effect dep) so the user explicitly starts a fresh scoped session.
   const { profile: scopedProfile } = useProfileScope();
-  const channel = useMemo(() => generateChannelId(), [resumeParam, scopedProfile]);
+  const channel = useMemo(
+    () => generateChannelId(`${resumeParam ?? ""}\0${scopedProfile}`),
+    [resumeParam, scopedProfile],
+  );
+  const titleScope = `${channel}\0${reconnectNonce}`;
+  const sessionTitle =
+    sessionTitleState.scope === titleScope ? sessionTitleState.title : null;
+  const handleSessionTitleChange = useCallback(
+    (title: string | null) => setSessionTitleState({ scope: titleScope, title }),
+    [titleScope],
+  );
+
+  useEffect(() => {
+    if (!isActive) {
+      setTitle(null);
+      return;
+    }
+
+    setTitle(sessionTitle);
+    return () => setTitle(null);
+  }, [isActive, sessionTitle, setTitle]);
+
+  useEffect(() => {
+    if (!resumeParam) return;
+
+    let cancelled = false;
+
+    api
+      .getSessionDetail(resumeParam, scopedProfile)
+      .then((session) => {
+        if (cancelled) return;
+        handleSessionTitleChange(normalizeSessionTitle(session.title));
+      })
+      .catch(() => {
+        // Best-effort: the PTY-side session.info stream can still supply it.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeParam, scopedProfile, handleSessionTitleChange]);
 
   useEffect(() => {
     if (!resumeParam) return;
@@ -320,8 +368,8 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
     const host = hostRef.current;
     if (!host) return;
 
-    const token = window.__PROSTOR_SESSION_TOKEN__;
-    const gated = !!window.__PROSTOR_AUTH_REQUIRED__;
+    const token = window.__HERMES_SESSION_TOKEN__;
+    const gated = !!window.__HERMES_AUTH_REQUIRED__;
     // Banner already initialised above; just bail before wiring xterm/WS.
     // In gated mode the token is absent by design — buildWsAuthParam() mints
     // a WS ticket instead, so don't bail; let the effect reach that path.
@@ -598,7 +646,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
       });
     });
 
-    // WebSocket. In gated mode (``window.__PROSTOR_AUTH_REQUIRED__``) this
+    // WebSocket. In gated mode (``window.__HERMES_AUTH_REQUIRED__``) this
     // awaits a single-use ticket via /api/auth/ws-ticket before opening;
     // in loopback mode it resolves synchronously against the injected
     // session token. The IIFE keeps the outer effect synchronous so its
@@ -896,6 +944,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
                 channel={channel}
                 profile={scopedProfile}
                 onDashboardNewSessionRequest={startFreshDashboardChat}
+                onSessionTitleChange={handleSessionTitleChange}
                 showTools={false}
               />
             </div>
@@ -995,6 +1044,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
                 channel={channel}
                 profile={scopedProfile}
                 onDashboardNewSessionRequest={startFreshDashboardChat}
+                onSessionTitleChange={handleSessionTitleChange}
                 showTools={false}
               />
             </div>
@@ -1017,7 +1067,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
 
 declare global {
   interface Window {
-    __PROSTOR_SESSION_TOKEN__?: string;
-    __PROSTOR_AUTH_REQUIRED__?: boolean;
+    __HERMES_SESSION_TOKEN__?: string;
+    __HERMES_AUTH_REQUIRED__?: boolean;
   }
 }

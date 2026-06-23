@@ -79,7 +79,7 @@ def _discord_request(
         headers={
             "Authorization": f"Bot {token}",
             "Content-Type": "application/json",
-            "User-Agent": "Prostor-Agent (https://github.com/maksim9510/Prostor)",
+            "User-Agent": "Prostor-Agent (https://github.com/NousResearch/prostor-agent)",
         },
     )
 
@@ -551,7 +551,7 @@ def _load_allowed_actions_config() -> Optional[List[str]]:
     Unknown action names are dropped with a log warning.
     """
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
     except Exception as exc:
         logger.debug("discord: could not load config (%s); allowing all actions.", exc)

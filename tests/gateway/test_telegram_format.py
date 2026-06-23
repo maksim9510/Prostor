@@ -178,6 +178,74 @@ class TestFormatMessageCodeBlocks:
         assert r"`\\\\server\\share`" in result
 
 
+@pytest.mark.asyncio
+async def test_legacy_send_keeps_chunk_indicators_outside_fenced_code_lines(adapter):
+    """Chunk markers must not corrupt Telegram MarkdownV2 code fences.
+
+    Telegram treats a closing fenced-code line with trailing text, e.g.
+    ````` (1/2)``, as malformed MarkdownV2. The bot then falls back to plain
+    text, which is the user-visible duplicate/malformed preview symptom.
+    """
+    adapter._bot = MagicMock()
+    adapter._bot.send_message = AsyncMock(
+        side_effect=[SimpleNamespace(message_id=i) for i in range(1, 20)]
+    )
+    adapter._bot.send_chat_action = AsyncMock()
+    object.__setattr__(adapter, "MAX_MESSAGE_LENGTH", 120)
+    adapter._rich_messages_enabled = False
+
+    content = (
+        "Intro before code block\n"
+        "```text\n"
+        + ("~/.prostor/skills/github/prostor-contribution-workflow/SKILL.md\n" * 8)
+        + "```\n"
+        "After."
+    )
+
+    result = await adapter.send("12345", content, metadata={"expect_edits": True})
+
+    assert result.success is True
+    sent_texts = [call.kwargs["text"] for call in adapter._bot.send_message.await_args_list]
+    assert len(sent_texts) > 1
+    for text in sent_texts:
+        for line in text.splitlines():
+            assert not re.match(r"^```\s+\\?\(\d+/\d+\\?\)$", line), text
+            assert not re.match(r"^```\s+\(\d+/\d+\)$", line), text
+
+
+@pytest.mark.asyncio
+async def test_final_send_does_not_retrigger_typing(adapter):
+    """The final reply (metadata['notify']) must NOT re-arm Telegram's typing
+    timer. The gateway has already torn down the refresh loop by then, so a
+    re-trigger here would leave the '...typing' bubble lingering after the
+    answer (Telegram has no stop-typing API). See #48678."""
+    adapter._bot = MagicMock()
+    adapter._bot.send_message = AsyncMock(return_value=SimpleNamespace(message_id=1))
+    adapter._bot.send_chat_action = AsyncMock()
+    adapter._rich_messages_enabled = False
+
+    result = await adapter.send("12345", "All done.", metadata={"notify": True})
+
+    assert result.success is True
+    adapter._bot.send_chat_action.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_intermediate_send_still_retriggers_typing(adapter):
+    """Intermediate/progress sends (no notify marker) keep re-triggering typing
+    so the '...typing' bubble survives across progress messages while the agent
+    is still working."""
+    adapter._bot = MagicMock()
+    adapter._bot.send_message = AsyncMock(return_value=SimpleNamespace(message_id=1))
+    adapter._bot.send_chat_action = AsyncMock()
+    adapter._rich_messages_enabled = False
+
+    result = await adapter.send("12345", "Checking:", metadata={"expect_edits": True})
+
+    assert result.success is True
+    adapter._bot.send_chat_action.assert_awaited()
+
+
 # =========================================================================
 # format_message - bold and italic
 # =========================================================================
@@ -919,7 +987,7 @@ def _guest_test_adapter(*, guest_mode=True, require_mention=True, allowed_chats=
     )
     adapter = object.__new__(TelegramAdapter)
     adapter.config = config
-    adapter._bot = SimpleNamespace(id=999, username="prostor_bot")
+    adapter._bot = SimpleNamespace(id=999, username="hermes_bot")
     adapter._mention_patterns = adapter._compile_mention_patterns()
     # PR db50af910 added a TELEGRAM_ALLOWED_USERS allowlist gate to
     # _should_process_message. These tests aren't exercising the auth
@@ -943,14 +1011,14 @@ def _guest_group_message(text, *, chat_id=-100201, entities=None, reply_to_bot=F
     )
 
 
-def _guest_mention_entity(text, mention="@prostor_bot"):
+def _guest_mention_entity(text, mention="@hermes_bot"):
     return SimpleNamespace(type="mention", offset=text.index(mention), length=len(mention))
 
 
 class TestTelegramGuestMentionGating:
     def test_guest_mode_allows_explicit_mention_outside_allowed_chats(self):
         adapter = _guest_test_adapter(guest_mode=True, allowed_chats=["-100200"])
-        text = "please help @prostor_bot"
+        text = "please help @hermes_bot"
         message = _guest_group_message(
             text,
             chat_id=-100201,
@@ -967,7 +1035,7 @@ class TestTelegramGuestMentionGating:
 
     def test_guest_mode_disabled_keeps_allowed_chats_as_hard_gate_for_mentions(self):
         adapter = _guest_test_adapter(guest_mode=False, allowed_chats=["-100200"])
-        text = "please help @prostor_bot"
+        text = "please help @hermes_bot"
         message = _guest_group_message(
             text,
             chat_id=-100201,
@@ -979,7 +1047,7 @@ class TestTelegramGuestMentionGating:
     def test_guest_mode_allows_bot_command_entity_outside_allowed_chats(self):
         """``/cmd@botname`` is a ``bot_command`` entity, not ``mention``."""
         adapter = _guest_test_adapter(guest_mode=True, allowed_chats=["-100200"])
-        text = "/status@prostor_bot"
+        text = "/status@hermes_bot"
         message = _guest_group_message(
             text,
             chat_id=-100201,
@@ -1002,7 +1070,7 @@ class TestTelegramGuestMentionGating:
     def test_guest_mode_allows_mention_in_caption_outside_allowed_chats(self):
         """Media caption @mention should bypass allowed_chats via guest_mode."""
         adapter = _guest_test_adapter(guest_mode=True, allowed_chats=["-100200"])
-        text = "look @prostor_bot"
+        text = "look @hermes_bot"
         message = _guest_group_message(
             text="",
             chat_id=-100201,

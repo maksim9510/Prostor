@@ -33,31 +33,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # deploy-vercel: DISABLED — секрет VERCEL_DEPLOY_HOOK не задан, job падает.
-  # См. issue #6 (skills-index-watchdog) — после починки раскомментировать.
-  #
-  # deploy-vercel:
-  #   # Triggered automatically on release publish (production cuts) and
-  #   # manually via `gh workflow run deploy-site.yml` when an out-of-band
-  #   # main commit needs to ship live before the next release tag — e.g.
-  #   # a skills-index PR that doesn't touch website/** paths and so
-  #   # doesn't auto-deploy via the deploy-docs path.
-  #   if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Trigger Vercel Deploy
-  #       run: curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
+  deploy-vercel:
+    # Triggered automatically on release publish (production cuts) and
+    # manually via `gh workflow run deploy-site.yml` when an out-of-band
+    # main commit needs to ship live before the next release tag — e.g.
+    # a skills-index PR that doesn't touch website/** paths and so
+    # doesn't auto-deploy via the deploy-docs path.
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy
+        run: curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
 
   deploy-docs:
-    if: github.repository == 'maksim9510/Prostor'
+    if: github.repository == 'NousResearch/prostor-agent'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: 22
           cache: npm
@@ -76,11 +73,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           SKILLS_INDEX_RUN_ID: ${{ github.event.inputs.skills_index_run_id || '' }}
           REBUILD_SKILLS_INDEX: ${{ github.event.inputs.rebuild_skills_index || 'false' }}
-          # Per-source soft timeout (seconds). Each external source is bounded
-          # so one hung network call cannot stall the whole build (the
-          # previous behaviour: 2+ hour hangs on ClawHub / lobehub / etc.).
-          SKILLS_INDEX_TIMEOUT: "120"
-          SKILLS_INDEX_PARALLEL: "4"
         run: |
           # The unified external catalog is expensive to crawl and can burn
           # through the repository installation's GitHub API quota when several
@@ -93,10 +85,6 @@ jobs:
           # the health check BEFORE writing and exits non-zero on source
           # collapse, keeping the last good Pages deployment live instead of
           # publishing a degenerate catalog.
-          #
-          # If both reuse + crawl fail (network down, rate-limited, sources
-          # all collapsed), fall back to --source local so the build still
-          # produces a usable index from bundled skills.
           set -euo pipefail
           INDEX_PATH="website/static/api/skills-index.json"
           mkdir -p "$(dirname "$INDEX_PATH")"
@@ -123,7 +111,8 @@ jobs:
           }
 
           if [ "$REBUILD_SKILLS_INDEX" = "true" ]; then
-            python3 scripts/build_skills_index.py && validate_index
+            python3 scripts/build_skills_index.py
+            validate_index
             exit 0
           fi
 
@@ -144,17 +133,15 @@ jobs:
 
           echo "Downloading currently live skills index"
           if curl -fsSL --retry 3 --retry-delay 5 \
-            "https://github.com/maksim9510/Prostor/docs/api/skills-index.json" \
+            "https://prostor-agent.nousresearch.com/docs/api/skills-index.json" \
             -o "$INDEX_PATH" && validate_index; then
             exit 0
           fi
 
-          echo "::warning::Live skills index unavailable or unhealthy; falling back to --source local"
-          # Build from bundled skills only (fast, no network, bounded).
-          # The result will fail the 1500-skill floor so we do NOT validate;
-          # downstream extract-skills.py will fall back to the per-skill
-          # snapshot cache if this index is too small.
-          python3 scripts/build_skills_index.py --source local
+          echo "::warning::Live skills index unavailable or unhealthy; falling back to a fresh crawl"
+          rm -f "$INDEX_PATH"
+          python3 scripts/build_skills_index.py
+          validate_index
 
       - name: Extract skill metadata for dashboard
         run: python3 website/scripts/extract-skills.py
@@ -175,7 +162,7 @@ jobs:
           mkdir -p _site/docs
           cp -r website/build/* _site/docs/
           # llms.txt / llms-full.txt are also published at the site root
-          # (https://github.com/maksim9510/Prostor/llms.txt) because some
+          # (https://prostor-agent.nousresearch.com/llms.txt) because some
           # agents and IDE plugins probe the classic root-level path rather
           # than /docs/llms.txt. Same file, two URLs, one source of truth.
           if [ -f website/build/llms.txt ]; then
@@ -192,4 +179,4 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deploy
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4

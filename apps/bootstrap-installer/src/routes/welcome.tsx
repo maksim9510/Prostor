@@ -12,7 +12,7 @@ import { ArrowRight } from 'lucide-react'
  *   - fit-text utility so the wordmark sizes itself to the column
  *
  * No install-path footer. The default install location is correct for
- * 99% of users; the rest will use the CLI installer with a -ProstorHome
+ * 99% of users; the rest will use the CLI installer with a -HermesHome
  * flag. Showing %LOCALAPPDATA% to grandma is developer-brain.
  */
 export default function Welcome() {

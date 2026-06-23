@@ -34,7 +34,7 @@ from toolsets import TOOLSETS
 
 # Sentinel value used by the runtime provider system for providers that are
 # not natively known (named custom providers, third-party aggregators, etc.).
-# Must match prostor_cli.runtime_provider.RUNTIME_PROVIDER_TYPE_CUSTOM.
+# Must match hermes_cli.runtime_provider.RUNTIME_PROVIDER_TYPE_CUSTOM.
 _RUNTIME_PROVIDER_CUSTOM = "custom"
 from tools import file_state
 from tools.terminal_tool import set_approval_callback as _set_subagent_approval_cb
@@ -130,6 +130,12 @@ _SUBAGENT_TOOLSETS = sorted(
 _TOOLSET_LIST_STR = ", ".join(f"'{n}'" for n in _SUBAGENT_TOOLSETS)
 
 _DEFAULT_MAX_CONCURRENT_CHILDREN = 3
+# One-shot guard: the high-concurrency cost advisory is emitted at most once
+# per process. _get_max_concurrent_children() runs on every get_definitions()
+# schema rebuild (via _build_top_level_description / _build_tasks_param_description),
+# so without this flag a config of max_concurrent_children>10 spams the log on
+# every turn / agent spawn even when delegate_task is never called.
+_HIGH_CONCURRENCY_WARNED = False
 MAX_DEPTH = 1  # flat by default: parent (0) -> child (1); grandchild rejected unless max_spawn_depth raised.
 # Configurable depth cap consulted by _get_max_spawn_depth; MAX_DEPTH
 # stays as the default fallback and is still the symbol tests import.
@@ -374,11 +380,14 @@ def _get_max_concurrent_children() -> int:
         try:
             result = max(1, int(val))
             if result > 10:
-                logger.warning(
-                    "delegation.max_concurrent_children=%d: each child consumes API tokens "
-                    "independently. High values multiply cost linearly.",
-                    result,
-                )
+                global _HIGH_CONCURRENCY_WARNED
+                if not _HIGH_CONCURRENCY_WARNED:
+                    _HIGH_CONCURRENCY_WARNED = True
+                    logger.warning(
+                        "delegation.max_concurrent_children=%d: each child consumes API tokens "
+                        "independently. High values multiply cost linearly.",
+                        result,
+                    )
             return result
         except (TypeError, ValueError):
             logger.warning(
@@ -1167,7 +1176,7 @@ def _build_child_agent(
     try:
         delegation_effort = str(delegation_cfg.get("reasoning_effort") or "").strip()
         if delegation_effort:
-            from prostor_constants import parse_reasoning_effort
+            from hermes_constants import parse_reasoning_effort
 
             parsed = parse_reasoning_effort(delegation_effort)
             if parsed is not None:
@@ -1289,7 +1298,7 @@ def _build_child_agent(
             logger.debug("spawn_requested relay failed: %s", exc)
 
     try:
-        from prostor_cli.plugins import invoke_hook as _invoke_hook
+        from hermes_cli.plugins import invoke_hook as _invoke_hook
         _invoke_hook(
             "subagent_start",
             parent_session_id=getattr(parent_agent, "session_id", None),
@@ -1327,13 +1336,13 @@ def _dump_subagent_timeout_diagnostic(
     Returns the absolute path to the diagnostic file, or None on failure.
     """
     try:
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
         import datetime as _dt
         import sys as _sys
         import traceback as _traceback
 
-        prostor_home = get_prostor_home()
-        logs_dir = prostor_home / "logs"
+        hermes_home = get_hermes_home()
+        logs_dir = hermes_home / "logs"
         try:
             logs_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -2411,7 +2420,7 @@ def delegate_task(
         # child was closed.
         _parent_session_id = getattr(parent_agent, "session_id", None)
         try:
-            from prostor_cli.plugins import invoke_hook as _invoke_hook
+            from hermes_cli.plugins import invoke_hook as _invoke_hook
         except Exception:
             _invoke_hook = None
         # Aggregate child spend here so the parent's footer/UI reflect the true
@@ -2489,6 +2498,34 @@ def delegate_task(
     if background:
         from tools.async_delegation import dispatch_async_delegation_batch
         from tools.approval import get_current_session_key
+
+        # Stateless request/response sessions (the API server / WebUI path)
+        # cannot route a detached subagent result back to the agent after the
+        # turn ends — there is no persistent channel and the adapter's send()
+        # is a no-op, so a background dispatch would silently never re-enter the
+        # conversation (issue #10760). Fall back to SYNCHRONOUS execution: the
+        # work still runs and its result returns in this same response, which is
+        # strictly better than a handle that never resolves. Mirrors the
+        # pool-at-capacity inline fallback below.
+        try:
+            from gateway.session_context import async_delivery_supported
+            _async_ok = async_delivery_supported()
+        except Exception:
+            _async_ok = True
+        if not _async_ok:
+            logger.info(
+                "delegate_task: async delivery unsupported on this session "
+                "(stateless HTTP API); running the batch synchronously instead."
+            )
+            _sync_result = _execute_and_aggregate()
+            if isinstance(_sync_result, dict):
+                _sync_result["note"] = (
+                    "background=true is not available on this endpoint (stateless "
+                    "HTTP API — no channel to deliver a detached subagent result "
+                    "after the turn ends), so the subagent(s) ran SYNCHRONOUSLY and "
+                    "the result is included above."
+                )
+            return json.dumps(_sync_result, ensure_ascii=False)
 
         _session_key = get_current_session_key(default="")
         _child_agents = [c for (_, _, c) in children]
@@ -2699,7 +2736,7 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
         # proxies — pick the right transport automatically. Without this,
         # subagents would default to chat_completions and hit 404s on endpoints
         # that only speak the Anthropic Messages protocol. Fixes #10213.
-        from prostor_cli.runtime_provider import _detect_api_mode_for_url
+        from hermes_cli.runtime_provider import _detect_api_mode_for_url
 
         base_lower = configured_base_url.lower()
         provider = "custom"
@@ -2742,7 +2779,7 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
 
     # Provider is configured — resolve full credentials
     try:
-        from prostor_cli.runtime_provider import resolve_runtime_provider
+        from hermes_cli.runtime_provider import resolve_runtime_provider
 
         runtime = resolve_runtime_provider(requested=configured_provider, target_model=configured_model)
     except Exception as exc:
@@ -2775,7 +2812,7 @@ def _load_config() -> dict:
     """Load delegation config from CLI_CONFIG or persistent config.
 
     Checks the runtime config (cli.py CLI_CONFIG) first, then falls back
-    to the persistent config (prostor_cli/config.py load_config()) so that
+    to the persistent config (hermes_cli/config.py load_config()) so that
     ``delegation.model`` / ``delegation.provider`` are picked up regardless
     of the entry point (CLI, gateway, cron).
     """
@@ -2788,7 +2825,7 @@ def _load_config() -> dict:
     except Exception:
         pass
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         full = load_config()
         return full.get("delegation") or {}

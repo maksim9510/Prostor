@@ -31,7 +31,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from prostor_cli.timeouts import get_provider_request_timeout
+from hermes_cli.timeouts import get_provider_request_timeout
 from agent.prompt_builder import format_steer_marker
 from agent.tool_dispatch_helpers import _trajectory_normalize_msg, make_tool_result_message
 from agent.trajectory import convert_scratchpad_to_think
@@ -1378,22 +1378,6 @@ def create_openai_client(agent, client_kwargs: dict, *, reason: str, shared: boo
             agent._client_log_context(),
         )
         return client
-    if agent.provider == "google-gemini-cli" or str(client_kwargs.get("base_url", "")).startswith("cloudcode-pa://"):
-        from agent.gemini_cloudcode_adapter import GeminiCloudCodeClient
-
-        # Strip OpenAI-specific kwargs the Gemini client doesn't accept
-        safe_kwargs = {
-            k: v for k, v in client_kwargs.items()
-            if k in {"api_key", "base_url", "default_headers", "project_id", "timeout"}
-        }
-        client = GeminiCloudCodeClient(**safe_kwargs)
-        _ra().logger.info(
-            "Gemini Cloud Code Assist client created (%s, shared=%s) %s",
-            reason,
-            shared,
-            agent._client_log_context(),
-        )
-        return client
     if agent.provider == "gemini":
         from agent.gemini_native_adapter import GeminiNativeClient, is_native_gemini_base_url
 
@@ -1462,7 +1446,7 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
     change persists across turns (unlike fallback which is
     turn-scoped).
     """
-    from prostor_cli.providers import determine_api_mode
+    from hermes_cli.providers import determine_api_mode
 
     # ── Determine api_mode if not provided ──
     if not api_mode:
@@ -1557,7 +1541,7 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
             # the matching block in agent_init.py for the full rationale.
             if new_provider == "minimax-oauth" and isinstance(effective_key, str) and effective_key:
                 try:
-                    from prostor_cli.auth import build_minimax_oauth_token_provider
+                    from hermes_cli.auth import build_minimax_oauth_token_provider
                     effective_key = build_minimax_oauth_token_provider()
                 except Exception as _mm_exc:  # noqa: BLE001
                     import logging as _logging
@@ -1629,7 +1613,7 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
         # custom provider mid-session (closes #15779).
         _sm_custom_providers = None
         try:
-            from prostor_cli.config import load_config, get_compatible_custom_providers
+            from hermes_cli.config import load_config, get_compatible_custom_providers
             _sm_cfg = load_config()
             _sm_custom_providers = get_compatible_custom_providers(_sm_cfg)
         except Exception:
@@ -1731,7 +1715,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
 
     _tool_middleware_trace = list(tool_request_middleware_trace or [])
     try:
-        from prostor_cli.middleware import apply_tool_request_middleware
+        from hermes_cli.middleware import apply_tool_request_middleware
 
         if not skip_tool_request_middleware:
             _tool_request_mw = apply_tool_request_middleware(
@@ -1752,7 +1736,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
     block_message: Optional[str] = None
     if not pre_tool_block_checked:
         try:
-            from prostor_cli.plugins import get_pre_tool_call_block_message
+            from hermes_cli.plugins import get_pre_tool_call_block_message
             block_message = get_pre_tool_call_block_message(
                 function_name,
                 function_args,
@@ -1824,7 +1808,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
         def _execute(next_args: dict) -> Any:
             session_db = agent._get_session_db_for_recall()
             if not session_db:
-                from prostor_state import format_session_db_unavailable
+                from hermes_state import format_session_db_unavailable
                 return _finish_agent_tool(json.dumps({"success": False, "error": format_session_db_unavailable()}), next_args)
             from tools.session_search_tool import session_search as _session_search
             return _finish_agent_tool(
@@ -1854,32 +1838,18 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
                 operations=operations,
                 store=agent._memory_store,
             )
-            # Bridge: notify external memory provider of built-in memory writes.
-            # Covers both the single-op shape and each add/replace inside a batch.
+            # Mirror successful built-in memory writes to external providers.
+            # All gating/op-expansion lives behind the manager interface
+            # (MemoryManager.notify_memory_tool_write).
             if agent._memory_manager:
-                if operations:
-                    _mem_ops = [
-                        op for op in operations
-                        if isinstance(op, dict) and op.get("action") in {"add", "replace"}
-                    ]
-                else:
-                    _mem_ops = (
-                        [{"action": next_args.get("action"), "content": next_args.get("content")}]
-                        if next_args.get("action") in {"add", "replace"} else []
-                    )
-                for _op in _mem_ops:
-                    try:
-                        agent._memory_manager.on_memory_write(
-                            _op.get("action", ""),
-                            target,
-                            _op.get("content", "") or "",
-                            metadata=agent._build_memory_write_metadata(
-                                task_id=effective_task_id,
-                                tool_call_id=tool_call_id,
-                            ),
-                        )
-                    except Exception:
-                        pass
+                agent._memory_manager.notify_memory_tool_write(
+                    result,
+                    next_args,
+                    build_metadata=lambda: agent._build_memory_write_metadata(
+                        task_id=effective_task_id,
+                        tool_call_id=tool_call_id,
+                    ),
+                )
             return _finish_agent_tool(result, next_args)
     elif agent._memory_manager and agent._memory_manager.has_tool(function_name):
         def _execute(next_args: dict) -> Any:
@@ -1925,7 +1895,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
                 tool_request_middleware_trace=list(_tool_middleware_trace),
             )
 
-    from prostor_cli.middleware import run_tool_execution_middleware
+    from hermes_cli.middleware import run_tool_execution_middleware
 
     return run_tool_execution_middleware(
         function_name,
@@ -2187,24 +2157,35 @@ def copy_reasoning_content_for_api(agent, source_msg: dict, api_msg: dict) -> No
     if source_msg.get("role") != "assistant":
         return
 
-    # 1. Explicit reasoning_content already set — preserve it verbatim
-    # (includes DeepSeek/Kimi's own space-placeholder written at creation
-    # time, and any valid reasoning content from the same provider).
+    needs_thinking_pad = agent._needs_thinking_reasoning_pad()
+
+    # 1. Explicit reasoning_content already set.
     #
-    # Exception: sessions persisted BEFORE #17341 have empty-string
-    # placeholders pinned at creation time. DeepSeek V4 Pro rejects
-    # those with HTTP 400. When the active provider enforces the
-    # thinking-mode echo, upgrade "" → " " on replay so stale history
-    # doesn't 400 the user on the next turn.
+    # When the active provider enforces the thinking-mode echo-back
+    # (DeepSeek / Kimi / MiMo), preserve it verbatim — that includes their
+    # own space-placeholder written at creation time and any valid reasoning
+    # from the same provider. Sessions persisted BEFORE #17341 have
+    # empty-string placeholders pinned at creation time; DeepSeek V4 Pro
+    # rejects those with HTTP 400, so upgrade "" → " " on replay.
+    #
+    # When the active provider does NOT enforce echo-back, strip the field
+    # entirely. Strict OpenAI-compatible providers (Mistral, Cerebras, Groq,
+    # SambaNova, …) reject ANY reasoning_content key in input messages with
+    # HTTP 400/422 ("Extra inputs are not permitted"), even an empty string
+    # or a single-space pad. This is the cross-provider fallback case: a
+    # reasoning primary (DeepSeek/Kimi/MiMo) pads history with " ", then a
+    # fallback to a strict provider replays that pad and 422s. Stripping
+    # here covers the rebuild path; reapply_reasoning_echo_for_provider()
+    # covers the already-built api_messages path. Refs #45655.
     existing = source_msg.get("reasoning_content")
     if isinstance(existing, str):
-        if existing == "" and agent._needs_thinking_reasoning_pad():
+        if not needs_thinking_pad:
+            api_msg.pop("reasoning_content", None)
+        elif existing == "":
             api_msg["reasoning_content"] = " "
         else:
             api_msg["reasoning_content"] = existing
         return
-
-    needs_thinking_pad = agent._needs_thinking_reasoning_pad()
 
     # 2. Cross-provider poisoned history (#15748): on DeepSeek/Kimi,
     # if the source turn has tool_calls AND a 'reasoning' field but no
@@ -2231,9 +2212,13 @@ def copy_reasoning_content_for_api(agent, source_msg: dict, api_msg: dict) -> No
     # for providers that use the internal 'reasoning' key.
     # This must happen before the unconditional empty-string fallback so
     # genuine reasoning content is not overwritten (#15812 regression in
-    # PR #15478).
+    # PR #15478). Only promote for providers that enforce echo-back —
+    # strict providers reject the field (refs #45655).
     if isinstance(normalized_reasoning, str) and normalized_reasoning:
-        api_msg["reasoning_content"] = normalized_reasoning
+        if needs_thinking_pad:
+            api_msg["reasoning_content"] = normalized_reasoning
+        else:
+            api_msg.pop("reasoning_content", None)
         return
 
     # 4. DeepSeek / Kimi thinking mode: all assistant messages need
@@ -2254,34 +2239,53 @@ def copy_reasoning_content_for_api(agent, source_msg: dict, api_msg: dict) -> No
 
 
 def reapply_reasoning_echo_for_provider(agent, api_messages: list) -> int:
-    """Re-pad assistant turns with reasoning_content for the active provider.
+    """Re-pad (or strip) assistant turns' reasoning_content for the active provider.
 
     ``api_messages`` is built once, before the retry loop, while the *primary*
-    provider is active.  If a mid-conversation fallback then switches to a
-    require-side provider (DeepSeek / Kimi / MiMo thinking mode), assistant
-    turns that were built when the prior provider did NOT need the echo-back go
-    out without ``reasoning_content`` and the new provider rejects them with
-    HTTP 400 ("The reasoning_content in the thinking mode must be passed back").
+    provider is active.  A mid-conversation fallback can then switch providers,
+    so the reasoning fields baked into ``api_messages`` are shaped for the
+    *prior* provider and must be reconciled against the *current* one:
 
-    Calling this immediately before building the request kwargs re-applies the
-    pad against the *current* provider.  It is idempotent and a no-op unless
-    ``_needs_thinking_reasoning_pad()`` is True for the active provider, so it
-    is safe to call every iteration and covers every fallback path.
+    * Switching TO a require-side provider (DeepSeek / Kimi / MiMo thinking
+      mode): assistant turns built when the prior provider did NOT need the
+      echo-back go out without ``reasoning_content`` and the new provider
+      rejects them with HTTP 400 ("The reasoning_content in the thinking mode
+      must be passed back").  Re-apply the pad.
 
-    Returns the number of assistant turns that gained reasoning_content.
+    * Switching TO a strict provider that rejects the field (Mistral,
+      Cerebras, Groq, SambaNova, …): assistant turns built under a reasoning
+      primary carry a ``reasoning_content`` pad (often a single space ``" "``),
+      and the strict provider rejects it with HTTP 400/422 ("Extra inputs are
+      not permitted").  Strip the field.  This is the exact cross-provider
+      fallback bug from #45655 — a DeepSeek primary pads history with ``" "``,
+      the request falls back to Mistral, and Mistral 422s on the stale pad.
+
+    Calling this immediately before building the request kwargs reconciles the
+    fields against the *current* provider.  It is idempotent and safe to call
+    every iteration; it covers every fallback path.
+
+    Returns the number of assistant turns whose reasoning_content was added or
+    removed.
     """
-    if not agent._needs_thinking_reasoning_pad():
-        return 0
-    padded = 0
+    needs_pad = agent._needs_thinking_reasoning_pad()
+    changed = 0
     for api_msg in api_messages:
         if api_msg.get("role") != "assistant":
             continue
-        if api_msg.get("reasoning_content"):
-            continue
-        copy_reasoning_content_for_api(agent, api_msg, api_msg)
-        if api_msg.get("reasoning_content"):
-            padded += 1
-    return padded
+        if needs_pad:
+            if api_msg.get("reasoning_content"):
+                continue
+            copy_reasoning_content_for_api(agent, api_msg, api_msg)
+            if api_msg.get("reasoning_content"):
+                changed += 1
+        else:
+            # Strict provider — strip any stale reasoning_content pad left
+            # over from a reasoning primary so the fallback request doesn't
+            # 400/422 on it.
+            if "reasoning_content" in api_msg:
+                api_msg.pop("reasoning_content", None)
+                changed += 1
+    return changed
 
 
 def _iter_pool_sockets(client: Any):

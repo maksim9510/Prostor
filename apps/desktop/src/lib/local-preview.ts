@@ -115,7 +115,6 @@ async function enrichPreviewTarget(target: PreviewTarget | null): Promise<Previe
 
   try {
     const result = await readDesktopFileText(target.path || target.source)
-
     return {
       ...target,
       binary: result.binary,
@@ -134,7 +133,7 @@ export async function normalizeOrLocalPreviewTarget(
   cwd?: string | null
 ): Promise<PreviewTarget | null> {
   try {
-    const normalized = await window.prostorDesktop?.normalizePreviewTarget?.(rawTarget, cwd || undefined)
+    const normalized = await window.hermesDesktop?.normalizePreviewTarget?.(rawTarget, cwd || undefined)
 
     if (normalized) {
       return enrichPreviewTarget(normalized)

@@ -330,7 +330,7 @@ class TestFormatFooter:
         import tempfile
         from gateway.platforms.base import BasePlatformAdapter
 
-        tmp = tempfile.mkdtemp(prefix="prostor_footer_")
+        tmp = tempfile.mkdtemp(prefix="hermes_footer_")
         try:
             cfg = os.path.join(tmp, "config.yaml")
             with open(cfg, "w") as fh:
@@ -363,7 +363,7 @@ class TestVerifierEnabled:
         agent = _bare_agent()
         # With no env and no config present, safe default is True.
         # load_config may surface a user config.yaml in some envs — stub it.
-        import prostor_cli.config as _cfg_mod
+        import hermes_cli.config as _cfg_mod
         monkeypatch.setattr(_cfg_mod, "load_config", lambda: {})
         assert agent._file_mutation_verifier_enabled() is True
 
@@ -375,7 +375,7 @@ class TestVerifierEnabled:
 
     def test_env_enables_over_config(self, monkeypatch):
         monkeypatch.setenv("PROSTOR_FILE_MUTATION_VERIFIER", "1")
-        import prostor_cli.config as _cfg_mod
+        import hermes_cli.config as _cfg_mod
         monkeypatch.setattr(
             _cfg_mod, "load_config",
             lambda: {"display": {"file_mutation_verifier": False}},
@@ -385,7 +385,7 @@ class TestVerifierEnabled:
 
     def test_config_disables_when_no_env(self, monkeypatch):
         monkeypatch.delenv("PROSTOR_FILE_MUTATION_VERIFIER", raising=False)
-        import prostor_cli.config as _cfg_mod
+        import hermes_cli.config as _cfg_mod
         monkeypatch.setattr(
             _cfg_mod, "load_config",
             lambda: {"display": {"file_mutation_verifier": False}},

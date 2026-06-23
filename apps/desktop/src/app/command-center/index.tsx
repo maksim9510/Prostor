@@ -6,20 +6,20 @@ import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
 import { SearchField } from '@/components/ui/search-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
-import { useI18n } from '@/i18n'
-import { sessionTitle } from '@/lib/chat-runtime'
-import { Activity, AlertCircle, BarChart3, Pin } from '@/lib/icons'
-import { exportSession } from '@/lib/session-export'
-import { cn } from '@/lib/utils'
 import {
   getActionStatus,
   getLogs,
   getStatus,
   getUsageAnalytics,
   restartGateway,
-  updateProstor
+  updateHermes
 } from '@/prostor'
 import type { ActionStatusResponse, AnalyticsResponse, StatusResponse } from '@/prostor'
+import { useI18n } from '@/i18n'
+import { sessionTitle } from '@/lib/chat-runtime'
+import { Activity, AlertCircle, BarChart3, Pin } from '@/lib/icons'
+import { exportSession } from '@/lib/session-export'
+import { cn } from '@/lib/utils'
 import { upsertDesktopActionTask } from '@/store/activity'
 import { $pinnedSessionIds, pinSession, unpinSession } from '@/store/layout'
 import { $sessions, sessionPinId } from '@/store/session'
@@ -228,7 +228,7 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
       setSystemError('')
 
       try {
-        const started = kind === 'restart' ? await restartGateway() : await updateProstor()
+        const started = kind === 'restart' ? await restartGateway() : await updateHermes()
         let nextStatus: ActionStatusResponse | null = null
 
         for (let attempt = 0; attempt < 18; attempt += 1) {
@@ -390,7 +390,7 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
                           </span>
                         </div>
                         <div className="mt-1 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
-                          {cc.prostorActiveSessions(status.version, status.active_sessions)}
+                          {cc.hermesActiveSessions(status.version, status.active_sessions)}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
@@ -398,7 +398,7 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
                           {cc.restartGateway}
                         </Button>
                         <Button onClick={() => void runSystemAction('update')} size="xs" variant="textStrong">
-                          {cc.updateProstor}
+                          {cc.updateHermes}
                         </Button>
                       </div>
                     </div>

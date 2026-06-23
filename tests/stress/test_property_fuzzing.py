@@ -233,16 +233,16 @@ def main():
     for seq_idx in range(NUM_SEQUENCES):
         seed = random.randint(0, 10**9)
         rng = random.Random(seed)
-        home = tempfile.mkdtemp(prefix=f"prostor_fuzz_{seq_idx}_")
+        home = tempfile.mkdtemp(prefix=f"hermes_fuzz_{seq_idx}_")
         os.environ["PROSTOR_HOME"] = home
         os.environ["HOME"] = home
         sys.path.insert(0, WT)
 
         # Fresh module state per sequence to avoid cached init paths.
         for m in list(sys.modules.keys()):
-            if m.startswith("prostor_cli"):
+            if m.startswith("hermes_cli"):
                 del sys.modules[m]
-        from prostor_cli import kanban_db as kb
+        from hermes_cli import kanban_db as kb
 
         kb.init_db()
         conn = kb.connect()

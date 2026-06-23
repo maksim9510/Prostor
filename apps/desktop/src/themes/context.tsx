@@ -179,8 +179,8 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
   const skinName = theme.name.endsWith(`-${mode}`) ? theme.name.slice(0, -mode.length - 1) : theme.name
 
   root.style.setProperty('color-scheme', rendered)
-  root.dataset.prostorTheme = skinName
-  root.dataset.prostorMode = rendered
+  root.dataset.hermesTheme = skinName
+  root.dataset.hermesMode = rendered
   root.classList.toggle('dark', isDark)
 
   // Brand seeds feed every glass + shadcn token via `color-mix()` in styles.css.
@@ -222,7 +222,7 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
     root.style.setProperty(k, v)
   }
 
-  window.prostorDesktop?.setTitleBarTheme?.({
+  window.hermesDesktop?.setTitleBarTheme?.({
     background: c.background,
     foreground: c.foreground
   })
@@ -242,7 +242,7 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
     const link = document.createElement('link')
     link.rel = 'stylesheet'
     link.href = typo.fontUrl
-    link.dataset.prostorThemeFont = 'true'
+    link.dataset.hermesThemeFont = 'true'
     document.head.appendChild(link)
     INJECTED_FONT_URLS.add(typo.fontUrl)
   }
@@ -253,7 +253,7 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
 // theme instead of the OS appearance. An explicit light/dark pick is forced;
 // 'system' stays 'system' so prefers-color-scheme keeps tracking the OS.
 const syncNativeTheme = (pref: ThemeMode, rendered: 'light' | 'dark') =>
-  window.prostorDesktop?.setNativeTheme?.(pref === 'system' ? 'system' : rendered)
+  window.hermesDesktop?.setNativeTheme?.(pref === 'system' ? 'system' : rendered)
 
 // Boot-time paint to avoid a flash before <ThemeProvider> mounts. Use the last
 // active profile's appearance so a non-default profile relaunch paints its own

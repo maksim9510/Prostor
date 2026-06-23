@@ -45,14 +45,14 @@ def scenario(name):
     """
     def wrap(fn):
         def run():
-            home = tempfile.mkdtemp(prefix=f"prostor_atyp_{name}_")
+            home = tempfile.mkdtemp(prefix=f"hermes_atyp_{name}_")
             os.environ["PROSTOR_HOME"] = home
             os.environ["HOME"] = home
             for m in list(sys.modules.keys()):
-                if m.startswith(("prostor_cli", "plugins", "gateway")):
+                if m.startswith(("hermes_cli", "plugins", "gateway")):
                     del sys.modules[m]
             sys.path.insert(0, str(WT))
-            from prostor_cli import kanban_db as kb  # noqa: F401
+            from hermes_cli import kanban_db as kb  # noqa: F401
             print(f"\n═══ {name} ═══")
             try:
                 fn(home, kb)
@@ -235,7 +235,7 @@ def _(home, kb):
     ]
     for bad in bad_metas:
         r = subprocess.run(
-            [sys.executable, "-m", "prostor_cli.main", "kanban",
+            [sys.executable, "-m", "hermes_cli.main", "kanban",
              "complete", tid, "--metadata", bad],
             capture_output=True, text=True, env=env,
         )
@@ -432,7 +432,7 @@ def _(home, kb):
         # Verify resolve_workspace (which the dispatcher calls) doesn't
         # allow escape.
         try:
-            from prostor_cli.kanban_db import resolve_workspace
+            from hermes_cli.kanban_db import resolve_workspace
             resolved = resolve_workspace(task)
             # If resolve succeeded, check it's actually escape-safe.
             resolved_abs = str(Path(resolved).resolve())
@@ -440,7 +440,7 @@ def _(home, kb):
             if not resolved_abs.startswith(home_abs) and resolved_abs.startswith("/tmp"):
                 # This is escaping the home dir. Whether that's actually
                 # a problem depends on the threat model. Flag for attention.
-                print(f"  ⚠ workspace resolved OUTSIDE prostor_home: {resolved}")
+                print(f"  ⚠ workspace resolved OUTSIDE hermes_home: {resolved}")
                 print(f"    (not necessarily a bug — dir: workspaces are intentionally arbitrary, but worth documenting)")
         except Exception as e:
             print(f"  resolve_workspace rejected: {e}")
@@ -527,7 +527,7 @@ def _(home, kb):
 # FILESYSTEM WEIRDNESS
 # =============================================================================
 
-@scenario("prostor_home_with_spaces")
+@scenario("hermes_home_with_spaces")
 def _(home, kb):
     """PROSTOR_HOME at a path with spaces — should work but catches
     anyone doing string interpolation without quoting."""
@@ -554,11 +554,11 @@ def _(home, kb):
         shutil.rmtree(weird, ignore_errors=True)
 
 
-@scenario("prostor_home_with_unicode")
+@scenario("hermes_home_with_unicode")
 def _(home, kb):
     """PROSTOR_HOME with non-ASCII chars."""
     # Pre-create directly since tempfile doesn't love unicode prefixes
-    weird = f"/tmp/prostor_héllo_émöji_{os.getpid()}"
+    weird = f"/tmp/hermes_héllo_émöji_{os.getpid()}"
     os.makedirs(weird, exist_ok=True)
     os.environ["PROSTOR_HOME"] = weird
     os.environ["HOME"] = weird
@@ -576,12 +576,12 @@ def _(home, kb):
         shutil.rmtree(weird, ignore_errors=True)
 
 
-@scenario("prostor_home_via_symlink")
+@scenario("hermes_home_via_symlink")
 def _(home, kb):
     """PROSTOR_HOME is a symlink to the real dir. _INITIALIZED_PATHS
     uses Path.resolve() — two different symlink names pointing at the
     same dir should NOT double-init."""
-    real = tempfile.mkdtemp(prefix="prostor_real_")
+    real = tempfile.mkdtemp(prefix="hermes_real_")
     link1 = real + "_link1"
     link2 = real + "_link2"
     os.symlink(real, link1)
@@ -685,13 +685,13 @@ def _(home, kb):
 # CONCURRENCY CORNERS
 # =============================================================================
 
-def _idempotency_race_worker(prostor_home: str, key: str, result_file: str,
+def _idempotency_race_worker(hermes_home: str, key: str, result_file: str,
                              barrier_path: str) -> None:
     """Subprocess body for the idempotency race test."""
-    os.environ["PROSTOR_HOME"] = prostor_home
-    os.environ["HOME"] = prostor_home
+    os.environ["PROSTOR_HOME"] = hermes_home
+    os.environ["HOME"] = hermes_home
     sys.path.insert(0, str(WT))
-    from prostor_cli import kanban_db as kb
+    from hermes_cli import kanban_db as kb
 
     # Spin until the barrier file exists (crude sync across processes)
     while not os.path.exists(barrier_path):
@@ -980,7 +980,7 @@ def _(home, kb):
     kb.init_db()
     # Set a session token so the ws check doesnt bomb on import
     try:
-        from prostor_cli import web_server as ws  # noqa
+        from hermes_cli import web_server as ws  # noqa
     except Exception:
         pass
 

@@ -50,7 +50,7 @@ class CopilotACPClientSafetyTests(unittest.TestCase):
         outcome = (((response.get("result") or {}).get("outcome") or {}).get("outcome"))
         self.assertEqual(outcome, "cancelled")
 
-    def test_read_text_file_blocks_internal_prostor_hub_files(self) -> None:
+    def test_read_text_file_blocks_internal_hermes_hub_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             blocked = home / ".prostor" / "skills" / ".hub" / "index-cache" / "entry.json"
@@ -175,13 +175,13 @@ def _fake_popen_capture(captured):
 
 
 def test_run_prompt_preserves_real_home_when_profile_home_available(monkeypatch, tmp_path):
-    prostor_home = tmp_path / "prostor"
-    (prostor_home / "home").mkdir(parents=True)
+    hermes_home = tmp_path / "prostor"
+    (hermes_home / "home").mkdir(parents=True)
     real_home = tmp_path / "real-home"
     real_home.mkdir()
 
     monkeypatch.setenv("HOME", str(real_home))
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
     captured = {}
     client = _make_home_client(tmp_path)

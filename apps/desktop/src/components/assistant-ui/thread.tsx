@@ -55,15 +55,16 @@ import { detectTrigger, textBeforeCaret, type TriggerState } from '@/app/chat/co
 import { ComposerTriggerPopover } from '@/app/chat/composer/trigger-popover'
 import {
   extractDroppedFiles,
+  PROSTOR_PATHS_MIME,
   isImagePath,
-  partitionDroppedFiles,
-  PROSTOR_PATHS_MIME
+  partitionDroppedFiles
 } from '@/app/chat/hooks/use-composer-actions'
 import { uploadComposerAttachment } from '@/app/session/hooks/use-prompt-actions'
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
-import { DirectiveContent, prostorDirectiveFormatter } from '@/components/assistant-ui/directive-text'
+import { DirectiveContent, hermesDirectiveFormatter } from '@/components/assistant-ui/directive-text'
 import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
 import { ThreadMessageList } from '@/components/assistant-ui/thread-list'
+import { ThreadTimeline } from '@/components/assistant-ui/thread-timeline'
 import { ToolFallback, ToolGroupSlot } from '@/components/assistant-ui/tool-fallback'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { UserMessageText } from '@/components/assistant-ui/user-message-text'
@@ -84,6 +85,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Loader } from '@/components/ui/loader'
+import type { HermesGateway } from '@/prostor'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
 import { attachmentDisplayText, attachmentId, pathLabel } from '@/lib/chat-runtime'
@@ -95,7 +97,6 @@ import { extractPreviewTargets } from '@/lib/preview-targets'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { playSpeechText, stopVoicePlayback } from '@/lib/voice-playback'
-import type { ProstorGateway } from '@/prostor'
 import { $compactionActive } from '@/store/compaction'
 import type { ComposerAttachment } from '@/store/composer'
 import { notifyError } from '@/store/notifications'
@@ -164,7 +165,7 @@ function contentHasVisibleText(content: unknown): boolean {
 export const Thread: FC<{
   clampToComposer?: boolean
   cwd?: string | null
-  gateway?: ProstorGateway | null
+  gateway?: HermesGateway | null
   intro?: IntroProps
   loading?: ThreadLoadingState
   onBranchInNewChat?: (messageId: string) => void
@@ -212,6 +213,7 @@ export const Thread: FC<{
         sessionKey={sessionKey}
       />
       {loading === 'session' && <CenteredThreadSpinner />}
+      <ThreadTimeline />
     </div>
   )
 }
@@ -797,7 +799,15 @@ function messageAttachmentRefs(value: unknown): string[] {
   return value.every(ref => typeof ref === 'string') ? value : EMPTY_ATTACHMENT_REFS
 }
 
-function StickyHumanMessageContainer({ attachments, children }: { attachments?: ReactNode; children: ReactNode }) {
+function StickyHumanMessageContainer({
+  attachments,
+  children,
+  messageId
+}: {
+  attachments?: ReactNode
+  children: ReactNode
+  messageId?: string
+}) {
   return (
     // Fragment, not a wrapper: a wrapping element becomes the sticky's
     // containing block (it'd stick within its own height = never). The bubble
@@ -806,6 +816,7 @@ function StickyHumanMessageContainer({ attachments, children }: { attachments?: 
     <>
       <div
         className="group/user-message sticky z-40 -mx-4 flex w-[calc(100%+2rem)] min-w-0 max-w-none flex-col items-stretch gap-0 self-end overflow-visible bg-(--ui-chat-surface-background) px-4 pb-(--conversation-turn-gap) pt-1"
+        data-message-id={messageId}
         data-role="user"
         data-slot="aui_user-message-root"
       >
@@ -990,6 +1001,7 @@ const UserMessage: FC<{
   return (
     <MessagePrimitive.Root asChild>
       <StickyHumanMessageContainer
+        messageId={messageId}
         attachments={
           // Attachments live BELOW the sticky bubble in normal flow, so they
           // scroll away behind the pinned bubble instead of riding along with
@@ -1168,7 +1180,7 @@ const SystemMessage: FC = () => {
 
 interface UserEditComposerProps {
   cwd: string | null
-  gateway: ProstorGateway | null
+  gateway: HermesGateway | null
   sessionId: string | null
 }
 
@@ -1362,7 +1374,7 @@ const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sessionId }
         return
       }
 
-      const serialized = prostorDirectiveFormatter.serialize(item)
+      const serialized = hermesDirectiveFormatter.serialize(item)
       const starter = serialized.endsWith(':')
       const text = starter || serialized.endsWith(' ') ? serialized : `${serialized} `
       const directive = !starter && serialized.match(/^@([^:]+):(.+)$/)

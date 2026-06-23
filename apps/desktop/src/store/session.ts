@@ -2,7 +2,7 @@ import { atom, computed } from 'nanostores'
 
 import { lastVisibleMessageIsUser } from '@/app/chat/thread-loading'
 import type { ContextSuggestion } from '@/app/types'
-import type { ProstorConnection } from '@/global'
+import type { HermesConnection } from '@/global'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { persistBoolean, persistString, storedBoolean, storedString } from '@/lib/storage'
 import type { SessionInfo, UsageStats } from '@/types/prostor'
@@ -23,14 +23,13 @@ const COMPOSER_FAST_KEY = 'prostor.desktop.composer.fast'
 
 let configuredDefaultProjectDir = ''
 
-function workspaceCwdKey(connection: ProstorConnection | null = $connection.get()): string {
+function workspaceCwdKey(connection: HermesConnection | null = $connection.get()): string {
   if (connection?.mode !== 'remote') {
     return WORKSPACE_CWD_KEY
   }
 
   const base = encodeURIComponent(connection.baseUrl || 'remote')
   const profile = encodeURIComponent(connection.profile || 'default')
-
   return `${WORKSPACE_CWD_KEY}.remote.${base}.${profile}`
 }
 
@@ -39,7 +38,7 @@ export const getRememberedWorkspaceCwd = (): string => storedString(workspaceCwd
 export const getConfiguredDefaultProjectDir = (): string => configuredDefaultProjectDir
 
 export async function syncConfiguredDefaultProjectDir(): Promise<string> {
-  const settings = window.prostorDesktop?.settings?.getDefaultProjectDir
+  const settings = window.hermesDesktop?.settings?.getDefaultProjectDir
 
   if (!settings) {
     configuredDefaultProjectDir = ''
@@ -57,7 +56,7 @@ export async function syncConfiguredDefaultProjectDir(): Promise<string> {
  *  packaged, optional Settings override). Clears stale install-dir paths that
  *  PR #37586's localStorage stickiness can preserve across the #37536 fix. */
 export async function ensureDefaultWorkspaceCwd(): Promise<void> {
-  const sanitize = window.prostorDesktop?.sanitizeWorkspaceCwd
+  const sanitize = window.hermesDesktop?.sanitizeWorkspaceCwd
 
   if (!sanitize) {
     return
@@ -76,7 +75,6 @@ export async function ensureDefaultWorkspaceCwd(): Promise<void> {
 
   if ($connection.get()?.mode === 'remote') {
     seedLiveCwd(remembered)
-
     return
   }
 
@@ -153,7 +151,6 @@ export function mergeSessionPage(
   }
 
   const incomingIds = new Set(incoming.map(session => session.id))
-
   // Deduplicate by compression lineage: when auto-compression rotates the tip
   // id (old #4 → new #5), the incoming page carries the new tip but the
   // previous list still holds the old one.  Without lineage-level dedup both
@@ -172,7 +169,7 @@ export function mergeSessionPage(
   return survivors.length ? [...survivors, ...incoming] : incoming
 }
 
-export const $connection = atom<ProstorConnection | null>(null)
+export const $connection = atom<HermesConnection | null>(null)
 export const $gatewayState = atom('idle')
 export const $sessions = atom<SessionInfo[]>([])
 export const $sessionsTotal = atom<number>(0)
@@ -265,7 +262,7 @@ export const $contextSuggestions = atom<ContextSuggestion[]>([])
 export const $modelPickerOpen = atom(false)
 export const $sessionPickerOpen = atom(false)
 
-export const setConnection = (next: Updater<ProstorConnection | null>) => updateAtom($connection, next)
+export const setConnection = (next: Updater<HermesConnection | null>) => updateAtom($connection, next)
 export const setGatewayState = (next: Updater<string>) => updateAtom($gatewayState, next)
 export const setSessions = (next: Updater<SessionInfo[]>) => updateAtom($sessions, next)
 export const setSessionsTotal = (next: Updater<number>) => updateAtom($sessionsTotal, next)

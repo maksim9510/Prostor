@@ -6,21 +6,22 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useI18n } from '@/i18n'
-import { cn } from '@/lib/utils'
 import {
   getElevenLabsVoices,
-  getProstorConfigDefaults,
-  getProstorConfigRecord,
-  getProstorConfigSchema,
-  saveProstorConfig
+  getHermesConfigDefaults,
+  getHermesConfigRecord,
+  getHermesConfigSchema,
+  saveHermesConfig
 } from '@/prostor'
+import { useI18n } from '@/i18n'
+import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
-import type { ConfigFieldSchema, ProstorConfigRecord } from '@/types/prostor'
+import type { ConfigFieldSchema, HermesConfigRecord } from '@/types/prostor'
 
 import { CONTROL_TEXT, EMPTY_SELECT_VALUE, FIELD_DESCRIPTIONS, FIELD_LABELS, SECTIONS } from './constants'
 import { fieldCopyForSchemaKey } from './field-copy'
 import { enumOptionsFor, getNested, prettyName, setNested } from './helpers'
+import { MemoryConnect } from './memory/connect'
 import { ModelSettings } from './model-settings'
 import { EmptyState, ListRow, LoadingState, SettingsContent } from './primitives'
 import { ProviderConfigPanel } from './provider-config-panel'
@@ -31,7 +32,8 @@ function ConfigField({
   value,
   enumOptions,
   optionLabels,
-  onChange
+  onChange,
+  descriptionExtra
 }: {
   schemaKey: string
   schema: ConfigFieldSchema
@@ -39,6 +41,7 @@ function ConfigField({
   enumOptions?: string[]
   optionLabels?: Record<string, string>
   onChange: (value: unknown) => void
+  descriptionExtra?: ReactNode
 }) {
   const { t } = useI18n()
   const c = t.settings.config
@@ -64,8 +67,17 @@ function ConfigField({
       ? rawDescription
       : undefined
 
+  const descriptionNode: ReactNode = descriptionExtra ? (
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+      {description}
+      {descriptionExtra}
+    </span>
+  ) : (
+    description
+  )
+
   const row = (action: ReactNode, wide = false) => (
-    <ListRow action={action} description={description} title={label} wide={wide} />
+    <ListRow action={action} description={descriptionNode} title={label} wide={wide} />
   )
 
   if (schema.type === 'boolean') {
@@ -193,8 +205,8 @@ export function ConfigSettings({
 }) {
   const { t } = useI18n()
   const c = t.settings.config
-  const [config, setConfig] = useState<ProstorConfigRecord | null>(null)
-  const [_defaults, setDefaults] = useState<ProstorConfigRecord | null>(null)
+  const [config, setConfig] = useState<HermesConfigRecord | null>(null)
+  const [_defaults, setDefaults] = useState<HermesConfigRecord | null>(null)
   const [schema, setSchema] = useState<Record<string, ConfigFieldSchema> | null>(null)
   const [elevenLabsVoiceOptions, setElevenLabsVoiceOptions] = useState<string[] | null>(null)
   const [elevenLabsVoiceLabels, setElevenLabsVoiceLabels] = useState<Record<string, string>>({})
@@ -203,7 +215,7 @@ export function ConfigSettings({
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([getProstorConfigRecord(), getProstorConfigDefaults(), getProstorConfigSchema()])
+    Promise.all([getHermesConfigRecord(), getHermesConfigDefaults(), getHermesConfigSchema()])
       .then(([c, d, s]) => {
         if (cancelled) {
           return
@@ -250,7 +262,7 @@ export function ConfigSettings({
     const t = window.setTimeout(() => {
       void (async () => {
         try {
-          await saveProstorConfig(config)
+          await saveHermesConfig(config)
 
           if (saveVersionRef.current === v) {
             onConfigSaved?.()
@@ -266,7 +278,7 @@ export function ConfigSettings({
     return () => window.clearTimeout(t)
   }, [config, onConfigSaved, saveVersion])
 
-  const updateConfig = (next: ProstorConfigRecord) => {
+  const updateConfig = (next: HermesConfigRecord) => {
     saveVersionRef.current += 1
     setConfig(next)
     setSaveVersion(saveVersionRef.current)
@@ -358,6 +370,11 @@ export function ConfigSettings({
           {fields.map(([key, field]) => (
             <div className="scroll-mt-6 rounded-lg" id={`setting-field-${key}`} key={key}>
               <ConfigField
+                descriptionExtra={
+                  key === 'memory.provider' && Boolean(getNested(config, key)) ? (
+                    <MemoryConnect provider={String(getNested(config, key))} />
+                  ) : undefined
+                }
                 enumOptions={
                   key === 'tts.elevenlabs.voice_id'
                     ? enumOptionsFor(key, getNested(config, key), config, elevenLabsVoiceOptions ?? undefined)

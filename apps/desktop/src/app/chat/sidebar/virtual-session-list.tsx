@@ -3,8 +3,8 @@ import { CSS } from '@dnd-kit/utilities'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { type FC, useCallback, useRef } from 'react'
 
-import { cn } from '@/lib/utils'
 import type { SessionInfo } from '@/prostor'
+import { cn } from '@/lib/utils'
 import { sessionPinId } from '@/store/session'
 
 import { SidebarSessionRow } from './session-row'

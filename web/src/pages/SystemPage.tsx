@@ -209,7 +209,7 @@ export default function SystemPage() {
       api.getPortal(),
       // Cached (non-forced) check so the version row shows update status on
       // load without a separate effect / a forced network round-trip.
-      api.checkProstorUpdate(false),
+      api.checkHermesUpdate(false),
     ])
       .then(([s, st, m, p, c, h, cur, prt, upd]) => {
         if (s.status === "fulfilled") setStatus(s.value);
@@ -386,10 +386,10 @@ export default function SystemPage() {
   // ── Update check / apply ───────────────────────────────────────────
   const checkForUpdate = useCallback(
     async (force = false) => {
-      if (status?.can_update_prostor === false) return;
+      if (status?.can_update_hermes === false) return;
       setCheckingUpdate(true);
       try {
-        const info = await api.checkProstorUpdate(force);
+        const info = await api.checkHermesUpdate(force);
         setUpdateInfo(info);
         if (force) {
           if (info.update_available) {
@@ -411,14 +411,14 @@ export default function SystemPage() {
         setCheckingUpdate(false);
       }
     },
-    [showToast, status?.can_update_prostor],
+    [showToast, status?.can_update_hermes],
   );
 
   // Auto-check (cached) runs inside loadAll on mount; this is the
   // user-triggered forced re-check from the "Check for updates" button.
   const applyUpdate = async () => {
     setUpdateConfirmOpen(false);
-    if (status?.can_update_prostor === false) {
+    if (status?.can_update_hermes === false) {
       showToast(
         "Prostor updates are managed outside this dashboard.",
         "success",
@@ -426,7 +426,7 @@ export default function SystemPage() {
       return;
     }
     try {
-      const resp = await api.updateProstor();
+      const resp = await api.updateHermes();
       if (!resp.ok) {
         showToast(
           resp.message ??
@@ -511,7 +511,7 @@ export default function SystemPage() {
   }
 
   const gatewayRunning = status?.gateway_running;
-  const canUpdateProstor = status?.can_update_prostor !== false;
+  const canUpdateHermes = status?.can_update_hermes !== false;
   const validEvents = hooks?.valid_events?.length
     ? hooks.valid_events
     : HOOK_EVENTS_FALLBACK;
@@ -521,7 +521,7 @@ export default function SystemPage() {
       <Toast toast={toast} />
 
       <ConfirmDialog
-        open={canUpdateProstor && updateConfirmOpen}
+        open={canUpdateHermes && updateConfirmOpen}
         onCancel={() => setUpdateConfirmOpen(false)}
         onConfirm={() => void applyUpdate()}
         title="Update Prostor?"
@@ -699,8 +699,8 @@ export default function SystemPage() {
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">Prostor</div>
                 <div className="flex items-center gap-2">
-                  <span>v{stats?.prostor_version}</span>
-                  {canUpdateProstor &&
+                  <span>v{stats?.hermes_version}</span>
+                  {canUpdateHermes &&
                     updateInfo &&
                     (updateInfo.update_available ? (
                       <Badge tone="warning">
@@ -761,7 +761,7 @@ export default function SystemPage() {
                 CPU / memory / disk metrics.
               </p>
             )}
-            {canUpdateProstor && (
+            {canUpdateHermes && (
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
                 <Button
                   size="sm"

@@ -4,7 +4,7 @@
   perSystem =
     { pkgs, lib, inputs', ... }:
     let
-      prostorAgent = pkgs.callPackage ./prostor-agent.nix {
+      hermesAgent = pkgs.callPackage ./prostor-agent.nix {
         inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
         npm-lockfile-fix = inputs'.npm-lockfile-fix.packages.default;
         # Only embed clean revs — dirtyRev doesn't represent any upstream
@@ -14,18 +14,18 @@
     in
     {
       packages = {
-        default = prostorAgent;
+        default = hermesAgent;
 
         # Ships discord.py + python-telegram-bot + slack-sdk so a plain
         # `nix profile install .#messaging` connects to Discord/Telegram/Slack
         # on first run — lazy-install can't write to the read-only /nix/store.
-        messaging = prostorAgent.override {
+        messaging = hermesAgent.override {
           extraDependencyGroups = [ "messaging" ];
         };
 
         # All platform-portable optional integrations pre-built.
         # matrix is Linux-only (oqs/liboqs lacks aarch64-darwin wheels).
-        full = prostorAgent.override {
+        full = hermesAgent.override {
           extraDependencyGroups = [
             "anthropic"
             "azure-identity"
@@ -47,9 +47,9 @@
           ] ++ lib.optionals pkgs.stdenv.isLinux [ "matrix" ];
         };
 
-        tui = prostorAgent.prostorTui;
-        web = prostorAgent.prostorWeb;
-        desktop = prostorAgent.prostorDesktop;
+        tui = hermesAgent.hermesTui;
+        web = hermesAgent.hermesWeb;
+        desktop = hermesAgent.hermesDesktop;
       };
     };
 }

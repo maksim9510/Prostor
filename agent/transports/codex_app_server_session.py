@@ -52,7 +52,7 @@ _STDERR_TAIL_LINES = 12
 # Permission profile mapping mirrors the docstring in PR proposal:
 # Prostor' tools.terminal.security_mode → Codex's permissions profile id.
 # Defaults if config is missing → workspace-write (matches Codex's own default).
-_PROSTOR_TO_CODEX_PERMISSION_PROFILE = {
+_HERMES_TO_CODEX_PERMISSION_PROFILE = {
     "auto": "workspace-write",
     "approval-required": "read-only-with-approval",
     "unrestricted": "full-access",
@@ -213,7 +213,7 @@ class CodexAppServerSession:
         self._codex_bin = codex_bin
         self._codex_home = codex_home
         self._permission_profile = (
-            permission_profile or _PROSTOR_TO_CODEX_PERMISSION_PROFILE.get(
+            permission_profile or _HERMES_TO_CODEX_PERMISSION_PROFILE.get(
                 os.environ.get("PROSTOR_TERMINAL_SECURITY_MODE", "auto"),
                 "workspace-write",
             )
@@ -249,7 +249,7 @@ class CodexAppServerSession:
         self._client.initialize(
             client_name="prostor",
             client_title="Prostor Agent",
-            client_version=_get_prostor_version(),
+            client_version=_get_hermes_version(),
         )
         # Permission selection is intentionally NOT sent on thread/start.
         # Two reasons (live-tested against codex 0.130.0):
@@ -866,7 +866,7 @@ def _has_turn_aborted_marker(text: str) -> bool:
     return False
 
 
-def _get_prostor_version() -> str:
+def _get_hermes_version() -> str:
     """Best-effort Prostor version string for codex's userAgent line."""
     try:
         from importlib.metadata import version

@@ -9,7 +9,7 @@ CronScheduler provider interface.
 
 No production code is exercised beyond the two ticker entry points:
   - gateway/run.py::_start_cron_ticker        (production gateway ticker)
-  - prostor_cli/web_server.py::_start_desktop_cron_ticker  (desktop fallback)
+  - hermes_cli/web_server.py::_start_desktop_cron_ticker  (desktop fallback)
 
 Both call `cron.scheduler.tick(...)` on a loop and exit when their stop_event
 is set. We patch `cron.scheduler.tick` (both tickers import it locally as
@@ -57,7 +57,7 @@ def test_desktop_ticker_calls_tick_then_stops():
     """The desktop dashboard ticker loop calls cron.scheduler.tick and exits
     once the stop_event is set. Desktop has no live adapters, so it ticks with
     no adapters/loop."""
-    from prostor_cli.web_server import _start_desktop_cron_ticker
+    from hermes_cli.web_server import _start_desktop_cron_ticker
 
     calls = []
     stop = threading.Event()
@@ -166,7 +166,7 @@ def test_inprocess_provider_stop_is_noop():
 
 def test_default_config_cron_provider_is_empty():
     """The new cron.provider key defaults to empty (= built-in)."""
-    from prostor_cli.config import DEFAULT_CONFIG
+    from hermes_cli.config import DEFAULT_CONFIG
 
     assert DEFAULT_CONFIG["cron"]["provider"] == ""
 
@@ -188,7 +188,7 @@ def test_load_unknown_cron_scheduler_returns_none():
 
 def test_resolve_defaults_to_builtin(monkeypatch):
     """Empty cron.provider → built-in."""
-    import prostor_cli.config as cfg
+    import hermes_cli.config as cfg
     from cron import scheduler_provider as sp
 
     monkeypatch.setattr(cfg, "load_config", lambda: {"cron": {"provider": ""}})
@@ -198,7 +198,7 @@ def test_resolve_defaults_to_builtin(monkeypatch):
 
 def test_resolve_no_cron_section_falls_back_to_builtin(monkeypatch):
     """Config with no cron section at all → built-in (cfg_get returns default)."""
-    import prostor_cli.config as cfg
+    import hermes_cli.config as cfg
     from cron import scheduler_provider as sp
 
     monkeypatch.setattr(cfg, "load_config", lambda: {})
@@ -208,7 +208,7 @@ def test_resolve_no_cron_section_falls_back_to_builtin(monkeypatch):
 
 def test_resolve_unknown_provider_falls_back_to_builtin(monkeypatch):
     """A named provider that doesn't exist → built-in (cron never dies)."""
-    import prostor_cli.config as cfg
+    import hermes_cli.config as cfg
     from cron import scheduler_provider as sp
 
     monkeypatch.setattr(cfg, "load_config", lambda: {"cron": {"provider": "nope-not-real"}})
@@ -218,7 +218,7 @@ def test_resolve_unknown_provider_falls_back_to_builtin(monkeypatch):
 
 def test_resolve_unavailable_provider_falls_back(monkeypatch):
     """A provider that loads but reports is_available()==False → built-in."""
-    import prostor_cli.config as cfg
+    import hermes_cli.config as cfg
     import plugins.cron as pc
     from cron import scheduler_provider as sp
     from cron.scheduler_provider import CronScheduler
@@ -242,7 +242,7 @@ def test_resolve_unavailable_provider_falls_back(monkeypatch):
 
 def test_resolve_available_provider_is_used(monkeypatch):
     """A provider that loads and is available is returned (not the fallback)."""
-    import prostor_cli.config as cfg
+    import hermes_cli.config as cfg
     import plugins.cron as pc
     from cron import scheduler_provider as sp
     from cron.scheduler_provider import CronScheduler
@@ -332,3 +332,192 @@ def test_fire_due_missing_job_does_not_run(monkeypatch):
 
     assert InProcessCronScheduler().fire_due("gone") is False
     assert ran == []
+
+
+# ── F2a: ticker liveness — survival, heartbeat, honest status (#32612, #32895) ──
+
+
+def test_ticker_survives_baseexception_from_tick():
+    """A BaseException (e.g. SystemExit from a provider SDK) raised by tick()
+    must NOT kill the ticker loop — it logs and keeps looping (#32612)."""
+    from cron.scheduler_provider import InProcessCronScheduler
+
+    calls = []
+
+    def _boom(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise SystemExit("provider SDK called sys.exit")
+        return 0
+
+    stop = threading.Event()
+    prov = InProcessCronScheduler()
+    with patch("cron.scheduler.tick", side_effect=_boom), \
+         patch("cron.jobs.record_ticker_heartbeat"):
+        t = threading.Thread(target=prov.start, args=(stop,), kwargs={"interval": 0}, daemon=True)
+        t.start()
+        time.sleep(0.2)
+        stop.set()
+        t.join(timeout=5)
+
+    assert not t.is_alive(), "ticker thread died on BaseException instead of surviving"
+    assert len(calls) >= 2, "ticker did not keep ticking after the BaseException"
+
+
+def test_ticker_records_heartbeat_each_iteration():
+    """The loop records a liveness heartbeat on start and after each tick,
+    bumping the success marker only on a clean tick."""
+    from cron.scheduler_provider import InProcessCronScheduler
+
+    beats = []  # (success,) per call
+    stop = threading.Event()
+    prov = InProcessCronScheduler()
+    with patch("cron.scheduler.tick", side_effect=lambda *a, **k: 0), \
+         patch("cron.jobs.record_ticker_heartbeat",
+               side_effect=lambda success=False: beats.append(success)):
+        t = threading.Thread(target=prov.start, args=(stop,), kwargs={"interval": 0}, daemon=True)
+        t.start()
+        time.sleep(0.2)
+        stop.set()
+        t.join(timeout=5)
+
+    # one pre-loop liveness beat (success=False) + post-tick beats with success=True
+    assert len(beats) >= 2, "ticker did not record heartbeats"
+    assert beats[0] is False, "pre-loop beat should be liveness-only"
+    assert any(b is True for b in beats[1:]), "successful tick did not bump success marker"
+
+
+def test_failing_tick_records_liveness_but_not_success():
+    """A tick that raises bumps the liveness heartbeat but NOT the success
+    marker — so status can distinguish 'alive but failing' from 'firing'."""
+    from cron.scheduler_provider import InProcessCronScheduler
+
+    beats = []
+    stop = threading.Event()
+    prov = InProcessCronScheduler()
+    with patch("cron.scheduler.tick", side_effect=RuntimeError("every tick fails")), \
+         patch("cron.jobs.record_ticker_heartbeat",
+               side_effect=lambda success=False: beats.append(success)):
+        t = threading.Thread(target=prov.start, args=(stop,), kwargs={"interval": 0}, daemon=True)
+        t.start()
+        time.sleep(0.2)
+        stop.set()
+        t.join(timeout=5)
+
+    # every post-tick beat must be success=False (ticks always failed)
+    assert len(beats) >= 2
+    assert all(b is False for b in beats), "a failing tick wrongly bumped the success marker"
+
+
+def test_heartbeat_roundtrip_and_age(tmp_path, monkeypatch):
+    """record_ticker_heartbeat writes fresh timestamps atomically; the age
+    getters read them back as small positive ages."""
+    import cron.jobs as jobs
+
+    cron_dir = tmp_path / "cron"
+    monkeypatch.setattr(jobs, "CRON_DIR", cron_dir)
+    monkeypatch.setattr(jobs, "OUTPUT_DIR", cron_dir / "output")
+    monkeypatch.setattr(jobs, "TICKER_HEARTBEAT_FILE", cron_dir / "ticker_heartbeat")
+    monkeypatch.setattr(jobs, "TICKER_SUCCESS_FILE", cron_dir / "ticker_last_success")
+
+    # No files yet -> unknown (None), NOT "dead"
+    assert jobs.get_ticker_heartbeat_age() is None
+    assert jobs.get_ticker_success_age() is None
+
+    # liveness-only: heartbeat set, success still unknown
+    jobs.record_ticker_heartbeat(success=False)
+    hb = jobs.get_ticker_heartbeat_age()
+    assert hb is not None and 0.0 <= hb < 5.0
+    assert jobs.get_ticker_success_age() is None
+
+    # success: both set
+    jobs.record_ticker_heartbeat(success=True)
+    ok = jobs.get_ticker_success_age()
+    assert ok is not None and 0.0 <= ok < 5.0
+
+
+def test_heartbeat_age_detects_staleness(tmp_path, monkeypatch):
+    """A heartbeat written far in the past reads back as a large age."""
+    import cron.jobs as jobs
+
+    cron_dir = tmp_path / "cron"
+    cron_dir.mkdir(parents=True)
+    hb = cron_dir / "ticker_heartbeat"
+    monkeypatch.setattr(jobs, "CRON_DIR", cron_dir)
+    monkeypatch.setattr(jobs, "TICKER_HEARTBEAT_FILE", hb)
+
+    import time as _t
+    hb.write_text(str(_t.time() - 10_000), encoding="utf-8")
+    age = jobs.get_ticker_heartbeat_age()
+    assert age is not None and age > 9_000
+
+
+def test_heartbeat_write_failure_is_silent(tmp_path, monkeypatch):
+    """A real atomic-write failure must be swallowed AND leave no temp file.
+
+    Point CRON_DIR at a path that cannot be created (its parent is a regular
+    file), so ensure_dirs()/mkstemp inside _atomic_write_epoch genuinely fail.
+    record_ticker_heartbeat must not raise, and no stray .hb_*.tmp may leak.
+    """
+    import cron.jobs as jobs
+
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("i am a file, not a directory")
+    bad_cron_dir = blocker / "cron"  # parent is a file -> mkdir/mkstemp fail
+    monkeypatch.setattr(jobs, "CRON_DIR", bad_cron_dir)
+    monkeypatch.setattr(jobs, "OUTPUT_DIR", bad_cron_dir / "output")
+    monkeypatch.setattr(jobs, "TICKER_HEARTBEAT_FILE", bad_cron_dir / "ticker_heartbeat")
+    monkeypatch.setattr(jobs, "TICKER_SUCCESS_FILE", bad_cron_dir / "ticker_last_success")
+
+    jobs.record_ticker_heartbeat(success=True)  # must not raise
+
+    # The write never succeeded, so no heartbeat is recorded...
+    assert jobs.get_ticker_heartbeat_age() is None
+    # ...and no stray temp file leaked anywhere under tmp_path.
+    assert not list(tmp_path.rglob(".hb_*.tmp")), "atomic write leaked a temp file on failure"
+
+
+def test_cron_status_reports_alive_but_failing(tmp_path, monkeypatch, capsys):
+    """cron_status warns when the ticker is alive (fresh heartbeat) but no tick
+    has succeeded recently (#32612: alive-but-failing must not look healthy)."""
+    import cron.jobs as jobs
+    from hermes_cli import cron as cron_cli
+
+    monkeypatch.setattr("hermes_cli.gateway.find_gateway_pids", lambda: [4321])
+    monkeypatch.setattr(jobs, "get_ticker_heartbeat_age", lambda: 5.0)      # fresh
+    monkeypatch.setattr(jobs, "get_ticker_success_age", lambda: 9_999.0)    # stale
+    monkeypatch.setattr("cron.jobs.list_jobs", lambda **k: [])
+
+    cron_cli.cron_status()
+    out = capsys.readouterr().out
+    assert "no tick has succeeded" in out
+    assert "will fire automatically" not in out
+
+
+def test_cron_status_healthy_when_both_fresh(tmp_path, monkeypatch, capsys):
+    import cron.jobs as jobs
+    from hermes_cli import cron as cron_cli
+
+    monkeypatch.setattr("hermes_cli.gateway.find_gateway_pids", lambda: [4321])
+    monkeypatch.setattr(jobs, "get_ticker_heartbeat_age", lambda: 5.0)
+    monkeypatch.setattr(jobs, "get_ticker_success_age", lambda: 5.0)
+    monkeypatch.setattr("cron.jobs.list_jobs", lambda **k: [])
+
+    cron_cli.cron_status()
+    out = capsys.readouterr().out
+    assert "will fire automatically" in out
+
+
+def test_cron_status_reports_stalled_when_no_heartbeat(tmp_path, monkeypatch, capsys):
+    import cron.jobs as jobs
+    from hermes_cli import cron as cron_cli
+
+    monkeypatch.setattr("hermes_cli.gateway.find_gateway_pids", lambda: [4321])
+    monkeypatch.setattr(jobs, "get_ticker_heartbeat_age", lambda: 9_999.0)  # dead
+    monkeypatch.setattr(jobs, "get_ticker_success_age", lambda: 9_999.0)
+    monkeypatch.setattr("cron.jobs.list_jobs", lambda **k: [])
+
+    cron_cli.cron_status()
+    out = capsys.readouterr().out
+    assert "STALLED" in out
+    assert "will fire automatically" not in out

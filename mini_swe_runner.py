@@ -194,12 +194,6 @@ class MiniSWERunner:
         self.image = image
         self.cwd = cwd
         
-        # Setup logging
-        logging.basicConfig(
-            level=logging.DEBUG if verbose else logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%H:%M:%S'
-        )
         self.logger = logging.getLogger(__name__)
         
         # Initialize LLM client via centralized provider router.
@@ -301,7 +295,7 @@ class MiniSWERunner:
             })
         return json.dumps(formatted_tools, ensure_ascii=False)
     
-    def _convert_to_prostor_format(
+    def _convert_to_hermes_format(
         self,
         messages: List[Dict[str, Any]],
         user_query: str,
@@ -563,7 +557,7 @@ Complete the user's task step by step."""
             self._cleanup_env()
         
         # Convert to Prostor trajectory format
-        trajectory = self._convert_to_prostor_format(messages, task, completed)
+        trajectory = self._convert_to_hermes_format(messages, task, completed)
         
         return {
             "conversations": trajectory,
@@ -676,6 +670,13 @@ def main(
     """
     print("🚀 Mini-SWE Runner with Prostor Trajectory Format")
     print("=" * 60)
+    
+    # Configure root logging at the entry point (not in library __init__).
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%H:%M:%S'
+    )
     
     # Initialize runner
     runner = MiniSWERunner(

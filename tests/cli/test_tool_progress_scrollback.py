@@ -18,7 +18,7 @@ _UNSET = object()
 
 
 def _make_cli(tool_progress="all", verbose=_UNSET):
-    """Create a ProstorCLI instance with minimal mocking."""
+    """Create a HermesCLI instance with minimal mocking."""
     global _cli_mod
     _clean_config = {
         "model": {
@@ -56,8 +56,8 @@ def _make_cli(tool_progress="all", verbose=_UNSET):
         with patch.object(mod, "get_tool_definitions", return_value=[]), \
              patch.dict(mod.__dict__, {"CLI_CONFIG": _clean_config}):
             if verbose is _UNSET:
-                return mod.ProstorCLI()
-            return mod.ProstorCLI(verbose=verbose)
+                return mod.HermesCLI()
+            return mod.HermesCLI(verbose=verbose)
 
 
 class TestToolProgressScrollback:

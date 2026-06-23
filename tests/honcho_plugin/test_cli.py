@@ -234,6 +234,66 @@ class TestCmdStatus:
         assert "FAILED (Invalid API key)" in out
         assert "Connection... OK" not in out
 
+    def test_auth_line_detects_oauth_grant(self, monkeypatch, capsys, tmp_path):
+        import plugins.memory.honcho.cli as honcho_cli
+
+        cfg_path = tmp_path / "honcho.json"
+        cfg_path.write_text("{}")
+
+        class FakeConfig:
+            enabled = True
+            api_key = "hch-at-deadbeef"
+            workspace_id = "claude-code"
+            host = "prostor"
+            base_url = None
+            ai_peer = "prostor"
+            peer_name = "eri"
+            recall_mode = "hybrid"
+            user_observe_me = True
+            user_observe_others = False
+            ai_observe_me = False
+            ai_observe_others = True
+            write_frequency = "async"
+            session_strategy = "per-session"
+            context_tokens = None
+            dialectic_reasoning_level = "low"
+            reasoning_level_cap = "high"
+            reasoning_heuristic = True
+            raw = {
+                "hosts": {
+                    "prostor": {
+                        "apiKey": "hch-at-deadbeef",
+                        "oauth": {
+                            "refreshToken": "hch-rt-x",
+                            "clientId": "prostor-agent",
+                            "tokenEndpoint": "https://api.honcho.dev/oauth/token",
+                            "expiresAt": 9999999999,
+                        },
+                    }
+                }
+            }
+
+            def resolve_session_name(self):
+                return "prostor"
+
+        monkeypatch.setattr(honcho_cli, "_read_config", lambda: {})
+        monkeypatch.setattr(honcho_cli, "_config_path", lambda: cfg_path)
+        monkeypatch.setattr(honcho_cli, "_local_config_path", lambda: cfg_path)
+        monkeypatch.setattr(honcho_cli, "_active_profile_name", lambda: "default")
+        monkeypatch.setattr(
+            "plugins.memory.honcho.client.HonchoClientConfig.from_global_config",
+            lambda host=None: FakeConfig(),
+        )
+        monkeypatch.setattr("plugins.memory.honcho.client.get_honcho_client", lambda cfg: object())
+        monkeypatch.setattr(honcho_cli, "_show_peer_cards", lambda hcfg, client: None)
+        monkeypatch.setitem(__import__("sys").modules, "honcho", SimpleNamespace())
+
+        honcho_cli.cmd_status(SimpleNamespace(all=False))
+
+        out = capsys.readouterr().out
+        assert "Auth:           OAuth (prostor-agent" in out
+        assert "API key:" not in out
+
 
 class TestCloneHonchoForProfile:
     """Identity-key carryover during profile cloning.
@@ -271,7 +331,7 @@ class TestCloneHonchoForProfile:
         honcho_cli, written = self._setup_clone_env(monkeypatch, tmp_path, cfg)
         ok = honcho_cli.clone_honcho_for_profile("coder")
         assert ok is True
-        new_block = written["cfg"]["hosts"]["prostor_coder"]
+        new_block = written["cfg"]["hosts"]["hermes_coder"]
         assert new_block["userPeerAliases"] == {"7654321": "eri", "discord-491827364": "eri"}
 
     def test_runtime_peer_prefix_carries_into_cloned_profile(self, monkeypatch, tmp_path):
@@ -287,7 +347,7 @@ class TestCloneHonchoForProfile:
         honcho_cli, written = self._setup_clone_env(monkeypatch, tmp_path, cfg)
         ok = honcho_cli.clone_honcho_for_profile("coder")
         assert ok is True
-        new_block = written["cfg"]["hosts"]["prostor_coder"]
+        new_block = written["cfg"]["hosts"]["hermes_coder"]
         assert new_block["runtimePeerPrefix"] == "telegram_"
 
     def test_legacy_pin_peer_name_migrates_to_canonical_on_clone(self, monkeypatch, tmp_path):
@@ -303,7 +363,7 @@ class TestCloneHonchoForProfile:
         honcho_cli, written = self._setup_clone_env(monkeypatch, tmp_path, cfg)
         ok = honcho_cli.clone_honcho_for_profile("coder")
         assert ok is True
-        new_block = written["cfg"]["hosts"]["prostor_coder"]
+        new_block = written["cfg"]["hosts"]["hermes_coder"]
         assert new_block["pinUserPeer"] is True
         assert "pinPeerName" not in new_block
 
@@ -315,7 +375,7 @@ class TestCloneHonchoForProfile:
         honcho_cli, written = self._setup_clone_env(monkeypatch, tmp_path, cfg)
         ok = honcho_cli.clone_honcho_for_profile("coder")
         assert ok is True
-        new_block = written["cfg"]["hosts"]["prostor_coder"]
+        new_block = written["cfg"]["hosts"]["hermes_coder"]
         assert "userPeerAliases" not in new_block
         assert "runtimePeerPrefix" not in new_block
         assert "pinUserPeer" not in new_block
@@ -331,7 +391,7 @@ class TestSetupWizardDeploymentShape:
     Choice [2] (me + others, pooled) aliases the operator's own runtime IDs.
 
     These tests mock gateway detection and script the interactive _prompt
-    calls, asserting the resulting prostor_host block so the tree's routing
+    calls, asserting the resulting hermes_host block so the tree's routing
     semantics stay locked even as adjacent prompts are added.
     """
 
@@ -356,10 +416,10 @@ class TestSetupWizardDeploymentShape:
 
         # Bypass config.yaml + connection test side effects.
         monkeypatch.setattr(
-            "prostor_cli.config.load_config", lambda: {"memory": {}}, raising=False,
+            "hermes_cli.config.load_config", lambda: {"memory": {}}, raising=False,
         )
         monkeypatch.setattr(
-            "prostor_cli.config.save_config", lambda c: None, raising=False,
+            "hermes_cli.config.save_config", lambda c: None, raising=False,
         )
 
         class _FakeClientCfg:
@@ -389,6 +449,9 @@ class TestSetupWizardDeploymentShape:
         # Scripted _prompt: pop answers in order. Default-return for unconsumed prompts.
         answer_iter = iter(answers)
         def _scripted_prompt(label, default=None, secret=False):
+            # Auth-method prompt is orthogonal to shape; auto-answer apikey so the answer lists stay shape-only.
+            if "OAuth" in label:
+                return "apikey"
             try:
                 return next(answer_iter)
             except StopIteration:
@@ -702,7 +765,7 @@ class TestCloneCarriesPinUserPeer:
 
         ok = honcho_cli.clone_honcho_for_profile("partner")
         assert ok is True
-        new_block = written["cfg"]["hosts"]["prostor_partner"]
+        new_block = written["cfg"]["hosts"]["hermes_partner"]
         assert new_block["pinUserPeer"] is True
 
 

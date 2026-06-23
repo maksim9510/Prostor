@@ -21,21 +21,21 @@
 // Bare + prefixed variants of the session cookies the gateway may set,
 // depending on its deploy shape (HTTPS direct → __Host-, behind a path prefix
 // → __Secure-, loopback HTTP → bare). Mirrors
-// prostor_cli/dashboard_auth/cookies.py.
+// hermes_cli/dashboard_auth/cookies.py.
 //
 // Two cookies are in play (see that module):
-//   - prostor_session_at: the OAuth access token. Short-lived (~15 min); its
+//   - hermes_session_at: the OAuth access token. Short-lived (~15 min); its
 //     Max-Age tracks the access-token TTL, so the cookie jar drops it the
 //     instant the AT expires.
-//   - prostor_session_rt: the OAuth refresh token. Long-lived (24h rotating,
+//   - hermes_session_rt: the OAuth refresh token. Long-lived (24h rotating,
 //     reuse-detected — Portal NAS #293 / prostor #37247). When the AT cookie
 //     has lapsed but the RT cookie is still present, the gateway middleware
 //     transparently rotates a fresh AT on the next authenticated request
 //     (POST /api/auth/ws-ticket), so the session is still LIVE even with no
 //     AT cookie. A liveness check that looked only at the AT cookie would
 //     force a needless full re-login every ~15 min — hence cookiesHaveLiveSession.
-const AT_COOKIE_VARIANTS = ['__Host-prostor_session_at', '__Secure-prostor_session_at', 'prostor_session_at']
-const RT_COOKIE_VARIANTS = ['__Host-prostor_session_rt', '__Secure-prostor_session_rt', 'prostor_session_rt']
+const AT_COOKIE_VARIANTS = ['__Host-hermes_session_at', '__Secure-hermes_session_at', 'hermes_session_at']
+const RT_COOKIE_VARIANTS = ['__Host-hermes_session_rt', '__Secure-hermes_session_rt', 'hermes_session_rt']
 
 function normalizeRemoteBaseUrl(rawUrl) {
   const value = String(rawUrl || '').trim()

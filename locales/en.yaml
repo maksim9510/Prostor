@@ -326,7 +326,7 @@ gateway:
   update:
     platform_not_messaging:  "✗ /update is only available from messaging platforms. Run `prostor update` from the terminal."
     not_git_repo:            "✗ Not a git repository — cannot update."
-    prostor_cmd_not_found:    "✗ Could not locate the `prostor` command. Prostor is running, but the update command could not find the executable on PATH or via the current Python interpreter. Try running `prostor update` manually in your terminal."
+    hermes_cmd_not_found:    "✗ Could not locate the `prostor` command. Prostor is running, but the update command could not find the executable on PATH or via the current Python interpreter. Try running `prostor update` manually in your terminal."
     start_failed:            "✗ Failed to start update: {error}"
     starting:                "⚕ Starting Prostor update… I'll stream progress here."
 

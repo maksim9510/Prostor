@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
 
-from prostor_core import get_prostor_home
+from hermes_cli.config import get_hermes_home
 from utils import env_int, is_truthy_value
 
 logger = logging.getLogger(__name__)
@@ -513,7 +513,7 @@ class GatewayConfig:
     quick_commands: Dict[str, Any] = field(default_factory=dict)
     
     # Storage paths
-    sessions_dir: Path = field(default_factory=lambda: get_prostor_home() / "sessions")
+    sessions_dir: Path = field(default_factory=lambda: get_hermes_home() / "sessions")
     
     # Delivery settings
     always_log_local: bool = True  # Always save cron outputs to local files
@@ -589,7 +589,7 @@ class GatewayConfig:
         try:
             from gateway.platform_registry import platform_registry
             try:
-                from prostor_cli.plugins import discover_plugins
+                from hermes_cli.plugins import discover_plugins
                 discover_plugins()
             except Exception:
                 pass
@@ -685,7 +685,7 @@ class GatewayConfig:
         if "default_reset_policy" in data:
             default_policy = SessionResetPolicy.from_dict(data["default_reset_policy"])
         
-        sessions_dir = get_prostor_home() / "sessions"
+        sessions_dir = get_hermes_home() / "sessions"
         if "sessions_dir" in data:
             sessions_dir = Path(data["sessions_dir"])
         
@@ -749,7 +749,12 @@ class GatewayConfig:
         )
 
     def get_unauthorized_dm_behavior(self, platform: Optional[Platform] = None) -> str:
-        """Return the effective unauthorized-DM behavior for a platform."""
+        """Return the effective unauthorized-DM behavior for a platform.
+
+        Email is inbox-shaped, not chat-shaped, so it defaults to ``"ignore"``
+        unless ``platforms.email.unauthorized_dm_behavior`` explicitly opts
+        into pairing. A global default does not opt email into pairing.
+        """
         if platform:
             platform_cfg = self.platforms.get(platform)
             if platform_cfg and "unauthorized_dm_behavior" in platform_cfg.extra:
@@ -757,6 +762,8 @@ class GatewayConfig:
                     platform_cfg.extra.get("unauthorized_dm_behavior"),
                     self.unauthorized_dm_behavior,
                 )
+            if platform == Platform.EMAIL:
+                return "ignore"
         return self.unauthorized_dm_behavior
 
     def get_notice_delivery(self, platform: Optional[Platform] = None) -> str:
@@ -781,7 +788,7 @@ def load_gateway_config() -> GatewayConfig:
     3. ~/.prostor/gateway.json (legacy — provides defaults under config.yaml)
     4. Built-in defaults
     """
-    _home = get_prostor_home()
+    _home = get_hermes_home()
     gw_data: dict = {}
 
     # Legacy fallback: gateway.json provides the base layer.
@@ -808,10 +815,10 @@ def load_gateway_config() -> GatewayConfig:
 
             # Managed scope: overlay administrator-pinned values so the gateway
             # honors them too. This loader builds its own dict instead of going
-            # through prostor_cli.config.load_config, so without this a managed
+            # through hermes_cli.config.load_config, so without this a managed
             # session_reset / quick_commands / stt / model would be ignored by
             # the messaging gateway. Fail-open via the shared helper.
-            from prostor_cli import managed_scope
+            from hermes_cli import managed_scope
             yaml_cfg = managed_scope.apply_managed_overlay(yaml_cfg)
 
             # Map config.yaml keys → GatewayConfig.from_dict() schema.
@@ -916,7 +923,7 @@ def load_gateway_config() -> GatewayConfig:
             # Iterate built-in platforms plus any registered plugin platforms
             # so plugin authors get the same shared-key bridging (#24836).
             try:
-                from prostor_cli.plugins import discover_plugins
+                from hermes_cli.plugins import discover_plugins
                 discover_plugins()  # idempotent
                 from gateway.platform_registry import platform_registry as _pr
             except Exception as e:
@@ -1187,7 +1194,7 @@ def _validate_gateway_config(config: "GatewayConfig") -> None:
     # without changing placeholder values get a clear startup error instead
     # of a confusing "auth failed" from the platform API.
     try:
-        from prostor_cli.auth import has_usable_secret
+        from hermes_cli.auth import has_usable_secret
     except ImportError:
         has_usable_secret = None  # type: ignore[assignment]
 
@@ -1902,17 +1909,15 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     # for the same bug class in commit 7849a3d73; this is the runtime
     # counterpart.
     try:
-        from prostor_cli.plugins import discover_plugins
+        from hermes_cli.plugins import discover_plugins
         discover_plugins()  # idempotent
         from gateway.platform_registry import platform_registry
         for entry in platform_registry.plugin_entries():
             try:
-                if not entry.check_fn():
-                    continue
+                platform = Platform(entry.name)
             except Exception as e:
-                logger.debug("check_fn for %s raised: %s", entry.name, e)
+                logger.debug("unknown platform name %r: %s", entry.name, e)
                 continue
-            platform = Platform(entry.name)
             existing_cfg = config.platforms.get(platform)
             # Respect an explicit ``enabled: false`` (YAML / gateway.json /
             # dashboard PUT).  ``_enabled_explicit`` is set in
@@ -1996,6 +2001,22 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
                             entry.name,
                         )
                         continue
+            # Verify dependencies LAST — only for platforms that are already
+            # enabled or passed the credential gate above.  For adapter plugins
+            # ``check_fn`` lazy-INSTALLS the platform SDK (pip) as a side
+            # effect, so running it as an unconditional sweep over every
+            # registered platform made ``load_gateway_config()`` pip-install
+            # Discord/Telegram/Slack/Feishu/Dingtalk on every call — including
+            # the desktop/dashboard readiness probe (``GET /api/status``, which
+            # awaits this synchronously) — even when the user configured none
+            # of them.  That blocked startup until every install finished and
+            # caused the desktop app to time out and boot-loop (stuck at 94%).
+            try:
+                if not entry.check_fn():
+                    continue
+            except Exception as e:
+                logger.debug("check_fn for %s raised: %s", entry.name, e)
+                continue
             if platform not in config.platforms:
                 config.platforms[platform] = PlatformConfig()
             config.platforms[platform].enabled = True

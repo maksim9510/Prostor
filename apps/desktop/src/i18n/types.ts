@@ -5,7 +5,7 @@
 // partial locales should use `defineLocale()` so missing desktop-only strings
 // fall back to English while new keys remain type-checked.
 
-export type Locale = 'ru' | 'en' | 'zh' | 'zh-hant' | 'ja'
+export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja'
 
 interface ModeOptionCopy {
   label: string
@@ -65,7 +65,7 @@ export interface Translations {
       loadingSettings: string
       loadingSessions: string
       startingDesktopConnection: string
-      startingProstorDesktop: string
+      startingHermesDesktop: string
     }
     errors: {
       backgroundExited: string
@@ -111,7 +111,7 @@ export interface Translations {
     copyDetailFailed: string
     backendOutOfDateTitle: string
     backendOutOfDateMessage: string
-    updateProstor: string
+    updateHermes: string
     updateReadyTitle: string
     updateReadyMessage: (count: number) => string
     seeWhatsNew: string
@@ -281,6 +281,7 @@ export interface Translations {
       checkNow: string
       checking: string
       seeWhatsNew: string
+      updateNow: string
       releaseNotes: string
       onLatest: string
       installing: string
@@ -631,10 +632,10 @@ export interface Translations {
     noSessions: string
     gatewayRunning: string
     gatewayStopped: string
-    prostorActiveSessions: (version: string, count: number) => string
+    hermesActiveSessions: (version: string, count: number) => string
     restartGateway: string
     gatewayRestartFailed: string
-    updateProstor: string
+    updateHermes: string
     actionRunning: string
     actionDone: string
     actionFailed: string
@@ -1048,6 +1049,10 @@ export interface Translations {
     manualTitle: string
     manualBody: string
     manualPickedUp: string
+    /** GUI/backend skew (#45205): backend updated but the running desktop app
+     *  package (AppImage/.deb/.rpm) was not changed and must be reinstalled. */
+    guiSkewTitle: string
+    guiSkewBody: string
     copy: string
     copied: string
     done: string
@@ -1303,6 +1308,7 @@ export interface Translations {
     opening: string
     hide: string
     openPreview: string
+    openInBrowser: string
     sourceLineTitle: string
     source: string
     renderedPreview: string

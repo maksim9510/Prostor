@@ -43,10 +43,10 @@ class TestGoogleWorkspaceCredentialFiles:
         )
 
     def test_entries_are_registered_when_files_exist(self, tmp_path):
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        (prostor_home / "google_token.json").write_text("{}")
-        (prostor_home / "google_client_secret.json").write_text("{}")
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        (hermes_home / "google_token.json").write_text("{}")
+        (hermes_home / "google_client_secret.json").write_text("{}")
 
         from tools.credential_files import (
             clear_credential_files,
@@ -60,7 +60,7 @@ class TestGoogleWorkspaceCredentialFiles:
             fm = _parse_frontmatter(content)
             entries = fm.get("required_credential_files", [])
 
-            with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+            with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
                 missing = register_credential_files(entries)
 
             assert missing == [], f"Unexpected missing files: {missing}"
@@ -73,9 +73,9 @@ class TestGoogleWorkspaceCredentialFiles:
 
     def test_missing_token_is_reported(self, tmp_path):
         """google_token.json absent (first-time setup) — reported as missing, client secret still mounts."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
-        (prostor_home / "google_client_secret.json").write_text("{}")
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
+        (hermes_home / "google_client_secret.json").write_text("{}")
 
         from tools.credential_files import (
             clear_credential_files,
@@ -89,7 +89,7 @@ class TestGoogleWorkspaceCredentialFiles:
             fm = _parse_frontmatter(content)
             entries = fm.get("required_credential_files", [])
 
-            with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
+            with patch.dict(os.environ, {"PROSTOR_HOME": str(hermes_home)}):
                 missing = register_credential_files(entries)
 
             assert "google_token.json" in missing

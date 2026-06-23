@@ -68,20 +68,20 @@ class OwnedTwilioNumber:
     capabilities: dict[str, Any]
 
 
-def _prostor_home() -> Path:
+def _hermes_home() -> Path:
     return Path(os.environ.get("PROSTOR_HOME", "~/.prostor")).expanduser()
 
 
 def _env_path() -> Path:
-    return _prostor_home() / ".env"
+    return _hermes_home() / ".env"
 
 
 def _config_path() -> Path:
-    return _prostor_home() / "config.yaml"
+    return _hermes_home() / "config.yaml"
 
 
 def _state_path() -> Path:
-    return _prostor_home() / "telephony_state.json"
+    return _hermes_home() / "telephony_state.json"
 
 
 def _load_root_config() -> dict[str, Any]:

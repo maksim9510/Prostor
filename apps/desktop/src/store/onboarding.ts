@@ -1,6 +1,5 @@
 import { atom } from 'nanostores'
 
-import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import {
   cancelOAuthSession,
   getGlobalModelOptions,
@@ -13,6 +12,7 @@ import {
   submitOAuthCode,
   validateProviderCredential
 } from '@/prostor'
+import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { notify, notifyError } from '@/store/notifications'
 import type { ModelOptionProvider, OAuthProvider, OAuthStartResponse } from '@/types/prostor'
 
@@ -193,7 +193,7 @@ function notifyReady(provider: string) {
 }
 
 // Human-friendly labels for tools auto-routed through the Nous Tool Gateway,
-// mirroring prostor_cli/nous_subscription._GATEWAY_TOOL_LABELS so the GUI and
+// mirroring hermes_cli/nous_subscription._GATEWAY_TOOL_LABELS so the GUI and
 // CLI describe the same thing.
 const GATEWAY_TOOL_LABELS: Record<string, string> = {
   browser: 'browser automation',
@@ -534,9 +534,9 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
 // the flow never silently stalls in a waiting state. Mirrors the pattern in
 // apps/desktop/src/app/artifacts/index.tsx.
 async function openSignInUrl(url: string) {
-  if (window.prostorDesktop?.openExternal) {
+  if (window.hermesDesktop?.openExternal) {
     try {
-      await window.prostorDesktop.openExternal(url)
+      await window.hermesDesktop.openExternal(url)
 
       return
     } catch {

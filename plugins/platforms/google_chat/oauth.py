@@ -75,17 +75,17 @@ logger = logging.getLogger("gateway.platforms.google_chat_user_oauth")
 # Use the project's PROSTOR_HOME helper so the token follows the user's
 # profile (e.g. tests can override via PROSTOR_HOME=/tmp/...).
 try:
-    from prostor_constants import display_prostor_home, get_prostor_home
+    from hermes_constants import display_hermes_home, get_hermes_home
 except (ModuleNotFoundError, ImportError):
-    # Fallback for environments where prostor_constants isn't importable
+    # Fallback for environments where hermes_constants isn't importable
     # (mirrors the same fallback used by the google-workspace skill's
-    # _prostor_home.py shim).
-    def get_prostor_home() -> Path:
+    # _hermes_home.py shim).
+    def get_hermes_home() -> Path:
         val = os.environ.get("PROSTOR_HOME", "").strip()
         return Path(val) if val else Path.home() / ".prostor"
 
-    def display_prostor_home() -> str:
-        home = get_prostor_home()
+    def display_hermes_home() -> str:
+        home = get_hermes_home()
         try:
             return "~/" + str(home.relative_to(Path.home()))
         except ValueError:
@@ -94,14 +94,14 @@ except (ModuleNotFoundError, ImportError):
 from utils import atomic_replace
 
 
-def _prostor_home() -> Path:
+def _hermes_home() -> Path:
     """Resolve PROSTOR_HOME at call time (NOT module import).
 
     Tests and ``PROSTOR_HOME=...`` env overrides need this to be late-
     binding. If we cached the path at import time, switching profiles
     or tweaking env vars in tests would silently keep using the old
     path."""
-    return get_prostor_home()
+    return get_hermes_home()
 
 
 # Filesystem-safe key: lowercase, allow ``[a-z0-9._-@]``, replace anything
@@ -117,19 +117,19 @@ def _sanitize_email(email: str) -> str:
 
 
 def _legacy_token_path() -> Path:
-    return _prostor_home() / "google_chat_user_token.json"
+    return _hermes_home() / "google_chat_user_token.json"
 
 
 def _user_tokens_dir() -> Path:
-    return _prostor_home() / "google_chat_user_tokens"
+    return _hermes_home() / "google_chat_user_tokens"
 
 
 def _legacy_pending_path() -> Path:
-    return _prostor_home() / "google_chat_user_oauth_pending.json"
+    return _hermes_home() / "google_chat_user_oauth_pending.json"
 
 
 def _user_pending_dir() -> Path:
-    return _prostor_home() / "google_chat_user_oauth_pending"
+    return _hermes_home() / "google_chat_user_oauth_pending"
 
 
 def _token_path(email: Optional[str] = None) -> Path:
@@ -140,7 +140,7 @@ def _token_path(email: Optional[str] = None) -> Path:
 
 
 def _client_secret_path() -> Path:
-    return _prostor_home() / "google_chat_user_client_secret.json"
+    return _hermes_home() / "google_chat_user_client_secret.json"
 
 
 def _pending_auth_path(email: Optional[str] = None) -> Path:
@@ -582,9 +582,9 @@ def exchange_auth_code(code: str, email: Optional[str] = None) -> None:
 
     print(f"OK: Authenticated. Token saved to {token_path}")
     rel_label = (
-        f"{display_prostor_home()}/google_chat_user_tokens/{_sanitize_email(email)}.json"
+        f"{display_hermes_home()}/google_chat_user_tokens/{_sanitize_email(email)}.json"
         if email
-        else f"{display_prostor_home()}/google_chat_user_token.json"
+        else f"{display_hermes_home()}/google_chat_user_token.json"
     )
     print(f"Profile path: {rel_label}")
 

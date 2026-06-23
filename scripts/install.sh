@@ -6,7 +6,7 @@
 # Uses uv for desktop/server installs and Python's stdlib venv + pip on Termux.
 #
 # Usage:
-#   curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash
+#   curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash
 #
 # Or with options:
 #   curl -fsSL ... | bash -s -- --no-venv --skip-setup
@@ -43,8 +43,8 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # Configuration
-REPO_URL_SSH="git@github.com:maksim9510/Prostor.git"
-REPO_URL_HTTPS="https://github.com/maksim9510/Prostor.git"
+REPO_URL_SSH="git@github.com:NousResearch/prostor-agent.git"
+REPO_URL_HTTPS="https://github.com/NousResearch/prostor-agent.git"
 PROSTOR_HOME="${PROSTOR_HOME:-$HOME/.prostor}"
 # INSTALL_DIR is resolved AFTER arg parsing and OS detection so we can pick an
 # FHS-style layout for root installs.  Track whether the user gave us an
@@ -432,7 +432,7 @@ configure_managed_node_npm_prefix() {
     printf 'prefix=%s\n' "$(dirname "$link_dir")" > "$PROSTOR_HOME/node/etc/npmrc"
 }
 
-get_prostor_command_path() {
+get_hermes_command_path() {
     local link_dir
     link_dir="$(get_command_link_dir)"
     if [ -x "$link_dir/prostor" ]; then
@@ -470,7 +470,7 @@ detect_os() {
             OS="windows"
             DISTRO="windows"
             log_error "Windows detected. Please use the PowerShell installer:"
-            log_info "  iex (irm https://github.com/maksim9510/Prostor/install.ps1)"
+            log_info "  iex (irm https://prostor-agent.nousresearch.com/install.ps1)"
             exit 1
             ;;
         *)
@@ -496,7 +496,7 @@ install_uv() {
 
     # Prostor owns its own uv at $PROSTOR_HOME/bin/uv.  Always install there —
     # no PATH probing, no conda guards, no multi-location resolution chains.
-    # The runtime update path (prostor_cli/managed_uv.py) looks in the same
+    # The runtime update path (hermes_cli/managed_uv.py) looks in the same
     # place, so install.sh and `prostor update` stay in sync.
     local _managed_uv="$PROSTOR_HOME/bin/uv"
 
@@ -2008,9 +2008,9 @@ run_setup_wizard() {
     # Run prostor setup using the venv Python directly (no activation needed).
     # Redirect stdin from /dev/tty so interactive prompts work when piped from curl.
     if [ "$USE_VENV" = true ]; then
-        "$INSTALL_DIR/venv/bin/python" -m prostor_cli.main setup < /dev/tty
+        "$INSTALL_DIR/venv/bin/python" -m hermes_cli.main setup < /dev/tty
     else
-        python -m prostor_cli.main setup < /dev/tty
+        python -m hermes_cli.main setup < /dev/tty
     fi
 }
 
@@ -2048,7 +2048,7 @@ maybe_start_gateway() {
             log_info "Running 'prostor whatsapp' to pair via QR code..."
             echo ""
             if prompt_yes_no "Pair WhatsApp now?" "yes"; then
-                PROSTOR_CMD="$(get_prostor_command_path)"
+                PROSTOR_CMD="$(get_hermes_command_path)"
                 $PROSTOR_CMD whatsapp || true
             fi
         else
@@ -2077,7 +2077,7 @@ maybe_start_gateway() {
     fi
 
     if [ "$should_install_gateway" = true ]; then
-        PROSTOR_CMD="$(get_prostor_command_path)"
+        PROSTOR_CMD="$(get_hermes_command_path)"
 
         if [ "$DISTRO" != "termux" ] && command -v systemctl &> /dev/null; then
             log_info "Installing systemd service..."
@@ -2316,7 +2316,7 @@ postinstall_mode() {
         "$PROSTOR_CMD" setup
     else
         log_warn "prostor command not found on PATH"
-        log_info "Try: python -m prostor_cli.main setup"
+        log_info "Try: python -m hermes_cli.main setup"
     fi
 }
 

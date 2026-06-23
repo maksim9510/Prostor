@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import IO, Callable, Protocol
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from tools.interrupt import is_interrupted
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ def get_sandbox_dir() -> Path:
     if custom:
         p = Path(custom)
     else:
-        p = get_prostor_home() / "sandboxes"
+        p = get_hermes_home() / "sandboxes"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -277,7 +277,7 @@ class _ThreadedProcessHandle:
 
 
 def _cwd_marker(session_id: str) -> str:
-    return f"__PROSTOR_CWD_{session_id}__"
+    return f"__HERMES_CWD_{session_id}__"
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +447,7 @@ class BaseEnvironment(ABC):
 
         # Run the actual command
         parts.append(f"eval '{escaped}'")
-        parts.append("__prostor_ec=$?")
+        parts.append("__hermes_ec=$?")
 
         # Re-dump env vars to snapshot (last-writer-wins for concurrent calls)
         if self._snapshot_ready:
@@ -462,7 +462,7 @@ class BaseEnvironment(ABC):
         parts.append(
             f"printf '\\n{self._cwd_marker}%s{self._cwd_marker}\\n' \"$(pwd -P)\""
         )
-        parts.append("exit $__prostor_ec")
+        parts.append("exit $__hermes_ec")
 
         return "\n".join(parts)
 
@@ -775,7 +775,7 @@ class BaseEnvironment(ABC):
         self._extract_cwd_from_output(result)
 
     def _extract_cwd_from_output(self, result: dict):
-        """Parse the __PROSTOR_CWD_{session}__ marker from stdout output.
+        """Parse the __HERMES_CWD_{session}__ marker from stdout output.
 
         Updates self.cwd and strips the marker from result["output"].
         Used by remote backends (Docker, SSH, Modal, Daytona, Singularity).

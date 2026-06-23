@@ -8,7 +8,7 @@ history.
 """
 from __future__ import annotations
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 
 import copy
 import json
@@ -45,7 +45,7 @@ def _translate_acp_cwd(cwd: str) -> str:
     sessions all agree on the usable workspace. Native Linux/macOS keeps the
     original cwd unchanged.
     """
-    from prostor_constants import is_wsl
+    from hermes_constants import is_wsl
 
     if not is_wsl():
         return cwd
@@ -407,14 +407,14 @@ class SessionManager:
         Note: we resolve ``PROSTOR_HOME`` dynamically rather than relying on
         the module-level ``DEFAULT_DB_PATH`` constant, because that constant
         is evaluated at import time and won't reflect env-var changes made
-        later (e.g. by the test fixture ``_isolate_prostor_home``).
+        later (e.g. by the test fixture ``_isolate_hermes_home``).
         """
         if self._db_instance is not None:
             return self._db_instance
         try:
-            from prostor_state import SessionDB
-            prostor_home = get_prostor_home()
-            self._db_instance = SessionDB(db_path=prostor_home / "state.db")
+            from hermes_state import SessionDB
+            hermes_home = get_hermes_home()
+            self._db_instance = SessionDB(db_path=hermes_home / "state.db")
             return self._db_instance
         except Exception:
             logger.debug("SessionDB unavailable for ACP persistence", exc_info=True)
@@ -569,8 +569,8 @@ class SessionManager:
             return self._agent_factory()
 
         from run_agent import AIAgent
-        from prostor_cli.config import load_config
-        from prostor_cli.runtime_provider import resolve_runtime_provider
+        from hermes_cli.config import load_config
+        from hermes_cli.runtime_provider import resolve_runtime_provider
 
         config = load_config()
         model_cfg = config.get("model")
@@ -617,6 +617,10 @@ class SessionManager:
 
         _register_task_cwd(session_id, cwd)
         agent = AIAgent(**kwargs)
+        # Codex app-server sessions are spawned lazily on the first turn. Stamp
+        # the ACP workspace onto the agent so the Codex runtime starts from the
+        # editor/session cwd instead of the Prostor daemon's process cwd.
+        agent.session_cwd = cwd
         # ACP stdio transport requires stdout to remain protocol-only JSON-RPC.
         # Route any incidental human-readable agent output to stderr instead.
         agent._print_fn = _acp_stderr_print

@@ -64,7 +64,7 @@ def test_guard_present_and_mentions_remediation(path: Path) -> None:
     assert "PUID" in block and "PGID" in block
 
 
-def _run_guard(text: str, *, cur_uid: int, prostor_uid: int = 10000) -> subprocess.CompletedProcess:
+def _run_guard(text: str, *, cur_uid: int, hermes_uid: int = 10000) -> subprocess.CompletedProcess:
     """Run the extracted guard with `id` stubbed. Returns the completed process
     (rc 1 + stderr message when rejected, rc 0 when allowed through)."""
     bash = shutil.which("bash")
@@ -74,8 +74,8 @@ def _run_guard(text: str, *, cur_uid: int, prostor_uid: int = 10000) -> subproce
     with tempfile.TemporaryDirectory() as d:
         script = (
             "set -e\n"
-            # Stub `id`: `id -u` -> cur_uid; `id -u prostor` -> prostor_uid.
-            f'id() {{ if [ "$2" = prostor ]; then echo {prostor_uid}; else echo {cur_uid}; fi; }}\n'
+            # Stub `id`: `id -u` -> cur_uid; `id -u prostor` -> hermes_uid.
+            f'id() {{ if [ "$2" = prostor ]; then echo {hermes_uid}; else echo {cur_uid}; fi; }}\n'
             + block
             + "\necho GUARD_PASSED\n"  # only reached when the guard allows through
         )
@@ -87,7 +87,7 @@ def _run_guard(text: str, *, cur_uid: int, prostor_uid: int = 10000) -> subproce
 def test_arbitrary_user_uid_is_rejected() -> None:
     """An arbitrary host UID (1000), neither root nor prostor, is rejected."""
     for text in (_read(STAGE2_HOOK), _read(MAIN_WRAPPER)):
-        proc = _run_guard(text, cur_uid=1000, prostor_uid=10000)
+        proc = _run_guard(text, cur_uid=1000, hermes_uid=10000)
         assert proc.returncode == 1, f"expected rejection, got rc={proc.returncode}"
         assert "not supported" in proc.stderr
         assert "GUARD_PASSED" not in proc.stdout
@@ -96,24 +96,24 @@ def test_arbitrary_user_uid_is_rejected() -> None:
 def test_root_start_passes() -> None:
     """Root start (uid 0) is never blocked."""
     for text in (_read(STAGE2_HOOK), _read(MAIN_WRAPPER)):
-        proc = _run_guard(text, cur_uid=0, prostor_uid=10000)
+        proc = _run_guard(text, cur_uid=0, hermes_uid=10000)
         assert proc.returncode == 0, proc.stderr
         assert "GUARD_PASSED" in proc.stdout
 
 
-def test_user_pinned_to_prostor_uid_passes() -> None:
+def test_user_pinned_to_hermes_uid_passes() -> None:
     """`--user 10000:10000` (the prostor UID itself) is the supported non-root
     start from #34648 / #34837 and must NOT be blocked."""
     for text in (_read(STAGE2_HOOK), _read(MAIN_WRAPPER)):
-        proc = _run_guard(text, cur_uid=10000, prostor_uid=10000)
+        proc = _run_guard(text, cur_uid=10000, hermes_uid=10000)
         assert proc.returncode == 0, proc.stderr
         assert "GUARD_PASSED" in proc.stdout
 
 
-def test_user_pinned_to_remapped_prostor_uid_passes() -> None:
+def test_user_pinned_to_remapped_hermes_uid_passes() -> None:
     """After a PROSTOR_UID remap the prostor UID is e.g. 4242; a container pinned
-    to that same UID must still pass (cur_uid == prostor_uid)."""
+    to that same UID must still pass (cur_uid == hermes_uid)."""
     for text in (_read(STAGE2_HOOK), _read(MAIN_WRAPPER)):
-        proc = _run_guard(text, cur_uid=4242, prostor_uid=4242)
+        proc = _run_guard(text, cur_uid=4242, hermes_uid=4242)
         assert proc.returncode == 0, proc.stderr
         assert "GUARD_PASSED" in proc.stdout

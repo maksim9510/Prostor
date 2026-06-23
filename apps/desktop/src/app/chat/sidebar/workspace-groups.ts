@@ -1,4 +1,4 @@
-import type { ProstorWorktreeInfo } from '@/global'
+import type { HermesWorktreeInfo } from '@/global'
 import type { SessionInfo } from '@/prostor'
 
 export interface SidebarSessionGroup {
@@ -137,7 +137,7 @@ export interface SidebarWorkspaceTree {
 }
 
 /** Resolves a session cwd to git-worktree identity (from the local fs probe). */
-export type WorktreeResolver = (cwd: string) => ProstorWorktreeInfo | null | undefined
+export type WorktreeResolver = (cwd: string) => HermesWorktreeInfo | null | undefined
 
 interface WorkspacePlacement {
   parentKey: string

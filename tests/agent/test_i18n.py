@@ -98,9 +98,9 @@ def test_normalize_lang_accepts_aliases():
 
 
 def test_normalize_lang_unknown_falls_back():
-    assert i18n._normalize_lang("klingon") == "ru"
-    assert i18n._normalize_lang("") == "ru"
-    assert i18n._normalize_lang(None) == "ru"
+    assert i18n._normalize_lang("klingon") == "en"
+    assert i18n._normalize_lang("") == "en"
+    assert i18n._normalize_lang(None) == "en"
 
 
 def test_env_var_override(monkeypatch):
@@ -117,12 +117,12 @@ def test_env_var_normalized(monkeypatch):
 
 
 def test_default_when_nothing_set(monkeypatch):
-    """With no env var and no config override, falls back to Russian (default)."""
+    """With no env var and no config override, falls back to English."""
     monkeypatch.delenv("PROSTOR_LANGUAGE", raising=False)
     # Force config lookup to return None -- patch the cached reader.
     i18n.reset_language_cache()
     monkeypatch.setattr(i18n, "_config_language_cached", lambda: None)
-    assert i18n.get_language() == "ru"
+    assert i18n.get_language() == "en"
 
 
 # ---------------------------------------------------------------------------
@@ -147,26 +147,26 @@ def test_t_missing_key_returns_key():
     assert result == "nonexistent.key.path"
 
 
-def test_t_missing_key_in_non_default_falls_back_to_default(tmp_path, monkeypatch):
-    """If a key exists in the default language (ru) but not in the target locale, fall back."""
+def test_t_missing_key_in_non_english_falls_back_to_english(tmp_path, monkeypatch):
+    """If a key exists in English but not in the target locale, fall back."""
     # Stand up a fake incomplete locale under a temp locales dir.
     fake_locales = tmp_path / "locales"
     fake_locales.mkdir()
-    (fake_locales / "ru.yaml").write_text("foo: Russian Foo\n", encoding="utf-8")
+    (fake_locales / "en.yaml").write_text("foo: English Foo\n", encoding="utf-8")
     (fake_locales / "zh.yaml").write_text("# intentionally empty\n", encoding="utf-8")
     monkeypatch.setattr(i18n, "_locales_dir", lambda: fake_locales)
     i18n.reset_language_cache()
     try:
-        assert i18n.t("foo", lang="zh") == "Russian Foo"
+        assert i18n.t("foo", lang="zh") == "English Foo"
     finally:
         # Clear the cache on teardown so subsequent tests don't see the
-        # fake "foo: Russian Foo" catalog instead of the real locales/*.yaml.
+        # fake "foo: English Foo" catalog instead of the real locales/*.yaml.
         i18n.reset_language_cache()
 
 
-def test_t_unknown_language_uses_default():
-    """Unknown lang codes normalize to the default language (ru), not to a key-path fallback."""
-    assert i18n.t("approval.denied", lang="klingon") == i18n.t("approval.denied", lang="ru")
+def test_t_unknown_language_uses_english():
+    """Unknown lang codes normalize to English, not to a key-path fallback."""
+    assert i18n.t("approval.denied", lang="klingon") == i18n.t("approval.denied", lang="en")
 
 
 # ---------------------------------------------------------------------------

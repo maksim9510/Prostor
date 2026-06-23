@@ -78,7 +78,7 @@ from acp_adapter.tools import build_tool_complete, build_tool_start
 logger = logging.getLogger(__name__)
 
 try:
-    from prostor_cli import __version__ as PROSTOR_VERSION
+    from hermes_cli import __version__ as PROSTOR_VERSION
 except Exception:
     PROSTOR_VERSION = "0.0.0"
 
@@ -443,7 +443,7 @@ def _content_blocks_to_openai_user_content(
     return parts
 
 
-class ProstorACPAgent(acp.Agent):
+class HermesACPAgent(acp.Agent):
     """ACP Agent implementation wrapping Prostor AIAgent."""
 
     _SLASH_COMMANDS = {
@@ -582,7 +582,7 @@ class ProstorACPAgent(acp.Agent):
         provider = getattr(state.agent, "provider", None) or detect_provider() or "openrouter"
 
         try:
-            from prostor_cli.models import curated_models_for_provider, normalize_provider, provider_label
+            from hermes_cli.models import curated_models_for_provider, normalize_provider, provider_label
 
             normalized_provider = normalize_provider(provider)
             provider_name = provider_label(normalized_provider)
@@ -645,7 +645,7 @@ class ProstorACPAgent(acp.Agent):
         new_model = raw_model.strip()
 
         try:
-            from prostor_cli.models import detect_provider_for_model, parse_model_input
+            from hermes_cli.models import detect_provider_for_model, parse_model_input
 
             target_provider, new_model = parse_model_input(new_model, current_provider)
             if target_provider == current_provider:
@@ -713,16 +713,16 @@ class ProstorACPAgent(acp.Agent):
     def _provenance_meta(
         self,
         acp_session_id: str,
-        current_prostor_session_id: str,
-        previous_prostor_session_id: Optional[str] = None,
+        current_hermes_session_id: str,
+        previous_hermes_session_id: Optional[str] = None,
     ) -> Optional[dict]:
         """Best-effort ``_meta.prostor.sessionProvenance`` for an ACP session."""
         try:
             return session_provenance_meta(
                 self.session_manager._get_db(),
                 acp_session_id,
-                current_prostor_session_id,
-                previous_prostor_session_id=previous_prostor_session_id,
+                current_hermes_session_id,
+                previous_hermes_session_id=previous_hermes_session_id,
             )
         except Exception:
             logger.debug(
@@ -734,13 +734,13 @@ class ProstorACPAgent(acp.Agent):
         self,
         session_id: str,
         *,
-        current_prostor_session_id: Optional[str] = None,
-        previous_prostor_session_id: Optional[str] = None,
+        current_hermes_session_id: Optional[str] = None,
+        previous_hermes_session_id: Optional[str] = None,
     ) -> None:
         """Send ACP native session metadata after Prostor changes it.
 
         When the internal Prostor head rotated (e.g. compression-driven session
-        split during a turn), pass ``previous_prostor_session_id`` so the
+        split during a turn), pass ``previous_hermes_session_id`` so the
         attached ``_meta.prostor.sessionProvenance`` flags the rotation reason.
         """
         if not self._conn:
@@ -755,14 +755,14 @@ class ProstorACPAgent(acp.Agent):
 
         title = row.get("title")
         # The `sessions` table does not have an `updated_at` column (see
-        # prostor_state.py schema — only started_at/ended_at). Use "now" as
+        # hermes_state.py schema — only started_at/ended_at). Use "now" as
         # the updated_at since we're emitting this notification precisely
         # because the title was just refreshed.
         updated_at = datetime.now(timezone.utc).isoformat()
         meta = self._provenance_meta(
             session_id,
-            current_prostor_session_id or session_id,
-            previous_prostor_session_id,
+            current_hermes_session_id or session_id,
+            previous_hermes_session_id,
         )
         update = SessionInfoUpdate(
             session_update="session_info_update",
@@ -1547,7 +1547,7 @@ class ProstorACPAgent(acp.Agent):
             # can detect a compression-driven session rotation afterwards. The
             # ACP `session_id` stays the stable client handle; agent.session_id
             # is the live internal head that compression may rotate.
-            pre_turn_prostor_id = getattr(state.agent, "session_id", None)
+            pre_turn_hermes_id = getattr(state.agent, "session_id", None)
             # Wrap the executor call in a fresh copy of the current context so
             # concurrent ACP sessions on the shared ThreadPoolExecutor don't
             # stomp on each other's ContextVar writes (PROSTOR_SESSION_KEY in
@@ -1570,18 +1570,18 @@ class ProstorACPAgent(acp.Agent):
         # DB head moved during the turn, emit a session_info_update carrying
         # _meta.prostor.sessionProvenance so ACP clients can render the boundary
         # and keep old/new ids in lineage. The ACP session_id is unchanged.
-        post_turn_prostor_id = getattr(state.agent, "session_id", None)
+        post_turn_hermes_id = getattr(state.agent, "session_id", None)
         if (
             conn
-            and post_turn_prostor_id
-            and pre_turn_prostor_id
-            and post_turn_prostor_id != pre_turn_prostor_id
+            and post_turn_hermes_id
+            and pre_turn_hermes_id
+            and post_turn_hermes_id != pre_turn_hermes_id
         ):
             try:
                 await self._send_session_info_update(
                     session_id,
-                    current_prostor_session_id=post_turn_prostor_id,
-                    previous_prostor_session_id=pre_turn_prostor_id,
+                    current_hermes_session_id=post_turn_hermes_id,
+                    previous_hermes_session_id=pre_turn_hermes_id,
                 )
             except Exception:
                 logger.debug(

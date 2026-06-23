@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch as mock_patch
 
 import tools.approval as approval_module
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from tools.approval import (
     _get_approval_mode,
     _smart_approve,
@@ -23,11 +23,11 @@ from tools.approval import (
 
 class TestApprovalModeParsing:
     def test_unquoted_yaml_off_boolean_false_maps_to_off(self):
-        with mock_patch("prostor_cli.config.load_config", return_value={"approvals": {"mode": False}}):
+        with mock_patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": False}}):
             assert _get_approval_mode() == "off"
 
     def test_string_off_still_maps_to_off(self):
-        with mock_patch("prostor_cli.config.load_config", return_value={"approvals": {"mode": "off"}}):
+        with mock_patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "off"}}):
             assert _get_approval_mode() == "off"
 
 
@@ -364,7 +364,7 @@ class TestTeePattern:
         assert dangerous is True
         assert key is not None
 
-    def test_tee_prostor_env(self):
+    def test_tee_hermes_env(self):
         dangerous, key, desc = detect_dangerous_command("echo x | tee ~/.prostor/.env")
         assert dangerous is True
         assert key is not None
@@ -375,12 +375,12 @@ class TestTeePattern:
         assert dangerous is True
         assert key is not None
 
-    def test_tee_custom_prostor_home_env(self):
+    def test_tee_custom_hermes_home_env(self):
         dangerous, key, desc = detect_dangerous_command("echo x | tee $PROSTOR_HOME/.env")
         assert dangerous is True
         assert key is not None
 
-    def test_tee_quoted_custom_prostor_home_env(self):
+    def test_tee_quoted_custom_hermes_home_env(self):
         dangerous, key, desc = detect_dangerous_command('echo x | tee "$PROSTOR_HOME/.env"')
         assert dangerous is True
         assert key is not None
@@ -396,7 +396,7 @@ class TestTeePattern:
         assert key is None
 
 
-class TestProstorConfigWriteProtection:
+class TestHermesConfigWriteProtection:
     """Terminal-side pairing for the file_tools write_file/patch deny on
     ~/.prostor/config.yaml (#14639). config.yaml IS the security policy
     (approvals.mode/yolo live there, mtime-keyed cache reloads mid-session),
@@ -431,23 +431,23 @@ class TestProstorConfigWriteProtection:
         dangerous, key, desc = detect_dangerous_command("sed --in-place 's/manual/off/' ~/.prostor/config.yaml")
         assert dangerous is True
 
-    def test_sed_in_place_absolute_prostor_home_config(self):
-        config_path = get_prostor_home() / "config.yaml"
+    def test_sed_in_place_absolute_hermes_home_config(self):
+        config_path = get_hermes_home() / "config.yaml"
         dangerous, key, desc = detect_dangerous_command(
             f"sed -i 's/manual/off/' {config_path}"
         )
         assert dangerous is True
         assert "prostor config" in desc.lower() or "in-place" in desc.lower()
 
-    def test_sed_in_place_absolute_prostor_home_env(self):
-        env_path = get_prostor_home() / ".env"
+    def test_sed_in_place_absolute_hermes_home_env(self):
+        env_path = get_hermes_home() / ".env"
         dangerous, key, desc = detect_dangerous_command(
             f"sed -i 's/API_KEY=.*/API_KEY=x/' {env_path}"
         )
         assert dangerous is True
         assert "prostor config" in desc.lower() or "in-place" in desc.lower()
 
-    def test_custom_prostor_home(self):
+    def test_custom_hermes_home(self):
         dangerous, key, desc = detect_dangerous_command("echo x | tee $PROSTOR_HOME/config.yaml")
         assert dangerous is True
 
@@ -460,8 +460,8 @@ class TestProstorConfigWriteProtection:
         assert dangerous is True
         assert "in-place" in desc.lower() or "perl" in desc.lower()
 
-    def test_perl_in_place_absolute_prostor_home_config(self):
-        config_path = get_prostor_home() / "config.yaml"
+    def test_perl_in_place_absolute_hermes_home_config(self):
+        config_path = get_hermes_home() / "config.yaml"
         dangerous, key, desc = detect_dangerous_command(
             f"perl -i -pe 's/approvals.mode: on/approvals.mode: off/' {config_path}"
         )
@@ -474,8 +474,8 @@ class TestProstorConfigWriteProtection:
         )
         assert dangerous is True
 
-    def test_ruby_in_place_absolute_prostor_home_env(self):
-        env_path = get_prostor_home() / ".env"
+    def test_ruby_in_place_absolute_hermes_home_env(self):
+        env_path = get_hermes_home() / ".env"
         dangerous, key, desc = detect_dangerous_command(
             f"ruby -i -pe 'gsub(/API_KEY=.*/, \"API_KEY=x\")' {env_path}"
         )
@@ -556,7 +556,7 @@ class TestFindExecFullPathRm:
 class TestSensitiveRedirectPattern:
     """Detect shell redirection writes to sensitive user-managed paths."""
 
-    def test_redirect_to_custom_prostor_home_env(self):
+    def test_redirect_to_custom_hermes_home_env(self):
         dangerous, key, desc = detect_dangerous_command("echo x > $PROSTOR_HOME/.env")
         assert dangerous is True
         assert key is not None
@@ -689,7 +689,7 @@ class TestSensitiveCopyMovePattern:
         dangerous, key, desc = detect_dangerous_command("cp /tmp/e ~/.bashrc")
         assert dangerous is True
 
-    def test_cp_to_prostor_config(self):
+    def test_cp_to_hermes_config(self):
         dangerous, key, desc = detect_dangerous_command("cp /tmp/evil.yaml ~/.prostor/config.yaml")
         assert dangerous is True
 
@@ -852,29 +852,29 @@ class TestGatewayProtection:
     """Prevent agents from starting the gateway outside systemd management."""
 
     def test_gateway_run_with_disown_detected(self):
-        cmd = "kill 1605 && cd ~/.prostor/prostor-agent && source venv/bin/activate && python -m prostor_cli.main gateway run --replace &disown; echo done"
+        cmd = "kill 1605 && cd ~/.prostor/prostor-agent && source venv/bin/activate && python -m hermes_cli.main gateway run --replace &disown; echo done"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
         assert "systemctl" in desc
 
     def test_gateway_run_with_ampersand_detected(self):
-        cmd = "python -m prostor_cli.main gateway run --replace &"
+        cmd = "python -m hermes_cli.main gateway run --replace &"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
 
     def test_gateway_run_with_nohup_detected(self):
-        cmd = "nohup python -m prostor_cli.main gateway run --replace"
+        cmd = "nohup python -m hermes_cli.main gateway run --replace"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
 
     def test_gateway_run_with_setsid_detected(self):
-        cmd = "prostor_cli.main gateway run --replace &disown"
+        cmd = "hermes_cli.main gateway run --replace &disown"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
 
     def test_gateway_run_foreground_not_flagged(self):
         """Normal foreground gateway run (as in systemd ExecStart) is fine."""
-        cmd = "python -m prostor_cli.main gateway run --replace"
+        cmd = "python -m hermes_cli.main gateway run --replace"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is False
 
@@ -885,14 +885,14 @@ class TestGatewayProtection:
         assert dangerous is True
         assert "stop/restart" in desc
 
-    def test_pkill_prostor_detected(self):
+    def test_pkill_hermes_detected(self):
         """pkill targeting prostor/gateway processes must be caught."""
         cmd = 'pkill -f "cli.py --gateway"'
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
         assert "self-termination" in desc
 
-    def test_killall_prostor_detected(self):
+    def test_killall_hermes_detected(self):
         cmd = "killall prostor"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
@@ -1051,7 +1051,7 @@ class TestPgrepKillExpansion:
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is True
 
-    def test_pkill_prostor_still_detected(self):
+    def test_pkill_hermes_still_detected(self):
         """Existing pkill pattern must not regress."""
         cmd = "pkill -9 prostor"
         dangerous, _, _ = detect_dangerous_command(cmd)

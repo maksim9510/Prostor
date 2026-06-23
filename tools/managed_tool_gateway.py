@@ -11,7 +11,7 @@ from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from tools.tool_backend_helpers import managed_nous_tools_enabled
 
 _DEFAULT_TOOL_GATEWAY_DOMAIN = "nousresearch.com"
@@ -29,7 +29,7 @@ class ManagedToolGatewayConfig:
 
 def auth_json_path():
     """Return the Prostor auth store path, respecting PROSTOR_HOME overrides."""
-    return get_prostor_home() / "auth.json"
+    return get_hermes_home() / "auth.json"
 
 
 def _read_nous_provider_state() -> Optional[dict]:
@@ -108,7 +108,7 @@ def read_nous_access_token() -> Optional[str]:
         return cached_token
 
     try:
-        from prostor_cli.auth import resolve_nous_access_token
+        from hermes_cli.auth import resolve_nous_access_token
 
         refreshed_token = resolve_nous_access_token(
             refresh_skew_seconds=_NOUS_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,

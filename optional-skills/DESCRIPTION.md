@@ -2,14 +2,14 @@
 
 Official skills maintained by Nous Research that are **not activated by default**.
 
-These skills ship with the prostor-agent repository but are not copied to
-`~/.prostor/skills/` during setup. They are discoverable via the Skills Hub:
+These skills ship with the hermes-agent repository but are not copied to
+`~/.hermes/skills/` during setup. They are discoverable via the Skills Hub:
 
 ```bash
-prostor skills browse               # browse all skills, official shown first
-prostor skills browse --source official  # browse only official optional skills
-prostor skills search <query>       # finds optional skills labeled "official"
-prostor skills install <identifier> # copies to ~/.prostor/skills/ and activates
+hermes skills browse               # browse all skills, official shown first
+hermes skills browse --source official  # browse only official optional skills
+hermes skills search <query>       # finds optional skills labeled "official"
+hermes skills install <identifier> # copies to ~/.hermes/skills/ and activates
 ```
 
 ## Why optional?

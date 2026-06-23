@@ -1,5 +1,5 @@
-import { useStore } from '@nanostores/react'
 import { type ScrollBoxHandle, useApp, useHasSelection, useSelection, useStdout, useTerminalTitle } from '@prostor/ink'
+import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { STARTUP_RESUME_ID } from '../config/env.js'
@@ -833,6 +833,7 @@ export function useMainApp(gw: GatewayClient) {
         composer: {
           enqueue: composerActions.enqueue,
           hasSelection,
+          openEditor: composerActions.openEditor,
           paste,
           queueRef: composerRefs.queueRef,
           selection,

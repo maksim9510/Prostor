@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _isolate_prostor(tmp_path, monkeypatch):
+def _isolate_hermes(tmp_path, monkeypatch):
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / ".prostor"))
     (tmp_path / ".prostor").mkdir(exist_ok=True)
 

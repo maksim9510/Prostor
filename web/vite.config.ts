@@ -7,18 +7,18 @@ const BACKEND = process.env.PROSTOR_DASHBOARD_URL ?? "http://127.0.0.1:9119";
 
 /**
  * In production the Python `prostor dashboard` server injects a one-shot
- * session token into `index.html` (see `prostor_cli/web_server.py`). The
+ * session token into `index.html` (see `hermes_cli/web_server.py`). The
  * Vite dev server serves its own `index.html`, so unless we forward that
  * token, every protected `/api/*` call 401s.
  *
  * This plugin fetches the running dashboard's `index.html` on each dev page
- * load, scrapes the `window.__PROSTOR_SESSION_TOKEN__` assignment, and
+ * load, scrapes the `window.__HERMES_SESSION_TOKEN__` assignment, and
  * re-injects it into the dev HTML. No-op in production builds.
  */
-function prostorDevToken(): Plugin {
-  const TOKEN_RE = /window\.__PROSTOR_SESSION_TOKEN__\s*=\s*"([^"]+)"/;
+function hermesDevToken(): Plugin {
+  const TOKEN_RE = /window\.__HERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/;
   const EMBEDDED_RE =
-    /window\.__PROSTOR_DASHBOARD_EMBEDDED_CHAT__\s*=\s*(true|false)/;
+    /window\.__HERMES_DASHBOARD_EMBEDDED_CHAT__\s*=\s*(true|false)/;
 
   return {
     name: "prostor:dev-session-token",
@@ -42,8 +42,8 @@ function prostorDevToken(): Plugin {
             tag: "script",
             injectTo: "head",
             children:
-              `window.__PROSTOR_SESSION_TOKEN__="${match[1]}";` +
-              `window.__PROSTOR_DASHBOARD_EMBEDDED_CHAT__=${embeddedJs};`,
+              `window.__HERMES_SESSION_TOKEN__="${match[1]}";` +
+              `window.__HERMES_DASHBOARD_EMBEDDED_CHAT__=${embeddedJs};`,
           },
         ];
       } catch (err) {
@@ -58,7 +58,7 @@ function prostorDevToken(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), prostorDevToken()],
+  plugins: [react(), tailwindcss(), hermesDevToken()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -83,7 +83,7 @@ export default defineConfig({
     ],
   },
   build: {
-    outDir: "../prostor_cli/web_dist",
+    outDir: "../hermes_cli/web_dist",
     emptyOutDir: true,
   },
   server: {

@@ -6,23 +6,22 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { Switch } from '@/components/ui/switch'
+import type { HermesGateway } from '@/prostor'
+import { getGlobalModelOptions } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
-import type { ProstorGateway } from '@/prostor'
-import { getGlobalModelOptions } from '@/prostor'
 import {
   $visibleModels,
   collapseModelFamilies,
   effectiveVisibleKeys,
-  emptyProviderSentinelKey,
-  isProviderSentinel,
   modelVisibilityKey,
-  setVisibleModels
+  setVisibleModels,
+  toggleModelVisibility
 } from '@/store/model-visibility'
 import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/prostor'
 
 interface ModelVisibilityDialogProps {
-  gw?: ProstorGateway
+  gw?: HermesGateway
   onOpenChange: (open: boolean) => void
   onOpenProviders: () => void
   open: boolean
@@ -61,25 +60,7 @@ export function ModelVisibilityDialog({
   const visible = effectiveVisibleKeys(stored, providers)
 
   const toggle = (provider: ModelOptionProvider, model: string) => {
-    const next = new Set(effectiveVisibleKeys($visibleModels.get(), providers))
-    const key = modelVisibilityKey(provider.slug, model)
-    const sentinel = emptyProviderSentinelKey(provider.slug)
-
-    if (next.has(key)) {
-      next.delete(key)
-
-      // Check if this was the last real model for this provider.
-      const remainingForProvider = [...next].some(k => k.startsWith(`${provider.slug}::`) && !isProviderSentinel(k))
-
-      if (!remainingForProvider) {
-        next.add(sentinel)
-      }
-    } else {
-      next.delete(sentinel)
-      next.add(key)
-    }
-
-    setVisibleModels(next)
+    setVisibleModels(toggleModelVisibility($visibleModels.get(), providers, provider.slug, model))
   }
 
   const q = search.trim().toLowerCase()

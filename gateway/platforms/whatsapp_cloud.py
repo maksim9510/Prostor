@@ -79,7 +79,7 @@ from gateway.platforms.base import (
     SUPPORTED_DOCUMENT_TYPES,
 )
 from gateway.platforms.whatsapp_common import WhatsAppBehaviorMixin
-from prostor_constants import get_prostor_dir
+from hermes_constants import get_hermes_dir
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ def _ext_for_mime(mime: str) -> Optional[str]:
 
 # Inbound media cache lives under the user's prostor dir so it survives
 # restarts and gateway reloads — same convention the Baileys bridge uses.
-_INBOUND_MEDIA_CACHE = Path(get_prostor_dir("platforms/whatsapp_cloud/media", "whatsapp_cloud/media"))
+_INBOUND_MEDIA_CACHE = Path(get_hermes_dir("platforms/whatsapp_cloud/media", "whatsapp_cloud/media"))
 
 
 def check_whatsapp_cloud_requirements() -> bool:
@@ -186,6 +186,8 @@ class WhatsAppCloudAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
     generic implementation that does not convert markdown to WhatsApp
     syntax). The Baileys adapter does the same.
     """
+
+    splits_long_messages = True  # send() chunks via truncate_message()
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.WHATSAPP_CLOUD)

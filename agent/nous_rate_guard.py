@@ -29,8 +29,8 @@ _STATE_FILENAME = "nous.json"
 def _state_path() -> str:
     """Return the path to the Nous rate limit state file."""
     try:
-        from prostor_core import get_prostor_home
-        base = get_prostor_home()
+        from hermes_constants import get_hermes_home
+        base = get_hermes_home()
     except ImportError:
         base = os.path.join(os.path.expanduser("~"), ".prostor")
     return os.path.join(base, _STATE_SUBDIR, _STATE_FILENAME)

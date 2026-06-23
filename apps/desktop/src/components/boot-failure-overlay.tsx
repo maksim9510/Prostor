@@ -47,7 +47,7 @@ export function BootFailureOverlay() {
       return
     }
 
-    void window.prostorDesktop
+    void window.hermesDesktop
       ?.getRecentLogs()
       .then(res => setLogs(res.lines ?? []))
       .catch(() => undefined)
@@ -66,7 +66,7 @@ export function BootFailureOverlay() {
     let cancelled = false
 
     void (async () => {
-      const desktop = window.prostorDesktop
+      const desktop = window.hermesDesktop
 
       if (!desktop?.getConnectionConfig) {
         return
@@ -112,20 +112,20 @@ export function BootFailureOverlay() {
 
   const retry = async () => {
     setBusy('retry')
-    await window.prostorDesktop?.resetBootstrap().catch(() => undefined)
+    await window.hermesDesktop?.resetBootstrap().catch(() => undefined)
     window.location.reload()
   }
 
   const repair = async () => {
     setBusy('repair')
-    await window.prostorDesktop?.repairBootstrap().catch(() => undefined)
+    await window.hermesDesktop?.repairBootstrap().catch(() => undefined)
     window.location.reload()
   }
 
   const switchToLocalGateway = async () => {
     setBusy('local')
     // applyConnectionConfig reloads the window from the main process.
-    await window.prostorDesktop?.applyConnectionConfig({ mode: 'local' }).catch(() => undefined)
+    await window.hermesDesktop?.applyConnectionConfig({ mode: 'local' }).catch(() => undefined)
     setBusy(null)
   }
 
@@ -142,7 +142,7 @@ export function BootFailureOverlay() {
     setBusy('signin')
 
     try {
-      const result = await window.prostorDesktop?.oauthLoginConnectionConfig(remoteReauth.url)
+      const result = await window.hermesDesktop?.oauthLoginConnectionConfig(remoteReauth.url)
 
       if (result?.connected) {
         notify({ kind: 'success', title: t.boot.failure.signedInTitle, message: t.boot.failure.signedInMessage })
@@ -163,7 +163,7 @@ export function BootFailureOverlay() {
     }
   }
 
-  const openLogs = () => void window.prostorDesktop?.revealLogs().catch(() => undefined)
+  const openLogs = () => void window.hermesDesktop?.revealLogs().catch(() => undefined)
   const copy = t.boot.failure
 
   const label = signInLabel(remoteReauth, {

@@ -174,9 +174,9 @@ export default function UserStoriesCollage(): JSX.Element {
       <div className={styles.hero}>
         <h1>User Stories &amp; Use Cases</h1>
         <p>
-          What the Prostor Agent community is actually building. Every tile
+          What the Hermes Agent community is actually building. Every tile
           below links to a real post, issue, video, or gist where someone
-          describes how they use Prostor &mdash; scraped from X, GitHub, Reddit,
+          describes how they use Hermes &mdash; scraped from X, GitHub, Reddit,
           Hacker News, YouTube, blogs, and podcasts.
         </p>
         <div className={styles.meta}>
@@ -293,16 +293,16 @@ export default function UserStoriesCollage(): JSX.Element {
       )}
 
       <div className={styles.footer}>
-        Built something with Prostor?{' '}
+        Built something with Hermes?{' '}
         <a
-          href="https://github.com/maksim9510/Prostor/edit/main/website/src/data/userStories.json"
+          href="https://github.com/NousResearch/hermes-agent/edit/main/website/src/data/userStories.json"
           target="_blank"
           rel="noopener noreferrer"
         >
           Add your story to this page
         </a>{' '}
         by editing <code>userStories.json</code>, or post it in the{' '}
-        <a href="https://discord.gg/maksim9510" target="_blank" rel="noopener noreferrer">
+        <a href="https://discord.gg/NousResearch" target="_blank" rel="noopener noreferrer">
           Nous Research Discord
         </a>{' '}
         and we&apos;ll pick it up.

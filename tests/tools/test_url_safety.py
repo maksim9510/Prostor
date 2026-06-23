@@ -164,6 +164,31 @@ class TestIsSafeUrl:
         ]):
             assert is_safe_url("http://[::ffff:169.254.169.254]/") is False
 
+    def test_ipv6_scope_id_link_local_blocked(self):
+        """fe80::1%eth0 — a scope-ID-bearing link-local address must not bypass
+        the guard. ``ipaddress.ip_address`` rejects the ``%scope`` suffix, so
+        the scope must be stripped before the block check rather than skipped.
+        """
+        with patch("socket.getaddrinfo", return_value=[
+            (10, 1, 6, "", ("fe80::1%eth0", 0, 0, 0)),
+        ]):
+            assert is_safe_url("http://[fe80::1%eth0]/") is False
+
+    def test_ipv6_scope_id_loopback_blocked(self):
+        """::1%lo — scoped IPv6 loopback must still be blocked."""
+        with patch("socket.getaddrinfo", return_value=[
+            (10, 1, 6, "", ("::1%lo", 0, 0, 0)),
+        ]):
+            assert is_safe_url("http://[::1%lo]/") is False
+
+    def test_unparseable_ip_after_scope_strip_fails_closed(self):
+        """An address that is still unparseable after stripping the scope ID
+        must fail closed (block), not be silently skipped."""
+        with patch("socket.getaddrinfo", return_value=[
+            (10, 1, 6, "", ("not-an-ip%garbage", 0, 0, 0)),
+        ]):
+            assert is_safe_url("http://example.invalid/") is False
+
     def test_unspecified_address_blocked(self):
         """0.0.0.0 — unspecified address, can bind to all interfaces."""
         with patch("socket.getaddrinfo", return_value=[
@@ -277,7 +302,7 @@ class TestGlobalAllowPrivateUrls:
     def test_default_is_false(self, monkeypatch):
         """Toggle defaults to False when no env var or config is set."""
         monkeypatch.delenv("PROSTOR_ALLOW_PRIVATE_URLS", raising=False)
-        with patch("prostor_cli.config.read_raw_config", side_effect=Exception("no config")):
+        with patch("hermes_cli.config.read_raw_config", side_effect=Exception("no config")):
             assert _global_allow_private_urls() is False
 
     def test_env_var_true(self, monkeypatch):
@@ -304,42 +329,42 @@ class TestGlobalAllowPrivateUrls:
         """security.allow_private_urls in config enables the toggle."""
         monkeypatch.delenv("PROSTOR_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"security": {"allow_private_urls": True}}
-        with patch("prostor_cli.config.read_raw_config", return_value=cfg):
+        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is True
 
     def test_config_browser_fallback(self, monkeypatch):
         """browser.allow_private_urls works as legacy fallback."""
         monkeypatch.delenv("PROSTOR_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"browser": {"allow_private_urls": True}}
-        with patch("prostor_cli.config.read_raw_config", return_value=cfg):
+        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is True
 
     def test_config_security_string_false_stays_disabled(self, monkeypatch):
         """Quoted false must not opt out of SSRF protection."""
         monkeypatch.delenv("PROSTOR_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"security": {"allow_private_urls": "false"}}
-        with patch("prostor_cli.config.read_raw_config", return_value=cfg):
+        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is False
 
     def test_config_browser_string_false_stays_disabled(self, monkeypatch):
         """Legacy browser.allow_private_urls also normalises quoted false."""
         monkeypatch.delenv("PROSTOR_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"browser": {"allow_private_urls": "false"}}
-        with patch("prostor_cli.config.read_raw_config", return_value=cfg):
+        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is False
 
     def test_config_security_takes_precedence_over_browser(self, monkeypatch):
         """security section is checked before browser section."""
         monkeypatch.delenv("PROSTOR_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"security": {"allow_private_urls": True}, "browser": {"allow_private_urls": False}}
-        with patch("prostor_cli.config.read_raw_config", return_value=cfg):
+        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is True
 
     def test_env_var_overrides_config(self, monkeypatch):
         """Env var takes priority over config."""
         monkeypatch.setenv("PROSTOR_ALLOW_PRIVATE_URLS", "false")
         cfg = {"security": {"allow_private_urls": True}}
-        with patch("prostor_cli.config.read_raw_config", return_value=cfg):
+        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is False
 
     def test_result_is_cached(self, monkeypatch):
@@ -489,6 +514,15 @@ class TestIsAlwaysBlockedUrl:
         """Attacker-controlled hostname resolving to IMDS still blocks."""
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("169.254.169.254", 0)),
+        ]):
+            assert is_always_blocked_url("http://attacker-controlled.example.com/") is True
+
+    def test_scope_id_imds_in_floor_blocked(self):
+        """A scope-ID suffix on an IPv4-mapped IMDS address resolving in the
+        always-blocked floor must be caught after the scope is stripped, not
+        skipped as unparseable."""
+        with patch("socket.getaddrinfo", return_value=[
+            (10, 1, 6, "", ("::ffff:169.254.169.254%eth0", 0, 0, 0)),
         ]):
             assert is_always_blocked_url("http://attacker-controlled.example.com/") is True
 

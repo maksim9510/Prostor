@@ -7,7 +7,7 @@ license: MIT
 dependencies: [unsloth, torch, transformers, trl, datasets, peft]
 platforms: [linux, macos]
 metadata:
-  prostor:
+  hermes:
     tags: [Fine-Tuning, Unsloth, Fast Training, LoRA, QLoRA, Memory-Efficient, Optimization, Llama, Mistral, Gemma, Qwen]
 
 ---

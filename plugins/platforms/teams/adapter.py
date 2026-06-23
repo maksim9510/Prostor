@@ -691,6 +691,7 @@ class TeamsAdapter(BasePlatformAdapter):
     """Microsoft Teams adapter using the microsoft-teams-apps SDK."""
 
     MAX_MESSAGE_LENGTH = 28000  # Teams text message limit (~28 KB)
+    splits_long_messages = True  # send() chunks via truncate_message()
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform("teams"))
@@ -996,10 +997,10 @@ class TeamsAdapter(BasePlatformAdapter):
 
         action = ctx.activity.value.action
         data = action.data or {}
-        prostor_action = data.get("prostor_action", "")
+        hermes_action = data.get("hermes_action", "")
         session_key = data.get("session_key", "")
 
-        if not prostor_action or not session_key:
+        if not hermes_action or not session_key:
             return InvokeResponse(
                 status=200,
                 body=AdaptiveCardActionMessageResponse(value="Unknown action."),
@@ -1041,7 +1042,7 @@ class TeamsAdapter(BasePlatformAdapter):
             "approve_always": "always",
             "deny": "deny",
         }
-        choice = choice_map.get(prostor_action)
+        choice = choice_map.get(hermes_action)
         if not choice:
             return InvokeResponse(
                 status=200,
@@ -1114,24 +1115,24 @@ class TeamsAdapter(BasePlatformAdapter):
             .with_actions([
                 ExecuteAction(
                     title="Allow Once",
-                    verb="prostor_approve",
-                    data={**btn_data_base, "prostor_action": "approve_once"},
+                    verb="hermes_approve",
+                    data={**btn_data_base, "hermes_action": "approve_once"},
                     style="positive",
                 ),
                 ExecuteAction(
                     title="Allow Session",
-                    verb="prostor_approve",
-                    data={**btn_data_base, "prostor_action": "approve_session"},
+                    verb="hermes_approve",
+                    data={**btn_data_base, "hermes_action": "approve_session"},
                 ),
                 ExecuteAction(
                     title="Always Allow",
-                    verb="prostor_approve",
-                    data={**btn_data_base, "prostor_action": "approve_always"},
+                    verb="hermes_approve",
+                    data={**btn_data_base, "hermes_action": "approve_always"},
                 ),
                 ExecuteAction(
                     title="Deny",
-                    verb="prostor_approve",
-                    data={**btn_data_base, "prostor_action": "deny"},
+                    verb="hermes_approve",
+                    data={**btn_data_base, "hermes_action": "deny"},
                     style="destructive",
                 ),
             ])
@@ -1330,11 +1331,11 @@ class TeamsAdapter(BasePlatformAdapter):
 
 def interactive_setup() -> None:
     """Guide the user through Teams setup using the Teams CLI."""
-    from prostor_cli.config import (
+    from hermes_cli.config import (
         get_env_value,
         save_env_value,
     )
-    from prostor_cli.cli_output import (
+    from hermes_cli.cli_output import (
         prompt,
         prompt_yes_no,
         print_info,

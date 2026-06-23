@@ -30,9 +30,9 @@ def has_xai_credentials() -> bool:
     if os.environ.get("XAI_API_KEY", "").strip():
         return True
     try:
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
 
-        auth_path = get_prostor_home() / "auth.json"
+        auth_path = get_hermes_home() / "auth.json"
         if not auth_path.exists():
             return False
         store = json.loads(auth_path.read_text())
@@ -48,14 +48,14 @@ def has_xai_credentials() -> bool:
 def get_env_value(name: str, default=None):
     """Read ``name`` from ``~/.prostor/.env`` first, then ``os.environ``.
 
-    Wraps :func:`prostor_cli.config.get_env_value` so tests can patch
+    Wraps :func:`hermes_cli.config.get_env_value` so tests can patch
     ``tools.xai_http.get_env_value`` to inject dotenv-only secrets into the
     xAI credential resolver.
     """
     try:
-        from prostor_cli.config import get_env_value as _prostor_get_env_value
+        from hermes_cli.config import get_env_value as _hermes_get_env_value
 
-        value = _prostor_get_env_value(name)
+        value = _hermes_get_env_value(name)
         if value is not None:
             return value
     except Exception:
@@ -63,10 +63,10 @@ def get_env_value(name: str, default=None):
     return os.environ.get(name, default)
 
 
-def prostor_xai_user_agent() -> str:
+def hermes_xai_user_agent() -> str:
     """Return a stable Prostor-specific User-Agent for xAI HTTP calls."""
     try:
-        from prostor_cli import __version__
+        from hermes_cli import __version__
     except Exception:
         __version__ = "unknown"
     return f"Prostor-Agent/{__version__}"
@@ -76,7 +76,7 @@ def resolve_xai_http_credentials(*, force_refresh: bool = False) -> Dict[str, st
     """Resolve bearer credentials for direct xAI HTTP endpoints.
 
     Prefers Prostor-managed xAI OAuth credentials when available, then falls back
-    to ``XAI_API_KEY`` resolved via ``prostor_cli.config.get_env_value`` so keys
+    to ``XAI_API_KEY`` resolved via ``hermes_cli.config.get_env_value`` so keys
     stored in ``~/.prostor/.env`` (the standard Prostor location) are honored —
     not just ones already exported into ``os.environ``. This keeps direct xAI
     endpoints (images, TTS, STT, etc.) aligned with the main runtime auth model
@@ -90,7 +90,7 @@ def resolve_xai_http_credentials(*, force_refresh: bool = False) -> Dict[str, st
     """
     if not force_refresh:
         try:
-            from prostor_cli.runtime_provider import resolve_runtime_provider
+            from hermes_cli.runtime_provider import resolve_runtime_provider
 
             runtime = resolve_runtime_provider(requested="xai-oauth")
             access_token = str(runtime.get("api_key") or "").strip()
@@ -105,7 +105,7 @@ def resolve_xai_http_credentials(*, force_refresh: bool = False) -> Dict[str, st
             pass
 
     try:
-        from prostor_cli.auth import resolve_xai_oauth_runtime_credentials
+        from hermes_cli.auth import resolve_xai_oauth_runtime_credentials
 
         creds = resolve_xai_oauth_runtime_credentials(force_refresh=force_refresh)
         access_token = str(creds.get("api_key") or "").strip()

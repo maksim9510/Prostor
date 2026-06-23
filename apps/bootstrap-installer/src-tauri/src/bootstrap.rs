@@ -3,7 +3,7 @@
 //! Direct port of `runBootstrap` from `apps/desktop/electron/bootstrap-runner.cjs`.
 //! Drives install.ps1 / install.sh stage-by-stage, emits progress events
 //! over the Tauri `bootstrap` channel, writes a forensic log to
-//! HERMES_HOME/logs/bootstrap-<timestamp>.log.
+//! PROSTOR_HOME/logs/bootstrap-<timestamp>.log.
 //!
 //! Lifecycle:
 //!   1. `start_bootstrap` (Tauri command) → spawns the worker task.
@@ -43,7 +43,7 @@ pub struct StartBootstrapArgs {
     /// bootstrap-runner passes false to avoid building-while-running.
     #[serde(default = "default_true")]
     pub include_desktop: bool,
-    /// Optional override for HERMES_HOME. Tests use this; production
+    /// Optional override for PROSTOR_HOME. Tests use this; production
     /// almost always falls back to the OS default.
     pub hermes_home: Option<String>,
 }
@@ -156,7 +156,7 @@ pub async fn get_bootstrap_status(
     })
 }
 
-/// Spawn the locally-built Hermes desktop binary, then close the installer
+/// Spawn the locally-built Prostor desktop binary, then close the installer
 /// window. Caller resolves the binary path from `install_root`.
 ///
 /// Returns Err with a human-readable message if the binary doesn't exist
@@ -170,17 +170,17 @@ pub async fn launch_hermes_desktop(
     let install_root = PathBuf::from(install_root);
     let exe_path = resolve_hermes_desktop_exe(&install_root).ok_or_else(|| {
         format!(
-            "Couldn't find a built Hermes desktop at {}. The desktop build step \
-             may have been skipped or failed. Run `hermes desktop` from a \
+            "Couldn't find a built Prostor desktop at {}. The desktop build step \
+             may have been skipped or failed. Run `prostor desktop` from a \
              terminal to build and launch it.",
             install_root.join("apps").join("desktop").join("release").display()
         )
     })?;
 
-    tracing::info!(?exe_path, "launching Hermes desktop");
+    tracing::info!(?exe_path, "launching Prostor desktop");
 
     // Detach from us — the installer is about to exit. On macOS launch the
-    // bundle through LaunchServices instead of exec'ing Contents/MacOS/Hermes
+    // bundle through LaunchServices instead of exec'ing Contents/MacOS/Prostor
     // directly; this matches user double-click/open behavior and avoids cwd /
     // quarantine oddities after a self-update rebuild.
     let mut cmd = desktop_launch_command(&exe_path, &install_root);
@@ -214,16 +214,16 @@ pub(crate) fn resolve_hermes_desktop_exe(install_root: &std::path::Path) -> Opti
     let release_dir = install_root.join("apps").join("desktop").join("release");
     let candidates: &[(&str, &str)] = if cfg!(target_os = "windows") {
         &[
-            ("win-unpacked", "Hermes.exe"),
-            ("win-arm64-unpacked", "Hermes.exe"),
+            ("win-unpacked", "Prostor.exe"),
+            ("win-arm64-unpacked", "Prostor.exe"),
         ]
     } else if cfg!(target_os = "macos") {
         &[
-            ("mac/Hermes.app/Contents/MacOS", "Hermes"),
-            ("mac-arm64/Hermes.app/Contents/MacOS", "Hermes"),
+            ("mac/Prostor.app/Contents/MacOS", "Prostor"),
+            ("mac-arm64/Prostor.app/Contents/MacOS", "Prostor"),
         ]
     } else {
-        &[("linux-unpacked", "hermes")]
+        &[("linux-unpacked", "prostor")]
     };
     for (subdir, exe) in candidates {
         let p = release_dir.join(subdir).join(exe);
@@ -238,7 +238,7 @@ pub(crate) fn resolve_hermes_desktop_app(install_root: &std::path::Path) -> Opti
     let exe = resolve_hermes_desktop_exe(install_root)?;
     #[cfg(target_os = "macos")]
     {
-        // .../Hermes.app/Contents/MacOS/Hermes -> .../Hermes.app
+        // .../Prostor.app/Contents/MacOS/Prostor -> .../Prostor.app
         let app = exe.parent()?.parent()?.parent()?.to_path_buf();
         if app.extension().and_then(|e| e.to_str()) == Some("app") && app.is_dir() {
             return Some(app);
@@ -254,9 +254,9 @@ pub(crate) fn resolve_hermes_desktop_app(install_root: &std::path::Path) -> Opti
 
 /// True when a prior install completed (bootstrap-complete marker present) AND a
 /// launchable desktop app exists on disk. Used by the installer's launcher fast
-/// path so a bare re-open just opens Hermes instead of re-running setup.
+/// path so a bare re-open just opens Prostor instead of re-running setup.
 pub(crate) fn hermes_is_installed(install_root: &std::path::Path) -> bool {
-    install_root.join(".hermes-bootstrap-complete").exists()
+    install_root.join(".prostor-bootstrap-complete").exists()
         && resolve_hermes_desktop_exe(install_root).is_some()
 }
 
@@ -265,7 +265,7 @@ pub(crate) fn hermes_is_installed(install_root: &std::path::Path) -> bool {
 /// installer UI.
 pub(crate) fn spawn_installed_desktop(install_root: &std::path::Path) -> std::io::Result<()> {
     let exe = resolve_hermes_desktop_exe(install_root).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "no built Hermes desktop app")
+        std::io::Error::new(std::io::ErrorKind::NotFound, "no built Prostor desktop app")
     })?;
     let mut cmd = desktop_launch_command_std(&exe, install_root);
     #[cfg(target_os = "windows")]
@@ -637,20 +637,20 @@ async fn run_bootstrap(
 
     // 4. Resolve install_root. install.ps1 doesn't (yet) report this back
     // explicitly; we infer it from $HermesHome which Stage-Repository clones
-    // the repo INTO at $HermesHome\hermes-agent. Mirrors hermes_constants.
+    // the repo INTO at $HermesHome\prostor-agent. Mirrors hermes_constants.
     let hermes_home = args
         .hermes_home
         .clone()
         .unwrap_or_else(|| crate::paths::hermes_home().to_string_lossy().into_owned());
-    let install_root = PathBuf::from(&hermes_home).join("hermes-agent");
+    let install_root = PathBuf::from(&hermes_home).join("prostor-agent");
 
-    // Copy ourselves to HERMES_HOME/hermes-setup.exe so the desktop app can
+    // Copy ourselves to PROSTOR_HOME/prostor-setup.exe so the desktop app can
     // re-invoke us with `--update` and shortcuts have a stable target. This is
     // a one-shot install concern; an `--update` re-invocation no-ops because
     // we're already running from that path. Best-effort — a failure here must
     // not fail an otherwise-successful install.
     if let Err(err) = crate::paths::copy_self_to_hermes_home() {
-        tracing::warn!(?err, "failed to copy installer into HERMES_HOME (non-fatal)");
+        tracing::warn!(?err, "failed to copy installer into PROSTOR_HOME (non-fatal)");
         emit_log(&format!(
             "[bootstrap] warning: could not stage updater binary: {err}"
         ));
@@ -826,7 +826,7 @@ mod tests {
 
     fn unique_tmp_dir(tag: &str) -> PathBuf {
         let base = std::env::temp_dir().join(format!(
-            "hermes-bootstrap-test-{tag}-{}-{}",
+            "prostor-bootstrap-test-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -844,22 +844,22 @@ mod tests {
         if cfg!(target_os = "macos") {
             let macos_dir = release
                 .join("mac-arm64")
-                .join("Hermes.app")
+                .join("Prostor.app")
                 .join("Contents")
                 .join("MacOS");
             std::fs::create_dir_all(&macos_dir).unwrap();
-            std::fs::write(macos_dir.join("Hermes"), b"#!/bin/sh\n").unwrap();
-            macos_dir.parent().unwrap().parent().unwrap().to_path_buf() // .../Hermes.app
+            std::fs::write(macos_dir.join("Prostor"), b"#!/bin/sh\n").unwrap();
+            macos_dir.parent().unwrap().parent().unwrap().to_path_buf() // .../Prostor.app
         } else if cfg!(target_os = "windows") {
             let dir = release.join("win-unpacked");
             std::fs::create_dir_all(&dir).unwrap();
-            let exe = dir.join("Hermes.exe");
+            let exe = dir.join("Prostor.exe");
             std::fs::write(&exe, b"stub").unwrap();
             exe
         } else {
             let dir = release.join("linux-unpacked");
             std::fs::create_dir_all(&dir).unwrap();
-            let exe = dir.join("hermes");
+            let exe = dir.join("prostor");
             std::fs::write(&exe, b"stub").unwrap();
             exe
         }
@@ -867,7 +867,7 @@ mod tests {
 
     // The relaunch / install target is derived from the rebuilt desktop app.
     // On macOS this MUST resolve to the .app bundle (what `open` relaunches and
-    // what the updater ditto's over /Applications/Hermes.app). A regression in
+    // what the updater ditto's over /Applications/Prostor.app). A regression in
     // this derivation breaks the post-update auto-relaunch, so guard it.
     #[test]
     fn resolve_hermes_desktop_app_finds_built_bundle() {

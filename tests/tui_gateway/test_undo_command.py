@@ -20,11 +20,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prostor_state import SessionDB
+from hermes_state import SessionDB
 
 
 @pytest.fixture()
-def prostor_home(tmp_path, monkeypatch):
+def hermes_home(tmp_path, monkeypatch):
     home = tmp_path / ".prostor"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -33,12 +33,12 @@ def prostor_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def server(prostor_home):
+def server(hermes_home):
     with patch.dict(
         "sys.modules",
         {
-            "prostor_cli.env_loader": MagicMock(),
-            "prostor_cli.banner": MagicMock(),
+            "hermes_cli.env_loader": MagicMock(),
+            "hermes_cli.banner": MagicMock(),
         },
     ):
         mod = importlib.import_module("tui_gateway.server")
@@ -51,8 +51,8 @@ def server(prostor_home):
 
 
 @pytest.fixture()
-def db(prostor_home):
-    return SessionDB(db_path=prostor_home / "state.db")
+def db(hermes_home):
+    return SessionDB(db_path=hermes_home / "state.db")
 
 
 @pytest.fixture()

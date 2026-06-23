@@ -21,13 +21,13 @@ from gateway.session import SessionEntry, SessionSource, build_session_key
 
 
 @pytest.fixture()
-def prostor_home(tmp_path, monkeypatch):
+def hermes_home(tmp_path, monkeypatch):
     home = tmp_path / ".prostor"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-    from prostor_cli import goals
+    from hermes_cli import goals
 
     goals._DB_CACHE.clear()
     yield home
@@ -97,17 +97,17 @@ def _make_runner_with_adapter(session_id: str = None):
 
 
 @pytest.mark.asyncio
-async def test_goal_verdict_done_sent_via_adapter_send(prostor_home):
+async def test_goal_verdict_done_sent_via_adapter_send(hermes_home):
     """When the judge says done, the '✓ Goal achieved' message must reach
     the user through the adapter's ``send()`` method."""
     runner, adapter, session_entry, src = _make_runner_with_adapter()
 
-    from prostor_cli.goals import GoalManager
+    from hermes_cli.goals import GoalManager
 
     mgr = GoalManager(session_entry.session_id)
     mgr.set("ship the feature")
 
-    with patch("prostor_cli.goals.judge_goal", return_value=("done", "the feature shipped", False)):
+    with patch("hermes_cli.goals.judge_goal", return_value=("done", "the feature shipped", False, None)):
         await runner._post_turn_goal_continuation(
             session_entry=session_entry,
             source=src,
@@ -124,19 +124,19 @@ async def test_goal_verdict_done_sent_via_adapter_send(prostor_home):
 
 
 @pytest.mark.asyncio
-async def test_goal_verdict_continue_enqueues_continuation(prostor_home):
+async def test_goal_verdict_continue_enqueues_continuation(hermes_home):
     """When the judge says continue, both the 'continuing' status and the
     continuation-prompt event must be delivered. The continuation prompt is
     routed through the adapter's pending-messages FIFO so the goal loop
     proceeds on the next turn."""
     runner, adapter, session_entry, src = _make_runner_with_adapter()
 
-    from prostor_cli.goals import GoalManager
+    from hermes_cli.goals import GoalManager
 
     mgr = GoalManager(session_entry.session_id)
     mgr.set("polish the docs")
 
-    with patch("prostor_cli.goals.judge_goal", return_value=("continue", "still needs work", False)):
+    with patch("hermes_cli.goals.judge_goal", return_value=("continue", "still needs work", False, None)):
         await runner._post_turn_goal_continuation(
             session_entry=session_entry,
             source=src,
@@ -152,19 +152,19 @@ async def test_goal_verdict_continue_enqueues_continuation(prostor_home):
 
 
 @pytest.mark.asyncio
-async def test_goal_verdict_budget_exhausted_sends_pause(prostor_home):
+async def test_goal_verdict_budget_exhausted_sends_pause(hermes_home):
     """When the budget is exhausted, a '⏸ Goal paused' message must be sent
     and no further continuation enqueued."""
     runner, adapter, session_entry, src = _make_runner_with_adapter()
 
-    from prostor_cli.goals import GoalManager, save_goal
+    from hermes_cli.goals import GoalManager, save_goal
 
     mgr = GoalManager(session_entry.session_id, default_max_turns=2)
     state = mgr.set("tiny goal", max_turns=2)
     state.turns_used = 2
     save_goal(session_entry.session_id, state)
 
-    with patch("prostor_cli.goals.judge_goal", return_value=("continue", "keep going", False)):
+    with patch("hermes_cli.goals.judge_goal", return_value=("continue", "keep going", False, None)):
         await runner._post_turn_goal_continuation(
             session_entry=session_entry,
             source=src,
@@ -181,7 +181,7 @@ async def test_goal_verdict_budget_exhausted_sends_pause(prostor_home):
 
 
 @pytest.mark.asyncio
-async def test_goal_verdict_skipped_when_no_active_goal(prostor_home):
+async def test_goal_verdict_skipped_when_no_active_goal(hermes_home):
     """No goal set → the hook is a no-op. Nothing is sent, nothing enqueued."""
     runner, adapter, session_entry, src = _make_runner_with_adapter()
 
@@ -197,11 +197,11 @@ async def test_goal_verdict_skipped_when_no_active_goal(prostor_home):
 
 
 @pytest.mark.asyncio
-async def test_goal_verdict_survives_adapter_without_send(prostor_home):
+async def test_goal_verdict_survives_adapter_without_send(hermes_home):
     """Bad adapter (no ``send`` attribute) must not crash the judge hook."""
     runner, _adapter, session_entry, src = _make_runner_with_adapter()
 
-    from prostor_cli.goals import GoalManager
+    from hermes_cli.goals import GoalManager
 
     GoalManager(session_entry.session_id).set("survive missing send")
 
@@ -211,7 +211,7 @@ async def test_goal_verdict_survives_adapter_without_send(prostor_home):
 
     runner.adapters[Platform.TELEGRAM] = _NoSendAdapter()
 
-    with patch("prostor_cli.goals.judge_goal", return_value=("done", "ok", False)):
+    with patch("hermes_cli.goals.judge_goal", return_value=("done", "ok", False, None)):
         # must not raise
         await runner._post_turn_goal_continuation(
             session_entry=session_entry,

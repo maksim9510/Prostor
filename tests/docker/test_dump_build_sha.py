@@ -3,8 +3,8 @@
 Background: ``.dockerignore`` excludes ``.git``, so ``git rev-parse HEAD``
 fails inside the published image and ``prostor dump`` used to report
 ``version: ... [(unknown)]``.  The Dockerfile now writes the build-time
-``$PROSTOR_GIT_SHA`` build-arg to ``/opt/prostor/.prostor_build_sha`` and
-``prostor_cli/build_info.py`` reads it as a fallback.
+``$PROSTOR_GIT_SHA`` build-arg to ``/opt/prostor/.hermes_build_sha`` and
+``hermes_cli/build_info.py`` reads it as a fallback.
 
 CI (``.github/workflows/docker-publish.yml``) always sets the build-arg
 to ``${{ github.sha }}``.  Local ``docker build`` (the ``built_image``
@@ -13,7 +13,7 @@ is absent and ``prostor dump`` correctly falls back to ``(unknown)``.
 
 This test handles both cases:
 
-* If ``/opt/prostor/.prostor_build_sha`` exists in the image, assert that
+* If ``/opt/prostor/.hermes_build_sha`` exists in the image, assert that
   ``prostor dump`` surfaces its content as the version SHA (not
   ``(unknown)``).
 * If the file is absent, assert the legacy behaviour (``(unknown)``)
@@ -51,11 +51,11 @@ def _run_dump(image: str) -> str:
 
 
 def _read_baked_sha_from_image(image: str) -> str | None:
-    """Return the ``/opt/prostor/.prostor_build_sha`` content, or None if absent."""
+    """Return the ``/opt/prostor/.hermes_build_sha`` content, or None if absent."""
     r = subprocess.run(
         [
             "docker", "run", "--rm", "--entrypoint", "cat", image,
-            "/opt/prostor/.prostor_build_sha",
+            "/opt/prostor/.hermes_build_sha",
         ],
         capture_output=True, text=True, timeout=30,
     )

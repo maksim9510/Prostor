@@ -191,6 +191,19 @@ ALL_TOOL_SCHEMAS = [PROFILE_SCHEMA, SEARCH_SCHEMA, REASONING_SCHEMA, CONTEXT_SCH
 class HonchoMemoryProvider(MemoryProvider):
     """Honcho AI-native memory with dialectic Q&A and persistent user modeling."""
 
+    def backup_paths(self) -> List[str]:
+        """Honcho keeps its peer/session config under ~/.honcho when no
+        profile-local honcho.json exists (see client.resolve_config_path)."""
+        paths: List[str] = []
+        try:
+            from .client import resolve_global_config_path
+            global_cfg = resolve_global_config_path()
+            # Capture the whole ~/.honcho dir so sibling state travels with it.
+            paths.append(str(global_cfg.parent))
+        except Exception:
+            pass
+        return paths
+
     def __init__(self):
         self._manager = None   # HonchoSessionManager
         self._config = None    # HonchoClientConfig
@@ -249,12 +262,12 @@ class HonchoMemoryProvider(MemoryProvider):
         except Exception:
             return False
 
-    def save_config(self, values, prostor_home):
+    def save_config(self, values, hermes_home):
         """Write config to $PROSTOR_HOME/honcho.json (Honcho SDK native format)."""
         import json
         import os
         from pathlib import Path
-        config_path = Path(prostor_home) / "honcho.json"
+        config_path = Path(hermes_home) / "honcho.json"
         existing = {}
         if config_path.exists():
             try:
@@ -271,7 +284,7 @@ class HonchoMemoryProvider(MemoryProvider):
             {"key": "baseUrl", "description": "Honcho base URL (for self-hosted)"},
         ]
 
-    def post_setup(self, prostor_home: str, config: dict) -> None:
+    def post_setup(self, hermes_home: str, config: dict) -> None:
         """Run the full Honcho setup wizard after provider selection."""
         import types
         from plugins.memory.honcho.cli import cmd_setup
@@ -446,8 +459,8 @@ class HonchoMemoryProvider(MemoryProvider):
         # of performing a one-time migration.
         try:
             if not session.messages and cfg.session_strategy != "per-session":
-                from prostor_constants import get_prostor_home
-                mem_dir = str(get_prostor_home() / "memories")
+                from hermes_constants import get_hermes_home
+                mem_dir = str(get_hermes_home() / "memories")
                 self._manager.migrate_memory_files(self._session_key, mem_dir)
                 logger.debug("Honcho memory file migration attempted for new session: %s", self._session_key)
             elif cfg.session_strategy == "per-session":

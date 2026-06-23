@@ -501,7 +501,7 @@ class TestOnPubsubMessage:
         envelope = {
             "event_type": "MESSAGE",
             "sender_email": "bot@bots.example.com",
-            "sender_display_name": "ProstorBot",
+            "sender_display_name": "HermesBot",
             "sender_type": "BOT",
             "text": "reply from bot",
             "space_name": "spaces/RELAY",
@@ -663,7 +663,7 @@ class TestExtractMessagePayload:
         envelope = {
             "event_type": "MESSAGE",
             "sender_email": "bot@bots.example.com",
-            "sender_display_name": "ProstorBot",
+            "sender_display_name": "HermesBot",
             "sender_type": "BOT",
             "text": "reply from bot",
             "space_name": "spaces/RELAY",
@@ -2581,20 +2581,20 @@ class TestGoogleChatInteractiveSetup:
         def fake_prompt(question, default=None, password=False):
             return answers.get(question, default or "")
 
-        monkeypatch.setattr("prostor_cli.config.get_env_value", fake_get_env_value)
-        monkeypatch.setattr("prostor_cli.config.save_env_value", fake_save_env_value)
-        monkeypatch.setattr("prostor_cli.cli_output.prompt", fake_prompt)
+        monkeypatch.setattr("hermes_cli.config.get_env_value", fake_get_env_value)
+        monkeypatch.setattr("hermes_cli.config.save_env_value", fake_save_env_value)
+        monkeypatch.setattr("hermes_cli.cli_output.prompt", fake_prompt)
         monkeypatch.setattr(
-            "prostor_cli.cli_output.prompt_yes_no", lambda *_a, **_kw: True
+            "hermes_cli.cli_output.prompt_yes_no", lambda *_a, **_kw: True
         )
         monkeypatch.setattr(
-            "prostor_cli.cli_output.print_info", lambda *_a, **_kw: None
+            "hermes_cli.cli_output.print_info", lambda *_a, **_kw: None
         )
         monkeypatch.setattr(
-            "prostor_cli.cli_output.print_success", lambda *_a, **_kw: None
+            "hermes_cli.cli_output.print_success", lambda *_a, **_kw: None
         )
         monkeypatch.setattr(
-            "prostor_cli.cli_output.print_warning", lambda *_a, **_kw: None
+            "hermes_cli.cli_output.print_warning", lambda *_a, **_kw: None
         )
 
         gc_mod.interactive_setup()
@@ -2750,7 +2750,7 @@ class TestCronSchedulerRegistry:
             return
         # Discover first so the plugin is loaded at all.
         try:
-            from prostor_cli.plugins import discover_plugins
+            from hermes_cli.plugins import discover_plugins
             discover_plugins()
         except Exception:
             pass
