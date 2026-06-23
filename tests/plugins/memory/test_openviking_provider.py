@@ -489,11 +489,11 @@ def test_post_setup_remote_blank_api_key_cancels_without_saving(tmp_path, monkey
     monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setattr(openviking_module, "_validate_openviking_reachability", lambda endpoint: (True, ""))
 
-    from hermes_cli import config as hermes_config
+    from hermes_cli import config as prostor_config
     from hermes_cli import memory_setup
 
     save_config = MagicMock()
-    monkeypatch.setattr(hermes_config, "save_config", save_config)
+    monkeypatch.setattr(prostor_config, "save_config", save_config)
     choices = iter([1, 0, 1])
     monkeypatch.setattr(memory_setup, "_curses_select", lambda *args, **kwargs: next(choices))
     monkeypatch.setattr(

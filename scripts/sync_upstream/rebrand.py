@@ -51,6 +51,19 @@ REBRAND_RULES: list[tuple[re.Pattern[str], str]] = [
     # Compound CamelCase / snake_case forms first (longest match wins)
     (re.compile(r"\bHermesAgent\b"), "ProstorAgent"),
     (re.compile(r"\bhermes_agent\b"), "prostor_agent"),
+    # More compound forms with Hermes + CapitalLetter (PascalCase)
+    # Use (?![a-z]) instead of \b to match at CamelCase boundaries
+    (re.compile(r"\bHermesGateway(?![a-z])"), "ProstorGateway"),
+    (re.compile(r"\bhermes_gateway\b"), "prostor_gateway"),
+    (re.compile(r"\bHermesConfig(?![a-z])"), "ProstorConfig"),
+    (re.compile(r"\bhermes_config\b"), "prostor_config"),
+    # camelCase compound forms (getHermes, useHermes, updateHermes + suffix)
+    # Use (?=[A-Z]) to match at CamelCase boundaries without requiring \b
+    (re.compile(r"\bgetHermes(?=[A-Z])"), "getProstor"),
+    (re.compile(r"\buseHermes(?=[A-Z])"), "useProstor"),
+    (re.compile(r"\bupdateHermes(?=[A-Z])"), "updateProstor"),
+    (re.compile(r"\bsetHermes(?=[A-Z])"), "setProstor"),
+    (re.compile(r"\brefreshHermes(?=[A-Z])"), "refreshProstor"),
     # PascalCase: `Hermes` not followed by identifier char (so HermesAgent
     # is consumed by the rule above; bare `Hermes` falls through here)
     (re.compile(r"\bHermes(?![A-Za-z0-9_])"), "Prostor"),
@@ -257,6 +270,56 @@ def rebrand_file(
     )
 
 
+def _rename_hermes_dirs(root: Path) -> int:
+    """Rename directories AND files containing 'hermes' to 'prostor' equivalent.
+
+    Walks bottom-up so child dirs are renamed before parents.
+    Skips .git and node_modules. Returns count of renamed entries.
+    """
+    skip_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv"}
+    renamed = 0
+
+    # Collect all paths bottom-up (deepest first)
+    paths_to_check: list[Path] = []
+    try:
+        for p in root.rglob("*"):
+            if p.name.lower() in skip_dirs:
+                continue
+            paths_to_check.append(p)
+    except OSError:
+        pass
+
+    # Sort by depth descending (deepest first)
+    paths_to_check.sort(key=lambda p: len(p.parts), reverse=True)
+
+    for p in paths_to_check:
+        if not p.exists():
+            continue
+        name = p.name
+        new_name = None
+
+        # Match hermes (any case) at start or after separator
+        if name.lower().startswith("hermes"):
+            new_name = "prostor" + name[6:]  # len("hermes") = 6
+        elif "-hermes" in name.lower():
+            new_name = name.replace("-hermes", "-prostor").replace("_hermes", "_prostor")
+        elif "_hermes" in name.lower():
+            new_name = name.replace("_hermes", "_prostor")
+
+        if new_name and new_name != name:
+            target = p.parent / new_name
+            if target.exists():
+                # Target exists — skip to avoid merge conflicts
+                continue
+            try:
+                p.rename(target)
+                renamed += 1
+            except OSError:
+                continue
+
+    return renamed
+
+
 def main() -> int:
     """CLI: rebrand entire repo using manifest.
 
@@ -371,11 +434,15 @@ def main() -> int:
 
     manifest.save(manifest_path)
 
+    # Rename directories containing "hermes" → "prostor"
+    renamed_dirs = _rename_hermes_dirs(root)
+
     print(f"Rebrand complete:")
     print(f"  Rebranded:       {reb_count}")
     print(f"  Skipped (post):  {skipped_count}")
     print(f"  Skipped (protected): {protected_count}")
     print(f"  Added to manifest:   {added_count}")
+    print(f"  Entries renamed: {renamed_dirs}")
     print(f"  Errors:          {error_count}")
     for e in errors[:20]:
         print(f"    {e.path}: {e.error}")

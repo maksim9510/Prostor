@@ -32,12 +32,12 @@ vi.mock('@/store/notifications', () => ({
 }))
 
 const checkHermesUpdateSpy = vi.fn()
-const updateHermesSpy = vi.fn()
+const updateProstorSpy = vi.fn()
 const getActionStatusSpy = vi.fn()
 
 vi.mock('@/prostor', () => ({
   checkHermesUpdate: (...args: unknown[]) => checkHermesUpdateSpy(...args),
-  updateHermes: (...args: unknown[]) => updateHermesSpy(...args),
+  updateHermes: (...args: unknown[]) => updateProstorSpy(...args),
   getActionStatus: (...args: unknown[]) => getActionStatusSpy(...args)
 }))
 
@@ -346,7 +346,7 @@ describe('applyBackendUpdate recovery', () => {
   beforeEach(() => {
     storage.clear()
     checkHermesUpdateSpy.mockReset()
-    updateHermesSpy.mockReset()
+    updateProstorSpy.mockReset()
     getActionStatusSpy.mockReset()
     $backendUpdateApply.set({ applying: false, stage: 'idle', message: '', percent: null, error: null, command: null, log: [] })
     vi.useFakeTimers()
@@ -357,7 +357,7 @@ describe('applyBackendUpdate recovery', () => {
   })
 
   it('waits for the backend to return after the restart drops the connection, then clears the overlay', async () => {
-    updateHermesSpy.mockResolvedValue({ ok: true, name: 'update', pid: 1 })
+    updateProstorSpy.mockResolvedValue({ ok: true, name: 'update', pid: 1 })
     getActionStatusSpy.mockRejectedValue(new Error('ECONNREFUSED'))
     checkHermesUpdateSpy.mockResolvedValue({ install_method: 'git', current_version: '0.16.0', behind: 0, update_available: false, can_apply: true, update_command: 'prostor update', message: null })
 
@@ -371,7 +371,7 @@ describe('applyBackendUpdate recovery', () => {
   })
 
   it('surfaces an error when the backend never comes back after the restart', async () => {
-    updateHermesSpy.mockResolvedValue({ ok: true, name: 'update', pid: 1 })
+    updateProstorSpy.mockResolvedValue({ ok: true, name: 'update', pid: 1 })
     getActionStatusSpy.mockRejectedValue(new Error('ECONNREFUSED'))
     checkHermesUpdateSpy.mockRejectedValue(new Error('ECONNREFUSED'))
 

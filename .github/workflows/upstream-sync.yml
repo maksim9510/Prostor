@@ -1,5 +1,5 @@
 # .github/workflows/upstream-sync.yml
-name: Upstream Sync (NousResearch/hermes-agent)
+name: Upstream Sync (NousResearch/prostor-agent)
 
 # Weekly auto-sync from upstream. Opens PR with auto-merge label.
 # .github/workflows/auto-merge.yml then merges when CI passes.

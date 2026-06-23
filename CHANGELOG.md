@@ -5,8 +5,8 @@ All notable changes to **Prostor Agent** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> 📌 **2026-06-21**: Полный ребренд **Hermes → Prostor** (62 633 замены в 4 121 файле).
-> До этой даты — релиз-линейка Hermes Agent (`v2026.x.y`).
+> 📌 **2026-06-21**: Полный ребренд **Prostor → Prostor** (62 633 замены в 4 121 файле).
+> До этой даты — релиз-линейка Prostor Agent (`v2026.x.y`).
 > С этой даты — релиз-линейка Prostor (`v0.x.y`).
 
 ---
@@ -27,13 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **The Prostor Rebrand Release.**
 
-Первый релиз под именем **Prostor**. Полный ребренд Hermes Agent → Prostor Agent
+Первый релиз под именем **Prostor**. Полный ребренд Prostor Agent → Prostor Agent
 (62 633 замены в 4 121 файле), русский интерфейс по умолчанию, и **10 новых
-оптимизаций**, не существовавших в Hermes.
+оптимизаций**, не существовавших в Prostor.
 
 ### 🔥 Highlights
 
-- **Hermes → Prostor rebrand** (62 633 замены, 4121 файл)
+- **Prostor → Prostor rebrand** (62 633 замены, 4121 файл)
 - **Russian-first** UI: `ru` как `DEFAULT_LANGUAGE`, `i18n.py` + 1926 строк
   русских переводов в `ru.ts`
 - **10 новых оптимизаций** (`tools/`):
@@ -59,18 +59,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🛠 Changed
 
-- Protocol: `hermes://` → `prostor://`
+- Protocol: `prostor://` → `prostor://`
 - Executable: `Prostor.exe`
 - App ID: `com.nousresearch.prostor`
-- `.hermes/` → `.prostor/` (284 файла конфига)
-- `hermes-gateway` → `prostor-gateway`
-- `@hermes/shared` → `@prostor/shared`
-- 422 env vars: `HERMES_*` → `PROSTOR_*`
+- `.prostor/` → `.prostor/` (284 файла конфига)
+- `prostor-gateway` → `prostor-gateway`
+- `@prostor/shared` → `@prostor/shared`
+- 422 env vars: `PROSTOR_*` → `PROSTOR_*`
 
 ### 🎨 Assets
 
-- `hermes.png` → `prostor.png` (icon, banner)
-- `hermes-frames` → `prostor-frames` (TUI splash)
+- `prostor.png` → `prostor.png` (icon, banner)
+- `prostor-frames` → `prostor-frames` (TUI splash)
 - `icon.ico`, `icon.png`, `icon.icns`, `apple-touch-icon` — обновлены
 
 ### ✅ Tests
@@ -93,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2026.6.19] — Hermes Agent v0.17.0
+## [2026.6.19] — Prostor Agent v0.17.0
 
 The Reach Release — iMessage via Photon, Raft channel, async subagents,
 image editing, Cursor Composer via xAI Grok, dashboard profile builder,
@@ -102,7 +102,7 @@ curator cost optimization.
 
 ---
 
-## [2026.6.5] — Hermes Agent v0.16.0
+## [2026.6.5] — Prostor Agent v0.16.0
 
 The Surface Release — native desktop app, browser admin panel,
 remote-gateway connect, Simplified Chinese desktop UI, leaner default
@@ -110,16 +110,16 @@ skill set, NVIDIA/skills trusted tap, fuzzy model picker, /undo.
 
 ---
 
-## [2026.5.29.2] — Hermes Agent v0.15.2
+## [2026.5.29.2] — Prostor Agent v0.15.2
 
 Weekly release.
 
 ---
 
-## [2026.5.29] — Hermes Agent v0.15.1
+## [2026.5.29] — Prostor Agent v0.15.1
 
 Same-day hotfix for v0.15.0. Headline: dashboard infinite-reload loop
-in loopback mode (Docker / hosted Hermes / fresh installs). Plus kanban
+in loopback mode (Docker / hosted Prostor / fresh installs). Plus kanban
 worker SIGTERM, `/model` picker unification, `/yolo` session bypass,
 skills.sh full catalog, `.md` media delivery restore, gateway
 probe-stepdown safety, web URL redaction passthrough, kanban worker
@@ -131,7 +131,7 @@ PATH resolution, arm64 cache fix.
 
 ---
 
-## [2026.5.28] — Hermes Agent v0.15.0
+## [2026.5.28] — Prostor Agent v0.15.0
 
 The Velocity Release. `run_agent.py` 16k→3.8k LOC refactor, kanban
 grows into a multi-agent platform (104 PRs), cold-start perf wave
@@ -140,9 +140,9 @@ Bitwarden Secrets Manager, Krea + FAL plugin.
 
 ---
 
-## [2026.5.16] — Hermes Agent v0.14.0
+## [2026.5.16] — Prostor Agent v0.14.0
 
-The Foundation Release — Hermes installs and runs anywhere.
+The Foundation Release — Prostor installs and runs anywhere.
 Native Windows (early beta), PyPI wheel, cold-start perf wave,
 supply-chain hardening, OpenAI-compatible local proxy for OAuth
 providers, cross-session Claude prompt cache, 2 new platforms
@@ -153,22 +153,22 @@ video_generate plugin surface, computer_use cua-driver,
 
 ---
 
-## [2026.5.7] — Hermes Agent v0.13.0
+## [2026.5.7] — Prostor Agent v0.13.0
 
-The Tenacity Release — Hermes Agent now finishes what it starts.
+The Tenacity Release — Prostor Agent now finishes what it starts.
 Durable multi-agent Kanban, `/goal` persistent goals, Checkpoints v2.
 
 ---
 
-## [2026.4.30] — Hermes Agent v0.12.0
+## [2026.4.30] — Prostor Agent v0.12.0
 
-The Curator release — Hermes Agent now maintains itself. Autonomous
+The Curator release — Prostor Agent now maintains itself. Autonomous
 background Curator + substantially upgraded self-improvement loop.
 Four new inference providers, Microsoft Teams (via pluggable gateway).
 
 ---
 
-## [2026.4.23] — Hermes Agent v0.11.0
+## [2026.4.23] — Prostor Agent v0.11.0
 
 The Interface release — new Ink-based TUI, pluggable transport
 architecture, native AWS Bedrock, five new inference paths,
@@ -177,7 +177,7 @@ surface, and dashboard plugin system.
 
 ---
 
-## [2026.4.16] — Hermes Agent v0.10.0
+## [2026.4.16] — Prostor Agent v0.10.0
 
 Tool Gateway release — paid Nous Portal subscribers get web search,
 image gen, TTS, and browser automation through their existing
@@ -185,16 +185,16 @@ subscription.
 
 ---
 
-## [2026.4.13] — Hermes Agent v0.9.0
+## [2026.4.13] — Prostor Agent v0.9.0
 
-The everywhere release — Hermes goes mobile with Termux/Android,
+The everywhere release — Prostor goes mobile with Termux/Android,
 adds iMessage and WeChat, ships Fast Mode for OpenAI and Anthropic,
 introduces background process monitoring, launches a local web
 interface.
 
 ---
 
-## [2026.4.8] — Hermes Agent v0.8.0
+## [2026.4.8] — Prostor Agent v0.8.0
 
 The intelligence release — native Google AI Studio, live model
 switching, self-optimized GPT/Codex guidance, smart inactivity
@@ -203,7 +203,7 @@ and 209 merged PRs.
 
 ---
 
-## [2026.4.3] — Hermes Agent v0.7.0
+## [2026.4.3] — Prostor Agent v0.7.0
 
 The resilience release — pluggable memory providers, credential
 pools, Camofox browser, inline diffs, gateway hardening, secret
@@ -211,7 +211,7 @@ exfiltration blocking. 168 PRs, 46 issues, 40+ contributors.
 
 ---
 
-## [2026.3.30] — Hermes Agent v0.6.0
+## [2026.3.30] — Prostor Agent v0.6.0
 
 The multi-instance release — Profiles, MCP server mode, Docker
 container, fallback provider chains, Feishu/Lark, WeCom,
@@ -219,7 +219,7 @@ Telegram webhook mode, Slack multi-workspace OAuth, 95 PRs.
 
 ---
 
-## [2026.3.28] — Hermes Agent v0.5.0
+## [2026.3.28] — Prostor Agent v0.5.0
 
 The hardening release — Nous Portal 400+ models, Hugging Face
 provider, Telegram Private Chat Topics, native Modal SDK,
@@ -228,7 +228,7 @@ Nix flake, supply chain hardening.
 
 ---
 
-## [2026.3.23] — Hermes Agent v0.4.0
+## [2026.3.23] — Prostor Agent v0.4.0
 
 The biggest release yet — 300 merged PRs in one week. Streaming
 output, native browser tools, Skills Hub, plugin system,
@@ -238,7 +238,7 @@ overhaul.
 
 ---
 
-## [2026.3.17] — Hermes Agent v0.3.0
+## [2026.3.17] — Prostor Agent v0.3.0
 
 The streaming, plugins, and provider release — 248 merged PRs,
 15 contributors. Highlights: unified streaming, plugin architecture,
@@ -248,16 +248,16 @@ redaction, persistent shell, and 50+ bug fixes.
 
 ---
 
-## [2026.3.12] — Hermes Agent v0.2.0
+## [2026.3.12] — Prostor Agent v0.2.0
 
 First tagged release since v0.1.0. Covers 216 merged PRs from
 63 contributors.
 
 ---
 
-## [0.1.0] — Initial Hermes release
+## [0.1.0] — Initial Prostor release
 
-The first Hermes Agent release under Nous Research. Foundation
+The first Prostor Agent release under Nous Research. Foundation
 release with CLI, gateway, MCP, and 16 messaging platforms.
 
 ---

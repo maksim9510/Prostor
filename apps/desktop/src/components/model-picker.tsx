@@ -5,7 +5,7 @@ import { useI18n } from '@/i18n'
 import { currentPickerSelection } from '@/lib/model-status-label'
 import type { ModelOptionProvider, ModelOptionsResponse, ModelPricing } from '@/types/prostor'
 
-import type { HermesGateway } from '../prostor'
+import type { ProstorGateway } from '../prostor'
 import { getGlobalModelOptions } from '../prostor'
 import { cn } from '../lib/utils'
 import { startManualOnboarding } from '../store/onboarding'
@@ -19,7 +19,7 @@ import { Skeleton } from './ui/skeleton'
 interface ModelPickerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  gw?: HermesGateway
+  gw?: ProstorGateway
   sessionId?: string | null
   currentModel: string
   currentProvider: string

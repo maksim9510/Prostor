@@ -607,7 +607,7 @@ def _build_hermes_tools_mcp_entry() -> dict:
 
 
 def migrate(
-    hermes_config: dict,
+    prostor_config: dict,
     *,
     codex_home: Optional[Path] = None,
     dry_run: bool = False,
@@ -619,7 +619,7 @@ def migrate(
     ~/.codex/config.toml.
 
     Args:
-        hermes_config: full ~/.prostor/config.yaml dict
+        prostor_config: full ~/.prostor/config.yaml dict
         codex_home: override CODEX_HOME (defaults to ~/.codex)
         dry_run: skip the actual write; report what would happen
         discover_plugins: when True (default), query `plugin/list` against
@@ -646,7 +646,7 @@ def migrate(
     target = codex_home / "config.toml"
     report.target_path = target
 
-    hermes_servers = (hermes_config or {}).get("mcp_servers") or {}
+    hermes_servers = (prostor_config or {}).get("mcp_servers") or {}
     if not isinstance(hermes_servers, dict):
         report.errors.append(
             "mcp_servers in Prostor config is not a dict; cannot migrate."

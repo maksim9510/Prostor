@@ -1,11 +1,11 @@
 # .github/workflows/eslint.yml
 name: ESLint (apps/desktop + ui-tui)
 
-# ESLint regression guard. The rebrand (Hermes → Prostor) silently broke
+# ESLint regression guard. The rebrand (Prostor → Prostor) silently broke
 # `package-lock.json`: `eslint-plugin-react-hooks@7.1.1` declared a phantom
 # dependency on `prostor-parser` (a sed-replace mistake — the real dep is
-# `hermes-parser`), so `npm ci` worked but `npx eslint` crashed with
-# `Cannot find module 'hermes-parser'`. Python lint (ruff + ty) runs in
+# `prostor-parser`), so `npm ci` worked but `npx eslint` crashed with
+# `Cannot find module 'prostor-parser'`. Python lint (ruff + ty) runs in
 # `lint.yml`; this workflow is the JS/TS counterpart and would have caught
 # the rebrand regression.
 #
