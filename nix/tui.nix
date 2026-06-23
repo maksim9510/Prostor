@@ -1,7 +1,7 @@
 # nix/tui.nix — Prostor TUI (Ink/React) compiled with tsc and bundled
-{ pkgs, hermesNpmLib, ... }:
+{ pkgs, prostorNpmLib, ... }:
 let
-  npm = hermesNpmLib.mkNpmPassthru { folder = "ui-tui"; attr = "tui"; pname = "prostor-tui"; };
+  npm = prostorNpmLib.mkNpmPassthru { folder = "ui-tui"; attr = "tui"; pname = "prostor-tui"; };
 
   packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/ui-tui/package.json"));
   version = packageJson.version;

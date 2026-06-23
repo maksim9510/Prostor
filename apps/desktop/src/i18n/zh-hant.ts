@@ -50,7 +50,7 @@ export const zhHant = defineLocale({
       loadingSettings: '正在載入 Prostor 設定',
       loadingSessions: '正在載入最近工作階段',
       startingDesktopConnection: '正在啟動桌面連線',
-      startingHermesDesktop: '正在啟動 Prostor Desktop…'
+      startingProstorDesktop: '正在啟動 Prostor Desktop…'
     },
     errors: {
       backgroundExited: 'Prostor 背景程序已結束。',
@@ -861,7 +861,7 @@ export const zhHant = defineLocale({
     noSessions: '暫無工作階段。',
     gatewayRunning: '訊息閘道執行中',
     gatewayStopped: '訊息閘道已停止',
-    hermesActiveSessions: (version, count) => `Prostor ${version} · 活躍工作階段 ${count}`,
+    prostorActiveSessions: (version, count) => `Prostor ${version} · 活躍工作階段 ${count}`,
     restartGateway: '重新啟動閘道',
     gatewayRestartFailed: '閘道重新啟動失敗。',
     updateProstor: '更新 Prostor',

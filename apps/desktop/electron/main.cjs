@@ -33,14 +33,14 @@ const {
   SESSION_WINDOW_MIN_HEIGHT,
   SESSION_WINDOW_MIN_WIDTH
 } = require('./session-windows.cjs')
-const { canImportHermesCli, verifyHermesCli } = require('./backend-probes.cjs')
+const { canImportProstorCli, verifyProstorCli } = require('./backend-probes.cjs')
 const { createLinkTitleWindow } = require('./link-title-window.cjs')
 const { probeGatewayWebSocket } = require('./gateway-ws-probe.cjs')
 const { adoptServedDashboardToken } = require('./dashboard-token.cjs')
 const { waitForDashboardPort } = require('./backend-ready.cjs')
 const { serializeJsonBody, setJsonRequestHeaders } = require('./oauth-net-request.cjs')
 const { fetchMarketplaceThemes, searchMarketplaceThemes } = require('./vscode-marketplace.cjs')
-const { buildDesktopBackendEnv, normalizeHermesHomeRoot } = require('./backend-env.cjs')
+const { buildDesktopBackendEnv, normalizeProstorHomeRoot } = require('./backend-env.cjs')
 const { readWindowsUserEnvVar } = require('./windows-user-env.cjs')
 const { readDirForIpc } = require('./fs-read-dir.cjs')
 const { readLiveUpdateMarker } = require('./update-marker.cjs')
@@ -256,8 +256,8 @@ if (INSTALL_STAMP) {
 // PROSTOR_DESKTOP_USER_DATA_DIR (used by test:desktop:fresh) puts the sandbox
 // PROSTOR_HOME beneath the throwaway userData dir so a fresh-install run never
 // touches the user's real ~/.prostor / %LOCALAPPDATA%\prostor.
-function resolveHermesHome() {
-  if (process.env.PROSTOR_HOME) return normalizeHermesHomeRoot(process.env.PROSTOR_HOME)
+function resolveProstorHome() {
+  if (process.env.PROSTOR_HOME) return normalizeProstorHomeRoot(process.env.PROSTOR_HOME)
   if (USER_DATA_OVERRIDE) return path.join(path.resolve(USER_DATA_OVERRIDE), 'prostor-home')
   if (IS_WINDOWS) {
     // A GUI app launched from Explorer inherits the environment block captured
@@ -267,7 +267,7 @@ function resolveHermesHome() {
     // inference provider configured" despite a valid configured home (#45471).
     // Consult the live User-scoped registry value before the default below.
     const fromRegistry = readWindowsUserEnvVar('PROSTOR_HOME')
-    if (fromRegistry) return normalizeHermesHomeRoot(fromRegistry)
+    if (fromRegistry) return normalizeProstorHomeRoot(fromRegistry)
   }
   if (IS_WINDOWS && process.env.LOCALAPPDATA) {
     const localappdata = path.join(process.env.LOCALAPPDATA, 'prostor')
@@ -280,9 +280,9 @@ function resolveHermesHome() {
   return path.join(app.getPath('home'), '.prostor')
 }
 
-const PROSTOR_HOME = resolveHermesHome()
+const PROSTOR_HOME = resolveProstorHome()
 
-function hermesManagedNodePathEntries() {
+function prostorManagedNodePathEntries() {
   // NOTE: keep this ordering in sync with iter_hermes_node_dirs() in
   // hermes_constants.py — this Node main process cannot import the Python
   // module, so the platform-ordering rule is mirrored here.
@@ -292,8 +292,8 @@ function hermesManagedNodePathEntries() {
   return entries.filter(directoryExists)
 }
 
-function pathWithHermesManagedNode(...entries) {
-  return [...hermesManagedNodePathEntries(), ...entries, process.env.PATH]
+function pathWithProstorManagedNode(...entries) {
+  return [...prostorManagedNodePathEntries(), ...entries, process.env.PATH]
     .filter(Boolean)
     .join(path.delimiter)
 }
@@ -308,7 +308,7 @@ const VENV_ROOT = path.join(ACTIVE_HERMES_ROOT, 'venv')
 // (Phase 1D) after install.ps1 has completed all stages and the user has
 // finished initial configuration. Presence of this marker means the install
 // is in a known-good state and we can skip the bootstrap flow on subsequent
-// boots, going straight to `resolveHermesBackend()`. Missing or stale marker
+// boots, going straight to `resolveProstorBackend()`. Missing or stale marker
 // means we re-run the bootstrap; install.ps1's stages are idempotent so a
 // re-run on an already-good install just discovers everything in place.
 //
@@ -636,7 +636,7 @@ if (IS_WINDOWS) {
 // the seed here just covers the first open and any non-menu invocation path.
 app.setAboutPanelOptions({
   applicationName: APP_NAME,
-  applicationVersion: resolveHermesVersion(),
+  applicationVersion: resolveProstorVersion(),
   copyright: 'Copyright © 2026 Nous Research'
 })
 
@@ -701,10 +701,10 @@ function registerMediaProtocol() {
 }
 
 let mainWindow = null
-let hermesProcess = null
+let prostorProcess = null
 let connectionPromise = null
 // Additional per-profile backends, keyed by profile name. The PRIMARY backend
-// (the desktop's launch profile) stays managed by hermesProcess +
+// (the desktop's launch profile) stays managed by prostorProcess +
 // connectionPromise + startHermes(); this pool only holds EXTRA profile
 // backends spawned lazily when a session belongs to a different profile. A user
 // with no named profiles never populates this map, so their experience is
@@ -739,7 +739,7 @@ let bootstrapFailure = null
 let bootstrapAbortController = null
 let connectionConfigCache = null
 let connectionConfigCacheMtime = null
-const hermesLog = []
+const prostorLog = []
 const previewWatchers = new Map()
 let previewShortcutActive = false
 let desktopLogBuffer = ''
@@ -853,9 +853,9 @@ function rememberLog(chunk) {
   const text = String(chunk || '').trim()
   if (!text) return
   const lines = text.split(/\r?\n/).map(line => `[prostor] ${line}`)
-  hermesLog.push(...lines)
-  if (hermesLog.length > 300) {
-    hermesLog.splice(0, hermesLog.length - 300)
+  prostorLog.push(...lines)
+  if (prostorLog.length > 300) {
+    prostorLog.splice(0, prostorLog.length - 300)
   }
 
   desktopLogBuffer += `${lines.join('\n')}\n`
@@ -1279,7 +1279,7 @@ function looksLikeDesktopAppBinary(commandPath) {
   )
 }
 
-function isHermesSourceRoot(root) {
+function isProstorSourceRoot(root) {
   return directoryExists(root) && fileExists(path.join(root, 'hermes_cli', 'main.py'))
 }
 
@@ -1493,8 +1493,8 @@ function resolveGitBinary() {
   return _gitBinaryCache
 }
 
-function recentHermesLog() {
-  return hermesLog.slice(-20).join('\n')
+function recentProstorLog() {
+  return prostorLog.slice(-20).join('\n')
 }
 
 // ─── Self-update (git-pull against the running backend's prostor root) ──────
@@ -1528,8 +1528,8 @@ function writeDesktopUpdateConfig(config) {
 function resolveUpdateRoot() {
   const candidates = [
     process.env.PROSTOR_DESKTOP_HERMES_ROOT && path.resolve(process.env.PROSTOR_DESKTOP_HERMES_ROOT),
-    !IS_PACKAGED && isHermesSourceRoot(SOURCE_REPO_ROOT) ? SOURCE_REPO_ROOT : null,
-    isHermesSourceRoot(ACTIVE_HERMES_ROOT) ? ACTIVE_HERMES_ROOT : null
+    !IS_PACKAGED && isProstorSourceRoot(SOURCE_REPO_ROOT) ? SOURCE_REPO_ROOT : null,
+    isProstorSourceRoot(ACTIVE_HERMES_ROOT) ? ACTIVE_HERMES_ROOT : null
   ].filter(Boolean)
 
   return candidates.find(c => directoryExists(path.join(c, '.git'))) || candidates[0] || ACTIVE_HERMES_ROOT
@@ -1614,7 +1614,7 @@ async function checkUpdates() {
       supported: false,
       reason: 'not-a-git-checkout',
       message: `${updateRoot} isn't a git checkout — desktop self-update only runs against a source install.`,
-      hermesRoot: updateRoot,
+      prostorRoot: updateRoot,
       branch
     }
   }
@@ -1636,7 +1636,7 @@ async function checkUpdates() {
         branch,
         error: 'fetch-failed',
         message: firstLine(target.stderr) || 'git ls-remote failed.',
-        hermesRoot: updateRoot,
+        prostorRoot: updateRoot,
         fetchedAt: Date.now()
       }
     }
@@ -1649,7 +1649,7 @@ async function checkUpdates() {
       targetSha,
       commits: [],
       dirty: dirtyStr.length > 0,
-      hermesRoot: updateRoot,
+      prostorRoot: updateRoot,
       fetchedAt: Date.now()
     }
   }
@@ -1661,7 +1661,7 @@ async function checkUpdates() {
       branch,
       error: 'fetch-failed',
       message: firstLine(fetched.stderr) || 'git fetch failed.',
-      hermesRoot: updateRoot,
+      prostorRoot: updateRoot,
       fetchedAt: Date.now()
     }
   }
@@ -1687,7 +1687,7 @@ async function checkUpdates() {
     targetSha,
     commits,
     dirty: dirtyStr.length > 0,
-    hermesRoot: updateRoot,
+    prostorRoot: updateRoot,
     fetchedAt: Date.now()
   }
 }
@@ -1753,7 +1753,7 @@ function repairMacUpdaterHelper(updater) {
 // Path to the venv shim whose lock decides whether `prostor update` can write
 // fresh entry points. On Windows this is the file the running backend
 // `prostor.exe` holds open; on POSIX it's never mandatory-locked.
-function venvHermesShimPath(updateRoot) {
+function venvProstorShimPath(updateRoot) {
   return IS_WINDOWS
     ? path.join(updateRoot, 'venv', 'Scripts', 'prostor.exe')
     : path.join(updateRoot, 'venv', 'bin', 'prostor')
@@ -1805,7 +1805,7 @@ function forceKillProcessTree(pid) {
 
 // Before handing off the update on Windows, the desktop MUST stop every backend
 // it spawned and WAIT for the venv shim to actually unlock. The old code did
-// `hermesProcess.kill('SIGTERM')` + `app.quit()` fire-and-forget: SIGTERM on
+// `prostorProcess.kill('SIGTERM')` + `app.quit()` fire-and-forget: SIGTERM on
 // Windows doesn't reap the backend's grandchildren, and quit didn't wait for
 // teardown, so the updater raced a still-locked `prostor.exe`, the quarantine
 // rename failed, uv's `pip install` hit "Access is denied", and the git path
@@ -1838,15 +1838,15 @@ async function releaseBackendLock(updateRoot, tag) {
 
   // Collect every backend PID the desktop owns: primary window backend + pool.
   const pids = []
-  if (hermesProcess && Number.isInteger(hermesProcess.pid)) pids.push(hermesProcess.pid)
+  if (prostorProcess && Number.isInteger(prostorProcess.pid)) pids.push(prostorProcess.pid)
   for (const entry of backendPool.values()) {
     if (entry.process && Number.isInteger(entry.process.pid)) pids.push(entry.process.pid)
   }
 
   // Graceful first (lets Python flush), then tree-kill to catch grandchildren.
-  if (hermesProcess && !hermesProcess.killed) {
+  if (prostorProcess && !prostorProcess.killed) {
     try {
-      hermesProcess.kill('SIGTERM')
+      prostorProcess.kill('SIGTERM')
     } catch {
       void 0
     }
@@ -1854,7 +1854,7 @@ async function releaseBackendLock(updateRoot, tag) {
   stopAllPoolBackends()
   for (const pid of pids) forceKillProcessTree(pid)
 
-  const shim = venvHermesShimPath(updateRoot)
+  const shim = venvProstorShimPath(updateRoot)
   const deadlineMs = Date.now() + 15000
   while (Date.now() < deadlineMs) {
     if (!isShimLocked(shim)) {
@@ -1918,7 +1918,7 @@ async function applyUpdates(opts = {}) {
       }
       rememberLog(`[updates] no staged updater; surfacing manual \`${command}\` for CLI install at ${updateRoot}`)
       emitUpdateProgress({ stage: 'manual', message: command, percent: null })
-      return { ok: true, manual: true, command, hermesRoot: updateRoot }
+      return { ok: true, manual: true, command, prostorRoot: updateRoot }
     }
 
     emitUpdateProgress({
@@ -1951,7 +1951,7 @@ async function applyUpdates(opts = {}) {
       env: {
         ...process.env,
         PROSTOR_HOME,
-        PATH: pathWithHermesManagedNode(venvBin)
+        PATH: pathWithProstorManagedNode(venvBin)
       },
       detached: true,
       stdio: 'ignore',
@@ -1998,7 +1998,7 @@ async function handOffWindowsBootstrapRecovery(reason) {
     env: {
       ...process.env,
       PROSTOR_HOME,
-      PATH: pathWithHermesManagedNode(venvBin)
+      PATH: pathWithProstorManagedNode(venvBin)
     },
     detached: true,
     stdio: 'ignore',
@@ -2019,7 +2019,7 @@ async function handOffWindowsBootstrapRecovery(reason) {
 
 // Resolve the prostor CLI to drive an in-app update: prefer the venv shim in
 // the install we're updating, fall back to `prostor` on PATH.
-function resolveHermesCliBinary(updateRoot) {
+function resolveProstorCliBinary(updateRoot) {
   const venvHermes = path.join(updateRoot, 'venv', 'bin', 'prostor')
   if (fileExists(venvHermes)) return venvHermes
   return findOnPath('prostor') || null
@@ -2075,10 +2075,10 @@ function shellQuote(value) {
 // restart to load the new GUI" if the swap can't be performed.
 async function applyUpdatesPosixInApp() {
   const updateRoot = resolveUpdateRoot()
-  const prostor = resolveHermesCliBinary(updateRoot)
+  const prostor = resolveProstorCliBinary(updateRoot)
   if (!prostor) {
     emitUpdateProgress({ stage: 'manual', message: 'prostor update', percent: null })
-    return { ok: true, manual: true, command: 'prostor update', hermesRoot: updateRoot }
+    return { ok: true, manual: true, command: 'prostor update', prostorRoot: updateRoot }
   }
 
   // Put the Prostor-managed Node and the venv on PATH so `prostor desktop`'s
@@ -2086,7 +2086,7 @@ async function applyUpdatesPosixInApp() {
   // Node lives directly under %LOCALAPPDATA%\prostor\node, not node\bin.
   const env = {
     PROSTOR_HOME,
-    PATH: pathWithHermesManagedNode(path.join(updateRoot, 'venv', 'bin'))
+    PATH: pathWithProstorManagedNode(path.join(updateRoot, 'venv', 'bin'))
   }
 
   // `prostor update` reaps stale `prostor dashboard` backends (a code update
@@ -2101,8 +2101,8 @@ async function applyUpdatesPosixInApp() {
   // the update reaper. _kill_stale_dashboard_processes accepts a comma-separated
   // list (a single int still parses for back-compat).
   const desktopChildPids = []
-  if (hermesProcess && Number.isInteger(hermesProcess.pid)) {
-    desktopChildPids.push(hermesProcess.pid)
+  if (prostorProcess && Number.isInteger(prostorProcess.pid)) {
+    desktopChildPids.push(prostorProcess.pid)
   }
   for (const entry of backendPool.values()) {
     if (entry.process && Number.isInteger(entry.process.pid)) {
@@ -2364,7 +2364,7 @@ function isBootstrapComplete() {
   // a runnable venv: an interrupted or split-home install can leave the marker
   // + checkout without a venv, and trusting that spawns a dead backend
   // ("gateway offline") instead of re-running bootstrap to repair it.
-  return isHermesSourceRoot(ACTIVE_HERMES_ROOT) && fileExists(getVenvPython(VENV_ROOT))
+  return isProstorSourceRoot(ACTIVE_HERMES_ROOT) && fileExists(getVenvPython(VENV_ROOT))
 }
 
 function writeBootstrapMarker(payload) {
@@ -2434,7 +2434,7 @@ function isPackagedInstallPath(dir) {
   })
 }
 
-function resolveHermesCwd() {
+function resolveProstorCwd() {
   // In a packaged build, `process.cwd()` resolves to the install root (e.g.
   // `…/win-unpacked` on Windows or `/Applications/Prostor.app/Contents/...`
   // on macOS). Sessions spawned there leave files inside the app bundle
@@ -2469,7 +2469,7 @@ function sanitizeWorkspaceCwd(cwd) {
   const trimmed = typeof cwd === 'string' ? cwd.trim() : ''
 
   if (!trimmed || isPackagedInstallPath(trimmed)) {
-    return { cwd: resolveHermesCwd(), sanitized: Boolean(trimmed) }
+    return { cwd: resolveProstorCwd(), sanitized: Boolean(trimmed) }
   }
 
   try {
@@ -2482,7 +2482,7 @@ function sanitizeWorkspaceCwd(cwd) {
     // Fall through to the resolved default.
   }
 
-  return { cwd: resolveHermesCwd(), sanitized: Boolean(trimmed) }
+  return { cwd: resolveProstorCwd(), sanitized: Boolean(trimmed) }
 }
 
 // Persisted "Default project directory" — surfaced as a setting in the
@@ -2537,7 +2537,7 @@ function createPythonBackend(root, label, dashboardArgs, options = {}) {
     command: python,
     args: ['-m', 'hermes_cli.main', ...dashboardArgs],
     env: buildDesktopBackendEnv({
-      hermesHome: PROSTOR_HOME,
+      prostorHome: PROSTOR_HOME,
       pythonPathEntries: [root],
       venvRoot: path.join(root, 'venv')
     }),
@@ -2560,7 +2560,7 @@ function createActiveBackend(dashboardArgs) {
     command: fileExists(venvPython) ? venvPython : findSystemPython(),
     args: ['-m', 'hermes_cli.main', ...dashboardArgs],
     env: buildDesktopBackendEnv({
-      hermesHome: PROSTOR_HOME,
+      prostorHome: PROSTOR_HOME,
       pythonPathEntries: [ACTIVE_HERMES_ROOT],
       venvRoot: VENV_ROOT
     }),
@@ -2570,11 +2570,11 @@ function createActiveBackend(dashboardArgs) {
   }
 }
 
-function resolveHermesBackend(dashboardArgs) {
+function resolveProstorBackend(dashboardArgs) {
   // 1. Explicit override -- PROSTOR_DESKTOP_HERMES_ROOT points at a developer
   //    checkout. Honour it as-is (no bootstrap; the user is driving).
   const overrideRoot = process.env.PROSTOR_DESKTOP_HERMES_ROOT && path.resolve(process.env.PROSTOR_DESKTOP_HERMES_ROOT)
-  if (overrideRoot && isHermesSourceRoot(overrideRoot)) {
+  if (overrideRoot && isProstorSourceRoot(overrideRoot)) {
     const backend = createPythonBackend(overrideRoot, `Prostor source at ${overrideRoot}`, dashboardArgs)
     if (backend) return backend
   }
@@ -2582,8 +2582,8 @@ function resolveHermesBackend(dashboardArgs) {
   // 2. Development source -- when running `npm run dev` from a checkout, the
   //    cloned repo at SOURCE_REPO_ROOT takes precedence over ACTIVE and any
   //    installed `prostor` on PATH so local Python edits are actually exercised.
-  //    (In dev with no checkout, SOURCE_REPO_ROOT won't pass isHermesSourceRoot.)
-  if (!IS_PACKAGED && isHermesSourceRoot(SOURCE_REPO_ROOT)) {
+  //    (In dev with no checkout, SOURCE_REPO_ROOT won't pass isProstorSourceRoot.)
+  if (!IS_PACKAGED && isProstorSourceRoot(SOURCE_REPO_ROOT)) {
     const backend = createPythonBackend(SOURCE_REPO_ROOT, `Prostor source at ${SOURCE_REPO_ROOT}`, dashboardArgs)
     if (backend) return backend
   }
@@ -2604,30 +2604,30 @@ function resolveHermesBackend(dashboardArgs) {
   //    don't want to take ownership of an install we didn't perform.
   //    PROSTOR_DESKTOP_IGNORE_EXISTING=1 forces the bootstrap path for testing.
   if (process.env.PROSTOR_DESKTOP_IGNORE_EXISTING !== '1') {
-    let hermesCommand = null
-    const hermesOverride = process.env.PROSTOR_DESKTOP_HERMES
+    let prostorCommand = null
+    const prostorOverride = process.env.PROSTOR_DESKTOP_HERMES
 
-    if (hermesOverride) {
-      const resolvedOverride = findOnPath(hermesOverride)
+    if (prostorOverride) {
+      const resolvedOverride = findOnPath(prostorOverride)
       if (resolvedOverride) {
-        hermesCommand = resolvedOverride
-      } else if (!isWindowsBinaryPathInWsl(hermesOverride, { isWsl: IS_WSL })) {
-        hermesCommand = hermesOverride
+        prostorCommand = resolvedOverride
+      } else if (!isWindowsBinaryPathInWsl(prostorOverride, { isWsl: IS_WSL })) {
+        prostorCommand = prostorOverride
       } else {
-        rememberLog(`Ignoring Windows Prostor override under WSL: ${hermesOverride}`)
+        rememberLog(`Ignoring Windows Prostor override under WSL: ${prostorOverride}`)
       }
     } else {
-      hermesCommand = findOnPath('prostor')
+      prostorCommand = findOnPath('prostor')
     }
 
-    if (hermesCommand) {
-      if (looksLikeDesktopAppBinary(hermesCommand)) {
-        rememberLog(`Ignoring desktop app executable on PATH while resolving Prostor CLI: ${hermesCommand}`)
-        hermesCommand = null
+    if (prostorCommand) {
+      if (looksLikeDesktopAppBinary(prostorCommand)) {
+        rememberLog(`Ignoring desktop app executable on PATH while resolving Prostor CLI: ${prostorCommand}`)
+        prostorCommand = null
       }
     }
 
-    if (hermesCommand) {
+    if (prostorCommand) {
       // Smoke-test the candidate before trusting it. A `prostor` shim
       // left behind by a half-uninstalled pip install (or a venv
       // entry-point pointing at a deleted interpreter) still resolves
@@ -2635,11 +2635,11 @@ function resolveHermesBackend(dashboardArgs) {
       // dead backend instead of the first-launch installer. The cheap
       // `--version` probe (see backend-probes.cjs) catches that case
       // and lets the resolver fall through to step 6 / bootstrap.
-      const shellForProbe = isCommandScript(hermesCommand)
-      if (verifyHermesCli(hermesCommand, { shell: shellForProbe })) {
+      const shellForProbe = isCommandScript(prostorCommand)
+      if (verifyProstorCli(prostorCommand, { shell: shellForProbe })) {
         return {
-          label: `existing Prostor CLI at ${hermesCommand}`,
-          command: hermesCommand,
+          label: `existing Prostor CLI at ${prostorCommand}`,
+          command: prostorCommand,
           args: dashboardArgs,
           bootstrap: false,
           env: {},
@@ -2648,7 +2648,7 @@ function resolveHermesBackend(dashboardArgs) {
         }
       }
       rememberLog(
-        `Ignoring existing Prostor CLI at ${hermesCommand}: --version probe failed; falling through to bootstrap.`
+        `Ignoring existing Prostor CLI at ${prostorCommand}: --version probe failed; falling through to bootstrap.`
       )
     }
   }
@@ -2666,7 +2666,7 @@ function resolveHermesBackend(dashboardArgs) {
     // Verify the import works before trusting the candidate; on
     // failure, fall through to step 6 so the bootstrap runner pulls
     // a uv-managed 3.11 into %LOCALAPPDATA%\prostor\prostor-agent\venv.
-    if (canImportHermesCli(python)) {
+    if (canImportProstorCli(python)) {
       return {
         kind: 'python',
         label: `installed hermes_cli module via ${python}`,
@@ -2687,7 +2687,7 @@ function resolveHermesBackend(dashboardArgs) {
   //    explaining what's missing.
   //
   //    We deliberately do NOT throw here -- throwing inside
-  //    resolveHermesBackend was the old "no payload" path and forced the
+  //    resolveProstorBackend was the old "no payload" path and forced the
   //    user into a dead end. With the bootstrap protocol, "no install yet"
   //    is a recoverable state the GUI can drive through.
   return {
@@ -2712,7 +2712,7 @@ async function ensureRuntime(backend) {
     return backend
   }
 
-  // backend.kind === 'bootstrap-needed' means resolveHermesBackend couldn't
+  // backend.kind === 'bootstrap-needed' means resolveProstorBackend couldn't
   // find anything to spawn. Hand off to the bootstrap runner which drives the
   // platform installer, writes the bootstrap-complete marker on success, then
   // we re-resolve to get the now-installed backend.
@@ -2754,7 +2754,7 @@ async function ensureRuntime(backend) {
       installStamp: backend.installStamp,
       activeRoot: backend.activeRoot,
       sourceRepoRoot: SOURCE_REPO_ROOT,
-      hermesHome: PROSTOR_HOME,
+      prostorHome: PROSTOR_HOME,
       logRoot: path.join(PROSTOR_HOME, 'logs'),
       abortSignal: bootstrapAbortController.signal,
       onEvent: ev => {
@@ -2804,7 +2804,7 @@ async function ensureRuntime(backend) {
     rememberLog('[bootstrap] bootstrap complete; marker written. Re-resolving backend.')
     // Re-resolve now that the install exists. The new resolution lands in
     // step 3 (bootstrap-complete marker) and we recurse to wire venvPython.
-    return ensureRuntime(resolveHermesBackend(backend.args))
+    return ensureRuntime(resolveProstorBackend(backend.args))
   }
 
   // bootstrap=true with a real backend (createActiveBackend path) means we
@@ -2813,7 +2813,7 @@ async function ensureRuntime(backend) {
   // sync flow exited through, minus all the factory/pip/marker machinery
   // (install.ps1 owns those concerns now and the bootstrap-complete marker
   // attests they ran successfully).
-  if (!isHermesSourceRoot(ACTIVE_HERMES_ROOT)) {
+  if (!isProstorSourceRoot(ACTIVE_HERMES_ROOT)) {
     throw new Error(
       `Prostor install at ${ACTIVE_HERMES_ROOT} is missing or incomplete. ` +
         'Reinstall via the desktop installer or scripts/install.ps1.'
@@ -2841,7 +2841,7 @@ async function ensureRuntime(backend) {
     // means we have a half-installed checkout: .git exists, source files
     // exist, but venv is missing or broken. This shouldn't happen in
     // normal flow because isBootstrapComplete() requires
-    // isHermesSourceRoot() and the bootstrap writes the marker only after
+    // isProstorSourceRoot() and the bootstrap writes the marker only after
     // install.ps1 succeeds. If we hit this, the user (or a deleted venv)
     // broke the invariant; tell them to re-run the install.
     throw new Error(
@@ -3355,7 +3355,7 @@ function expandUserPath(filePath) {
 
 async function previewFileTarget(rawTarget, baseDir) {
   const raw = String(rawTarget || '').trim()
-  const base = baseDir ? path.resolve(expandUserPath(baseDir)) : resolveHermesCwd()
+  const base = baseDir ? path.resolve(expandUserPath(baseDir)) : resolveProstorCwd()
   let resolved = resolveRequestedPathForIpc(/^file:/i.test(raw) ? raw : expandUserPath(raw), {
     baseDir: base,
     purpose: 'Preview target'
@@ -4770,14 +4770,14 @@ function resetBootProgressForReconnect() {
   )
 }
 
-function resetHermesConnection() {
+function resetProstorConnection() {
   connectionPromise = null
 
-  if (hermesProcess && !hermesProcess.killed) {
-    hermesProcess.kill('SIGTERM')
+  if (prostorProcess && !prostorProcess.killed) {
+    prostorProcess.kill('SIGTERM')
   }
 
-  hermesProcess = null
+  prostorProcess = null
   resetBootProgressForReconnect()
 }
 
@@ -4786,9 +4786,9 @@ function resetHermesConnection() {
 // startHermes() spawns fresh instead of racing the dying one. Shared by the
 // connection-config and profile switch flows.
 async function teardownPrimaryBackendAndWait() {
-  // Capture the reference before resetHermesConnection() nulls hermesProcess.
-  const dying = hermesProcess && !hermesProcess.killed ? hermesProcess : null
-  resetHermesConnection()
+  // Capture the reference before resetProstorConnection() nulls prostorProcess.
+  const dying = prostorProcess && !prostorProcess.killed ? prostorProcess : null
+  resetProstorConnection()
 
   await waitForBackendExit(dying)
 }
@@ -4920,7 +4920,7 @@ async function spawnPoolBackend(profile, entry) {
     return {
       ...remote,
       profile,
-      logs: hermesLog.slice(-80),
+      logs: prostorLog.slice(-80),
       ...getWindowState()
     }
   }
@@ -4930,8 +4930,8 @@ async function spawnPoolBackend(profile, entry) {
   // step 3 in hermes_cli/main.py), so the child re-homes to this profile.
   // --port 0: the OS assigns an ephemeral port; the child announces it on stdout.
   const dashboardArgs = ['--profile', profile, 'dashboard', '--no-open', '--host', '127.0.0.1', '--port', '0']
-  const backend = await ensureRuntime(resolveHermesBackend(dashboardArgs))
-  const hermesCwd = resolveHermesCwd()
+  const backend = await ensureRuntime(resolveProstorBackend(dashboardArgs))
+  const prostorCwd = resolveProstorCwd()
   const webDist = resolveWebDist()
 
   rememberLog(`Starting Prostor backend for profile "${profile}" via ${backend.label}`)
@@ -4940,7 +4940,7 @@ async function spawnPoolBackend(profile, entry) {
     backend.command,
     backend.args,
     hiddenWindowsChildOptions({
-      cwd: hermesCwd,
+      cwd: prostorCwd,
       env: {
         ...process.env,
         PROSTOR_HOME,
@@ -4948,7 +4948,7 @@ async function spawnPoolBackend(profile, entry) {
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
         // can still point at the install dir even when spawn cwd is home.
-        TERMINAL_CWD: hermesCwd,
+        TERMINAL_CWD: prostorCwd,
         PROSTOR_DASHBOARD_SESSION_TOKEN: token,
         // Marks this dashboard backend as desktop-spawned so it runs the cron
         // scheduler tick loop (the gateway isn't running under the app).
@@ -5007,7 +5007,7 @@ async function spawnPoolBackend(profile, entry) {
     token: authToken,
     profile,
     wsUrl: `ws://127.0.0.1:${port}/api/ws?token=${encodeURIComponent(authToken)}`,
-    logs: hermesLog.slice(-80),
+    logs: prostorLog.slice(-80),
     ...getWindowState()
   }
 }
@@ -5123,7 +5123,7 @@ async function startHermes() {
         authMode: remote.authMode || 'token',
         token: remote.token,
         wsUrl: remote.wsUrl,
-        logs: hermesLog.slice(-80),
+        logs: prostorLog.slice(-80),
         ...getWindowState()
       }
     }
@@ -5149,22 +5149,22 @@ async function startHermes() {
       dashboardArgs.unshift('--profile', activeProfile)
     }
     await advanceBootProgress('backend.runtime', 'Resolving Prostor runtime', 28)
-    const backend = await ensureRuntime(resolveHermesBackend(dashboardArgs))
-    const hermesCwd = resolveHermesCwd()
+    const backend = await ensureRuntime(resolveProstorBackend(dashboardArgs))
+    const prostorCwd = resolveProstorCwd()
     const webDist = resolveWebDist()
 
     await advanceBootProgress('backend.spawn', `Starting Prostor backend via ${backend.label}`, 84)
     rememberLog(`Starting Prostor backend via ${backend.label}`)
 
-    hermesProcess = spawn(
+    prostorProcess = spawn(
       backend.command,
       backend.args,
       hiddenWindowsChildOptions({
-        cwd: hermesCwd,
+        cwd: prostorCwd,
         env: {
           ...process.env,
           // Explicitly pin PROSTOR_HOME for the child so Python's get_hermes_home()
-          // resolves to the SAME location our resolveHermesHome() picked. Without
+          // resolves to the SAME location our resolveProstorHome() picked. Without
           // this pin, Python falls back to ~/.prostor on every platform — fine on
           // mac/linux (where our default matches), but on Windows our default is
           // %LOCALAPPDATA%\prostor, which differs from C:\Users\<u>\.prostor.
@@ -5173,7 +5173,7 @@ async function startHermes() {
           // can't reliably do that, so we set it inline for every spawn.
           PROSTOR_HOME,
           ...backend.env,
-          TERMINAL_CWD: hermesCwd,
+          TERMINAL_CWD: prostorCwd,
           PROSTOR_DASHBOARD_SESSION_TOKEN: token,
           // Marks this dashboard backend as desktop-spawned so it runs the cron
           // scheduler tick loop (the gateway isn't running under the app).
@@ -5185,14 +5185,14 @@ async function startHermes() {
       })
     )
 
-    hermesProcess.stdout.on('data', rememberLog)
-    hermesProcess.stderr.on('data', rememberLog)
+    prostorProcess.stdout.on('data', rememberLog)
+    prostorProcess.stderr.on('data', rememberLog)
     let backendReady = false
     let rejectBackendStart = null
     const backendStartFailed = new Promise((_resolve, reject) => {
       rejectBackendStart = reject
     })
-    hermesProcess.once('error', error => {
+    prostorProcess.once('error', error => {
       rememberLog(`Prostor backend failed to start: ${error.message}`)
       updateBootProgress(
         {
@@ -5203,14 +5203,14 @@ async function startHermes() {
         },
         { allowDecrease: true }
       )
-      hermesProcess = null
+      prostorProcess = null
       connectionPromise = null
       sendBackendExit({ code: null, signal: null, error: error.message })
       rejectBackendStart?.(error)
     })
-    hermesProcess.once('exit', (code, signal) => {
+    prostorProcess.once('exit', (code, signal) => {
       rememberLog(`Prostor backend exited (${signal || code})`)
-      hermesProcess = null
+      prostorProcess = null
       connectionPromise = null
       sendBackendExit({ code, signal })
       if (!backendReady) {
@@ -5226,7 +5226,7 @@ async function startHermes() {
         )
         rejectBackendStart?.(
           new Error(
-            `Prostor backend exited before it became ready (${signal || code}). Log: ${DESKTOP_LOG_PATH}\n${recentHermesLog()}`
+            `Prostor backend exited before it became ready (${signal || code}). Log: ${DESKTOP_LOG_PATH}\n${recentProstorLog()}`
           )
         )
       }
@@ -5234,15 +5234,15 @@ async function startHermes() {
 
     await advanceBootProgress('backend.port', 'Waiting for Prostor backend to launch', 86)
     // Discover the ephemeral port the child bound to
-    const port = await Promise.race([waitForDashboardPort(hermesProcess), backendStartFailed])
+    const port = await Promise.race([waitForDashboardPort(prostorProcess), backendStartFailed])
 
     const baseUrl = `http://127.0.0.1:${port}`
     await advanceBootProgress('backend.wait', 'Waiting for Prostor backend to become ready', 90)
     await Promise.race([waitForHermes(baseUrl, token), backendStartFailed])
     backendReady = true
     const authToken = await adoptServedDashboardToken(baseUrl, token, {
-      // The exit/error handlers null hermesProcess when the child dies.
-      childAlive: () => hermesProcess !== null && hermesProcess.exitCode === null && !hermesProcess.killed,
+      // The exit/error handlers null prostorProcess when the child dies.
+      childAlive: () => prostorProcess !== null && prostorProcess.exitCode === null && !prostorProcess.killed,
       rememberLog
     })
     updateBootProgress({
@@ -5260,7 +5260,7 @@ async function startHermes() {
       authMode: 'token',
       token: authToken,
       wsUrl: `ws://127.0.0.1:${port}/api/ws?token=${encodeURIComponent(authToken)}`,
-      logs: hermesLog.slice(-80),
+      logs: prostorLog.slice(-80),
       ...getWindowState()
     }
   })().catch(error => {
@@ -5536,10 +5536,10 @@ ipcMain.handle('prostor:connection:revalidate', async () => {
     return { ok: true, rebuilt: false }
   } catch {
     // Unreachable remote: drop the stale cache so the renderer's next reconnect
-    // tick rebuilds a fresh, reachable descriptor. resetHermesConnection only
+    // tick rebuilds a fresh, reachable descriptor. resetProstorConnection only
     // nulls connectionPromise for a remote (no child to SIGTERM).
     rememberLog('Cached remote Prostor backend failed liveness probe; dropping stale connection.')
-    resetHermesConnection()
+    resetProstorConnection()
     return { ok: true, rebuilt: true }
   }
 })
@@ -5595,7 +5595,7 @@ ipcMain.handle('prostor:bootstrap:repair', async () => {
     rememberLog(`[bootstrap] failed to remove marker during repair: ${error.message}`)
   }
   bootstrapFailure = null
-  resetHermesConnection()
+  resetProstorConnection()
   return { ok: true }
 })
 ipcMain.handle('prostor:bootstrap:cancel', async () => {
@@ -6033,12 +6033,12 @@ ipcMain.handle('prostor:openPreviewInBrowser', async (_event, url) => {
 
 // User-configurable default project directory. The renderer reads this on
 // settings mount and seeds the value into the picker; writing back persists
-// it via writeDefaultProjectDir so resolveHermesCwd picks it up on the next
+// it via writeDefaultProjectDir so resolveProstorCwd picks it up on the next
 // session spawn (no app restart needed).
 ipcMain.handle('prostor:setting:defaultProjectDir:get', async () => ({
   dir: readDefaultProjectDir(),
   defaultLabel: app.getPath('home'),
-  resolvedCwd: resolveHermesCwd()
+  resolvedCwd: resolveProstorCwd()
 }))
 
 ipcMain.handle('prostor:workspace:sanitize', async (_event, cwd) => sanitizeWorkspaceCwd(cwd))
@@ -6088,7 +6088,7 @@ ipcMain.handle('prostor:logs:reveal', async () => {
   }
 })
 
-ipcMain.handle('prostor:logs:recent', async () => ({ path: DESKTOP_LOG_PATH, lines: hermesLog.slice(-200) }))
+ipcMain.handle('prostor:logs:recent', async () => ({ path: DESKTOP_LOG_PATH, lines: prostorLog.slice(-200) }))
 
 function isExecutableFile(filePath) {
   if (!filePath || !path.isAbsolute(filePath)) {
@@ -6377,7 +6377,7 @@ ipcMain.handle('prostor:updates:branch:set', async (_event, name) => {
 // real Prostor version instead of the Electron app's own package.json version,
 // which historically drifted (stuck at 0.0.2). Falls back to app.getVersion()
 // when the source tree can't be read (e.g. a packaged build without the repo).
-function resolveHermesVersion() {
+function resolveProstorVersion() {
   try {
     const root = resolveUpdateRoot()
     const initPath = path.join(root, 'hermes_cli', '__init__.py')
@@ -6401,18 +6401,18 @@ function resolveHermesVersion() {
 function showAboutPanelFresh() {
   app.setAboutPanelOptions({
     applicationName: APP_NAME,
-    applicationVersion: resolveHermesVersion(),
+    applicationVersion: resolveProstorVersion(),
     copyright: 'Copyright © 2026 Nous Research'
   })
   app.showAboutPanel()
 }
 
 ipcMain.handle('prostor:version', async () => ({
-  appVersion: resolveHermesVersion(),
+  appVersion: resolveProstorVersion(),
   electronVersion: process.versions.electron,
   nodeVersion: process.versions.node,
   platform: process.platform,
-  hermesRoot: resolveUpdateRoot()
+  prostorRoot: resolveUpdateRoot()
 }))
 
 // ===========================================================================
@@ -6441,7 +6441,7 @@ async function getUninstallSummary() {
   // probe fails — the renderer still needs *something* to render options from.
   const fallback = () => ({
     hermes_home: PROSTOR_HOME,
-    agent_installed: isHermesSourceRoot(agentRoot) && fileExists(py),
+    agent_installed: isProstorSourceRoot(agentRoot) && fileExists(py),
     gui_installed: true,
     source_built_artifacts: [],
     packaged_app_paths: [],
@@ -6561,7 +6561,7 @@ async function runDesktopUninstall(mode) {
     agentRoot: ACTIVE_HERMES_ROOT,
     uninstallArgs,
     appPath: removeBundle,
-    hermesHome: PROSTOR_HOME
+    prostorHome: PROSTOR_HOME
   }
 
   let scriptPath
@@ -6794,8 +6794,8 @@ app.on('before-quit', () => {
     disposeTerminalSession(id)
   }
 
-  if (hermesProcess && !hermesProcess.killed) {
-    hermesProcess.kill('SIGTERM')
+  if (prostorProcess && !prostorProcess.killed) {
+    prostorProcess.kill('SIGTERM')
   }
   stopAllPoolBackends()
 })

@@ -11,7 +11,7 @@
     { pkgs, self', ... }:
     let
       packages = builtins.attrValues self'.packages;
-      hermesNpmLib = self'.packages.default.passthru.hermesNpmLib;
+      prostorNpmLib = self'.packages.default.passthru.prostorNpmLib;
 
       # Collect all packageJsonPath values from npm workspace packages.
       npmPackageJsonPaths = builtins.filter (p: p != null) (
@@ -32,7 +32,7 @@
         shellHook = ''
           echo "Prostor Agent dev shell"
           ${combinedNonNpm}
-          ${hermesNpmLib.mkNpmDevShellHook npmPackageJsonPaths}
+          ${prostorNpmLib.mkNpmDevShellHook npmPackageJsonPaths}
           echo "Ready. Run 'prostor' to start."
         '';
       };

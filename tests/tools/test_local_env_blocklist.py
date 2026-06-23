@@ -385,7 +385,7 @@ class TestSanePathIncludesHomebrew:
     def _disable_hermes_bin_injection(self):
         """These tests assert the sane-path merge in isolation. Disable the
         prostor-install-dir prepend (a separate concern, covered by
-        TestHermesBinDirOnPath) so a real ``prostor`` on the test runner's PATH
+        TestProstorBinDirOnPath) so a real ``prostor`` on the test runner's PATH
         doesn't shift the asserted PATH layout."""
         from tools.environments import local as local_mod
         saved = local_mod._HERMES_BIN_DIR
@@ -487,7 +487,7 @@ class TestSanePathIncludesHomebrew:
         assert "PATH" not in result
 
 
-class TestHermesBinDirOnPath:
+class TestProstorBinDirOnPath:
     """The prostor install dir is reachable in the terminal subshell PATH.
 
     Plugins shelling out to bare ``prostor`` via the terminal tool must work

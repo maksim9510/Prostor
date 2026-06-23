@@ -13,7 +13,7 @@ import { $approvalRequest, setApprovalRequest } from './prompts'
 import { $activeSessionId, setActiveSessionId } from './session'
 
 const desktopWindow = window as unknown as { prostorDesktop?: Window['prostorDesktop'] }
-const initialHermesDesktop = desktopWindow.prostorDesktop
+const initialProstorDesktop = desktopWindow.prostorDesktop
 
 const notify = vi.fn().mockResolvedValue(true)
 
@@ -46,8 +46,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (initialHermesDesktop) {
-    desktopWindow.prostorDesktop = initialHermesDesktop
+  if (initialProstorDesktop) {
+    desktopWindow.prostorDesktop = initialProstorDesktop
   } else {
     delete desktopWindow.prostorDesktop
   }

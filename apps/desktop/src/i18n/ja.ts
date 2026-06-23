@@ -50,7 +50,7 @@ export const ja = defineLocale({
       loadingSettings: 'Prostor の設定を読み込み中',
       loadingSessions: '最近のセッションを読み込み中',
       startingDesktopConnection: 'デスクトップ接続を開始中',
-      startingHermesDesktop: 'Prostor Desktop を起動中…'
+      startingProstorDesktop: 'Prostor Desktop を起動中…'
     },
     errors: {
       backgroundExited: 'Prostor バックグラウンドプロセスが終了しました。',
@@ -889,7 +889,7 @@ export const ja = defineLocale({
     noSessions: 'セッションはまだありません。',
     gatewayRunning: 'メッセージングゲートウェイが実行中',
     gatewayStopped: 'メッセージングゲートウェイが停止中',
-    hermesActiveSessions: (version, count) => `Prostor ${version} · アクティブセッション ${count}`,
+    prostorActiveSessions: (version, count) => `Prostor ${version} · アクティブセッション ${count}`,
     restartGateway: 'ゲートウェイを再起動',
     gatewayRestartFailed: 'ゲートウェイの再起動に失敗しました。',
     updateProstor: 'Prostor を更新',

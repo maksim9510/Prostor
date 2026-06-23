@@ -50,7 +50,7 @@ export const zh: Translations = {
       loadingSettings: '正在加载 Prostor 设置',
       loadingSessions: '正在加载最近会话',
       startingDesktopConnection: '正在启动桌面连接',
-      startingHermesDesktop: '正在启动 Prostor 桌面版…'
+      startingProstorDesktop: '正在启动 Prostor 桌面版…'
     },
     errors: {
       backgroundExited: 'Prostor 后台进程已退出。',
@@ -958,7 +958,7 @@ export const zh: Translations = {
     noSessions: '暂无会话。',
     gatewayRunning: '消息网关运行中',
     gatewayStopped: '消息网关已停止',
-    hermesActiveSessions: (version, count) => `Prostor ${version} · 活跃会话 ${count}`,
+    prostorActiveSessions: (version, count) => `Prostor ${version} · 活跃会话 ${count}`,
     restartGateway: '重启网关',
     gatewayRestartFailed: '网关重启失败。',
     updateProstor: '更新 Prostor',

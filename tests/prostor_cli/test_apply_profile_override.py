@@ -50,7 +50,7 @@ def _run_apply_profile_override(
     return os.environ.get("PROSTOR_HOME")
 
 
-class TestApplyProfileOverrideHermesHomeGuard:
+class TestApplyProfileOverrideProstorHomeGuard:
     """Regression guard for issue #22502.
 
     Verifies that PROSTOR_HOME pointing to the prostor root does NOT suppress

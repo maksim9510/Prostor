@@ -2,7 +2,7 @@
  * backend-probes.cjs
  *
  * Cheap "does this candidate backend actually work" checks used by
- * resolveHermesBackend (main.cjs). The resolver walks a ladder of
+ * resolveProstorBackend (main.cjs). The resolver walks a ladder of
  * candidates -- bootstrap marker, `prostor` on PATH, system Python with
  * hermes_cli installed -- and historically returned the first candidate
  * whose binary existed on disk. That assumption breaks when a user has
@@ -23,7 +23,7 @@
  *   - 5s timeout (a hung interpreter beats forever, but we still give
  *     slow disks / cold caches room to breathe)
  *   - stdio ignored (we only care about exit code; stdout/stderr are
- *     not surfaced to the user, just to recentHermesLog for forensics
+ *     not surfaced to the user, just to recentProstorLog for forensics
  *     via the caller's catch block if it chooses)
  *   - any throw -> false (never propagate -- resolver wants a boolean)
  *
@@ -40,7 +40,7 @@ const PROBE_TIMEOUT_MS = 5000
  * Return true iff `python -c "import hermes_cli"` exits 0.
  *
  * Used to gate the "fallback to system Python with hermes_cli installed"
- * rung of resolveHermesBackend. Without this, a system Python 3.11-3.13
+ * rung of resolveProstorBackend. Without this, a system Python 3.11-3.13
  * registered in PEP 514 makes findSystemPython() succeed regardless of
  * whether hermes_cli has actually been pip-installed into its
  * site-packages -- and the resolver returns a backend that immediately
@@ -49,7 +49,7 @@ const PROBE_TIMEOUT_MS = 5000
  * @param {string} pythonPath - Absolute path to a python.exe / python.
  * @returns {boolean}
  */
-function canImportHermesCli(pythonPath) {
+function canImportProstorCli(pythonPath) {
   if (!pythonPath) return false
   try {
     execFileSync(pythonPath, ['-c', 'import hermes_cli'], {
@@ -64,7 +64,7 @@ function canImportHermesCli(pythonPath) {
 }
 
 /**
- * Return true iff `<hermesCommand> --version` exits 0.
+ * Return true iff `<prostorCommand> --version` exits 0.
  *
  * Used to gate the "existing `prostor` on PATH" rung. Without this, a
  * stale prostor.cmd shim left behind by an uninstalled pip install (or
@@ -75,19 +75,19 @@ function canImportHermesCli(pythonPath) {
  * here -- `--version` is the cheapest "is this binary alive" smoke
  * test that every hermes_cli entry-point has supported since 0.1.
  *
- * @param {string} hermesCommand - Resolved absolute path to a prostor
+ * @param {string} prostorCommand - Resolved absolute path to a prostor
  *   executable (or an interpreter+script wrapper).
  * @param {object} [opts]
  * @param {boolean} [opts.shell] - Whether to run through a shell. For
  *   .cmd/.bat shims on Windows execFileSync needs shell:true to find
  *   the cmd interpreter; mirrors the same flag isCommandScript() drives
- *   in resolveHermesBackend.
+ *   in resolveProstorBackend.
  * @returns {boolean}
  */
-function verifyHermesCli(hermesCommand, opts = {}) {
-  if (!hermesCommand) return false
+function verifyProstorCli(prostorCommand, opts = {}) {
+  if (!prostorCommand) return false
   try {
-    execFileSync(hermesCommand, ['--version'], {
+    execFileSync(prostorCommand, ['--version'], {
       stdio: 'ignore',
       timeout: PROBE_TIMEOUT_MS,
       shell: Boolean(opts.shell),
@@ -100,7 +100,7 @@ function verifyHermesCli(hermesCommand, opts = {}) {
 }
 
 module.exports = {
-  canImportHermesCli,
-  verifyHermesCli,
+  canImportProstorCli,
+  verifyProstorCli,
   PROBE_TIMEOUT_MS
 }

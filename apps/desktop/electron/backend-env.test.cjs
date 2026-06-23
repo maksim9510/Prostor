@@ -7,13 +7,13 @@ const {
   appendUniquePathEntries,
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
-  normalizeHermesHomeRoot,
+  normalizeProstorHomeRoot,
   pathEnvKey
 } = require('./backend-env.cjs')
 
 test('desktop backend PATH adds Prostor-managed bins and missing POSIX sane entries', () => {
   const result = buildDesktopBackendPath({
-    hermesHome: '/Users/test/.prostor',
+    prostorHome: '/Users/test/.prostor',
     venvRoot: '/Users/test/.prostor/prostor-agent/venv',
     currentPath: '/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin',
     platform: 'darwin',
@@ -34,7 +34,7 @@ test('desktop backend PATH adds Prostor-managed bins and missing POSIX sane entr
 
 test('desktop backend PATH preserves first occurrence and avoids duplicates', () => {
   const result = buildDesktopBackendPath({
-    hermesHome: '/Users/test/.prostor',
+    prostorHome: '/Users/test/.prostor',
     venvRoot: '/Users/test/.prostor/prostor-agent/venv',
     currentPath: '/opt/homebrew/bin:/usr/bin:/opt/homebrew/bin:/bin',
     platform: 'darwin',
@@ -51,7 +51,7 @@ test('desktop backend PATH preserves first occurrence and avoids duplicates', ()
 
 test('buildDesktopBackendEnv extends PYTHONPATH and backend PATH together', () => {
   const env = buildDesktopBackendEnv({
-    hermesHome: '/Users/test/.prostor',
+    prostorHome: '/Users/test/.prostor',
     pythonPathEntries: ['/repo/prostor-agent'],
     venvRoot: '/Users/test/.prostor/prostor-agent/venv',
     currentEnv: {
@@ -67,24 +67,24 @@ test('buildDesktopBackendEnv extends PYTHONPATH and backend PATH together', () =
   assert.ok(env.PATH.includes('/opt/homebrew/bin'))
 })
 
-test('normalizeHermesHomeRoot maps profile homes back to the global Prostor root', () => {
+test('normalizeProstorHomeRoot maps profile homes back to the global Prostor root', () => {
   assert.equal(
-    normalizeHermesHomeRoot('/Users/test/.prostor/profiles/oracle', { pathModule: path.posix }),
+    normalizeProstorHomeRoot('/Users/test/.prostor/profiles/oracle', { pathModule: path.posix }),
     '/Users/test/.prostor'
   )
   assert.equal(
-    normalizeHermesHomeRoot('C:\\Users\\test\\AppData\\Local\\prostor\\profiles\\oracle', { pathModule: path.win32 }),
+    normalizeProstorHomeRoot('C:\\Users\\test\\AppData\\Local\\prostor\\profiles\\oracle', { pathModule: path.win32 }),
     'C:\\Users\\test\\AppData\\Local\\prostor'
   )
   assert.equal(
-    normalizeHermesHomeRoot('/Users/test/.prostor', { pathModule: path.posix }),
+    normalizeProstorHomeRoot('/Users/test/.prostor', { pathModule: path.posix }),
     '/Users/test/.prostor'
   )
 })
 
 test('Windows PATH casing and delimiter are preserved without POSIX sane entries', () => {
   const env = buildDesktopBackendEnv({
-    hermesHome: 'C:\\Users\\test\\AppData\\Local\\prostor',
+    prostorHome: 'C:\\Users\\test\\AppData\\Local\\prostor',
     pythonPathEntries: ['C:\\repo\\prostor-agent'],
     venvRoot: 'C:\\Users\\test\\AppData\\Local\\prostor\\prostor-agent\\venv',
     currentEnv: {

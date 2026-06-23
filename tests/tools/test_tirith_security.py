@@ -1155,7 +1155,7 @@ class TestDiskFailureMarker:
 # PROSTOR_HOME isolation
 # ---------------------------------------------------------------------------
 
-class TestHermesHomeIsolation:
+class TestProstorHomeIsolation:
     def test_hermes_bin_dir_respects_hermes_home(self):
         """_hermes_bin_dir must use PROSTOR_HOME, not hardcoded ~/.prostor."""
         from tools.tirith_security import _hermes_bin_dir

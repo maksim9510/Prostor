@@ -1,6 +1,6 @@
 # nix/desktop.nix — Prostor Desktop (Electron) app build + wrapper
 #
-# `hermesAgent` is the fully-built `.#default` package — it ships the
+# `prostorAgent` is the fully-built `.#default` package — it ships the
 # `prostor` binary with the venv, runtime PATH, bundled skills/plugins, etc.
 # already wired up.  We point the desktop at it via the existing
 # `PROSTOR_DESKTOP_HERMES` override env var, so the desktop's resolver
@@ -11,13 +11,13 @@
   lib,
   stdenv,
   makeWrapper,
-  hermesNpmLib,
+  prostorNpmLib,
   electron,
-  hermesAgent,
+  prostorAgent,
   ...
 }:
 let
-  npm = hermesNpmLib.mkNpmPassthru {
+  npm = prostorNpmLib.mkNpmPassthru {
     folder = "apps/desktop";
     attr = "desktop";
     pname = "prostor-desktop";
@@ -131,7 +131,7 @@ stdenv.mkDerivation {
     # No reimplementation of the agent resolver in the wrapper.
     makeWrapper ${lib.getExe electron} $out/bin/prostor-desktop \
       --add-flags "$out/share/prostor-desktop" \
-      --set PROSTOR_DESKTOP_HERMES "${lib.getExe hermesAgent}" \
+      --set PROSTOR_DESKTOP_HERMES "${lib.getExe prostorAgent}" \
       --set ELECTRON_IS_DEV 0
 
     runHook postInstall

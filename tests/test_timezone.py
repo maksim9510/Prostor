@@ -31,7 +31,7 @@ def _reset_hermes_time_cache():
 # hermes_time.now() — core helper
 # =========================================================================
 
-class TestHermesTimeNow:
+class TestProstorTimeNow:
     """Test the timezone-aware now() helper."""
 
     def setup_method(self):

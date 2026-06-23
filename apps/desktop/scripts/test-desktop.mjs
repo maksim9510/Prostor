@@ -49,7 +49,7 @@ const APP = (() => {
 })()
 
 // Default PROSTOR_HOME for non-sandboxed runs -- matches main.cjs's
-// resolveHermesHome(). On Windows it's %LOCALAPPDATA%\prostor; elsewhere
+// resolveProstorHome(). On Windows it's %LOCALAPPDATA%\prostor; elsewhere
 // it's ~/.prostor. The fresh-install sandbox launchFresh() sets its own
 // PROSTOR_HOME and never touches this.
 const DEFAULT_HERMES_HOME = (() => {
@@ -236,11 +236,11 @@ function launchFresh() {
 
   const sandbox = fs.mkdtempSync(`${FRESH_SANDBOX_ROOT}-`)
   const userDataDir = path.join(sandbox, 'electron-user-data')
-  const hermesHome = path.join(sandbox, 'prostor-home')
+  const prostorHome = path.join(sandbox, 'prostor-home')
   const cwd = path.join(sandbox, 'workspace')
 
   fs.mkdirSync(userDataDir, { recursive: true })
-  fs.mkdirSync(hermesHome, { recursive: true })
+  fs.mkdirSync(prostorHome, { recursive: true })
   fs.mkdirSync(cwd, { recursive: true })
 
   // Strip every credential-shaped env var so the sandbox is actually fresh.
@@ -254,7 +254,7 @@ function launchFresh() {
   env.PROSTOR_DESKTOP_IGNORE_EXISTING = '1'
   env.PROSTOR_DESKTOP_TEST_MODE = 'fresh-install'
   env.PROSTOR_DESKTOP_USER_DATA_DIR = userDataDir
-  env.PROSTOR_HOME = hermesHome
+  env.PROSTOR_HOME = prostorHome
   delete env.PROSTOR_DESKTOP_HERMES
   delete env.PROSTOR_DESKTOP_HERMES_ROOT
 
@@ -269,10 +269,10 @@ function launchFresh() {
   console.log('\nFresh install sandbox:')
   console.log(`  root: ${sandbox}`)
   console.log(`  electron userData: ${userDataDir}`)
-  console.log(`  PROSTOR_HOME: ${hermesHome}`)
+  console.log(`  PROSTOR_HOME: ${prostorHome}`)
   console.log(`  cwd: ${cwd}`)
 
-  return { runtimeRoot: path.join(hermesHome, 'prostor-agent', 'venv') }
+  return { runtimeRoot: path.join(prostorHome, 'prostor-agent', 'venv') }
 }
 
 // Validate the packaged bundle matches the thin-installer architecture:

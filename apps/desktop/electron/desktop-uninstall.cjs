@@ -119,7 +119,7 @@ function shouldRemoveAppBundle(isPackaged, appPath) {
  * resolves from the agent source. `q()` single-quote-escapes for the shell
  * (closes-escapes-reopens any embedded apostrophe), defending against spaces.
  */
-function buildPosixCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot, uninstallArgs, appPath, hermesHome }) {
+function buildPosixCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot, uninstallArgs, appPath, prostorHome }) {
   const q = s => `'${String(s).replace(/'/g, `'\\''`)}'`
   const lines = [
     '#!/bin/bash',
@@ -133,7 +133,7 @@ function buildPosixCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot,
     '    sleep 0.5',
     '  done',
     'fi',
-    `export PROSTOR_HOME=${q(hermesHome)}`
+    `export PROSTOR_HOME=${q(prostorHome)}`
   ]
   if (pythonPath) {
     lines.push(`export PYTHONPATH=${q(pythonPath)}\${PYTHONPATH:+:$PYTHONPATH}`)
@@ -169,7 +169,7 @@ function buildPosixCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot,
  * Removal: even after the desktop PID is gone, Windows releases directory
  * handles lazily, so a single `rmdir /s /q` can half-fail — retry up to 10x.
  */
-function buildWindowsCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot, uninstallArgs, appPath, hermesHome }) {
+function buildWindowsCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot, uninstallArgs, appPath, prostorHome }) {
   const pid = Number(desktopPid) || 0
   // cmd.exe has no string escaping inside quotes; strip embedded quotes (paths
   // under %LOCALAPPDATA% never contain them). `&`/`^` in a path would still be
@@ -178,7 +178,7 @@ function buildWindowsCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoo
   const lines = [
     '@echo off',
     'setlocal enableextensions',
-    `set "PROSTOR_HOME=${String(hermesHome).replace(/"/g, '')}"`,
+    `set "PROSTOR_HOME=${String(prostorHome).replace(/"/g, '')}"`,
     `set "PID=${pid}"`
   ]
   if (pythonPath) {

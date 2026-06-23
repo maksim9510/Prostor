@@ -1,7 +1,7 @@
 # nix/web.nix — Prostor Web Dashboard (Vite/React) frontend build
-{ pkgs, hermesNpmLib, ... }:
+{ pkgs, prostorNpmLib, ... }:
 let
-  npm = hermesNpmLib.mkNpmPassthru { folder = "web"; attr = "web"; pname = "prostor-web"; };
+  npm = prostorNpmLib.mkNpmPassthru { folder = "web"; attr = "web"; pname = "prostor-web"; };
 
   packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/web/package.json"));
   version = packageJson.version;

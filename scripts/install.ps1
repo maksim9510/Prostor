@@ -1780,22 +1780,22 @@ function Set-PathVariable {
     Write-Info "Setting up prostor command..."
     
     if ($NoVenv) {
-        $hermesBin = "$InstallDir"
+        $prostorBin = "$InstallDir"
     } else {
-        $hermesBin = "$InstallDir\venv\Scripts"
+        $prostorBin = "$InstallDir\venv\Scripts"
     }
     
     # Add the venv Scripts dir to user PATH so prostor is globally available
     # On Windows, the prostor.exe in venv\Scripts\ has the venv Python baked in
     $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
     
-    if ($currentPath -notlike "*$hermesBin*") {
+    if ($currentPath -notlike "*$prostorBin*") {
         [Environment]::SetEnvironmentVariable(
             "Path",
-            "$hermesBin;$currentPath",
+            "$prostorBin;$currentPath",
             "User"
         )
-        Write-Success "Added to user PATH: $hermesBin"
+        Write-Success "Added to user PATH: $prostorBin"
     } else {
         Write-Info "PATH already configured"
     }
@@ -1803,15 +1803,15 @@ function Set-PathVariable {
     # Set PROSTOR_HOME so the Python code finds config/data in the right place.
     # Only needed on Windows where we install to %LOCALAPPDATA%\prostor instead
     # of the Unix default ~/.prostor
-    $currentHermesHome = [Environment]::GetEnvironmentVariable("PROSTOR_HOME", "User")
-    if (-not $currentHermesHome -or $currentHermesHome -ne $HermesHome) {
+    $currentProstorHome = [Environment]::GetEnvironmentVariable("PROSTOR_HOME", "User")
+    if (-not $currentProstorHome -or $currentProstorHome -ne $HermesHome) {
         [Environment]::SetEnvironmentVariable("PROSTOR_HOME", $HermesHome, "User")
         Write-Success "Set PROSTOR_HOME=$HermesHome"
     }
     $env:PROSTOR_HOME = $HermesHome
     
     # Update current session
-    $env:Path = "$hermesBin;$env:Path"
+    $env:Path = "$prostorBin;$env:Path"
     
     Write-Success "prostor command ready"
 }
@@ -2786,9 +2786,9 @@ function Start-GatewayIfConfigured {
 
     if (-not $hasMessaging) { return }
 
-    $hermesCmd = "$InstallDir\venv\Scripts\prostor.exe"
-    if (-not (Test-Path $hermesCmd)) {
-        $hermesCmd = "prostor"
+    $prostorCmd = "$InstallDir\venv\Scripts\prostor.exe"
+    if (-not (Test-Path $prostorCmd)) {
+        $prostorCmd = "prostor"
     }
 
     # If WhatsApp is enabled but not yet paired, run foreground for QR scan
@@ -2806,7 +2806,7 @@ function Start-GatewayIfConfigured {
             $response = Read-Host "Pair WhatsApp now? [Y/n]"
             if ($response -eq "" -or $response -match "^[Yy]") {
                 try {
-                    & $hermesCmd whatsapp
+                    & $prostorCmd whatsapp
                 } catch {
                     # Expected after pairing completes
                 }
@@ -2836,7 +2836,7 @@ function Start-GatewayIfConfigured {
         Write-Info "Starting gateway in background..."
         try {
             $logFile = "$HermesHome\logs\gateway.log"
-            Start-Process -FilePath $hermesCmd -ArgumentList "gateway" `
+            Start-Process -FilePath $prostorCmd -ArgumentList "gateway" `
                 -RedirectStandardOutput $logFile `
                 -RedirectStandardError "$HermesHome\logs\gateway-error.log" `
                 -WindowStyle Hidden

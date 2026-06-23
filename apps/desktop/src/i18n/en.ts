@@ -50,7 +50,7 @@ export const en: Translations = {
       loadingSettings: 'Loading Prostor settings',
       loadingSessions: 'Loading recent sessions',
       startingDesktopConnection: 'Starting desktop connection',
-      startingHermesDesktop: 'Starting Prostor Desktop…'
+      startingProstorDesktop: 'Starting Prostor Desktop…'
     },
     errors: {
       backgroundExited: 'Prostor background process exited.',
@@ -769,7 +769,7 @@ export const en: Translations = {
     noSessions: 'No sessions yet.',
     gatewayRunning: 'Messaging gateway running',
     gatewayStopped: 'Messaging gateway stopped',
-    hermesActiveSessions: (version, count) => `Prostor ${version} · Active sessions ${count}`,
+    prostorActiveSessions: (version, count) => `Prostor ${version} · Active sessions ${count}`,
     restartGateway: 'Restart gateway',
     gatewayRestartFailed: 'Gateway restart failed.',
     updateProstor: 'Update Prostor',

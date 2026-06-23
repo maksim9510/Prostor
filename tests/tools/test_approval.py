@@ -396,7 +396,7 @@ class TestTeePattern:
         assert key is None
 
 
-class TestHermesConfigWriteProtection:
+class TestProstorConfigWriteProtection:
     """Terminal-side pairing for the file_tools write_file/patch deny on
     ~/.prostor/config.yaml (#14639). config.yaml IS the security policy
     (approvals.mode/yolo live there, mtime-keyed cache reloads mid-session),

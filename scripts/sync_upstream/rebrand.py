@@ -70,6 +70,8 @@ REBRAND_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bHermesDesktop\b"), "ProstorDesktop"),
     # CamelCase: lowercase letter + Hermes + uppercase letter (e.g. startingHermesDesktop)
     (re.compile(r"([a-z])Hermes(?=[A-Z])"), r"\1Prostor"),
+    # camelCase: hermes + uppercase letter (e.g. hermesActiveSessions)
+    (re.compile(r"\bhermes(?=[A-Z])"), "prostor"),
     # PascalCase: `Hermes` not followed by identifier char (so HermesAgent
     # is consumed by the rule above; bare `Hermes` falls through here)
     (re.compile(r"\bHermes(?![A-Za-z0-9_])"), "Prostor"),

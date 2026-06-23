@@ -896,7 +896,7 @@ class TestBuildContextFilesPrompt:
 # =========================================================================
 
 
-class TestFindHermesMd:
+class TestFindProstorMd:
     def test_finds_in_cwd(self, tmp_path):
         (tmp_path / ".prostor.md").write_text("rules")
         assert _find_hermes_md(tmp_path) == tmp_path / ".prostor.md"

@@ -179,8 +179,8 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
   const skinName = theme.name.endsWith(`-${mode}`) ? theme.name.slice(0, -mode.length - 1) : theme.name
 
   root.style.setProperty('color-scheme', rendered)
-  root.dataset.hermesTheme = skinName
-  root.dataset.hermesMode = rendered
+  root.dataset.prostorTheme = skinName
+  root.dataset.prostorMode = rendered
   root.classList.toggle('dark', isDark)
 
   // Brand seeds feed every glass + shadcn token via `color-mix()` in styles.css.
@@ -242,7 +242,7 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
     const link = document.createElement('link')
     link.rel = 'stylesheet'
     link.href = typo.fontUrl
-    link.dataset.hermesThemeFont = 'true'
+    link.dataset.prostorThemeFont = 'true'
     document.head.appendChild(link)
     INJECTED_FONT_URLS.add(typo.fontUrl)
   }

@@ -165,7 +165,7 @@ export interface DesktopVersionInfo {
   electronVersion: string
   nodeVersion: string
   platform: string
-  hermesRoot: string
+  prostorRoot: string
 }
 
 export type DesktopUninstallMode = 'full' | 'gui' | 'lite'
@@ -229,7 +229,7 @@ export interface DesktopUpdateApplyResult {
    *  `prostor update` themselves. `command` is the exact line to run. */
   manual?: boolean
   command?: string
-  hermesRoot?: string
+  prostorRoot?: string
   /** True when the backend was updated but the GUI couldn't be relaunched in
    *  place (AppImage / dev run): the new version loads on next launch. */
   backendUpdated?: boolean

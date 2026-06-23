@@ -133,7 +133,7 @@ test('buildPosixCleanupScript waits for the PID, runs the uninstall module, remo
     agentRoot: '/home/x/.prostor/prostor-agent',
     uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'gui'],
     appPath: '/opt/prostor/linux-unpacked',
-    hermesHome: '/home/x/.prostor'
+    prostorHome: '/home/x/.prostor'
   })
   assert.match(script, /^#!\/bin\/bash/)
   assert.match(script, /pid=4321/)
@@ -153,7 +153,7 @@ test('buildPosixCleanupScript exports PYTHONPATH when pythonPath is set (lite/fu
     agentRoot: '/home/x/.prostor/prostor-agent',
     uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'full'],
     appPath: null,
-    hermesHome: '/home/x/.prostor'
+    prostorHome: '/home/x/.prostor'
   })
   // System python + source on PYTHONPATH so import hermes_cli works while the
   // venv is torn down.
@@ -169,7 +169,7 @@ test('buildPosixCleanupScript omits PYTHONPATH when pythonPath is null (gui)', (
     agentRoot: '/a',
     uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    hermesHome: '/h'
+    prostorHome: '/h'
   })
   assert.doesNotMatch(script, /export PYTHONPATH/)
 })
@@ -182,7 +182,7 @@ test('buildPosixCleanupScript omits the bundle rm when appPath is null', () => {
     agentRoot: '/a',
     uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'lite'],
     appPath: null,
-    hermesHome: '/h'
+    prostorHome: '/h'
   })
   assert.doesNotMatch(script, /rm -rf '\//)
   // Still runs the uninstall.
@@ -197,7 +197,7 @@ test('buildPosixCleanupScript single-quote-escapes paths with apostrophes', () =
     agentRoot: '/a',
     uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    hermesHome: '/h'
+    prostorHome: '/h'
   })
   // The apostrophe is closed-escaped-reopened so the shell sees the literal.
   assert.match(script, /'\/home\/o'\\''brien\/python'/)
@@ -213,7 +213,7 @@ test('buildWindowsCleanupScript waits (bounded) for PID, runs uninstall, rmdir b
     agentRoot: 'C:\\prostor',
     uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'full'],
     appPath: 'C:\\Users\\x\\AppData\\Local\\Programs\\Prostor',
-    hermesHome: 'C:\\Users\\x\\AppData\\Local\\prostor'
+    prostorHome: 'C:\\Users\\x\\AppData\\Local\\prostor'
   })
   assert.match(script, /@echo off/)
   assert.match(script, /set "PID=9988"/)
@@ -239,7 +239,7 @@ test('buildWindowsCleanupScript omits PYTHONPATH + rmdir when not needed (gui, n
     agentRoot: 'C:\\h',
     uninstallArgs: ['-m', 'hermes_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    hermesHome: 'C:\\h'
+    prostorHome: 'C:\\h'
   })
   assert.doesNotMatch(script, /rmdir/)
   assert.doesNotMatch(script, /set "PYTHONPATH=/)
