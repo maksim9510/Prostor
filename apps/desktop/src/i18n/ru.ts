@@ -50,7 +50,7 @@ export const ru: Translations = {
       loadingSettings: 'Загрузка настроек Prostor',
       loadingSessions: 'Загрузка недавних сессий',
       startingDesktopConnection: 'Запуск подключения десктопа',
-      startingProstorDesktop: 'Запуск Prostor Desktop…'
+      startingHermesDesktop: 'Запуск Prostor Desktop…'
     },
     errors: {
       backgroundExited: 'Фоновый процесс Prostor завершился.',
@@ -384,6 +384,7 @@ export const ru: Translations = {
       checkNow: 'Проверить сейчас',
       checking: 'Проверка…',
       seeWhatsNew: 'Смотреть, что нового',
+      updateNow: 'Обновить сейчас',
       releaseNotes: 'Примечания к релизу',
       onLatest: 'У вас последняя версия.',
       installing: 'Обновление устанавливается.',
@@ -768,7 +769,7 @@ export const ru: Translations = {
     noSessions: 'Сессий пока нет.',
     gatewayRunning: 'Мессенджер-gateway запущен',
     gatewayStopped: 'Мессенджер-gateway остановлен',
-    prostorActiveSessions: (version, count) => `Prostor ${version} · Активных сессий ${count}`,
+    hermesActiveSessions: (version: string, count: number) => `Prostor ${version} · Активных сессий ${count}`,
     restartGateway: 'Перезапустить gateway',
     gatewayRestartFailed: 'Не удалось перезапустить gateway.',
     updateProstor: 'Обновить Prostor',
@@ -1378,6 +1379,9 @@ export const ru: Translations = {
     manualTitle: 'Обновление из терминала',
     manualBody: 'Вы установили Prostor из командной строки, поэтому обновления выполняются там же. Вставьте это в терминал:',
     manualPickedUp: 'Prostor подхватит новую версию при следующем запуске.',
+    guiSkewTitle: 'Обновить приложение',
+    guiSkewBody:
+      'Бэкенд был обновлён, но пакет этого приложения не изменился. Обновите или переустановите приложение Prostor (AppImage / .deb / .rpm), чтобы он соответствовал.',
     copy: 'Копировать',
     copied: 'Скопировано',
     done: 'Готово',
@@ -1662,6 +1666,7 @@ export const ru: Translations = {
     opening: 'Открытие...',
     hide: 'Скрыть',
     openPreview: 'Открыть предпросмотр',
+    openInBrowser: 'Открыть в браузере',
     sourceLineTitle: 'Кликните для выбора · shift-клик для расширения · перетащите в компоновщик',
     source: 'ИСХОДНИК',
     renderedPreview: 'ПРЕДПРОСМОТР',
