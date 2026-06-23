@@ -121,6 +121,17 @@ if [ ! -d "dist" ] || [ -n "$(find src -newer dist -name '*.ts' -o -newer dist -
 fi
 ok "Frontend собран"
 
+# 6. Устанавливаем Electron (для prostor-desktop)
+log "Устанавливаю Electron для Desktop GUI..."
+if [ -d "apps/desktop" ]; then
+    cd apps/desktop
+    if [ ! -d "node_modules/electron" ]; then
+        npm install --silent --no-audit --no-fund 2>&1 | tail -3
+    fi
+    ok "Electron установлен"
+    cd "$PROSTOR_HOME/prostor-agent"
+fi
+
 # 6. Проверяем CLI
 log "Проверяю установку..."
 if command -v prostor &> /dev/null; then

@@ -46,8 +46,11 @@ DIRS_TO_COPY=(
     installer
     assets
     apps/desktop/electron
+    apps/desktop/dist
     apps/desktop/package.json
     apps/desktop/package-lock.json
+    apps/desktop/assets
+    apps/desktop/build
 )
 
 for dir in "${DIRS_TO_COPY[@]}"; do
@@ -139,10 +142,15 @@ cat > "$BUILD_DIR/usr/local/bin/prostor-desktop" << 'LAUNCHER'
 PROSTOR_DIR="/opt/prostor"
 DESKTOP_DIR="$PROSTOR_DIR/apps/desktop"
 
-# Если node_modules нет — запускаем setup
-if [ ! -d "$DESKTOP_DIR/node_modules" ] || [ ! -d "$DESKTOP_DIR/dist" ]; then
+# Если node_modules/electron нет — запускаем setup (докачает Electron + deps)
+if [ ! -d "$DESKTOP_DIR/node_modules/electron" ] || [ ! -d "$DESKTOP_DIR/dist" ]; then
     echo "🔧 Первый запуск Prostor Desktop — устанавливаю зависимости..."
     bash "$PROSTOR_DIR/installer/linux/setup.sh"
+    # Проверяем что Electron установлен
+    if [ ! -d "$DESKTOP_DIR/node_modules/electron" ]; then
+        echo "❌ Electron не установлен. Запустите вручную: $PROSTOR_DIR/installer/linux/setup.sh"
+        exit 1
+    fi
 fi
 
 export DISPLAY="${DISPLAY:-:0}"
