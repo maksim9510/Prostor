@@ -843,7 +843,7 @@ export const api = {
   // Gateway / update actions
   restartGateway: () =>
     fetchJSON<ActionResponse>("/api/gateway/restart", { method: "POST" }),
-  updateHermes: () =>
+  updateProstor: () =>
     fetchJSON<ActionResponse>("/api/prostor/update", { method: "POST" }),
   checkProstorUpdate: (force = false) =>
     fetchJSON<UpdateCheckResponse>(

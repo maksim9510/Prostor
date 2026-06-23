@@ -426,7 +426,7 @@ export default function SystemPage() {
       return;
     }
     try {
-      const resp = await api.updateHermes();
+      const resp = await api.updateProstor();
       if (!resp.ok) {
         showToast(
           resp.message ??

@@ -58,14 +58,14 @@ REBRAND_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bHermesConfig(?![a-z])"), "ProstorConfig"),
     (re.compile(r"\bhermes_config\b"), "prostor_config"),
     # camelCase compound forms (getHermes, useHermes, updateHermes + suffix)
-    # Use (?=[A-Z]) to match at CamelCase boundaries without requiring \b
-    (re.compile(r"\bgetHermes(?=[A-Z])"), "getProstor"),
-    (re.compile(r"\buseHermes(?=[A-Z])"), "useProstor"),
-    (re.compile(r"\bupdateHermes(?=[A-Z])"), "updateProstor"),
-    (re.compile(r"\bsetHermes(?=[A-Z])"), "setProstor"),
-    (re.compile(r"\brefreshHermes(?=[A-Z])"), "refreshProstor"),
-    (re.compile(r"\bsaveHermes(?=[A-Z])"), "saveProstor"),
-    (re.compile(r"\bcheckHermes(?=[A-Z])"), "checkProstor"),
+    # Use (?![a-z]) to match at end-of-identifier or before uppercase
+    (re.compile(r"\bgetHermes(?![a-z])"), "getProstor"),
+    (re.compile(r"\buseHermes(?![a-z])"), "useProstor"),
+    (re.compile(r"\bupdateHermes(?![a-z])"), "updateProstor"),
+    (re.compile(r"\bsetHermes(?![a-z])"), "setProstor"),
+    (re.compile(r"\brefreshHermes(?![a-z])"), "refreshProstor"),
+    (re.compile(r"\bsaveHermes(?![a-z])"), "saveProstor"),
+    (re.compile(r"\bcheckHermes(?![a-z])"), "checkProstor"),
     (re.compile(r"\bhermesDesktop\b"), "prostorDesktop"),
     (re.compile(r"\bHermesDesktop\b"), "ProstorDesktop"),
     # PascalCase: `Hermes` not followed by identifier char (so HermesAgent

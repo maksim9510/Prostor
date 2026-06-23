@@ -99,7 +99,7 @@ export const en: Translations = {
     backendOutOfDateTitle: 'Backend out of date',
     backendOutOfDateMessage:
       'Your Prostor backend is older than this desktop build and may not work correctly. Update to align them.',
-    updateHermes: 'Update Prostor',
+    updateProstor: 'Update Prostor',
     updateReadyTitle: 'Update ready',
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
     seeWhatsNew: "See what's new",
@@ -772,7 +772,7 @@ export const en: Translations = {
     hermesActiveSessions: (version, count) => `Prostor ${version} · Active sessions ${count}`,
     restartGateway: 'Restart gateway',
     gatewayRestartFailed: 'Gateway restart failed.',
-    updateHermes: 'Update Prostor',
+    updateProstor: 'Update Prostor',
     actionRunning: 'running',
     actionDone: 'done',
     actionFailed: 'failed',

@@ -111,7 +111,7 @@ export interface Translations {
     copyDetailFailed: string
     backendOutOfDateTitle: string
     backendOutOfDateMessage: string
-    updateHermes: string
+    updateProstor: string
     updateReadyTitle: string
     updateReadyMessage: (count: number) => string
     seeWhatsNew: string
@@ -635,7 +635,7 @@ export interface Translations {
     hermesActiveSessions: (version: string, count: number) => string
     restartGateway: string
     gatewayRestartFailed: string
-    updateHermes: string
+    updateProstor: string
     actionRunning: string
     actionDone: string
     actionFailed: string

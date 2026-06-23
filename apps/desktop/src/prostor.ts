@@ -8,6 +8,7 @@ import type {
   AudioTranscriptionResponse,
   AuxiliaryModelsResponse,
   BackendUpdateCheckResponse,
+  ComputerUseStatus,
   ConfigSchemaResponse,
   CronJob,
   CronJobCreatePayload,
@@ -16,6 +17,7 @@ import type {
   EnvVarInfo,
   LogsResponse,
   MemoryProviderConfig,
+  MemoryProviderOAuthStatus,
   MessagingPlatformsResponse,
   MessagingPlatformTestResponse,
   MessagingPlatformUpdate,
@@ -457,6 +459,43 @@ export function getSkills(): Promise<SkillInfo[]> {
   return window.prostorDesktop.api<SkillInfo[]>({
     ...profileScoped(),
     path: '/api/skills'
+  })
+}
+
+export function startMemoryProviderOAuth(provider: string): Promise<MemoryProviderOAuthStatus> {
+  return window.prostorDesktop.api<MemoryProviderOAuthStatus>({
+    ...profileScoped(),
+    path: `/api/memory/providers/${encodeURIComponent(provider)}/oauth/start`,
+    method: 'POST'
+  })
+}
+
+export function getMemoryProviderOAuthStatus(provider: string): Promise<MemoryProviderOAuthStatus> {
+  return window.prostorDesktop.api<MemoryProviderOAuthStatus>({
+    ...profileScoped(),
+    path: `/api/memory/providers/${encodeURIComponent(provider)}/oauth/status`
+  })
+}
+
+export function getComputerUseStatus(): Promise<ComputerUseStatus> {
+  return window.prostorDesktop.api<ComputerUseStatus>({
+    ...profileScoped(),
+    path: '/api/tools/computer-use/status'
+  })
+}
+
+export function grantComputerUsePermissions(): Promise<ActionResponse> {
+  return window.prostorDesktop.api<ActionResponse>({
+    ...profileScoped(),
+    path: '/api/tools/computer-use/permissions/grant',
+    method: 'POST'
+  })
+}
+
+export function updateProstor(): Promise<ActionResponse> {
+  return window.prostorDesktop.api<ActionResponse>({
+    path: '/api/prostor/update',
+    method: 'POST'
   })
 }
 

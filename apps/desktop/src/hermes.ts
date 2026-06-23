@@ -761,7 +761,7 @@ export function restartGateway(): Promise<ActionResponse> {
   })
 }
 
-export function updateHermes(): Promise<ActionResponse> {
+export function updateProstor(): Promise<ActionResponse> {
   return window.prostorDesktop.api<ActionResponse>({
     path: '/api/prostor/update',
     method: 'POST'

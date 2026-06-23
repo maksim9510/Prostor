@@ -120,7 +120,7 @@ export const ru: Translations = {
     starting: "Запуск",
     startedInBackground: "Запущено в фоне — следите за журналами",
     stopped: "Остановлено",
-    updateHermes: "Обновить Prostor",
+    updateProstor: "Обновить Prostor",
     updatingHermes: "Обновление Prostor…",
     waitingForOutput: "Ожидание вывода…",
   },

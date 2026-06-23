@@ -918,7 +918,7 @@ function SidebarSystemActions({
     items.push({
       action: "update",
       icon: Download,
-      label: t.status.updateHermes,
+      label: t.status.updateProstor,
       runningLabel: t.status.updatingHermes,
       spin: false,
     });

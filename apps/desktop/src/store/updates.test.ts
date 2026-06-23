@@ -37,7 +37,7 @@ const getActionStatusSpy = vi.fn()
 
 vi.mock('@/prostor', () => ({
   checkProstorUpdate: (...args: unknown[]) => checkProstorUpdateSpy(...args),
-  updateHermes: (...args: unknown[]) => updateProstorSpy(...args),
+  updateProstor: (...args: unknown[]) => updateProstorSpy(...args),
   getActionStatus: (...args: unknown[]) => getActionStatusSpy(...args)
 }))
 
