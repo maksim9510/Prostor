@@ -1,7 +1,7 @@
 """Regression test for config.yaml `security.redact_secrets: false` toggle.
 
 Bug: `agent/redact.py` snapshots `_REDACT_ENABLED` from the env var
-`PROSTOR_REDACT_SECRETS` at module-import time. `prostor_cli/main.py` at
+`PROSTOR_REDACT_SECRETS` at module-import time. `hermes_cli/main.py` at
 line ~174 calls `setup_logging(mode="cli")` which transitively imports
 `agent.redact` — BEFORE any config bridge ran. So if a user set
 `security.redact_secrets: false` in config.yaml (instead of as an env var
@@ -9,7 +9,7 @@ in .env), the toggle was silently ignored in both `prostor chat` and
 `prostor gateway run`.
 
 Fix: bridge `security.redact_secrets` from config.yaml → `PROSTOR_REDACT_SECRETS`
-env var in `prostor_cli/main.py` BEFORE the `setup_logging()` call.
+env var in `hermes_cli/main.py` BEFORE the `setup_logging()` call.
 """
 import os
 import subprocess
@@ -23,11 +23,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def test_redact_secrets_false_in_config_yaml_is_honored(tmp_path):
     """Setting `security.redact_secrets: false` in config.yaml must disable
     redaction — even though it's set in YAML, not as an env var."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
 
     # Write a config.yaml with redact_secrets: false
-    (prostor_home / "config.yaml").write_text(
+    (hermes_home / "config.yaml").write_text(
         textwrap.dedent(
             """\
             security:
@@ -36,9 +36,9 @@ def test_redact_secrets_false_in_config_yaml_is_honored(tmp_path):
         )
     )
     # Empty .env so nothing else sets the env var
-    (prostor_home / ".env").write_text("")
+    (hermes_home / ".env").write_text("")
 
-    # Spawn a fresh Python process that imports prostor_cli.main and checks
+    # Spawn a fresh Python process that imports hermes_cli.main and checks
     # _REDACT_ENABLED. Must be a subprocess — we need a clean module state.
     probe = textwrap.dedent(
         """\
@@ -46,7 +46,7 @@ def test_redact_secrets_false_in_config_yaml_is_honored(tmp_path):
         # Make absolutely sure the env var is not pre-set
         os.environ.pop("PROSTOR_REDACT_SECRETS", None)
         sys.path.insert(0, %r)
-        import prostor_cli.main  # triggers the bridge + setup_logging
+        import hermes_cli.main  # triggers the bridge + setup_logging
         import agent.redact
         print(f"REDACT_ENABLED={agent.redact._REDACT_ENABLED}")
         print(f"ENV_VAR={os.environ.get('PROSTOR_REDACT_SECRETS', '<unset>')}")
@@ -54,7 +54,7 @@ def test_redact_secrets_false_in_config_yaml_is_honored(tmp_path):
     ) % str(REPO_ROOT)
 
     env = dict(os.environ)
-    env["PROSTOR_HOME"] = str(prostor_home)
+    env["PROSTOR_HOME"] = str(hermes_home)
     env.pop("PROSTOR_REDACT_SECRETS", None)
 
     result = subprocess.run(
@@ -80,24 +80,24 @@ def test_redact_secrets_default_true_when_unset(tmp_path):
     `security.redact_secrets: false` explicitly (or
     `PROSTOR_REDACT_SECRETS=false`).
     """
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text("{}\n")  # empty config
-    (prostor_home / ".env").write_text("")
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text("{}\n")  # empty config
+    (hermes_home / ".env").write_text("")
 
     probe = textwrap.dedent(
         """\
         import sys, os
         os.environ.pop("PROSTOR_REDACT_SECRETS", None)
         sys.path.insert(0, %r)
-        import prostor_cli.main
+        import hermes_cli.main
         import agent.redact
         print(f"REDACT_ENABLED={agent.redact._REDACT_ENABLED}")
         """
     ) % str(REPO_ROOT)
 
     env = dict(os.environ)
-    env["PROSTOR_HOME"] = str(prostor_home)
+    env["PROSTOR_HOME"] = str(hermes_home)
     env.pop("PROSTOR_REDACT_SECRETS", None)
 
     result = subprocess.run(
@@ -115,9 +115,9 @@ def test_redact_secrets_default_true_when_unset(tmp_path):
 def test_redact_secrets_true_in_config_yaml_is_honored(tmp_path):
     """Setting `security.redact_secrets: true` in config.yaml must enable
     redaction — even though it's set in YAML, not as an env var."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         textwrap.dedent(
             """\
             security:
@@ -125,14 +125,14 @@ def test_redact_secrets_true_in_config_yaml_is_honored(tmp_path):
             """
         )
     )
-    (prostor_home / ".env").write_text("")
+    (hermes_home / ".env").write_text("")
 
     probe = textwrap.dedent(
         """\
         import sys, os
         os.environ.pop("PROSTOR_REDACT_SECRETS", None)
         sys.path.insert(0, %r)
-        import prostor_cli.main
+        import hermes_cli.main
         import agent.redact
         print(f"REDACT_ENABLED={agent.redact._REDACT_ENABLED}")
         print(f"ENV_VAR={os.environ.get('PROSTOR_REDACT_SECRETS', '<unset>')}")
@@ -140,7 +140,7 @@ def test_redact_secrets_true_in_config_yaml_is_honored(tmp_path):
     ) % str(REPO_ROOT)
 
     env = dict(os.environ)
-    env["PROSTOR_HOME"] = str(prostor_home)
+    env["PROSTOR_HOME"] = str(hermes_home)
     env.pop("PROSTOR_REDACT_SECRETS", None)
 
     result = subprocess.run(
@@ -160,9 +160,9 @@ def test_redact_secrets_true_in_config_yaml_is_honored(tmp_path):
 
 def test_dotenv_redact_secrets_beats_config_yaml(tmp_path):
     """.env PROSTOR_REDACT_SECRETS takes precedence over config.yaml."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
         textwrap.dedent(
             """\
             security:
@@ -171,14 +171,14 @@ def test_dotenv_redact_secrets_beats_config_yaml(tmp_path):
         )
     )
     # .env force-enables redaction
-    (prostor_home / ".env").write_text("PROSTOR_REDACT_SECRETS=true\n")
+    (hermes_home / ".env").write_text("PROSTOR_REDACT_SECRETS=true\n")
 
     probe = textwrap.dedent(
         """\
         import sys, os
         os.environ.pop("PROSTOR_REDACT_SECRETS", None)
         sys.path.insert(0, %r)
-        import prostor_cli.main
+        import hermes_cli.main
         import agent.redact
         print(f"REDACT_ENABLED={agent.redact._REDACT_ENABLED}")
         print(f"ENV_VAR={os.environ.get('PROSTOR_REDACT_SECRETS', '<unset>')}")
@@ -186,7 +186,7 @@ def test_dotenv_redact_secrets_beats_config_yaml(tmp_path):
     ) % str(REPO_ROOT)
 
     env = dict(os.environ)
-    env["PROSTOR_HOME"] = str(prostor_home)
+    env["PROSTOR_HOME"] = str(hermes_home)
     env.pop("PROSTOR_REDACT_SECRETS", None)
 
     result = subprocess.run(

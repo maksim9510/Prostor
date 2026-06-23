@@ -12,8 +12,8 @@ import sys
 import shlex
 from pathlib import Path
 
-from prostor_constants import get_prostor_home
-from prostor_cli.secret_prompt import masked_secret_prompt
+from hermes_constants import get_hermes_home
+from hermes_cli.secret_prompt import masked_secret_prompt
 
 _CANCELLED = -1
 
@@ -34,7 +34,7 @@ def _curses_select(
     items: list of (label, description) tuples.
     Returns selected index, or cancel_returns/default on escape/quit.
     """
-    from prostor_cli.curses_ui import curses_radiolist
+    from hermes_cli.curses_ui import curses_radiolist
 
     if cancel_returns is None:
         cancel_returns = default
@@ -215,7 +215,7 @@ def _get_available_providers() -> list:
 
 def cmd_setup_provider(provider_name: str) -> None:
     """Run memory setup for a specific provider, skipping the picker."""
-    from prostor_cli.config import load_config, save_config
+    from hermes_cli.config import load_config, save_config
 
     providers = _get_available_providers()
     match = None
@@ -240,8 +240,8 @@ def cmd_setup_provider(provider_name: str) -> None:
         config["memory"] = {}
 
     if hasattr(provider, "post_setup"):
-        prostor_home = str(get_prostor_home())
-        provider.post_setup(prostor_home, config)
+        hermes_home = str(get_hermes_home())
+        provider.post_setup(hermes_home, config)
         return
 
     # Fallback: generic schema-based setup (same as cmd_setup)
@@ -253,7 +253,7 @@ def cmd_setup_provider(provider_name: str) -> None:
 
 def cmd_setup(args) -> None:
     """Interactive memory provider setup wizard."""
-    from prostor_cli.config import load_config, save_config
+    from hermes_cli.config import load_config, save_config
 
     providers = _get_available_providers()
 
@@ -296,8 +296,8 @@ def cmd_setup(args) -> None:
     # If the provider has a post_setup hook, delegate entirely to it.
     # The hook handles its own config, connection test, and activation.
     if hasattr(provider, "post_setup"):
-        prostor_home = str(get_prostor_home())
-        provider.post_setup(prostor_home, config)
+        hermes_home = str(get_hermes_home())
+        provider.post_setup(hermes_home, config)
         return
 
     schema = provider.get_config_schema() if hasattr(provider, "get_config_schema") else []
@@ -306,7 +306,7 @@ def cmd_setup(args) -> None:
     if not isinstance(provider_config, dict):
         provider_config = {}
 
-    env_path = get_prostor_home() / ".env"
+    env_path = get_hermes_home() / ".env"
     env_writes = {}
 
     if schema:
@@ -376,10 +376,10 @@ def cmd_setup(args) -> None:
     save_config(config)
 
     # Write non-secret config to provider's native location
-    prostor_home = str(get_prostor_home())
+    hermes_home = str(get_hermes_home())
     if provider_config and hasattr(provider, "save_config"):
         try:
-            provider.save_config(provider_config, prostor_home)
+            provider.save_config(provider_config, hermes_home)
         except Exception as e:
             print(f"  Failed to write provider config: {e}")
 
@@ -433,7 +433,7 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:
 
 def cmd_status(args) -> None:
     """Show current memory provider config."""
-    from prostor_cli.config import load_config
+    from hermes_cli.config import load_config
 
     config = load_config()
     mem_config = config.get("memory", {})

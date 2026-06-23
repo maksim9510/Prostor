@@ -29,16 +29,16 @@ def _make_fake_jwt(expiry_offset: int = 3600) -> str:
 
 
 @pytest.fixture()
-def prostor_auth_only_env(tmp_path, monkeypatch):
+def hermes_auth_only_env(tmp_path, monkeypatch):
     """Tokens already in Prostor auth store (no Codex CLI needed)."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     # Point CODEX_HOME to nonexistent dir to prove it's not needed
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no_codex"))
 
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 2,
         "providers": {
             "openai-codex": {
@@ -57,12 +57,12 @@ def prostor_auth_only_env(tmp_path, monkeypatch):
     ]:
         monkeypatch.delenv(var, raising=False)
 
-    return prostor_home
+    return hermes_home
 
 
-def test_normal_path_still_works(prostor_auth_only_env):
+def test_normal_path_still_works(hermes_auth_only_env):
     """openai-codex appears when tokens are already in Prostor auth store."""
-    from prostor_cli.model_switch import list_authenticated_providers
+    from hermes_cli.model_switch import list_authenticated_providers
 
     providers = list_authenticated_providers(
         current_provider="openai-codex",
@@ -72,9 +72,9 @@ def test_normal_path_still_works(prostor_auth_only_env):
     assert "openai-codex" in slugs
 
 
-def test_codex_picker_uses_live_codex_catalog(prostor_auth_only_env, tmp_path, monkeypatch):
+def test_codex_picker_uses_live_codex_catalog(hermes_auth_only_env, tmp_path, monkeypatch):
     """The gateway /model picker should surface Codex CLI-only listed models."""
-    from prostor_cli.model_switch import list_authenticated_providers
+    from hermes_cli.model_switch import list_authenticated_providers
 
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()
@@ -89,7 +89,7 @@ def test_codex_picker_uses_live_codex_catalog(prostor_auth_only_env, tmp_path, m
     # 10s HTTP probe to chatgpt.com/backend-api/codex/models which is both
     # slow and non-deterministic in CI/sandboxed environments.
     monkeypatch.setattr(
-        "prostor_cli.codex_models._fetch_models_from_api",
+        "hermes_cli.codex_models._fetch_models_from_api",
         lambda access_token: [],
     )
 
@@ -108,14 +108,14 @@ def claude_code_only_env(tmp_path, monkeypatch):
     """Set up an environment where Anthropic credentials only exist in
     ~/.claude/.credentials.json (Claude Code) — not in env vars or Prostor
     auth store."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     # No Codex CLI
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no_codex"))
 
-    (prostor_home / "auth.json").write_text(
+    (hermes_home / "auth.json").write_text(
         json.dumps({"version": 2, "providers": {}})
     )
 
@@ -140,12 +140,12 @@ def claude_code_only_env(tmp_path, monkeypatch):
     ]:
         monkeypatch.delenv(var, raising=False)
 
-    return prostor_home
+    return hermes_home
 
 
 def test_claude_code_file_detected_by_model_picker(claude_code_only_env):
     """anthropic should appear when credentials only exist in ~/.claude/.credentials.json."""
-    from prostor_cli.model_switch import list_authenticated_providers
+    from hermes_cli.model_switch import list_authenticated_providers
 
     providers = list_authenticated_providers(
         current_provider="anthropic",
@@ -163,13 +163,13 @@ def test_claude_code_file_detected_by_model_picker(claude_code_only_env):
 
 def test_no_codex_when_no_credentials(tmp_path, monkeypatch):
     """openai-codex should NOT appear when no credentials exist anywhere."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no_codex"))
 
-    (prostor_home / "auth.json").write_text(
+    (hermes_home / "auth.json").write_text(
         json.dumps({"version": 2, "providers": {}})
     )
 
@@ -180,7 +180,7 @@ def test_no_codex_when_no_credentials(tmp_path, monkeypatch):
     ]:
         monkeypatch.delenv(var, raising=False)
 
-    from prostor_cli.model_switch import list_authenticated_providers
+    from hermes_cli.model_switch import list_authenticated_providers
 
     providers = list_authenticated_providers(
         current_provider="openrouter",

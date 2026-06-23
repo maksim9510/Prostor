@@ -86,7 +86,7 @@ USAGE
 
 .. code-block:: python
 
-    from prostor_cli.skin_engine import get_active_skin, list_skins, set_active_skin
+    from hermes_cli.skin_engine import get_active_skin, list_skins, set_active_skin
 
     skin = get_active_skin()
     print(skin.colors["banner_title"])    # "#FFD700"
@@ -117,7 +117,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -655,7 +655,7 @@ _active_skin_name: str = "default"
 
 def _skins_dir() -> Path:
     """User skins directory."""
-    return get_prostor_home() / "skins"
+    return get_hermes_home() / "skins"
 
 
 def _load_skin_from_yaml(path: Path) -> Optional[Dict[str, Any]]:

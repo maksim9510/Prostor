@@ -1,7 +1,7 @@
 """Managed scope must reach cli.py's independent config loader (CLI_CONFIG).
 
 cli.py's load_cli_config() builds config separately from
-prostor_cli.config._load_config_impl, so the managed-scope merge has to be
+hermes_cli.config._load_config_impl, so the managed-scope merge has to be
 applied in BOTH places or the interactive CLI/TUI surface (skin, display prefs)
 silently ignores administrator-pinned values while `prostor config`/`doctor`
 honor them. This locks the cli.py path.
@@ -19,8 +19,8 @@ def homes(tmp_path, monkeypatch):
     managed.mkdir()
     monkeypatch.setenv("PROSTOR_HOME", str(home))
     monkeypatch.setenv("PROSTOR_MANAGED_DIR", str(managed))
-    import prostor_cli.config as cfg
-    from prostor_cli import managed_scope
+    import hermes_cli.config as cfg
+    from hermes_cli import managed_scope
 
     cfg._LOAD_CONFIG_CACHE.clear()
     cfg._RAW_CONFIG_CACHE.clear()
@@ -31,7 +31,7 @@ def homes(tmp_path, monkeypatch):
 def _load_cli_config(home):
     """Call cli.py's standalone loader fresh.
 
-    cli.py binds ``_prostor_home = get_prostor_home()`` at import time (module
+    cli.py binds ``_hermes_home = get_hermes_home()`` at import time (module
     singleton), so monkeypatching PROSTOR_HOME after import doesn't move it.
     Point the module's cached home at the test's home for the duration of the
     call. (In real use cli is imported once per process with the real home, so
@@ -39,7 +39,7 @@ def _load_cli_config(home):
     """
     import cli
 
-    cli._prostor_home = home
+    cli._hermes_home = home
     return cli.load_cli_config()
 
 
@@ -48,7 +48,7 @@ def test_cli_config_honors_managed_skin(homes):
     home, managed = homes
     (home / "config.yaml").write_text("display:\n  skin: user_skin\n", encoding="utf-8")
     (managed / "config.yaml").write_text("display:\n  skin: charizard\n", encoding="utf-8")
-    from prostor_cli import managed_scope
+    from hermes_cli import managed_scope
 
     managed_scope.invalidate_managed_cache()
     cfg = _load_cli_config(home)
@@ -62,7 +62,7 @@ def test_cli_config_managed_leaf_preserves_user_siblings(homes):
         "display:\n  skin: user_skin\n  show_reasoning: true\n", encoding="utf-8"
     )
     (managed / "config.yaml").write_text("display:\n  skin: charizard\n", encoding="utf-8")
-    from prostor_cli import managed_scope
+    from hermes_cli import managed_scope
 
     managed_scope.invalidate_managed_cache()
     cfg = _load_cli_config(home)
@@ -75,7 +75,7 @@ def test_cli_config_no_managed_scope_uses_user_value(homes):
     """With no managed config, CLI_CONFIG reflects the user's value."""
     home, managed = homes  # managed dir exists but empty
     (home / "config.yaml").write_text("display:\n  skin: user_skin\n", encoding="utf-8")
-    from prostor_cli import managed_scope
+    from hermes_cli import managed_scope
 
     managed_scope.invalidate_managed_cache()
     cfg = _load_cli_config(home)

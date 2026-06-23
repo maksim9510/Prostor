@@ -1,4 +1,4 @@
-from prostor_cli import cli_output
+from hermes_cli import cli_output
 
 
 def test_password_prompt_uses_masked_secret_prompt(monkeypatch):

@@ -20,11 +20,11 @@ def test_no_duplicate_skills_subparser():
     import sys
 
     # Remove cached module if present
-    if 'prostor_cli.main' in sys.modules:
-        del sys.modules['prostor_cli.main']
+    if 'hermes_cli.main' in sys.modules:
+        del sys.modules['hermes_cli.main']
 
     try:
-        import prostor_cli.main  # noqa: F401
+        import hermes_cli.main  # noqa: F401
     except argparse.ArgumentError as e:
         if "conflicting subparser" in str(e):
             raise AssertionError(

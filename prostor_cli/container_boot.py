@@ -57,7 +57,7 @@ class ReconcileAction:
 
 def reconcile_profile_gateways(
     *,
-    prostor_home: Path,
+    hermes_home: Path,
     scandir: Path,
     dry_run: bool = False,
     container_argv: Sequence[str] | None = None,
@@ -66,7 +66,7 @@ def reconcile_profile_gateways(
 
     Always registers a ``gateway-default`` slot for the root profile
     (the implicit profile that lives at the top of ``$PROSTOR_HOME``,
-    not under ``profiles/``). The dispatcher in ``prostor_cli.gateway``
+    not under ``profiles/``). The dispatcher in ``hermes_cli.gateway``
     maps an empty profile suffix to ``gateway-default``, so this slot
     is what ``prostor gateway start`` (no ``-p``) targets. Without it,
     bare ``prostor gateway start`` inside the container would land on
@@ -79,9 +79,9 @@ def reconcile_profile_gateways(
     same way as for named profiles.
 
     Args:
-        prostor_home: The container's PROSTOR_HOME (typically /opt/data).
-            Profiles live under ``<prostor_home>/profiles/<name>/``;
-            the default profile lives at ``<prostor_home>`` itself.
+        hermes_home: The container's PROSTOR_HOME (typically /opt/data).
+            Profiles live under ``<hermes_home>/profiles/<name>/``;
+            the default profile lives at ``<hermes_home>`` itself.
         scandir: The s6 dynamic scandir (typically /run/service). Service
             directories are created at ``<scandir>/gateway-<profile>/``.
         dry_run: When True, walk and return the action list without
@@ -103,14 +103,14 @@ def reconcile_profile_gateways(
     # `gateway run` command and no state exists yet, seed that intent
     # as `running` so the s6 reconciler preserves the pre-s6 behavior.
     legacy_default_state = _maybe_migrate_legacy_gateway_run_state(
-        prostor_home,
+        hermes_home,
         container_argv=container_argv,
         dry_run=dry_run,
     )
-    default_prior_state = legacy_default_state or _read_desired_state(prostor_home)
+    default_prior_state = legacy_default_state or _read_desired_state(hermes_home)
     default_should_start = default_prior_state in _AUTOSTART_STATES
     if not dry_run:
-        _cleanup_stale_runtime_files(prostor_home)
+        _cleanup_stale_runtime_files(hermes_home)
         _register_service(scandir, "default", start=default_should_start)
     actions.append(ReconcileAction(
         profile="default",
@@ -118,7 +118,7 @@ def reconcile_profile_gateways(
         action="started" if default_should_start else "registered",
     ))
 
-    profiles_root = prostor_home / "profiles"
+    profiles_root = hermes_home / "profiles"
     if profiles_root.is_dir():
         for entry in sorted(profiles_root.iterdir()):
             if not entry.is_dir():
@@ -156,12 +156,12 @@ def reconcile_profile_gateways(
             ))
 
     if not dry_run:
-        _write_reconcile_log(prostor_home, actions)
+        _write_reconcile_log(hermes_home, actions)
     return actions
 
 
 def _maybe_migrate_legacy_gateway_run_state(
-    prostor_home: Path,
+    hermes_home: Path,
     *,
     container_argv: Sequence[str] | None,
     dry_run: bool,
@@ -176,7 +176,7 @@ def _maybe_migrate_legacy_gateway_run_state(
     root gateway_state.json exists so explicit stopped/failed states keep
     winning across restarts.
     """
-    state_file = prostor_home / "gateway_state.json"
+    state_file = hermes_home / "gateway_state.json"
     if state_file.exists():
         return None
 
@@ -199,28 +199,89 @@ def _maybe_migrate_legacy_gateway_run_state(
 
 
 def _read_container_argv() -> tuple[str, ...]:
-    """Best-effort read of the container PID 1 argv."""
+    """Best-effort read of the container's main program argv.
+
+    Under s6-overlay v2, PID 1 is ``/init`` and its argv contains the
+    ``main-wrapper.sh`` path.  Under s6-overlay v3, PID 1 is
+    ``s6-svscan`` and the actual command (``rc.init top main-wrapper.sh
+    ...``) lives on a different PID.  We try PID 1 first (fast path,
+    covers v2 and pre-s6 images), then fall back to scanning
+    ``/proc/*/cmdline`` for a process whose argv contains
+    ``main-wrapper.sh`` (the rc.init-launched PID in v3).
+    """
+    # Fast path: PID 1 is the command itself (s6-overlay v2 / tini).
     try:
         raw = Path("/proc/1/cmdline").read_bytes()
+        argv = tuple(
+            part.decode("utf-8", "replace") for part in raw.split(b"\0") if part
+        )
+        if any("main-wrapper.sh" in part for part in argv):
+            return argv
     except OSError:
-        return ()
-    return tuple(part.decode("utf-8", "replace") for part in raw.split(b"\0") if part)
+        pass
+
+    # Slow path: s6-overlay v3 — PID 1 is s6-svscan; find the
+    # rc.init-launched process whose argv contains main-wrapper.sh.
+    try:
+        proc_dir = Path("/proc")
+        for entry in proc_dir.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                raw = (entry / "cmdline").read_bytes()
+            except OSError:
+                continue
+            argv = tuple(
+                part.decode("utf-8", "replace")
+                for part in raw.split(b"\0")
+                if part
+            )
+            if any("main-wrapper.sh" in part for part in argv):
+                return argv
+    except OSError:
+        pass
+
+    return ()
 
 
 def _strip_container_argv_prefix(argv: Sequence[str]) -> list[str]:
-    """Strip the s6/wrapper prefix off PID 1 argv, leaving the prostor args.
+    """Strip the s6/wrapper prefix off the container argv, leaving the prostor args.
 
-    The container PID 1 argv looks like
-    ``/init /opt/prostor/docker/main-wrapper.sh <subcommand> [args...]`` and
-    the wrapper re-execs ``prostor <subcommand>``. Peel ``init`` →
-    ``main-wrapper.sh`` → ``prostor`` so callers can match on the bare
-    subcommand. Shared by the legacy-gateway and dashboard role detectors.
+    Two container-command argv shapes are handled:
+
+    * **s6-overlay v2 / tini:** PID 1 argv is
+      ``/init /opt/prostor/docker/main-wrapper.sh <subcommand> [args...]``.
+    * **s6-overlay v3:** PID 1 is ``s6-svscan`` and the command lives on the
+      rc.init-launched process as ``/bin/sh -e
+      /run/s6/basedir/scripts/rc.init top /opt/prostor/docker/main-wrapper.sh
+      <subcommand> [args...]`` (see :func:`_read_container_argv`).
+
+    Rather than peel each leading token positionally (which silently breaks
+    the moment s6 changes its launcher shape again — exactly what happened
+    in the v2→v3 bump), drop everything up to and including the
+    ``main-wrapper.sh`` token: that wrapper path is the stable boundary the
+    image owns, and the subcommand always follows it. Pre-s6 / direct
+    ``prostor`` invocations carry no wrapper, so fall back to peeling a bare
+    ``init`` prefix. The wrapper re-execs ``prostor <subcommand>``, so an
+    explicit leading ``prostor`` is peeled too. Shared by the legacy-gateway
+    and dashboard role detectors.
     """
     args = list(argv)
-    if args and Path(args[0]).name == "init":
+
+    # Preferred boundary: everything through main-wrapper.sh is launcher
+    # prefix. Covers s6-overlay v2 (`/init …main-wrapper.sh …`) and v3
+    # (`/bin/sh -e …rc.init top …main-wrapper.sh …`) with one rule.
+    wrapper_idx = next(
+        (i for i, a in enumerate(args) if a.endswith("main-wrapper.sh")),
+        None,
+    )
+    if wrapper_idx is not None:
+        args = args[wrapper_idx + 1 :]
+    elif args and Path(args[0]).name == "init":
+        # Defensive: an `init` prefix with no wrapper token in argv.
         args = args[1:]
-    if args and args[0].endswith("main-wrapper.sh"):
-        args = args[1:]
+
+    # The wrapper re-execs `prostor <subcommand>`; peel an explicit prostor.
     if args and Path(args[0]).name == "prostor":
         args = args[1:]
     return args
@@ -310,7 +371,7 @@ def _register_service(scandir: Path, profile: str, *, start: bool) -> None:
     """
     import shutil
 
-    from prostor_cli.service_manager import (
+    from hermes_cli.service_manager import (
         S6ServiceManager,
         _seed_supervise_skeleton,
         validate_profile_name,
@@ -376,7 +437,7 @@ def _register_service(scandir: Path, profile: str, *, start: bool) -> None:
 
 
 def _write_reconcile_log(
-    prostor_home: Path, actions: list[ReconcileAction],
+    hermes_home: Path, actions: list[ReconcileAction],
 ) -> None:
     """Append one line per profile to $PROSTOR_HOME/logs/container-boot.log.
 
@@ -394,7 +455,7 @@ def _write_reconcile_log(
     one append-only file (PR #30136 review item O3).
     """
     import time
-    log_dir = prostor_home / "logs"
+    log_dir = hermes_home / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "container-boot.log"
 
@@ -443,10 +504,10 @@ def main() -> int:
         )
         return 0
 
-    prostor_home = Path(os.environ.get("PROSTOR_HOME", "/opt/data"))
+    hermes_home = Path(os.environ.get("PROSTOR_HOME", "/opt/data"))
     scandir = Path(os.environ.get("S6_PROFILE_GATEWAY_SCANDIR", "/run/service"))
     actions = reconcile_profile_gateways(
-        prostor_home=prostor_home, scandir=scandir,
+        hermes_home=hermes_home, scandir=scandir,
     )
     for a in actions:
         print(

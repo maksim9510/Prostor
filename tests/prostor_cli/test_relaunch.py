@@ -1,19 +1,19 @@
-"""Tests for prostor_cli.relaunch — unified self-relaunch utility."""
+"""Tests for hermes_cli.relaunch — unified self-relaunch utility."""
 
 import sys
 
 import pytest
 
-from prostor_cli import relaunch as relaunch_mod
+from hermes_cli import relaunch as relaunch_mod
 
 
-class TestResolveProstorBin:
+class TestResolveHermesBin:
     def test_prefers_absolute_argv0_when_executable(self, monkeypatch):
         fake = "/nix/store/abc/bin/prostor"
         monkeypatch.setattr(sys, "argv", [fake])
         monkeypatch.setattr(relaunch_mod.os.path, "isfile", lambda p: p == fake)
         monkeypatch.setattr(relaunch_mod.os, "access", lambda p, mode: p == fake)
-        assert relaunch_mod.resolve_prostor_bin() == fake
+        assert relaunch_mod.resolve_hermes_bin() == fake
 
     def test_resolves_relative_argv0(self, monkeypatch, tmp_path):
         fake = tmp_path / "prostor"
@@ -23,19 +23,19 @@ class TestResolveProstorBin:
         monkeypatch.chdir(tmp_path)
         # Ensure we don't accidentally match a real 'prostor' on PATH
         monkeypatch.setattr(relaunch_mod.shutil, "which", lambda _name: None)
-        assert relaunch_mod.resolve_prostor_bin() == str(fake)
+        assert relaunch_mod.resolve_hermes_bin() == str(fake)
 
     def test_falls_back_to_path_which(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["-c"])  # not a real path
         monkeypatch.setattr(
             relaunch_mod.shutil, "which", lambda name: "/usr/bin/prostor" if name == "prostor" else None
         )
-        assert relaunch_mod.resolve_prostor_bin() == "/usr/bin/prostor"
+        assert relaunch_mod.resolve_hermes_bin() == "/usr/bin/prostor"
 
     def test_returns_none_when_unresolvable(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["-c"])
         monkeypatch.setattr(relaunch_mod.shutil, "which", lambda _name: None)
-        assert relaunch_mod.resolve_prostor_bin() is None
+        assert relaunch_mod.resolve_hermes_bin() is None
 
 
 class TestExtractInheritedFlags:
@@ -105,17 +105,17 @@ class TestInheritedFlagTable:
 
 class TestBuildRelaunchArgv:
     def test_uses_bin_when_available(self, monkeypatch):
-        monkeypatch.setattr(relaunch_mod, "resolve_prostor_bin", lambda: "/usr/bin/prostor")
+        monkeypatch.setattr(relaunch_mod, "resolve_hermes_bin", lambda: "/usr/bin/prostor")
         argv = relaunch_mod.build_relaunch_argv(["--resume", "abc"])
         assert argv[0] == "/usr/bin/prostor"
 
     def test_falls_back_to_python_module(self, monkeypatch):
-        monkeypatch.setattr(relaunch_mod, "resolve_prostor_bin", lambda: None)
+        monkeypatch.setattr(relaunch_mod, "resolve_hermes_bin", lambda: None)
         argv = relaunch_mod.build_relaunch_argv(["--resume", "abc"])
-        assert argv == [sys.executable, "-m", "prostor_cli.main", "--resume", "abc"]
+        assert argv == [sys.executable, "-m", "hermes_cli.main", "--resume", "abc"]
 
     def test_preserves_inherited_flags(self, monkeypatch):
-        monkeypatch.setattr(relaunch_mod, "resolve_prostor_bin", lambda: "/usr/bin/prostor")
+        monkeypatch.setattr(relaunch_mod, "resolve_hermes_bin", lambda: "/usr/bin/prostor")
         original = ["--tui", "--dev", "--profile", "work", "sessions", "browse"]
         argv = relaunch_mod.build_relaunch_argv(["--resume", "abc"], original_argv=original)
         assert "--tui" in argv
@@ -129,7 +129,7 @@ class TestBuildRelaunchArgv:
         assert "browse" not in argv
 
     def test_can_disable_preserve(self, monkeypatch):
-        monkeypatch.setattr(relaunch_mod, "resolve_prostor_bin", lambda: "/usr/bin/prostor")
+        monkeypatch.setattr(relaunch_mod, "resolve_hermes_bin", lambda: "/usr/bin/prostor")
         original = ["--tui", "chat"]
         argv = relaunch_mod.build_relaunch_argv(
             ["--resume", "abc"], preserve_inherited=False, original_argv=original
@@ -147,7 +147,7 @@ class TestRelaunch:
             raise SystemExit(0)
 
         monkeypatch.setattr(relaunch_mod.os, "execvp", fake_execvp)
-        monkeypatch.setattr(relaunch_mod, "resolve_prostor_bin", lambda: "/usr/bin/prostor")
+        monkeypatch.setattr(relaunch_mod, "resolve_hermes_bin", lambda: "/usr/bin/prostor")
 
         with pytest.raises(SystemExit):
             relaunch_mod.relaunch(["--resume", "abc"])
@@ -160,7 +160,7 @@ class TestRelaunch:
         prostor).  relaunch() must detect win32 and use subprocess.run +
         sys.exit instead."""
         monkeypatch.setattr(relaunch_mod.sys, "platform", "win32")
-        monkeypatch.setattr(relaunch_mod, "resolve_prostor_bin", lambda: r"C:\Users\test\prostor.exe")
+        monkeypatch.setattr(relaunch_mod, "resolve_hermes_bin", lambda: r"C:\Users\test\prostor.exe")
 
         import subprocess as _subprocess
 
@@ -193,7 +193,7 @@ class TestRelaunch:
     def test_windows_propagates_child_exit_code(self, monkeypatch):
         """A non-zero exit from the child should flow through to sys.exit."""
         monkeypatch.setattr(relaunch_mod.sys, "platform", "win32")
-        monkeypatch.setattr(relaunch_mod, "resolve_prostor_bin", lambda: r"C:\prostor.exe")
+        monkeypatch.setattr(relaunch_mod, "resolve_hermes_bin", lambda: r"C:\prostor.exe")
 
         import subprocess as _subprocess
 
@@ -214,7 +214,7 @@ class TestRelaunch:
         we must NOT let it bubble up as a cryptic traceback — print a
         user-readable hint and sys.exit(1)."""
         monkeypatch.setattr(relaunch_mod.sys, "platform", "win32")
-        monkeypatch.setattr(relaunch_mod, "resolve_prostor_bin", lambda: r"C:\missing.exe")
+        monkeypatch.setattr(relaunch_mod, "resolve_hermes_bin", lambda: r"C:\missing.exe")
 
         import subprocess as _subprocess
 
@@ -232,8 +232,8 @@ class TestRelaunch:
         assert "open a new terminal" in err.lower() or "path" in err.lower()
 
 
-class TestResolveProstorBinWindowsPyGuard:
-    """On Windows, resolve_prostor_bin MUST NOT return a .py path.
+class TestResolveHermesBinWindowsPyGuard:
+    """On Windows, resolve_hermes_bin MUST NOT return a .py path.
     os.access(x, os.X_OK) returns True for .py files on Windows because
     PATHEXT includes .py when the Python launcher is installed — but
     subprocess.run can't actually exec a .py directly, so the relaunch
@@ -256,7 +256,7 @@ class TestResolveProstorBinWindowsPyGuard:
             lambda name: r"C:\venv\Scripts\prostor.exe" if name == "prostor" else None,
         )
 
-        bin_path = relaunch_mod.resolve_prostor_bin()
+        bin_path = relaunch_mod.resolve_hermes_bin()
         # Must NOT be the .py — must be the prostor.exe PATH entry.
         assert bin_path == r"C:\venv\Scripts\prostor.exe"
 
@@ -270,12 +270,12 @@ class TestResolveProstorBinWindowsPyGuard:
         script.write_text("#!/usr/bin/env python3\n")
         script.chmod(0o755)
         monkeypatch.setattr(relaunch_mod.sys, "argv", [str(script), "chat"])
-        assert relaunch_mod.resolve_prostor_bin() == str(script)
+        assert relaunch_mod.resolve_hermes_bin() == str(script)
 
-    def test_windows_py_argv0_with_no_prostor_on_path_returns_none(self, monkeypatch, tmp_path):
+    def test_windows_py_argv0_with_no_hermes_on_path_returns_none(self, monkeypatch, tmp_path):
         """Bulletproof fallback: if argv0 is .py on Windows AND prostor.exe
         isn't on PATH, return None so the caller falls back to
-        python -m prostor_cli.main."""
+        python -m hermes_cli.main."""
         script = tmp_path / "main.py"
         script.write_text("# stub")
 
@@ -283,4 +283,4 @@ class TestResolveProstorBinWindowsPyGuard:
         monkeypatch.setattr(relaunch_mod.sys, "argv", [str(script), "chat"])
         monkeypatch.setattr(relaunch_mod.shutil, "which", lambda name: None)
 
-        assert relaunch_mod.resolve_prostor_bin() is None
+        assert relaunch_mod.resolve_hermes_bin() is None

@@ -15,17 +15,17 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from prostor_cli.config import (
+from hermes_cli.config import (
     cfg_get,
     load_config,
     save_config,
     get_env_value,
     save_env_value,
-    get_prostor_home,  # noqa: F401 — used by test mocks
+    get_hermes_home,  # noqa: F401 — used by test mocks
 )
-from prostor_cli.colors import Colors, color
-from prostor_constants import display_prostor_home
-from prostor_cli.mcp_security import validate_mcp_server_entry
+from hermes_cli.colors import Colors, color
+from hermes_constants import display_hermes_home
+from hermes_cli.mcp_security import validate_mcp_server_entry
 from tools.mcp_tool import _ENV_VAR_PATTERN
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ def _confirm(question: str, default: bool = True) -> bool:
 
 
 def _prompt(question: str, *, password: bool = False, default: str = "") -> str:
-    from prostor_cli.cli_output import prompt as _shared_prompt
+    from hermes_cli.cli_output import prompt as _shared_prompt
     return _shared_prompt(question, default=default, password=password)
 
 
@@ -206,8 +206,8 @@ def _resolve_mcp_server_config(config: dict) -> dict:
     from tools.mcp_tool import _interpolate_env_vars
 
     try:
-        from prostor_cli.env_loader import load_prostor_dotenv
-        load_prostor_dotenv()
+        from hermes_cli.env_loader import load_hermes_dotenv
+        load_hermes_dotenv()
     except Exception:  # pragma: no cover — defensive
         pass
     return _interpolate_env_vars(config)
@@ -270,8 +270,8 @@ def _oauth_tokens_present(name: str) -> bool:
     initialize/tools-list without auth (so no token was ever acquired).
     """
     try:
-        from tools.mcp_oauth import ProstorTokenStorage
-        return ProstorTokenStorage(name).has_cached_tokens()
+        from tools.mcp_oauth import HermesTokenStorage
+        return HermesTokenStorage(name).has_cached_tokens()
     except Exception as exc:  # pragma: no cover — defensive
         logger.debug("Could not check OAuth tokens for '%s': %s", name, exc)
         # Be permissive on unexpected errors: don't block a real success.
@@ -302,7 +302,7 @@ def cmd_mcp_add(args):
     url = getattr(args, "url", None)
     # Read from `mcp_command` (set by --command via explicit dest) — see
     # mcp_add_p.add_argument("--command", dest="mcp_command", ...) in
-    # prostor_cli/main.py for why the dest is renamed.
+    # hermes_cli/main.py for why the dest is renamed.
     command = getattr(args, "mcp_command", None)
     cmd_args = getattr(args, "args", None) or []
     if cmd_args and cmd_args[0] == "--":
@@ -407,7 +407,7 @@ def cmd_mcp_add(args):
                     if api_key:
                         api_key = _strip_bearer_prefix(api_key)
                         save_env_value(env_key, api_key)
-                        _success(f"Saved to {display_prostor_home()}/.env as {env_key}")
+                        _success(f"Saved to {display_hermes_home()}/.env as {env_key}")
 
                 # Set header with env var interpolation
                 if api_key or existing_key:
@@ -464,7 +464,7 @@ def cmd_mcp_add(args):
 
     if choice in {"s", "select"}:
         # Interactive tool selection
-        from prostor_cli.curses_ui import curses_checklist
+        from hermes_cli.curses_ui import curses_checklist
 
         labels = [f"{t[0]}  —  {t[1]}" for t in tools]
         pre_selected = set(range(len(tools)))
@@ -494,7 +494,7 @@ def cmd_mcp_add(args):
     server_config["enabled"] = True
     if _save_mcp_server(name, server_config):
         print()
-        _success(f"Saved '{name}' to {display_prostor_home()}/config.yaml ({tool_count}/{total} tools enabled)")
+        _success(f"Saved '{name}' to {display_hermes_home()}/config.yaml ({tool_count}/{total} tools enabled)")
         _info("Start a new session to use these tools.")
 
 
@@ -814,7 +814,7 @@ def cmd_mcp_configure(args):
     print()
 
     # Interactive checklist
-    from prostor_cli.curses_ui import curses_checklist
+    from hermes_cli.curses_ui import curses_checklist
 
     labels = [f"{t[0]}  —  {t[1]}" for t in all_tools]
 
@@ -863,15 +863,15 @@ def mcp_command(args):
     # Catalog subcommands live in mcp_picker / mcp_catalog. Import lazily so
     # the original `mcp_config` module stays import-cheap.
     if action == "picker":
-        from prostor_cli.mcp_picker import run_picker
+        from hermes_cli.mcp_picker import run_picker
         run_picker()
         return
     if action == "catalog":
-        from prostor_cli.mcp_picker import show_catalog
+        from hermes_cli.mcp_picker import show_catalog
         show_catalog()
         return
     if action == "install":
-        from prostor_cli.mcp_picker import install_by_name
+        from hermes_cli.mcp_picker import install_by_name
         import sys as _sys
         rc = install_by_name(getattr(args, "identifier", "") or "")
         if rc:
@@ -896,7 +896,7 @@ def mcp_command(args):
     else:
         # No subcommand — drop the user into the catalog picker. This is the
         # "try enabling and it flows you into setup" UX matching `prostor plugin`.
-        from prostor_cli.mcp_picker import run_picker
+        from hermes_cli.mcp_picker import run_picker
         run_picker()
         print(color("  Commands:", Colors.CYAN))
         _info("prostor mcp                                    Open the catalog picker (default)")

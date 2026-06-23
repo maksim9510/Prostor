@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-import prostor_cli.banner as banner
+import hermes_cli.banner as banner
 import model_tools
 import tools.mcp_tool
 
@@ -74,12 +74,12 @@ def test_build_welcome_banner_title_is_hyperlinked_to_release():
     """Panel title (version label) is wrapped in an OSC-8 hyperlink to the GitHub release."""
     import io
     from unittest.mock import patch as _patch
-    import prostor_cli.banner as _banner
+    import hermes_cli.banner as _banner
     import model_tools as _mt
     import tools.mcp_tool as _mcp
 
     _banner._latest_release_cache = None
-    tag_url = ("v2026.4.23", "https://github.com/maksim9510/Prostor/releases/tag/v2026.4.23")
+    tag_url = ("v2026.4.23", "https://github.com/NousResearch/prostor-agent/releases/tag/v2026.4.23")
 
     buf = io.StringIO()
     with (
@@ -109,7 +109,7 @@ def test_build_welcome_banner_title_falls_back_when_no_tag():
     """Without a resolvable tag, the panel title renders as plain text (no hyperlink escape)."""
     import io
     from unittest.mock import patch as _patch
-    import prostor_cli.banner as _banner
+    import hermes_cli.banner as _banner
     import model_tools as _mt
     import tools.mcp_tool as _mcp
 
@@ -200,3 +200,81 @@ def test_build_welcome_banner_configured_mcp_is_not_failed():
     assert "docker-profile" in output
     assert "configured" in output
     assert "failed" not in output
+
+
+def test_banner_hides_toolsets_not_enabled_for_platform():
+    """A globally-registered toolset that isn't enabled for this agent (e.g.
+    discord / feishu on a CLI session) must NOT appear in 'Available Tools'.
+
+    Regression: check_tool_availability() walks the global registry, so the
+    banner used to merge in every unavailable toolset regardless of whether it
+    was part of this platform's set. On a Blank Slate CLI (file + terminal only)
+    that surfaced discord/feishu tools the agent was never given.
+    """
+    with (
+        patch.object(
+            model_tools,
+            "check_tool_availability",
+            return_value=(
+                ["file", "terminal"],
+                [
+                    {"name": "discord", "tools": ["discord_fetch_messages"]},
+                    {"name": "feishu_doc", "tools": ["feishu_doc_read"]},
+                ],
+            ),
+        ),
+        patch.object(banner, "get_available_skills", return_value={}),
+        patch.object(banner, "get_update_result", return_value=None),
+        patch.object(tools.mcp_tool, "get_mcp_status", return_value=[]),
+    ):
+        console = Console(record=True, force_terminal=False, color_system=None, width=160)
+        banner.build_welcome_banner(
+            console=console,
+            model="anthropic/test-model",
+            cwd="/tmp/project",
+            tools=[{"function": {"name": "read_file"}}],
+            enabled_toolsets=["file", "terminal"],
+            get_toolset_for_tool=lambda n: "file",
+        )
+
+    output = console.export_text()
+    assert "discord" not in output
+    assert "feishu" not in output
+
+
+def test_banner_skills_section_reflects_disabled_skills_toolset():
+    """When the `skills` toolset is disabled (Blank Slate), the banner must not
+    advertise the on-disk skill catalog — the agent can't load any of them."""
+    fake_skills = {"creative": ["ascii-art", "p5js"], "devops": ["bug-triage-work"]}
+
+    # skills toolset DISABLED -> catalog hidden, "disabled" message shown
+    with (
+        patch.object(model_tools, "check_tool_availability", return_value=(["file", "terminal"], [])),
+        patch.object(banner, "get_available_skills", return_value=fake_skills),
+        patch.object(banner, "get_update_result", return_value=None),
+        patch.object(tools.mcp_tool, "get_mcp_status", return_value=[]),
+    ):
+        console = Console(record=True, force_terminal=False, color_system=None, width=160)
+        banner.build_welcome_banner(
+            console=console, model="m", cwd="/tmp", tools=[{"function": {"name": "read_file"}}],
+            enabled_toolsets=["file", "terminal"], get_toolset_for_tool=lambda n: "file",
+        )
+    out_disabled = console.export_text()
+    assert "Skills toolset disabled" in out_disabled
+    assert "ascii-art" not in out_disabled
+
+    # skills toolset ENABLED -> catalog listed as before
+    with (
+        patch.object(model_tools, "check_tool_availability", return_value=(["file", "terminal", "skills"], [])),
+        patch.object(banner, "get_available_skills", return_value=fake_skills),
+        patch.object(banner, "get_update_result", return_value=None),
+        patch.object(tools.mcp_tool, "get_mcp_status", return_value=[]),
+    ):
+        console = Console(record=True, force_terminal=False, color_system=None, width=160)
+        banner.build_welcome_banner(
+            console=console, model="m", cwd="/tmp", tools=[{"function": {"name": "read_file"}}],
+            enabled_toolsets=["file", "terminal", "skills"], get_toolset_for_tool=lambda n: "file",
+        )
+    out_enabled = console.export_text()
+    assert "Skills toolset disabled" not in out_enabled
+    assert "ascii-art" in out_enabled

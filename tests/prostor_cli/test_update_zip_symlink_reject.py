@@ -41,7 +41,7 @@ def test_update_via_zip_rejects_symlink_member(tmp_path, monkeypatch):
         target="/etc/passwd",
     )
 
-    from prostor_cli.main import _update_via_zip
+    from hermes_cli.main import _update_via_zip
 
     args = type("Args", (), {})()
 
@@ -98,9 +98,9 @@ def test_update_via_zip_accepts_normal_member(tmp_path, monkeypatch, capsys):
     fake_root = tmp_path / "install_dir"
     fake_root.mkdir()
 
-    from prostor_cli import main as prostor_main
+    from hermes_cli import main as hermes_main
 
-    monkeypatch.setattr(prostor_main, "PROJECT_ROOT", fake_root)
+    monkeypatch.setattr(hermes_main, "PROJECT_ROOT", fake_root)
 
     args = type("Args", (), {})()
 
@@ -118,7 +118,7 @@ def test_update_via_zip_accepts_normal_member(tmp_path, monkeypatch, capsys):
          patch("subprocess.check_call"):
         fake_run.return_value = type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
         try:
-            prostor_main._update_via_zip(args)
+            hermes_main._update_via_zip(args)
         except SystemExit:
             pass
 

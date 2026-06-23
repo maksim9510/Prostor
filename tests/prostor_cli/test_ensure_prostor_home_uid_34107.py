@@ -1,13 +1,13 @@
-"""Regression tests for #34107 — Docker UID/GID handling in ensure_prostor_home.
+"""Regression tests for #34107 — Docker UID/GID handling in ensure_hermes_home.
 
 When Prostor runs in Docker with ``PROSTOR_UID=1000`` / ``PROSTOR_GID=911``,
 the entrypoint chowns the top-level ``PROSTOR_HOME`` once at startup. But
-subdirectories created at runtime by ``ensure_prostor_home()`` — especially
+subdirectories created at runtime by ``ensure_hermes_home()`` — especially
 for profile namespaces under ``profiles/<name>/`` spawned by kanban
 workers — were landing as ``root:root`` and blocking subsequent
 uid-mapped worker invocations with ``PermissionError [Errno 13]``.
 
-The fix is a ``_chown_to_prostor_uid`` helper that reads the env vars and
+The fix is a ``_chown_to_hermes_uid`` helper that reads the env vars and
 applies chown after ``mkdir``, invoked from ``_secure_dir`` (which already
 runs after every directory creation in the home-init path).
 """
@@ -22,56 +22,56 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# _resolve_prostor_uid_gid
+# _resolve_hermes_uid_gid
 # ---------------------------------------------------------------------------
 
 
-class TestResolveProstorUidGid:
+class TestResolveHermesUidGid:
     def test_returns_parsed_values_when_both_set(self, monkeypatch):
         monkeypatch.setenv("PROSTOR_UID", "1000")
         monkeypatch.setenv("PROSTOR_GID", "911")
-        from prostor_cli.config import _resolve_prostor_uid_gid
-        uid, gid = _resolve_prostor_uid_gid()
+        from hermes_cli.config import _resolve_hermes_uid_gid
+        uid, gid = _resolve_hermes_uid_gid()
         assert uid == 1000
         assert gid == 911
 
     def test_returns_none_when_unset(self, monkeypatch):
         monkeypatch.delenv("PROSTOR_UID", raising=False)
         monkeypatch.delenv("PROSTOR_GID", raising=False)
-        from prostor_cli.config import _resolve_prostor_uid_gid
-        uid, gid = _resolve_prostor_uid_gid()
+        from hermes_cli.config import _resolve_hermes_uid_gid
+        uid, gid = _resolve_hermes_uid_gid()
         assert uid is None
         assert gid is None
 
     def test_uid_only_returns_gid_none(self, monkeypatch):
         monkeypatch.setenv("PROSTOR_UID", "1000")
         monkeypatch.delenv("PROSTOR_GID", raising=False)
-        from prostor_cli.config import _resolve_prostor_uid_gid
-        uid, gid = _resolve_prostor_uid_gid()
+        from hermes_cli.config import _resolve_hermes_uid_gid
+        uid, gid = _resolve_hermes_uid_gid()
         assert uid == 1000
         assert gid is None
 
     def test_invalid_uid_returns_none_for_that_field(self, monkeypatch):
         monkeypatch.setenv("PROSTOR_UID", "not-a-number")
         monkeypatch.setenv("PROSTOR_GID", "911")
-        from prostor_cli.config import _resolve_prostor_uid_gid
-        uid, gid = _resolve_prostor_uid_gid()
+        from hermes_cli.config import _resolve_hermes_uid_gid
+        uid, gid = _resolve_hermes_uid_gid()
         assert uid is None
         assert gid == 911
 
     def test_empty_string_treated_as_unset(self, monkeypatch):
         monkeypatch.setenv("PROSTOR_UID", "")
         monkeypatch.setenv("PROSTOR_GID", "")
-        from prostor_cli.config import _resolve_prostor_uid_gid
-        uid, gid = _resolve_prostor_uid_gid()
+        from hermes_cli.config import _resolve_hermes_uid_gid
+        uid, gid = _resolve_hermes_uid_gid()
         assert uid is None
         assert gid is None
 
     def test_whitespace_padded_values(self, monkeypatch):
         monkeypatch.setenv("PROSTOR_UID", " 1000 ")
         monkeypatch.setenv("PROSTOR_GID", "  911")
-        from prostor_cli.config import _resolve_prostor_uid_gid
-        uid, gid = _resolve_prostor_uid_gid()
+        from hermes_cli.config import _resolve_hermes_uid_gid
+        uid, gid = _resolve_hermes_uid_gid()
         assert uid == 1000
         assert gid == 911
 
@@ -79,28 +79,28 @@ class TestResolveProstorUidGid:
     def test_windows_returns_none_none(self, monkeypatch):
         monkeypatch.setenv("PROSTOR_UID", "1000")
         monkeypatch.setenv("PROSTOR_GID", "911")
-        from prostor_cli.config import _resolve_prostor_uid_gid
-        uid, gid = _resolve_prostor_uid_gid()
+        from hermes_cli.config import _resolve_hermes_uid_gid
+        uid, gid = _resolve_hermes_uid_gid()
         assert uid is None
         assert gid is None
 
 
 # ---------------------------------------------------------------------------
-# _chown_to_prostor_uid
+# _chown_to_hermes_uid
 # ---------------------------------------------------------------------------
 
 
-class TestChownToProstorUid:
+class TestChownToHermesUid:
     def test_calls_os_chown_when_both_set(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_UID", "1000")
         monkeypatch.setenv("PROSTOR_GID", "911")
-        from prostor_cli import config as cfg
+        from hermes_cli import config as cfg
 
         d = tmp_path / "subdir"
         d.mkdir()
 
         with patch.object(cfg.os, "chown") as mock_chown:
-            cfg._chown_to_prostor_uid(d)
+            cfg._chown_to_hermes_uid(d)
         mock_chown.assert_called_once_with(d, 1000, 911)
 
     def test_uses_minus_one_for_missing_field(self, tmp_path, monkeypatch):
@@ -108,25 +108,25 @@ class TestChownToProstorUid:
         os.chown which means 'do not change' on POSIX."""
         monkeypatch.setenv("PROSTOR_UID", "1000")
         monkeypatch.delenv("PROSTOR_GID", raising=False)
-        from prostor_cli import config as cfg
+        from hermes_cli import config as cfg
 
         d = tmp_path / "subdir"
         d.mkdir()
 
         with patch.object(cfg.os, "chown") as mock_chown:
-            cfg._chown_to_prostor_uid(d)
+            cfg._chown_to_hermes_uid(d)
         mock_chown.assert_called_once_with(d, 1000, -1)
 
     def test_no_op_when_neither_set(self, tmp_path, monkeypatch):
         monkeypatch.delenv("PROSTOR_UID", raising=False)
         monkeypatch.delenv("PROSTOR_GID", raising=False)
-        from prostor_cli import config as cfg
+        from hermes_cli import config as cfg
 
         d = tmp_path / "subdir"
         d.mkdir()
 
         with patch.object(cfg.os, "chown") as mock_chown:
-            cfg._chown_to_prostor_uid(d)
+            cfg._chown_to_hermes_uid(d)
         mock_chown.assert_not_called()
 
     def test_eperm_is_silently_swallowed(self, tmp_path, monkeypatch):
@@ -136,7 +136,7 @@ class TestChownToProstorUid:
         user anyway."""
         monkeypatch.setenv("PROSTOR_UID", "1000")
         monkeypatch.setenv("PROSTOR_GID", "911")
-        from prostor_cli import config as cfg
+        from hermes_cli import config as cfg
 
         d = tmp_path / "subdir"
         d.mkdir()
@@ -146,20 +146,20 @@ class TestChownToProstorUid:
 
         with patch.object(cfg.os, "chown", side_effect=_raises_eperm):
             # Must not raise — the catch is non-fatal.
-            cfg._chown_to_prostor_uid(d)
+            cfg._chown_to_hermes_uid(d)
 
     def test_attributeerror_swallowed_for_windows_compat(self, tmp_path, monkeypatch):
         """os.chown doesn't exist on Windows. Catching AttributeError keeps
         the helper portable."""
         monkeypatch.setenv("PROSTOR_UID", "1000")
         monkeypatch.setenv("PROSTOR_GID", "911")
-        from prostor_cli import config as cfg
+        from hermes_cli import config as cfg
 
         d = tmp_path / "subdir"
         d.mkdir()
 
         with patch.object(cfg.os, "chown", side_effect=AttributeError("no chown on this platform")):
-            cfg._chown_to_prostor_uid(d)  # must not raise
+            cfg._chown_to_hermes_uid(d)  # must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ class TestSecureDirChown:
     def test_secure_dir_invokes_chown_when_env_set(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_UID", "1000")
         monkeypatch.setenv("PROSTOR_GID", "911")
-        from prostor_cli import config as cfg
+        from hermes_cli import config as cfg
 
         d = tmp_path / "subdir"
         d.mkdir()
@@ -185,7 +185,7 @@ class TestSecureDirChown:
     def test_secure_dir_no_chown_when_env_unset(self, tmp_path, monkeypatch):
         monkeypatch.delenv("PROSTOR_UID", raising=False)
         monkeypatch.delenv("PROSTOR_GID", raising=False)
-        from prostor_cli import config as cfg
+        from hermes_cli import config as cfg
 
         d = tmp_path / "subdir"
         d.mkdir()

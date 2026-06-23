@@ -1,6 +1,6 @@
 """``prostor login`` subcommand parser.
 
-Extracted verbatim from ``prostor_cli/main.py:main()`` (god-file Phase 2).
+Extracted verbatim from ``hermes_cli/main.py:main()`` (god-file Phase 2).
 Handler injected to avoid importing ``main``.
 """
 
@@ -13,7 +13,7 @@ def build_login_parser(subparsers, *, cmd_login: Callable) -> None:
     """Attach the deprecated ``login`` subcommand to ``subparsers``.
 
     ``prostor login`` was removed in favor of ``prostor auth`` / ``prostor model``
-    (the runtime handler in ``prostor_cli/auth.py::login_command`` just prints a
+    (the runtime handler in ``hermes_cli/auth.py::login_command`` just prints a
     deprecation message and exits).  The subparser is kept registered so that
     old scripts/aliases invoking ``prostor login [--flags]`` still receive the
     actionable deprecation message rather than an argparse ``invalid choice:

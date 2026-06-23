@@ -1,12 +1,12 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from prostor_cli.config import (
+from hermes_cli.config import (
     format_managed_message,
     get_managed_system,
     recommended_update_command,
 )
-from prostor_cli.main import cmd_update
+from hermes_cli.main import cmd_update
 from tools.skills_hub import OptionalSkillSource
 
 
@@ -26,7 +26,7 @@ def test_format_managed_message_homebrew(monkeypatch):
     assert "brew upgrade prostor-agent" in message
 
 
-def test_recommended_update_command_defaults_to_prostor_update(monkeypatch):
+def test_recommended_update_command_defaults_to_hermes_update(monkeypatch):
     monkeypatch.delenv("PROSTOR_MANAGED", raising=False)
 
     # Also short-circuit the .managed marker path — CI runners may have an
@@ -34,15 +34,15 @@ def test_recommended_update_command_defaults_to_prostor_update(monkeypatch):
     # somewhere with that marker, which would make get_managed_update_command()
     # return "Update your Nix flake input ..." instead of falling through to
     # detect_install_method().
-    with patch("prostor_cli.config.get_managed_update_command", return_value=None), \
-         patch("prostor_cli.config.detect_install_method", return_value="git"):
+    with patch("hermes_cli.config.get_managed_update_command", return_value=None), \
+         patch("hermes_cli.config.detect_install_method", return_value="git"):
         assert recommended_update_command() == "prostor update"
 
 
 def test_cmd_update_blocks_managed_homebrew(monkeypatch, capsys):
     monkeypatch.setenv("PROSTOR_MANAGED", "homebrew")
 
-    with patch("prostor_cli.main.subprocess.run") as mock_run:
+    with patch("hermes_cli.main.subprocess.run") as mock_run:
         cmd_update(SimpleNamespace())
 
     assert not mock_run.called

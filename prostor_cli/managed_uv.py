@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def managed_uv_path() -> Path:
     Windows.  The directory may not exist yet — callers should use
     ``ensure_uv()`` to bootstrap it.
     """
-    home = get_prostor_home()
+    home = get_hermes_home()
     if platform.system() == "Windows":
         return home / "bin" / "uv.exe"
     return home / "bin" / "uv"
@@ -56,7 +56,7 @@ class _UvResult(str):
 
     ``ensure_uv()``'s arity has flipped between a single path string and a
     ``(path, fresh_bootstrap)`` tuple across releases. ``prostor update`` runs
-    the call site from the *old*, already-imported ``prostor_cli.main`` against
+    the call site from the *old*, already-imported ``hermes_cli.main`` against
     this *freshly pulled* module, so the two can disagree on how many values
     ``ensure_uv()`` returns. An install parked on a 2-tuple release runs
     ``uv_bin, fresh_bootstrap = ensure_uv()`` against the single-value module

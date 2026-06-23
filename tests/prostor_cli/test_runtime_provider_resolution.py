@@ -1,6 +1,23 @@
+import base64
+import json
+import time
+
 import pytest
 
-from prostor_cli import runtime_provider as rp
+from hermes_cli import runtime_provider as rp
+
+
+def _fake_invoke_jwt(ttl_seconds=3600):
+    header = base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(
+        json.dumps(
+            {
+                "scope": "inference:invoke",
+                "exp": int(time.time() + ttl_seconds),
+            }
+        ).encode()
+    ).decode().rstrip("=")
+    return f"{header}.{payload}.sig"
 
 
 def test_resolve_runtime_provider_uses_credential_pool(monkeypatch):
@@ -209,7 +226,7 @@ def test_resolve_provider_alias_qwen(monkeypatch):
 
 def test_qwen_oauth_auto_fallthrough_on_auth_failure(monkeypatch):
     """When requested_provider is 'auto' and Qwen creds fail, fall through."""
-    from prostor_cli.auth import AuthError
+    from hermes_cli.auth import AuthError
 
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "qwen-oauth")
     monkeypatch.setattr(
@@ -977,6 +994,49 @@ def test_named_custom_provider_does_not_shadow_builtin_provider(monkeypatch):
     assert resolved["requested_provider"] == "nous"
 
 
+def test_nous_pool_entry_refreshes_expired_agent_key(monkeypatch):
+    stale_token = _fake_invoke_jwt(ttl_seconds=-60)
+    fresh_token = _fake_invoke_jwt(ttl_seconds=3600)
+
+    class _Entry:
+        def __init__(self, token):
+            self.access_token = "pool-access-token"
+            self.agent_key = token
+            self.agent_key_expires_at = "2099-01-01T00:00:00+00:00"
+            self.scope = "inference:invoke"
+            self.base_url = "https://inference.pool.example/v1"
+            self.source = "manual:nous"
+
+        @property
+        def runtime_api_key(self):
+            return self.agent_key
+
+    class _Pool:
+        refreshed = False
+
+        def has_credentials(self):
+            return True
+
+        def select(self):
+            return _Entry(stale_token)
+
+        def try_refresh_current(self):
+            self.refreshed = True
+            return _Entry(fresh_token)
+
+    pool = _Pool()
+    monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "nous")
+    monkeypatch.setattr(rp, "load_pool", lambda provider: pool)
+    monkeypatch.setattr(rp, "_get_model_config", lambda: {"provider": "nous"})
+
+    resolved = rp.resolve_runtime_provider(requested="nous")
+
+    assert pool.refreshed is True
+    assert resolved["provider"] == "nous"
+    assert resolved["api_key"] == fresh_token
+    assert resolved["base_url"] == "https://inference.pool.example/v1"
+
+
 def test_named_custom_provider_wins_over_builtin_alias(monkeypatch):
     """A custom_providers entry named after a built-in *alias* (not a canonical
     provider name) must win over the built-in.  Regression guard for #15743:
@@ -1472,13 +1532,13 @@ def test_named_custom_provider_anthropic_api_mode(monkeypatch):
 
 def test_resolve_provider_custom_returns_custom():
     """resolve_provider('custom') must return 'custom', not 'openrouter'."""
-    from prostor_cli.auth import resolve_provider
+    from hermes_cli.auth import resolve_provider
     assert resolve_provider("custom") == "custom"
 
 
 def test_resolve_provider_openrouter_unchanged():
     """resolve_provider('openrouter') must still return 'openrouter'."""
-    from prostor_cli.auth import resolve_provider
+    from hermes_cli.auth import resolve_provider
     assert resolve_provider("openrouter") == "openrouter"
 
 
@@ -1489,7 +1549,7 @@ def test_resolve_provider_lmstudio_returns_lmstudio(monkeypatch):
     'custom' before the PROVIDER_REGISTRY lookup, bypassing the first-class
     LM Studio provider entirely at runtime.
     """
-    from prostor_cli.auth import resolve_provider
+    from hermes_cli.auth import resolve_provider
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     assert resolve_provider("lmstudio") == "lmstudio"
@@ -1548,7 +1608,7 @@ def test_custom_provider_no_key_gets_placeholder(monkeypatch):
 
 def test_auto_detected_nous_auth_failure_falls_through_to_openrouter(monkeypatch):
     """When auto-detect picks Nous but credentials are revoked, fall through to OpenRouter."""
-    from prostor_cli.auth import AuthError
+    from hermes_cli.auth import AuthError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-or-key")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -1579,7 +1639,7 @@ def test_auto_detected_nous_auth_failure_falls_through_to_openrouter(monkeypatch
 
 def test_auto_detected_codex_auth_failure_falls_through_to_openrouter(monkeypatch):
     """When auto-detect picks Codex but credentials are revoked, fall through to OpenRouter."""
-    from prostor_cli.auth import AuthError
+    from hermes_cli.auth import AuthError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-or-key")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -1606,7 +1666,7 @@ def test_auto_detected_codex_auth_failure_falls_through_to_openrouter(monkeypatc
 
 def test_explicit_nous_auth_failure_still_raises(monkeypatch):
     """When user explicitly requests Nous and auth fails, the error should propagate."""
-    from prostor_cli.auth import AuthError
+    from hermes_cli.auth import AuthError
     import pytest
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-or-key")
@@ -1966,7 +2026,7 @@ class TestAzureFoundryResolution:
         monkeypatch.delenv("AZURE_FOUNDRY_API_KEY", raising=False)
         # `get_env_value` reads from ~/.prostor/.env — mock it to return None
         # so the resolver can't find a key there either.
-        import prostor_cli.config as cfg_mod
+        import hermes_cli.config as cfg_mod
         monkeypatch.setattr(cfg_mod, "get_env_value", lambda k: None)
         monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "azure-foundry")
         monkeypatch.setattr(rp, "_get_model_config", lambda: self._make_cfg(
@@ -2242,7 +2302,7 @@ class TestProviderEntryApiKeyEnvAlias:
     use `api_key_env`) resolve correctly."""
 
     def test_snake_case_api_key_env_normalizes_to_key_env(self):
-        from prostor_cli.config import _normalize_custom_provider_entry
+        from hermes_cli.config import _normalize_custom_provider_entry
         entry = {
             "name": "vendor",
             "base_url": "https://api.vendor.example.com/v1",
@@ -2253,7 +2313,7 @@ class TestProviderEntryApiKeyEnvAlias:
         assert normalized.get("key_env") == "MY_VENDOR_KEY"
 
     def test_camel_case_api_key_env_normalizes_to_key_env(self):
-        from prostor_cli.config import _normalize_custom_provider_entry
+        from hermes_cli.config import _normalize_custom_provider_entry
         entry = {
             "name": "vendor",
             "base_url": "https://api.vendor.example.com/v1",
@@ -2265,7 +2325,7 @@ class TestProviderEntryApiKeyEnvAlias:
 
     def test_key_env_wins_if_both_forms_present(self):
         """If both key_env and api_key_env are set, the canonical key_env wins."""
-        from prostor_cli.config import _normalize_custom_provider_entry
+        from hermes_cli.config import _normalize_custom_provider_entry
         entry = {
             "name": "vendor",
             "base_url": "https://api.vendor.example.com/v1",
@@ -2279,11 +2339,11 @@ class TestProviderEntryApiKeyEnvAlias:
     def test_valid_fields_set_lists_key_env(self):
         """The _VALID_CUSTOM_PROVIDER_FIELDS documentation set must include
         key_env so the set stays in sync with what the runtime actually reads."""
-        from prostor_cli.config import _VALID_CUSTOM_PROVIDER_FIELDS
+        from hermes_cli.config import _VALID_CUSTOM_PROVIDER_FIELDS
         assert "key_env" in _VALID_CUSTOM_PROVIDER_FIELDS
 
     def test_extra_body_is_supported_schema(self):
-        from prostor_cli.config import (
+        from hermes_cli.config import (
             _VALID_CUSTOM_PROVIDER_FIELDS,
             _normalize_custom_provider_entry,
         )
@@ -2386,7 +2446,7 @@ class TestTencentTokenhubRuntimeResolution:
 
 def test_minimax_oauth_runtime_returns_anthropic_messages_mode(monkeypatch):
     """resolve_runtime_provider for minimax-oauth must return api_mode='anthropic_messages'."""
-    from prostor_cli.auth import MINIMAX_OAUTH_GLOBAL_INFERENCE
+    from hermes_cli.auth import MINIMAX_OAUTH_GLOBAL_INFERENCE
 
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "minimax-oauth")
     monkeypatch.setattr(rp, "_get_model_config", lambda: {"provider": "minimax-oauth"})
@@ -2409,7 +2469,7 @@ def test_minimax_oauth_runtime_returns_anthropic_messages_mode(monkeypatch):
         "source": "oauth",
     }
 
-    import prostor_cli.auth as auth_mod
+    import hermes_cli.auth as auth_mod
     monkeypatch.setattr(auth_mod, "resolve_minimax_oauth_runtime_credentials",
                         lambda **k: fake_creds)
 
@@ -2422,7 +2482,7 @@ def test_minimax_oauth_runtime_returns_anthropic_messages_mode(monkeypatch):
 
 def test_minimax_oauth_runtime_uses_inference_base_url(monkeypatch):
     """Base URL returned by resolve_runtime_provider should match the OAuth credentials."""
-    from prostor_cli.auth import MINIMAX_OAUTH_CN_INFERENCE
+    from hermes_cli.auth import MINIMAX_OAUTH_CN_INFERENCE
 
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "minimax-oauth")
     monkeypatch.setattr(rp, "_get_model_config", lambda: {"provider": "minimax-oauth"})
@@ -2437,7 +2497,7 @@ def test_minimax_oauth_runtime_uses_inference_base_url(monkeypatch):
         "source": "oauth",
     }
 
-    import prostor_cli.auth as auth_mod
+    import hermes_cli.auth as auth_mod
     monkeypatch.setattr(auth_mod, "resolve_minimax_oauth_runtime_credentials",
                         lambda **k: fake_creds)
 

@@ -23,7 +23,7 @@ def _args(**overrides):
 
 @pytest.fixture
 def main_mod(monkeypatch):
-    import prostor_cli.main as mod
+    import hermes_cli.main as mod
 
     monkeypatch.setattr(mod, "_has_any_provider_configured", lambda: True)
     return mod
@@ -219,12 +219,12 @@ def test_cmd_chat_tui_forwards_chat_flags(monkeypatch, main_mod):
 def test_main_top_level_tui_accepts_toolsets(monkeypatch, main_mod):
     captured = {}
 
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
     monkeypatch.setattr(sys, "argv", ["prostor", "--tui", "--toolsets", "web,terminal"])
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(discover_plugins=lambda: None),
     )
     monkeypatch.setitem(
@@ -360,7 +360,7 @@ def test_termux_fast_cli_launch_oneshot_uses_light_parser(monkeypatch, main_mod)
     )
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.oneshot",
+        "hermes_cli.oneshot",
         types.SimpleNamespace(
             run_oneshot=lambda prompt, **kwargs: captured.update(
                 {"prompt": prompt, **kwargs}
@@ -443,7 +443,7 @@ def test_termux_fast_cli_launch_can_be_disabled(monkeypatch, main_mod):
 
 def test_termux_bundled_skills_stamp_controls_sync(monkeypatch, tmp_path, main_mod):
     monkeypatch.setenv("TERMUX_VERSION", "1")
-    monkeypatch.setattr(main_mod, "get_prostor_home", lambda: tmp_path)
+    monkeypatch.setattr(main_mod, "get_hermes_home", lambda: tmp_path)
     monkeypatch.setattr(main_mod, "_termux_bundled_skills_fingerprint", lambda: "fp1")
 
     assert main_mod._termux_bundled_skills_sync_needed() is True
@@ -458,7 +458,7 @@ def test_termux_skips_bundled_skill_sync_when_stamp_fresh(monkeypatch, tmp_path,
     calls = []
 
     monkeypatch.setenv("TERMUX_VERSION", "1")
-    monkeypatch.setattr(main_mod, "get_prostor_home", lambda: tmp_path)
+    monkeypatch.setattr(main_mod, "get_hermes_home", lambda: tmp_path)
     monkeypatch.setattr(main_mod, "_termux_bundled_skills_fingerprint", lambda: "fp1")
     main_mod._mark_termux_bundled_skills_synced()
     monkeypatch.setitem(
@@ -476,7 +476,7 @@ def test_termux_forced_bundled_skill_sync_runs(monkeypatch, tmp_path, main_mod):
 
     monkeypatch.setenv("TERMUX_VERSION", "1")
     monkeypatch.setenv("PROSTOR_TERMUX_FORCE_SKILLS_SYNC", "1")
-    monkeypatch.setattr(main_mod, "get_prostor_home", lambda: tmp_path)
+    monkeypatch.setattr(main_mod, "get_hermes_home", lambda: tmp_path)
     monkeypatch.setattr(main_mod, "_termux_bundled_skills_fingerprint", lambda: "fp1")
     monkeypatch.setitem(
         sys.modules,
@@ -573,14 +573,14 @@ def test_read_git_revision_fingerprint_unresolved_ref_is_stable(tmp_path, main_m
 def test_main_top_level_oneshot_accepts_toolsets(monkeypatch, main_mod):
     captured = {}
 
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
     monkeypatch.setattr(
         sys, "argv", ["prostor", "-z", "hello", "--toolsets", "web,terminal"]
     )
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(discover_plugins=lambda: None),
     )
     monkeypatch.setitem(
@@ -599,7 +599,7 @@ def test_main_top_level_oneshot_accepts_toolsets(monkeypatch, main_mod):
     )
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.oneshot",
+        "hermes_cli.oneshot",
         types.SimpleNamespace(
             run_oneshot=lambda prompt, **kwargs: captured.update(
                 {"prompt": prompt, **kwargs}
@@ -623,14 +623,14 @@ def test_main_top_level_oneshot_accepts_toolsets(monkeypatch, main_mod):
 def _stub_plugin_discovery(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(discover_plugins=lambda: None),
     )
 
 
 def test_oneshot_rejects_invalid_only_toolsets(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
-    from prostor_cli.oneshot import run_oneshot
+    from hermes_cli.oneshot import run_oneshot
 
     assert run_oneshot("hello", toolsets="nope") == 2
     err = capsys.readouterr().err
@@ -640,7 +640,7 @@ def test_oneshot_rejects_invalid_only_toolsets(monkeypatch, capsys):
 
 def test_oneshot_fails_closed_on_empty_final_response(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
-    import prostor_cli.oneshot as oneshot_mod
+    import hermes_cli.oneshot as oneshot_mod
 
     monkeypatch.setattr(oneshot_mod, "_run_agent", lambda *_args, **_kwargs: "")
 
@@ -652,7 +652,7 @@ def test_oneshot_fails_closed_on_empty_final_response(monkeypatch, capsys):
 
 def test_oneshot_prints_nonempty_final_response(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
-    import prostor_cli.oneshot as oneshot_mod
+    import hermes_cli.oneshot as oneshot_mod
 
     monkeypatch.setattr(oneshot_mod, "_run_agent", lambda *_args, **_kwargs: "done")
 
@@ -664,7 +664,7 @@ def test_oneshot_prints_nonempty_final_response(monkeypatch, capsys):
 
 def test_oneshot_fails_closed_on_agent_exception(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
-    import prostor_cli.oneshot as oneshot_mod
+    import hermes_cli.oneshot as oneshot_mod
 
     def _boom(*_args, **_kwargs):
         raise OSError("not a TTY")
@@ -680,7 +680,7 @@ def test_oneshot_fails_closed_on_agent_exception(monkeypatch, capsys):
 
 def test_oneshot_reraises_keyboard_interrupt(monkeypatch):
     _stub_plugin_discovery(monkeypatch)
-    import prostor_cli.oneshot as oneshot_mod
+    import hermes_cli.oneshot as oneshot_mod
     import pytest as _pytest
 
     def _interrupt(*_args, **_kwargs):
@@ -694,7 +694,7 @@ def test_oneshot_reraises_keyboard_interrupt(monkeypatch):
 
 def test_oneshot_filters_invalid_toolsets_before_redirect(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
-    from prostor_cli.oneshot import _validate_explicit_toolsets
+    from hermes_cli.oneshot import _validate_explicit_toolsets
 
     valid, error = _validate_explicit_toolsets("web,nope")
 
@@ -704,7 +704,7 @@ def test_oneshot_filters_invalid_toolsets_before_redirect(monkeypatch, capsys):
 
 
 def test_oneshot_all_toolsets_means_all_not_configured_cli():
-    from prostor_cli.oneshot import _validate_explicit_toolsets
+    from hermes_cli.oneshot import _validate_explicit_toolsets
 
     valid, error = _validate_explicit_toolsets("all")
 
@@ -714,7 +714,7 @@ def test_oneshot_all_toolsets_means_all_not_configured_cli():
 
 def test_oneshot_all_toolsets_warns_about_ignored_extra_entries(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
-    from prostor_cli.oneshot import _validate_explicit_toolsets
+    from hermes_cli.oneshot import _validate_explicit_toolsets
 
     valid, error = _validate_explicit_toolsets("all,nope")
 
@@ -726,7 +726,7 @@ def test_oneshot_all_toolsets_warns_about_ignored_extra_entries(monkeypatch, cap
 def test_oneshot_accepts_plugin_toolset_after_discovery(monkeypatch):
     import toolsets
 
-    from prostor_cli.oneshot import _validate_explicit_toolsets
+    from hermes_cli.oneshot import _validate_explicit_toolsets
 
     discovered = {"ready": False}
     original_validate = toolsets.validate_toolset
@@ -737,7 +737,7 @@ def test_oneshot_accepts_plugin_toolset_after_discovery(monkeypatch):
     monkeypatch.setattr(toolsets, "validate_toolset", fake_validate)
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.plugins",
+        "hermes_cli.plugins",
         types.SimpleNamespace(
             discover_plugins=lambda: discovered.update({"ready": True})
         ),
@@ -751,9 +751,9 @@ def test_oneshot_accepts_plugin_toolset_after_discovery(monkeypatch):
 
 def test_oneshot_rejects_disabled_mcp_toolset(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
-    from prostor_cli.oneshot import _validate_explicit_toolsets
+    from hermes_cli.oneshot import _validate_explicit_toolsets
 
     monkeypatch.setattr(
         config_mod,
@@ -772,9 +772,9 @@ def test_oneshot_rejects_disabled_mcp_toolset(monkeypatch, capsys):
 
 def test_oneshot_distinguishes_disabled_mcp_from_unknown(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
-    import prostor_cli.config as config_mod
+    import hermes_cli.config as config_mod
 
-    from prostor_cli.oneshot import _validate_explicit_toolsets
+    from hermes_cli.oneshot import _validate_explicit_toolsets
 
     monkeypatch.setattr(
         config_mod,
@@ -793,8 +793,8 @@ def test_oneshot_distinguishes_disabled_mcp_from_unknown(monkeypatch, capsys):
 
 
 def test_oneshot_wires_session_db_for_recall(monkeypatch):
-    """prostor -z bypasses ProstorCLI, but recall still needs SessionDB."""
-    from prostor_cli.oneshot import _run_agent
+    """prostor -z bypasses HermesCLI, but recall still needs SessionDB."""
+    from hermes_cli.oneshot import _run_agent
 
     captured = {}
     sentinel_db = object()
@@ -821,22 +821,22 @@ def test_oneshot_wires_session_db_for_recall(monkeypatch):
         return module
 
     monkeypatch.setitem(sys.modules, "run_agent", mod("run_agent", AIAgent=FakeAgent))
-    monkeypatch.setitem(sys.modules, "prostor_state", mod("prostor_state", SessionDB=FakeSessionDB))
+    monkeypatch.setitem(sys.modules, "hermes_state", mod("hermes_state", SessionDB=FakeSessionDB))
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.config",
-        mod("prostor_cli.config", load_config=lambda: {"model": {"default": "m"}}),
+        "hermes_cli.config",
+        mod("hermes_cli.config", load_config=lambda: {"model": {"default": "m"}}),
     )
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.models",
-        mod("prostor_cli.models", detect_provider_for_model=lambda *_args, **_kwargs: None),
+        "hermes_cli.models",
+        mod("hermes_cli.models", detect_provider_for_model=lambda *_args, **_kwargs: None),
     )
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.runtime_provider",
+        "hermes_cli.runtime_provider",
         mod(
-            "prostor_cli.runtime_provider",
+            "hermes_cli.runtime_provider",
             resolve_runtime_provider=lambda **_kwargs: {
                 "api_key": "k",
                 "base_url": "u",
@@ -848,8 +848,8 @@ def test_oneshot_wires_session_db_for_recall(monkeypatch):
     )
     monkeypatch.setitem(
         sys.modules,
-        "prostor_cli.tools_config",
-        mod("prostor_cli.tools_config", _get_platform_tools=lambda *_args, **_kwargs: {"session_search"}),
+        "hermes_cli.tools_config",
+        mod("hermes_cli.tools_config", _get_platform_tools=lambda *_args, **_kwargs: {"session_search"}),
     )
 
     assert _run_agent("recall this") == "ok"
@@ -897,7 +897,7 @@ def test_launch_tui_exports_model_provider_and_toolsets(monkeypatch, main_mod):
 
 
 def test_launch_tui_applies_terminal_backend_config(
-    monkeypatch, main_mod, _isolate_prostor_home
+    monkeypatch, main_mod, _isolate_hermes_home
 ):
     captured = {}
     config_path = Path(os.environ["PROSTOR_HOME"]) / "config.yaml"
@@ -946,7 +946,7 @@ def test_launch_tui_exit_code_42_relaunches_update(monkeypatch, main_mod):
     )
     monkeypatch.setattr(main_mod.subprocess, "call", lambda *args, **kwargs: 42)
 
-    with patch("prostor_cli.relaunch.relaunch") as mock_relaunch:
+    with patch("hermes_cli.relaunch.relaunch") as mock_relaunch:
         with pytest.raises(SystemExit) as exc:
             main_mod._launch_tui()
 
@@ -996,7 +996,7 @@ def test_launch_tui_sets_resume_env_from_resume_arg(monkeypatch, main_mod):
     assert captured["env"]["PROSTOR_TUI_RESUME"] == "20260518_000000_goodid"
 
 
-def test_make_tui_argv_dev_prebuilds_prostor_ink(monkeypatch, main_mod, tmp_path):
+def test_make_tui_argv_dev_prebuilds_hermes_ink(monkeypatch, main_mod, tmp_path):
     tui_dir = tmp_path / "ui-tui"
     tsx = tui_dir / "node_modules" / ".bin" / "tsx"
     ink_dir = tui_dir / "packages" / "prostor-ink"
@@ -1025,7 +1025,7 @@ def test_make_tui_argv_dev_prebuilds_prostor_ink(monkeypatch, main_mod, tmp_path
 
 
 def test_print_tui_exit_summary_includes_resume_and_token_totals(monkeypatch, capsys):
-    import prostor_cli.main as main_mod
+    import hermes_cli.main as main_mod
 
     class _FakeDB:
         def get_session(self, session_id):
@@ -1046,7 +1046,7 @@ def test_print_tui_exit_summary_includes_resume_and_token_totals(monkeypatch, ca
             return None
 
     monkeypatch.setitem(
-        sys.modules, "prostor_state", types.SimpleNamespace(SessionDB=lambda: _FakeDB())
+        sys.modules, "hermes_state", types.SimpleNamespace(SessionDB=lambda: _FakeDB())
     )
 
     main_mod._print_tui_exit_summary("20260409_000001_abc123")
@@ -1061,7 +1061,7 @@ def test_print_tui_exit_summary_includes_resume_and_token_totals(monkeypatch, ca
 def test_print_tui_exit_summary_prefers_actual_active_session_file(
     monkeypatch, capsys, tmp_path
 ):
-    import prostor_cli.main as main_mod
+    import hermes_cli.main as main_mod
 
     seen = []
 
@@ -1086,7 +1086,7 @@ def test_print_tui_exit_summary_prefers_actual_active_session_file(
     active = tmp_path / "active.json"
     active.write_text('{"session_id":"actual_session"}', encoding="utf-8")
     monkeypatch.setitem(
-        sys.modules, "prostor_state", types.SimpleNamespace(SessionDB=lambda: _FakeDB())
+        sys.modules, "hermes_state", types.SimpleNamespace(SessionDB=lambda: _FakeDB())
     )
 
     main_mod._print_tui_exit_summary("startup_resume", str(active))

@@ -3,9 +3,9 @@
 Two middlewares enforce dashboard auth and previously kept independent
 copies of this list:
 
-* ``prostor_cli.web_server.auth_middleware`` — loopback / ``--insecure``
+* ``hermes_cli.web_server.auth_middleware`` — loopback / ``--insecure``
   mode, gates on the ephemeral ``_SESSION_TOKEN``.
-* ``prostor_cli.dashboard_auth.middleware.gated_auth_middleware`` —
+* ``hermes_cli.dashboard_auth.middleware.gated_auth_middleware`` —
   non-loopback mode, gates on the OAuth session cookie.
 
 When the lists drifted, ``/api/status`` ended up public under the legacy

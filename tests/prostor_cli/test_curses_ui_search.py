@@ -1,4 +1,4 @@
-from prostor_cli.curses_ui import (
+from hermes_cli.curses_ui import (
     _SearchState,
     _filter_indices,
     _handle_active_search_key,

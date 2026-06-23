@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from prostor_cli.config import get_custom_provider_context_length
+from hermes_cli.config import get_custom_provider_context_length
 
 
 class TestGetCustomProviderContextLength:

@@ -19,22 +19,22 @@ import time
 from pathlib import Path
 from typing import Dict
 
-from prostor_constants import display_prostor_home
+from hermes_constants import display_hermes_home
 from utils import atomic_replace
-from prostor_cli.config import cfg_get
+from hermes_cli.config import cfg_get
 
 
 _SUBSCRIPTIONS_FILENAME = "webhook_subscriptions.json"
 _SUBSCRIPTIONS_FILE_MODE = 0o600
 
 
-def _prostor_home() -> Path:
-    from prostor_constants import get_prostor_home
-    return get_prostor_home()
+def _hermes_home() -> Path:
+    from hermes_constants import get_hermes_home
+    return get_hermes_home()
 
 
 def _subscriptions_path() -> Path:
-    return _prostor_home() / _SUBSCRIPTIONS_FILENAME
+    return _hermes_home() / _SUBSCRIPTIONS_FILENAME
 
 
 def _load_subscriptions() -> Dict[str, dict]:
@@ -83,7 +83,7 @@ def _save_subscriptions(subs: Dict[str, dict]) -> None:
 def _get_webhook_config() -> dict:
     """Load webhook platform config. Returns {} if not configured."""
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
         return cfg_get(cfg, "platforms", "webhook", default={})
     except Exception:
@@ -103,7 +103,7 @@ def _get_webhook_base_url() -> str:
 
 
 def _setup_hint() -> str:
-    _dhh = display_prostor_home()
+    _dhh = display_hermes_home()
     return f"""
   Webhook platform is not enabled. To set it up:
 

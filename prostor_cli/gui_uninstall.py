@@ -40,9 +40,9 @@ import shutil
 import sys
 from pathlib import Path
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 
-from prostor_cli.colors import Colors, color
+from hermes_cli.colors import Colors, color
 
 
 def log_info(msg: str):
@@ -62,9 +62,9 @@ def log_warn(msg: str):
 # ---------------------------------------------------------------------------
 
 
-def _agent_root(prostor_home: Path) -> Path:
+def _agent_root(hermes_home: Path) -> Path:
     """The agent checkout root — same layout install.sh / install.ps1 use."""
-    return prostor_home / "prostor-agent"
+    return hermes_home / "prostor-agent"
 
 
 def desktop_userdata_dir() -> Path:
@@ -87,14 +87,14 @@ def desktop_userdata_dir() -> Path:
     return base / "Prostor"
 
 
-def source_built_gui_artifacts(prostor_home: Path) -> "list[Path]":
+def source_built_gui_artifacts(hermes_home: Path) -> "list[Path]":
     """GUI build artifacts produced by ``prostor desktop`` inside the checkout.
 
     These are removable on a GUI uninstall without harming the agent: the
     Python agent runs from ``prostor-agent/`` source + ``venv/`` and never
     needs the Electron build output or node_modules.
     """
-    agent_root = _agent_root(prostor_home)
+    agent_root = _agent_root(hermes_home)
     desktop_dir = agent_root / "apps" / "desktop"
     return [
         desktop_dir / "dist",
@@ -104,7 +104,7 @@ def source_built_gui_artifacts(prostor_home: Path) -> "list[Path]":
         # desktop workspace, ~200MB). The agent does not use any npm package,
         # so this is GUI tooling — safe to drop on a GUI uninstall.
         agent_root / "node_modules",
-        prostor_home / "desktop-build-stamp.json",
+        hermes_home / "desktop-build-stamp.json",
     ]
 
 
@@ -151,26 +151,26 @@ def packaged_gui_app_paths() -> "list[Path]":
     return paths
 
 
-def agent_is_installed(prostor_home: Path) -> bool:
+def agent_is_installed(hermes_home: Path) -> bool:
     """Return True when a usable Python agent install exists under PROSTOR_HOME.
 
     Used by the desktop UI to decide which uninstall options to offer: if the
     agent isn't present (a future "lite" GUI-only client), the "remove agent"
     options are hidden.
     """
-    agent_root = _agent_root(prostor_home)
+    agent_root = _agent_root(hermes_home)
     # A real install has the package source + a venv. Either signal alone is
     # enough — a source checkout without a venv is still "the agent is here".
-    if (agent_root / "prostor_cli").is_dir():
+    if (agent_root / "hermes_cli").is_dir():
         return True
     if (agent_root / "venv").is_dir() or (agent_root / ".venv").is_dir():
         return True
     return False
 
 
-def gui_is_installed(prostor_home: Path) -> bool:
+def gui_is_installed(hermes_home: Path) -> bool:
     """Return True when any desktop GUI artifact exists (built or packaged)."""
-    for p in source_built_gui_artifacts(prostor_home):
+    for p in source_built_gui_artifacts(hermes_home):
         if p.exists():
             return True
     for p in packaged_gui_app_paths():
@@ -181,21 +181,21 @@ def gui_is_installed(prostor_home: Path) -> bool:
     return False
 
 
-def gui_install_summary(prostor_home: "Path | None" = None) -> dict:
+def gui_install_summary(hermes_home: "Path | None" = None) -> dict:
     """Structured snapshot of what's installed, for the desktop UI to render.
 
     Returns JSON-serializable primitives so the Electron main process can
     forward it to the renderer via IPC (paths as strings, booleans for the
     high-level questions the UI gates options on).
     """
-    home: Path = prostor_home if prostor_home is not None else get_prostor_home()
+    home: Path = hermes_home if hermes_home is not None else get_hermes_home()
 
     source_artifacts = [p for p in source_built_gui_artifacts(home) if p.exists()]
     packaged = [p for p in packaged_gui_app_paths() if p.exists()]
     userdata = desktop_userdata_dir()
 
     return {
-        "prostor_home": str(home),
+        "hermes_home": str(home),
         "agent_installed": agent_is_installed(home),
         "gui_installed": gui_is_installed(home),
         "source_built_artifacts": [str(p) for p in source_artifacts],
@@ -225,7 +225,7 @@ def _remove_path(path: Path) -> bool:
     return False
 
 
-def uninstall_gui(prostor_home: "Path | None" = None, *, remove_userdata: bool = True) -> "list[Path]":
+def uninstall_gui(hermes_home: "Path | None" = None, *, remove_userdata: bool = True) -> "list[Path]":
     """Remove the desktop GUI's artifacts, leaving the agent + user data intact.
 
     Removes:
@@ -234,12 +234,12 @@ def uninstall_gui(prostor_home: "Path | None" = None, *, remove_userdata: bool =
         system package manager and are reported, not force-removed)
       - the Electron ``userData`` directory (unless ``remove_userdata=False``)
 
-    Never touches ``prostor-agent/prostor_cli`` (agent source), ``venv/``, or any
+    Never touches ``prostor-agent/hermes_cli`` (agent source), ``venv/``, or any
     config / sessions / .env under ``$PROSTOR_HOME``.
 
     Returns the list of paths actually removed.
     """
-    home: Path = prostor_home if prostor_home is not None else get_prostor_home()
+    home: Path = hermes_home if hermes_home is not None else get_hermes_home()
 
     removed: list[Path] = []
 

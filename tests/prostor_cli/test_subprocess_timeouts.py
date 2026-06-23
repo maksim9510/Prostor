@@ -7,10 +7,10 @@ import pytest
 
 # Parameterise over every CLI module that calls subprocess.run
 _CLI_MODULES = [
-    "prostor_cli/doctor.py",
-    "prostor_cli/status.py",
-    "prostor_cli/clipboard.py",
-    "prostor_cli/banner.py",
+    "hermes_cli/doctor.py",
+    "hermes_cli/status.py",
+    "hermes_cli/clipboard.py",
+    "hermes_cli/banner.py",
 ]
 
 

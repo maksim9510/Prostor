@@ -32,15 +32,15 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from prostor_constants import get_prostor_home, get_optional_mcps_dir
-from prostor_cli.colors import Colors, color
-from prostor_cli.config import (
+from hermes_constants import get_hermes_home, get_optional_mcps_dir
+from hermes_cli.colors import Colors, color
+from hermes_cli.config import (
     load_config,
     save_config,
     get_env_value,
     save_env_value,
 )
-from prostor_cli.cli_output import prompt as _prompt_input
+from hermes_cli.cli_output import prompt as _prompt_input
 
 _MANIFEST_VERSION = 1
 
@@ -351,7 +351,7 @@ def is_enabled(name: str) -> bool:
 
 def _install_root() -> Path:
     """Where git-bootstrapped MCPs are cloned. Per-user, profile-aware."""
-    root = get_prostor_home() / "mcp-installs"
+    root = get_hermes_home() / "mcp-installs"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -461,7 +461,7 @@ def _build_server_config(
     entry: CatalogEntry, install_dir: Optional[Path]
 ) -> dict:
     """Translate a manifest into the ``mcp_servers.<name>`` block format used
-    by prostor_cli/mcp_config.py."""
+    by hermes_cli/mcp_config.py."""
     cfg: dict = {}
     t = entry.transport
     if t.type == "stdio":
@@ -507,7 +507,7 @@ def _probe_tools(name: str) -> Optional[List[tuple]]:
         return None
     try:
         # Import lazily so the catalog module stays cheap to load.
-        from prostor_cli.mcp_config import _probe_single_server
+        from hermes_cli.mcp_config import _probe_single_server
 
         tools = _probe_single_server(name, server_cfg)
         return list(tools) if tools is not None else []
@@ -621,7 +621,7 @@ def _apply_tool_selection(
         Colors.GREEN,
     ))
 
-    from prostor_cli.curses_ui import curses_checklist
+    from hermes_cli.curses_ui import curses_checklist
 
     labels = [
         f"{n}  —  {(d[:60] + '...') if len(d) > 60 else d}"
@@ -730,7 +730,7 @@ def install_entry(entry: CatalogEntry, *, enable: bool = True) -> None:
     server_cfg = _build_server_config(entry, install_dir)
     server_cfg["enabled"] = enable
 
-    from prostor_cli.mcp_config import _save_mcp_server
+    from hermes_cli.mcp_config import _save_mcp_server
 
     if not _save_mcp_server(entry.name, server_cfg):
         raise CatalogError(

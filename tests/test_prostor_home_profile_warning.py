@@ -1,9 +1,9 @@
-"""Tests for get_prostor_home() profile-mode fallback warning.
+"""Tests for get_hermes_home() profile-mode fallback warning.
 
-Regression test for https://github.com/maksim9510/Prostor/issues/18594.
+Regression test for https://github.com/NousResearch/prostor-agent/issues/18594.
 
 When PROSTOR_HOME is unset but an active_profile file indicates a non-default
-profile is active, get_prostor_home() should:
+profile is active, get_hermes_home() should:
   1. STILL return ~/.prostor (raising would brick 30+ module-level callers)
   2. Emit a loud one-shot warning to stderr so operators can diagnose
      cross-profile data contamination after the fact.
@@ -20,21 +20,21 @@ import pytest
 
 @pytest.fixture
 def fresh_constants(monkeypatch, tmp_path):
-    """Import prostor_constants fresh and reset the one-shot warn flag."""
+    """Import hermes_constants fresh and reset the one-shot warn flag."""
     import importlib
-    import prostor_constants
-    importlib.reload(prostor_constants)
+    import hermes_constants
+    importlib.reload(hermes_constants)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.delenv("PROSTOR_HOME", raising=False)
-    return prostor_constants
+    return hermes_constants
 
 
-class TestGetProstorHomeProfileWarning:
+class TestGetHermesHomeProfileWarning:
     def test_classic_mode_no_active_profile_no_warning(
         self, fresh_constants, tmp_path, capsys
     ):
         """Classic mode: no active_profile file → silent, returns ~/.prostor."""
-        result = fresh_constants.get_prostor_home()
+        result = fresh_constants.get_hermes_home()
         assert result == tmp_path / ".prostor"
         assert "PROSTOR_HOME fallback" not in capsys.readouterr().err
 
@@ -42,10 +42,10 @@ class TestGetProstorHomeProfileWarning:
         self, fresh_constants, tmp_path, capsys
     ):
         """active_profile=default → still no warning, returns ~/.prostor."""
-        prostor_dir = tmp_path / ".prostor"
-        prostor_dir.mkdir()
-        (prostor_dir / "active_profile").write_text("default\n")
-        result = fresh_constants.get_prostor_home()
+        hermes_dir = tmp_path / ".prostor"
+        hermes_dir.mkdir()
+        (hermes_dir / "active_profile").write_text("default\n")
+        result = fresh_constants.get_hermes_home()
         assert result == tmp_path / ".prostor"
         assert "PROSTOR_HOME fallback" not in capsys.readouterr().err
 
@@ -53,11 +53,11 @@ class TestGetProstorHomeProfileWarning:
         self, fresh_constants, tmp_path, capsys
     ):
         """active_profile=coder + PROSTOR_HOME unset → warn loudly, still return fallback."""
-        prostor_dir = tmp_path / ".prostor"
-        prostor_dir.mkdir()
-        (prostor_dir / "active_profile").write_text("coder\n")
+        hermes_dir = tmp_path / ".prostor"
+        hermes_dir.mkdir()
+        (hermes_dir / "active_profile").write_text("coder\n")
 
-        result = fresh_constants.get_prostor_home()
+        result = fresh_constants.get_hermes_home()
 
         # 1. Still returns the fallback — no import-time crash
         assert result == tmp_path / ".prostor"
@@ -68,12 +68,12 @@ class TestGetProstorHomeProfileWarning:
         assert "#18594" in err
 
         # 3. One-shot: second and third calls don't re-warn
-        fresh_constants.get_prostor_home()
-        fresh_constants.get_prostor_home()
+        fresh_constants.get_hermes_home()
+        fresh_constants.get_hermes_home()
         err2 = capsys.readouterr().err
         assert "PROSTOR_HOME fallback" not in err2
 
-    def test_prostor_home_set_suppresses_warning(
+    def test_hermes_home_set_suppresses_warning(
         self, fresh_constants, tmp_path, capsys, monkeypatch
     ):
         """Even if active_profile is 'coder', setting PROSTOR_HOME suppresses warning."""
@@ -82,7 +82,7 @@ class TestGetProstorHomeProfileWarning:
         (tmp_path / ".prostor" / "active_profile").write_text("coder\n")
         monkeypatch.setenv("PROSTOR_HOME", str(profile_dir))
 
-        result = fresh_constants.get_prostor_home()
+        result = fresh_constants.get_hermes_home()
 
         assert result == profile_dir
         assert "PROSTOR_HOME fallback" not in capsys.readouterr().err
@@ -91,12 +91,12 @@ class TestGetProstorHomeProfileWarning:
         self, fresh_constants, tmp_path, capsys
     ):
         """active_profile that can't be decoded → fall through silently."""
-        prostor_dir = tmp_path / ".prostor"
-        prostor_dir.mkdir()
+        hermes_dir = tmp_path / ".prostor"
+        hermes_dir.mkdir()
         # Write bytes that aren't valid utf-8
-        (prostor_dir / "active_profile").write_bytes(b"\xff\xfe\x00\x00")
+        (hermes_dir / "active_profile").write_bytes(b"\xff\xfe\x00\x00")
 
-        result = fresh_constants.get_prostor_home()
+        result = fresh_constants.get_hermes_home()
 
         assert result == tmp_path / ".prostor"
         # Shouldn't crash; shouldn't warn either (can't tell what profile was intended)
@@ -106,11 +106,11 @@ class TestGetProstorHomeProfileWarning:
         self, fresh_constants, tmp_path, capsys
     ):
         """Empty active_profile file → treated as default, no warning."""
-        prostor_dir = tmp_path / ".prostor"
-        prostor_dir.mkdir()
-        (prostor_dir / "active_profile").write_text("")
+        hermes_dir = tmp_path / ".prostor"
+        hermes_dir.mkdir()
+        (hermes_dir / "active_profile").write_text("")
 
-        result = fresh_constants.get_prostor_home()
+        result = fresh_constants.get_hermes_home()
 
         assert result == tmp_path / ".prostor"
         assert "PROSTOR_HOME fallback" not in capsys.readouterr().err

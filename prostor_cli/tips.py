@@ -335,7 +335,7 @@ TIPS = [
     "PROSTOR_DEV=1 bypasses container mode detection for local development.",
     "Each MCP server gets its own toolset (mcp-servername) that can be toggled independently via prostor tools.",
     "MCP ${ENV_VAR} placeholders in config are resolved at server spawn — including vars from ~/.prostor/.env.",
-    "Skills from trusted repos (maksim9510) get a 'trusted' security level; community skills get extra scanning.",
+    "Skills from trusted repos (NousResearch) get a 'trusted' security level; community skills get extra scanning.",
     "The skills quarantine at ~/.prostor/skills/.hub/quarantine/ holds skills pending security review.",
 
     # --- Advanced Slash Commands ---
@@ -420,7 +420,6 @@ TIPS = [
     '/platforms shows gateway and messaging-platform connection status right from inside chat.',
     '/commands paginates the full slash-command + installed-skill list — useful on platforms without tab completion.',
     '/toolsets lists every available toolset so you know what -t/--toolsets accepts.',
-    '/gquota shows Google Gemini Code Assist quota usage with progress bars when that provider is active.',
     '/voice tts toggles TTS-only mode — agent replies out loud but you still type your prompts.',
     '/reload-skills re-scans ~/.prostor/skills/ so drop-in skills appear without restarting the session.',
     '/indicator kaomoji|emoji|unicode|ascii picks the TUI busy-indicator style shown during agent runs.',

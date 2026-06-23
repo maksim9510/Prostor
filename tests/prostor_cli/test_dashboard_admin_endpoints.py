@@ -15,21 +15,21 @@ def _client():
         from starlette.testclient import TestClient
     except ImportError:
         pytest.skip("fastapi/starlette not installed")
-    import prostor_state
-    from prostor_constants import get_prostor_home
-    from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
+    import hermes_state
+    from hermes_constants import get_hermes_home
+    from hermes_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
     client = TestClient(app)
     client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
     # Keep the state DB under the isolated PROSTOR_HOME for any handler that
     # touches it.
-    prostor_state.DEFAULT_DB_PATH = get_prostor_home() / "state.db"
+    hermes_state.DEFAULT_DB_PATH = get_hermes_home() / "state.db"
     return client, _SESSION_HEADER_NAME
 
 
 class TestMcpEndpoints:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, self.header = _client()
 
     def test_list_add_remove_roundtrip(self):
@@ -45,7 +45,7 @@ class TestMcpEndpoints:
         assert [s["name"] for s in servers] == ["srv1"]
 
         # CLI parity: the server is in config.yaml under mcp_servers.
-        from prostor_cli.mcp_config import _get_mcp_servers
+        from hermes_cli.mcp_config import _get_mcp_servers
 
         assert "srv1" in _get_mcp_servers()
 
@@ -128,7 +128,7 @@ class TestMcpEndpoints:
 
 class TestCredentialPoolEndpoints:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_add_list_remove_and_cli_parity(self):
@@ -164,11 +164,11 @@ class TestCredentialPoolEndpoints:
 
 class TestMemoryEndpoints:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
 
-        (get_prostor_home() / "memories").mkdir(parents=True, exist_ok=True)
+        (get_hermes_home() / "memories").mkdir(parents=True, exist_ok=True)
 
     def test_status_and_select(self):
         data = self.client.get("/api/memory").json()
@@ -183,9 +183,9 @@ class TestMemoryEndpoints:
         assert r.status_code == 400
 
     def test_reset_targets(self):
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
 
-        mem = get_prostor_home() / "memories"
+        mem = get_hermes_home() / "memories"
         (mem / "MEMORY.md").write_text("notes")
         (mem / "USER.md").write_text("user")
 
@@ -200,7 +200,7 @@ class TestMemoryEndpoints:
 
 class TestPairingEndpoints:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_list_and_bad_approve(self):
@@ -214,7 +214,7 @@ class TestPairingEndpoints:
 
 class TestWebhookEndpoints:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_list_disabled_and_create_blocked(self):
@@ -224,8 +224,8 @@ class TestWebhookEndpoints:
         assert r.status_code == 400
 
     def test_enable_platform_starts_gateway_restart(self, monkeypatch):
-        import prostor_cli.web_server as ws
-        from prostor_cli.config import load_config
+        import hermes_cli.web_server as ws
+        from hermes_cli.config import load_config
 
         ws._ACTION_PROCS.pop("gateway-restart", None)
         restart_calls = []
@@ -237,7 +237,7 @@ class TestWebhookEndpoints:
             restart_calls.append((subcommand, name))
             return FakeRestartProc()
 
-        monkeypatch.setattr(ws, "_spawn_prostor_action", fake_spawn_action)
+        monkeypatch.setattr(ws, "_spawn_hermes_action", fake_spawn_action)
 
         r = self.client.post("/api/webhooks/enable")
 
@@ -256,8 +256,8 @@ class TestWebhookEndpoints:
         assert self.client.get("/api/webhooks").json()["enabled"] is True
 
     def test_enable_platform_reports_restart_failure_after_save(self, monkeypatch):
-        import prostor_cli.web_server as ws
-        from prostor_cli.config import load_config
+        import hermes_cli.web_server as ws
+        from hermes_cli.config import load_config
 
         ws._ACTION_PROCS.pop("gateway-restart", None)
 
@@ -266,7 +266,7 @@ class TestWebhookEndpoints:
             assert name == "gateway-restart"
             raise RuntimeError("supervisor unavailable")
 
-        monkeypatch.setattr(ws, "_spawn_prostor_action", fail_spawn_action)
+        monkeypatch.setattr(ws, "_spawn_hermes_action", fail_spawn_action)
 
         r = self.client.post("/api/webhooks/enable")
 
@@ -281,8 +281,8 @@ class TestWebhookEndpoints:
         assert load_config()["platforms"]["webhook"]["enabled"] is True
 
     def test_enable_platform_reuses_inflight_gateway_restart(self, monkeypatch):
-        import prostor_cli.web_server as ws
-        from prostor_cli.config import load_config
+        import hermes_cli.web_server as ws
+        from hermes_cli.config import load_config
 
         ws._ACTION_PROCS.pop("gateway-restart", None)
 
@@ -297,7 +297,7 @@ class TestWebhookEndpoints:
         def fail_spawn_action(subcommand, name):
             raise AssertionError("must not spawn a second concurrent restart")
 
-        monkeypatch.setattr(ws, "_spawn_prostor_action", fail_spawn_action)
+        monkeypatch.setattr(ws, "_spawn_hermes_action", fail_spawn_action)
 
         r = self.client.post("/api/webhooks/enable")
 
@@ -311,11 +311,11 @@ class TestWebhookEndpoints:
 
 class TestOpsEndpoints:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_hooks_list_reads_config(self):
-        from prostor_cli.config import load_config, save_config
+        from hermes_cli.config import load_config, save_config
 
         cfg = load_config()
         cfg["hooks"] = {
@@ -372,7 +372,7 @@ class TestOpsEndpoints:
 
 class TestSystemStatsEndpoint:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_stats_shape(self):
@@ -380,7 +380,7 @@ class TestSystemStatsEndpoint:
         assert r.status_code == 200
         s = r.json()
         # Identity fields always present (stdlib-sourced).
-        for key in ("os", "arch", "hostname", "python_version", "prostor_version"):
+        for key in ("os", "arch", "hostname", "python_version", "hermes_version"):
             assert key in s and s[key]
         # psutil flag tells the UI whether the richer metrics are populated.
         assert "psutil" in s
@@ -388,7 +388,7 @@ class TestSystemStatsEndpoint:
 
 class TestCuratorEndpoints:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_status_and_pause_toggle(self):
@@ -406,7 +406,7 @@ class TestCuratorEndpoints:
 
 class TestPortalEndpoint:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_status_shape(self):
@@ -419,9 +419,9 @@ class TestPortalEndpoint:
 
 class TestSessionManagementEndpoints:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         db = SessionDB()
         db.create_session(session_id="sess-x", source="cli")
@@ -455,7 +455,7 @@ class TestSessionManagementEndpoints:
 
 class TestSkillsHubSearchEndpoint:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_empty_query_returns_empty(self):
@@ -505,7 +505,7 @@ class _FakeBundle:
 
 class TestSkillsHubSourcesEndpoint:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_sources_lists_configured_hubs(self, monkeypatch):
@@ -550,7 +550,7 @@ class TestSkillsHubSourcesEndpoint:
 
 class TestSkillsHubPreviewEndpoint:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_preview_requires_identifier(self):
@@ -564,7 +564,7 @@ class TestSkillsHubPreviewEndpoint:
         bundle = _FakeBundle("github/owner/repo/x")
         meta = _FakeMeta("github/owner/repo/x")
         monkeypatch.setattr(
-            "prostor_cli.skills_hub._resolve_source_meta_and_bundle",
+            "hermes_cli.skills_hub._resolve_source_meta_and_bundle",
             lambda ident, sources: (meta, bundle, None),
         )
         r = self.client.get(
@@ -583,7 +583,7 @@ class TestSkillsHubPreviewEndpoint:
             "tools.skills_hub.create_source_router", lambda: []
         )
         monkeypatch.setattr(
-            "prostor_cli.skills_hub._resolve_source_meta_and_bundle",
+            "hermes_cli.skills_hub._resolve_source_meta_and_bundle",
             lambda ident, sources: (None, None, None),
         )
         r = self.client.get("/api/skills/hub/preview?identifier=nope/x")
@@ -592,7 +592,7 @@ class TestSkillsHubPreviewEndpoint:
 
 class TestSkillsHubScanEndpoint:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_scan_requires_identifier(self):
@@ -607,7 +607,7 @@ class TestSkillsHubScanEndpoint:
         )
         bundle = _FakeBundle("github/owner/repo/x", trust_level="community")
         monkeypatch.setattr(
-            "prostor_cli.skills_hub._resolve_source_meta_and_bundle",
+            "hermes_cli.skills_hub._resolve_source_meta_and_bundle",
             lambda ident, sources: (None, bundle, None),
         )
 
@@ -660,7 +660,7 @@ class TestSkillsHubScanEndpoint:
             "tools.skills_hub.create_source_router", lambda: []
         )
         monkeypatch.setattr(
-            "prostor_cli.skills_hub._resolve_source_meta_and_bundle",
+            "hermes_cli.skills_hub._resolve_source_meta_and_bundle",
             lambda ident, sources: (None, None, None),
         )
         r = self.client.get("/api/skills/hub/scan?identifier=nope/x")
@@ -671,10 +671,10 @@ class TestSkillsHubScanEndpoint:
 
 class TestWebhookToggleEndpoint:
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
         # Enable the webhook platform so a subscription can be created.
-        from prostor_cli.config import load_config, save_config
+        from hermes_cli.config import load_config, save_config
 
         cfg = load_config()
         cfg.setdefault("platforms", {})["webhook"] = {
@@ -702,9 +702,9 @@ class TestAdminEndpointsAuthGate:
     """Every admin endpoint must sit behind the dashboard session-token gate."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         from starlette.testclient import TestClient
-        from prostor_cli.web_server import app
+        from hermes_cli.web_server import app
 
         # No session header → must be rejected.
         self.client = TestClient(app)
@@ -743,15 +743,15 @@ class TestUpdateCheckEndpoint:
     """
 
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, _ = _client()
 
     def test_git_install_reports_behind_count(self, monkeypatch):
-        import prostor_cli.web_server as ws
+        import hermes_cli.web_server as ws
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
         # Stub the shared checker so the contract is deterministic (no network).
-        import prostor_cli.banner as banner
+        import hermes_cli.banner as banner
 
         monkeypatch.setattr(banner, "check_for_updates", lambda: 5)
 
@@ -774,8 +774,8 @@ class TestUpdateCheckEndpoint:
         assert body["can_apply"] is True
 
     def test_up_to_date(self, monkeypatch):
-        import prostor_cli.web_server as ws
-        import prostor_cli.banner as banner
+        import hermes_cli.web_server as ws
+        import hermes_cli.banner as banner
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
         monkeypatch.setattr(banner, "check_for_updates", lambda: 0)
@@ -785,7 +785,7 @@ class TestUpdateCheckEndpoint:
         assert body["update_available"] is False
 
     def test_docker_is_not_applyable(self, monkeypatch):
-        import prostor_cli.web_server as ws
+        import hermes_cli.web_server as ws
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "docker")
         body = self.client.get("/api/prostor/update/check").json()
@@ -795,7 +795,7 @@ class TestUpdateCheckEndpoint:
         assert body["behind"] is None
 
     def test_managed_runtime_dashboard_is_not_applyable(self, monkeypatch):
-        import prostor_cli.web_server as ws
+        import hermes_cli.web_server as ws
 
         monkeypatch.setattr(ws, "_dashboard_local_update_managed_externally", lambda: True)
         monkeypatch.setattr(
@@ -814,8 +814,8 @@ class TestUpdateCheckEndpoint:
         assert "managed outside this dashboard" in body["message"]
 
     def test_check_failure_is_soft(self, monkeypatch):
-        import prostor_cli.web_server as ws
-        import prostor_cli.banner as banner
+        import hermes_cli.web_server as ws
+        import hermes_cli.banner as banner
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
 
@@ -832,8 +832,8 @@ class TestUpdateCheckEndpoint:
         assert body["message"]
 
     def test_git_behind_includes_commits(self, monkeypatch):
-        import prostor_cli.web_server as ws
-        import prostor_cli.banner as banner
+        import hermes_cli.web_server as ws
+        import hermes_cli.banner as banner
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
         monkeypatch.setattr(banner, "check_for_updates", lambda: 3)
@@ -852,8 +852,8 @@ class TestUpdateCheckEndpoint:
         assert body["commits"][0]["summary"] == "feat: x"
 
     def test_up_to_date_omits_commits(self, monkeypatch):
-        import prostor_cli.web_server as ws
-        import prostor_cli.banner as banner
+        import hermes_cli.web_server as ws
+        import hermes_cli.banner as banner
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
         monkeypatch.setattr(banner, "check_for_updates", lambda: 0)
@@ -868,18 +868,18 @@ class TestDebugShareEndpoint:
     dashboard can render them as copyable links (not a backgrounded log tail)."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, self.header = _client()
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
 
-        logs = get_prostor_home() / "logs"
+        logs = get_hermes_home() / "logs"
         logs.mkdir(parents=True, exist_ok=True)
         (logs / "agent.log").write_text("agent line\n")
         (logs / "errors.log").write_text("err line\n")
         (logs / "gateway.log").write_text("gw line\n")
 
     def test_returns_structured_urls(self, monkeypatch):
-        import prostor_cli.debug as dbg
+        import hermes_cli.debug as dbg
 
         count = [0]
 
@@ -890,7 +890,7 @@ class TestDebugShareEndpoint:
         monkeypatch.setattr(dbg, "upload_to_pastebin", _upload)
         monkeypatch.setattr(dbg, "_schedule_auto_delete", lambda *a, **k: None)
         monkeypatch.setattr(dbg, "_best_effort_sweep_expired_pastes", lambda: None)
-        monkeypatch.setattr("prostor_cli.dump.run_dump", lambda a: None)
+        monkeypatch.setattr("hermes_cli.dump.run_dump", lambda a: None)
 
         r = self.client.post("/api/ops/debug-share", json={"redact": True})
         assert r.status_code == 200
@@ -902,28 +902,28 @@ class TestDebugShareEndpoint:
         assert isinstance(body["failures"], list)
 
     def test_redact_false_is_honored(self, monkeypatch):
-        import prostor_cli.debug as dbg
+        import hermes_cli.debug as dbg
 
         monkeypatch.setattr(
             dbg, "upload_to_pastebin", lambda c, expiry_days=7: "https://paste.rs/x"
         )
         monkeypatch.setattr(dbg, "_schedule_auto_delete", lambda *a, **k: None)
         monkeypatch.setattr(dbg, "_best_effort_sweep_expired_pastes", lambda: None)
-        monkeypatch.setattr("prostor_cli.dump.run_dump", lambda a: None)
+        monkeypatch.setattr("hermes_cli.dump.run_dump", lambda a: None)
 
         r = self.client.post("/api/ops/debug-share", json={"redact": False})
         assert r.status_code == 200
         assert r.json()["redacted"] is False
 
     def test_default_body_redacts(self, monkeypatch):
-        import prostor_cli.debug as dbg
+        import hermes_cli.debug as dbg
 
         monkeypatch.setattr(
             dbg, "upload_to_pastebin", lambda c, expiry_days=7: "https://paste.rs/x"
         )
         monkeypatch.setattr(dbg, "_schedule_auto_delete", lambda *a, **k: None)
         monkeypatch.setattr(dbg, "_best_effort_sweep_expired_pastes", lambda: None)
-        monkeypatch.setattr("prostor_cli.dump.run_dump", lambda a: None)
+        monkeypatch.setattr("hermes_cli.dump.run_dump", lambda a: None)
 
         # No JSON body at all — should default redact=True.
         r = self.client.post("/api/ops/debug-share")
@@ -931,7 +931,7 @@ class TestDebugShareEndpoint:
         assert r.json()["redacted"] is True
 
     def test_upload_failure_returns_502(self, monkeypatch):
-        import prostor_cli.debug as dbg
+        import hermes_cli.debug as dbg
 
         monkeypatch.setattr(
             dbg,
@@ -940,7 +940,7 @@ class TestDebugShareEndpoint:
         )
         monkeypatch.setattr(dbg, "_schedule_auto_delete", lambda *a, **k: None)
         monkeypatch.setattr(dbg, "_best_effort_sweep_expired_pastes", lambda: None)
-        monkeypatch.setattr("prostor_cli.dump.run_dump", lambda a: None)
+        monkeypatch.setattr("hermes_cli.dump.run_dump", lambda a: None)
 
         r = self.client.post("/api/ops/debug-share", json={"redact": True})
         assert r.status_code == 502
@@ -961,7 +961,7 @@ class TestToolsConfigEndpoints:
     the dashboard surface that replicates the `prostor tools` configurator."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, _isolate_prostor_home):
+    def _setup(self, _isolate_hermes_home):
         self.client, self.header = _client()
 
     def test_list_toolsets_shape(self):
@@ -986,7 +986,7 @@ class TestToolsConfigEndpoints:
         assert r.status_code == 400
 
     def test_save_env_writes_key_and_validates_allowlist(self):
-        from prostor_cli.config import get_env_value
+        from hermes_cli.config import get_env_value
 
         cfg = self.client.get("/api/tools/toolsets/web/config").json()
         # Find a real env-var key from the visible provider matrix.
@@ -1048,7 +1048,7 @@ class TestToolsConfigEndpoints:
         assert r.status_code == 400
 
     def test_post_setup_spawns_action(self, monkeypatch):
-        import prostor_cli.web_server as ws
+        import hermes_cli.web_server as ws
 
         spawned = {}
 
@@ -1060,7 +1060,7 @@ class TestToolsConfigEndpoints:
             spawned["name"] = name
             return _FakeProc()
 
-        monkeypatch.setattr(ws, "_spawn_prostor_action", _fake_spawn)
+        monkeypatch.setattr(ws, "_spawn_hermes_action", _fake_spawn)
         r = self.client.post(
             "/api/tools/toolsets/browser/post-setup",
             json={"key": "agent_browser"},

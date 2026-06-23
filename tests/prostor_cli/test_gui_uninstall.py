@@ -1,4 +1,4 @@
-"""Tests for prostor_cli.gui_uninstall — GUI-only uninstall + install discovery.
+"""Tests for hermes_cli.gui_uninstall — GUI-only uninstall + install discovery.
 
 Covers the cross-platform artifact discovery, the agent/GUI detection the
 desktop UI gates options on, and that ``uninstall_gui`` removes only GUI
@@ -11,54 +11,54 @@ from pathlib import Path
 
 import pytest
 
-import prostor_cli.gui_uninstall as gu
+import hermes_cli.gui_uninstall as gu
 
 
-def _make_agent(prostor_home: Path) -> Path:
+def _make_agent(hermes_home: Path) -> Path:
     """Create a fake agent install: source package + venv."""
-    agent_root = prostor_home / "prostor-agent"
-    (agent_root / "prostor_cli").mkdir(parents=True)
-    (agent_root / "prostor_cli" / "__init__.py").write_text("")
+    agent_root = hermes_home / "prostor-agent"
+    (agent_root / "hermes_cli").mkdir(parents=True)
+    (agent_root / "hermes_cli" / "__init__.py").write_text("")
     (agent_root / "venv" / "bin").mkdir(parents=True)
     return agent_root
 
 
-def _make_gui_build(prostor_home: Path) -> None:
+def _make_gui_build(hermes_home: Path) -> None:
     """Create the source-built GUI artifacts a `prostor desktop` run produces."""
-    desktop = prostor_home / "prostor-agent" / "apps" / "desktop"
+    desktop = hermes_home / "prostor-agent" / "apps" / "desktop"
     (desktop / "dist").mkdir(parents=True)
     (desktop / "dist" / "index.html").write_text("<html>")
     (desktop / "release" / "linux-unpacked").mkdir(parents=True)
     (desktop / "node_modules").mkdir(parents=True)
-    (prostor_home / "prostor-agent" / "node_modules").mkdir(parents=True)
-    (prostor_home / "desktop-build-stamp.json").write_text("{}")
+    (hermes_home / "prostor-agent" / "node_modules").mkdir(parents=True)
+    (hermes_home / "desktop-build-stamp.json").write_text("{}")
 
 
-def _make_user_data(prostor_home: Path) -> None:
-    (prostor_home / "config.yaml").write_text("x: 1\n")
-    (prostor_home / ".env").write_text("KEY=secret\n")
-    (prostor_home / "sessions").mkdir()
+def _make_user_data(hermes_home: Path) -> None:
+    (hermes_home / "config.yaml").write_text("x: 1\n")
+    (hermes_home / ".env").write_text("KEY=secret\n")
+    (hermes_home / "sessions").mkdir()
 
 
 def test_agent_is_installed_detects_source_and_venv(tmp_path):
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    assert gu.agent_is_installed(prostor_home) is False
-    _make_agent(prostor_home)
-    assert gu.agent_is_installed(prostor_home) is True
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    assert gu.agent_is_installed(hermes_home) is False
+    _make_agent(hermes_home)
+    assert gu.agent_is_installed(hermes_home) is True
 
 
 def test_agent_is_installed_venv_only(tmp_path):
     """A checkout with only a venv (no package dir yet) still counts."""
-    prostor_home = tmp_path / ".prostor"
-    (prostor_home / "prostor-agent" / "venv").mkdir(parents=True)
-    assert gu.agent_is_installed(prostor_home) is True
+    hermes_home = tmp_path / ".prostor"
+    (hermes_home / "prostor-agent" / "venv").mkdir(parents=True)
+    assert gu.agent_is_installed(hermes_home) is True
 
 
 def test_source_built_artifacts_lists_known_paths(tmp_path):
-    prostor_home = tmp_path / ".prostor"
-    _make_gui_build(prostor_home)
-    artifacts = gu.source_built_gui_artifacts(prostor_home)
+    hermes_home = tmp_path / ".prostor"
+    _make_gui_build(hermes_home)
+    artifacts = gu.source_built_gui_artifacts(hermes_home)
     names = {p.name for p in artifacts}
     assert "dist" in names
     assert "release" in names
@@ -67,35 +67,35 @@ def test_source_built_artifacts_lists_known_paths(tmp_path):
 
 
 def test_gui_is_installed_true_when_built(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    _make_gui_build(prostor_home)
+    hermes_home = tmp_path / ".prostor"
+    _make_gui_build(hermes_home)
     # Make sure packaged-app + userdata probes don't false-positive on the box
     # running the test.
     monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu, "desktop_userdata_dir", lambda: tmp_path / "nope")
-    assert gu.gui_is_installed(prostor_home) is True
+    assert gu.gui_is_installed(hermes_home) is True
 
 
 def test_gui_is_installed_false_when_nothing(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
     monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu, "desktop_userdata_dir", lambda: tmp_path / "nope")
-    assert gu.gui_is_installed(prostor_home) is False
+    assert gu.gui_is_installed(hermes_home) is False
 
 
 def test_uninstall_gui_removes_only_gui_artifacts(tmp_path, monkeypatch):
     """The core invariant: GUI gone, agent + user data untouched."""
-    prostor_home = tmp_path / ".prostor"
-    agent_root = _make_agent(prostor_home)
-    _make_gui_build(prostor_home)
-    _make_user_data(prostor_home)
+    hermes_home = tmp_path / ".prostor"
+    agent_root = _make_agent(hermes_home)
+    _make_gui_build(hermes_home)
+    _make_user_data(hermes_home)
 
     # Isolate the packaged-app + userdata probes from the test machine.
     monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu, "desktop_userdata_dir", lambda: tmp_path / "userdata-none")
 
-    removed = gu.uninstall_gui(prostor_home)
+    removed = gu.uninstall_gui(hermes_home)
     removed_names = {p.name for p in removed}
 
     # GUI artifacts removed.
@@ -104,22 +104,22 @@ def test_uninstall_gui_removes_only_gui_artifacts(tmp_path, monkeypatch):
     assert not (desktop / "release").exists()
     assert not (desktop / "node_modules").exists()
     assert not (agent_root / "node_modules").exists()
-    assert not (prostor_home / "desktop-build-stamp.json").exists()
+    assert not (hermes_home / "desktop-build-stamp.json").exists()
     assert "dist" in removed_names
 
     # Agent + user data preserved.
-    assert (agent_root / "prostor_cli" / "__init__.py").exists()
+    assert (agent_root / "hermes_cli" / "__init__.py").exists()
     assert (agent_root / "venv").exists()
-    assert (prostor_home / "config.yaml").exists()
-    assert (prostor_home / ".env").exists()
-    assert (prostor_home / "sessions").exists()
+    assert (hermes_home / "config.yaml").exists()
+    assert (hermes_home / ".env").exists()
+    assert (hermes_home / "sessions").exists()
     # The desktop source dir itself survives (only its build output is gone).
     assert desktop.exists()
 
 
 def test_uninstall_gui_removes_userdata(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    _make_agent(prostor_home)
+    hermes_home = tmp_path / ".prostor"
+    _make_agent(hermes_home)
     userdata = tmp_path / "Prostor-userdata"
     userdata.mkdir()
     (userdata / "connection.json").write_text("{}")
@@ -127,51 +127,51 @@ def test_uninstall_gui_removes_userdata(tmp_path, monkeypatch):
     monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu, "desktop_userdata_dir", lambda: userdata)
 
-    gu.uninstall_gui(prostor_home)
+    gu.uninstall_gui(hermes_home)
     assert not userdata.exists()
 
 
 def test_uninstall_gui_keeps_userdata_when_requested(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    _make_agent(prostor_home)
+    hermes_home = tmp_path / ".prostor"
+    _make_agent(hermes_home)
     userdata = tmp_path / "Prostor-userdata"
     userdata.mkdir()
 
     monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu, "desktop_userdata_dir", lambda: userdata)
 
-    gu.uninstall_gui(prostor_home, remove_userdata=False)
+    gu.uninstall_gui(hermes_home, remove_userdata=False)
     assert userdata.exists()
 
 
 def test_uninstall_gui_removes_packaged_bundle(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    _make_agent(prostor_home)
+    hermes_home = tmp_path / ".prostor"
+    _make_agent(hermes_home)
     bundle = tmp_path / "Prostor.app"
     (bundle / "Contents").mkdir(parents=True)
 
     monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [bundle])
     monkeypatch.setattr(gu, "desktop_userdata_dir", lambda: tmp_path / "none")
 
-    removed = gu.uninstall_gui(prostor_home)
+    removed = gu.uninstall_gui(hermes_home)
     assert not bundle.exists()
     assert bundle in removed
 
 
 def test_gui_install_summary_shape(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    _make_agent(prostor_home)
-    _make_gui_build(prostor_home)
+    hermes_home = tmp_path / ".prostor"
+    _make_agent(hermes_home)
+    _make_gui_build(hermes_home)
     monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu, "desktop_userdata_dir", lambda: tmp_path / "none")
 
-    summary = gu.gui_install_summary(prostor_home)
+    summary = gu.gui_install_summary(hermes_home)
     # JSON-serializable primitives the desktop UI gates on.
     assert summary["agent_installed"] is True
     assert summary["gui_installed"] is True
     assert isinstance(summary["source_built_artifacts"], list)
     assert all(isinstance(p, str) for p in summary["source_built_artifacts"])
-    assert summary["prostor_home"] == str(prostor_home)
+    assert summary["hermes_home"] == str(hermes_home)
     assert summary["platform"] == sys.platform
 
 
@@ -225,21 +225,21 @@ def test_run_uninstall_yes_keep_data_is_non_interactive(tmp_path, monkeypatch):
     test checkout) — we call run_uninstall in-process against a throwaway
     PROSTOR_HOME with all the destructive externals stubbed out.
     """
-    import prostor_cli.uninstall as uninstall
+    import hermes_cli.uninstall as uninstall
 
-    prostor_home = tmp_path / ".prostor"
-    agent_root = prostor_home / "prostor-agent"
-    (agent_root / "prostor_cli").mkdir(parents=True)
-    (prostor_home / "config.yaml").write_text("x: 1\n")
+    hermes_home = tmp_path / ".prostor"
+    agent_root = hermes_home / "prostor-agent"
+    (agent_root / "hermes_cli").mkdir(parents=True)
+    (hermes_home / "config.yaml").write_text("x: 1\n")
     desktop = agent_root / "apps" / "desktop"
     (desktop / "release").mkdir(parents=True)
-    (prostor_home / "desktop-build-stamp.json").write_text("{}")
+    (hermes_home / "desktop-build-stamp.json").write_text("{}")
     fake_code = tmp_path / "checkout"
     fake_code.mkdir()
 
     # Stub every destructive external so the test only exercises the control
     # flow + the real GUI sweep (which is safe inside tmp_path).
-    monkeypatch.setattr(uninstall, "get_prostor_home", lambda: prostor_home)
+    monkeypatch.setattr(uninstall, "get_hermes_home", lambda: hermes_home)
     monkeypatch.setattr(uninstall, "get_project_root", lambda: fake_code)
     monkeypatch.setattr(uninstall, "uninstall_gateway_service", lambda: False)
     monkeypatch.setattr(uninstall, "remove_path_from_shell_configs", lambda: [])
@@ -249,7 +249,7 @@ def test_run_uninstall_yes_keep_data_is_non_interactive(tmp_path, monkeypatch):
     # Make input() blow up so a regression that reaches a prompt fails loudly.
     monkeypatch.setattr("builtins.input", lambda *a, **k: pytest.fail("prompted in --yes mode"))
 
-    from prostor_cli import gui_uninstall as gu_mod
+    from hermes_cli import gui_uninstall as gu_mod
     monkeypatch.setattr(gu_mod, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu_mod, "desktop_userdata_dir", lambda: tmp_path / "none")
 
@@ -257,23 +257,23 @@ def test_run_uninstall_yes_keep_data_is_non_interactive(tmp_path, monkeypatch):
 
     # Code checkout removed, GUI artifacts swept, but user data preserved.
     assert not fake_code.exists()
-    assert not (prostor_home / "desktop-build-stamp.json").exists()
+    assert not (hermes_home / "desktop-build-stamp.json").exists()
     assert not (desktop / "release").exists()
-    assert (prostor_home / "config.yaml").exists()
-    assert prostor_home.exists()
+    assert (hermes_home / "config.yaml").exists()
+    assert hermes_home.exists()
 
 
 def test_run_uninstall_yes_full_wipes_home(tmp_path, monkeypatch):
     """``--yes --full`` removes the whole PROSTOR_HOME non-interactively."""
-    import prostor_cli.uninstall as uninstall
+    import hermes_cli.uninstall as uninstall
 
-    prostor_home = tmp_path / ".prostor"
-    (prostor_home / "prostor-agent" / "prostor_cli").mkdir(parents=True)
-    (prostor_home / "config.yaml").write_text("x: 1\n")
+    hermes_home = tmp_path / ".prostor"
+    (hermes_home / "prostor-agent" / "hermes_cli").mkdir(parents=True)
+    (hermes_home / "config.yaml").write_text("x: 1\n")
     fake_code = tmp_path / "checkout"
     fake_code.mkdir()
 
-    monkeypatch.setattr(uninstall, "get_prostor_home", lambda: prostor_home)
+    monkeypatch.setattr(uninstall, "get_hermes_home", lambda: hermes_home)
     monkeypatch.setattr(uninstall, "get_project_root", lambda: fake_code)
     monkeypatch.setattr(uninstall, "uninstall_gateway_service", lambda: False)
     monkeypatch.setattr(uninstall, "remove_path_from_shell_configs", lambda: [])
@@ -282,51 +282,51 @@ def test_run_uninstall_yes_full_wipes_home(tmp_path, monkeypatch):
     monkeypatch.setattr(uninstall, "_discover_named_profiles", lambda: [])
     monkeypatch.setattr("builtins.input", lambda *a, **k: pytest.fail("prompted in --yes mode"))
 
-    from prostor_cli import gui_uninstall as gu_mod
+    from hermes_cli import gui_uninstall as gu_mod
     monkeypatch.setattr(gu_mod, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu_mod, "desktop_userdata_dir", lambda: tmp_path / "none")
 
     uninstall.run_uninstall(_Args(yes=True, full=True))
 
-    assert not prostor_home.exists()
+    assert not hermes_home.exists()
 
 
 def test_uninstall_module_main_gui_mode(tmp_path, monkeypatch):
-    """`python -m prostor_cli.uninstall --mode gui` runs the GUI-only path.
+    """`python -m hermes_cli.uninstall --mode gui` runs the GUI-only path.
 
     This is the lightweight, venv-independent entrypoint the desktop launches
     with a system Python (so lite/full don't rmtree their own running venv on
     Windows). Verify it dispatches by mode without prompting.
     """
-    import prostor_cli.uninstall as uninstall
+    import hermes_cli.uninstall as uninstall
 
-    prostor_home = tmp_path / ".prostor"
-    agent_root = prostor_home / "prostor-agent"
-    (agent_root / "prostor_cli").mkdir(parents=True)
+    hermes_home = tmp_path / ".prostor"
+    agent_root = hermes_home / "prostor-agent"
+    (agent_root / "hermes_cli").mkdir(parents=True)
     desktop = agent_root / "apps" / "desktop"
     (desktop / "release").mkdir(parents=True)
-    (prostor_home / "desktop-build-stamp.json").write_text("{}")
-    (prostor_home / "config.yaml").write_text("x: 1\n")
+    (hermes_home / "desktop-build-stamp.json").write_text("{}")
+    (hermes_home / "config.yaml").write_text("x: 1\n")
 
-    monkeypatch.setattr(uninstall, "get_prostor_home", lambda: prostor_home)
-    from prostor_cli import gui_uninstall as gu_mod
+    monkeypatch.setattr(uninstall, "get_hermes_home", lambda: hermes_home)
+    from hermes_cli import gui_uninstall as gu_mod
     monkeypatch.setattr(gu_mod, "packaged_gui_app_paths", lambda: [])
     monkeypatch.setattr(gu_mod, "desktop_userdata_dir", lambda: tmp_path / "none")
-    monkeypatch.setattr(gu_mod, "get_prostor_home", lambda: prostor_home)
+    monkeypatch.setattr(gu_mod, "get_hermes_home", lambda: hermes_home)
     monkeypatch.setattr("builtins.input", lambda *a, **k: pytest.fail("prompted in module main"))
 
     rc = uninstall.main(["--mode", "gui"])
     assert rc == 0
     # GUI swept, agent + config kept (gui-only contract).
     assert not (desktop / "release").exists()
-    assert not (prostor_home / "desktop-build-stamp.json").exists()
-    assert (agent_root / "prostor_cli").exists()
-    assert (prostor_home / "config.yaml").exists()
+    assert not (hermes_home / "desktop-build-stamp.json").exists()
+    assert (agent_root / "hermes_cli").exists()
+    assert (hermes_home / "config.yaml").exists()
 
 
 def test_uninstall_module_main_rejects_bad_mode():
     """An invalid --mode exits non-zero (argparse), never silently full-wipes."""
-    import prostor_cli.uninstall as uninstall
+    import hermes_cli.uninstall as uninstall
 
     with pytest.raises(SystemExit) as exc:
         uninstall.main(["--mode", "nuke"])
@@ -335,7 +335,7 @@ def test_uninstall_module_main_rejects_bad_mode():
 
 def test_uninstall_args_namespace_mode_mapping():
     """_UninstallArgs maps mode → the gui/full flags run_uninstall reads."""
-    import prostor_cli.uninstall as uninstall
+    import hermes_cli.uninstall as uninstall
 
     gui = uninstall._UninstallArgs(mode="gui")
     assert gui.gui is True and gui.full is False and gui.yes is True

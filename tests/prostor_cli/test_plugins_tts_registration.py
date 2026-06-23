@@ -5,7 +5,7 @@ Exercises the plugin context hook end-to-end: drops a fake plugin into
 and asserts the registration result.
 
 Mirrors the structure of
-``tests/prostor_cli/test_plugin_scanner_recursion.py::TestRegisterImageGenProvider``.
+``tests/hermes_cli/test_plugin_scanner_recursion.py::TestRegisterImageGenProvider``.
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ def _write_plugin(
     return plugin_dir
 
 
-def _enable(prostor_home: Path, name: str) -> None:
-    cfg_path = prostor_home / "config.yaml"
+def _enable(hermes_home: Path, name: str) -> None:
+    cfg_path = hermes_home / "config.yaml"
     cfg: dict = {}
     if cfg_path.exists():
         try:
@@ -59,14 +59,14 @@ class TestRegisterTTSProvider:
     """End-to-end: a fake plugin registers via the hook, ends up in the registry."""
 
     def test_accepts_valid_provider(self):
-        from prostor_cli.plugins import PluginManager
+        from hermes_cli.plugins import PluginManager
 
         from agent import tts_registry
         tts_registry._reset_for_tests()
 
-        prostor_home = Path(os.environ["PROSTOR_HOME"])
+        hermes_home = Path(os.environ["PROSTOR_HOME"])
         _write_plugin(
-            prostor_home / "plugins",
+            hermes_home / "plugins",
             "my-tts-plugin",
             register_body=(
                 "from agent.tts_provider import TTSProvider\n"
@@ -78,7 +78,7 @@ class TestRegisterTTSProvider:
                 "    ctx.register_tts_provider(P())"
             ),
         )
-        _enable(prostor_home, "my-tts-plugin")
+        _enable(hermes_home, "my-tts-plugin")
 
         mgr = PluginManager()
         mgr.discover_and_load()
@@ -92,18 +92,18 @@ class TestRegisterTTSProvider:
 
     def test_rejects_non_provider(self, caplog):
         """A plugin that passes a non-TTSProvider gets a warning, no exception."""
-        from prostor_cli.plugins import PluginManager
+        from hermes_cli.plugins import PluginManager
 
         from agent import tts_registry
         tts_registry._reset_for_tests()
 
-        prostor_home = Path(os.environ["PROSTOR_HOME"])
+        hermes_home = Path(os.environ["PROSTOR_HOME"])
         _write_plugin(
-            prostor_home / "plugins",
+            hermes_home / "plugins",
             "bad-tts-plugin",
             register_body="ctx.register_tts_provider('not a provider')",
         )
-        _enable(prostor_home, "bad-tts-plugin")
+        _enable(hermes_home, "bad-tts-plugin")
 
         with caplog.at_level("WARNING"):
             mgr = PluginManager()
@@ -122,14 +122,14 @@ class TestRegisterTTSProvider:
         rejected by the underlying registry — both with a registry-level warning
         AND with the registry remaining empty (plugin still loads OK).
         """
-        from prostor_cli.plugins import PluginManager
+        from hermes_cli.plugins import PluginManager
 
         from agent import tts_registry
         tts_registry._reset_for_tests()
 
-        prostor_home = Path(os.environ["PROSTOR_HOME"])
+        hermes_home = Path(os.environ["PROSTOR_HOME"])
         _write_plugin(
-            prostor_home / "plugins",
+            hermes_home / "plugins",
             "shadow-tts-plugin",
             register_body=(
                 "from agent.tts_provider import TTSProvider\n"
@@ -141,7 +141,7 @@ class TestRegisterTTSProvider:
                 "    ctx.register_tts_provider(P())"
             ),
         )
-        _enable(prostor_home, "shadow-tts-plugin")
+        _enable(hermes_home, "shadow-tts-plugin")
 
         with caplog.at_level("WARNING"):
             mgr = PluginManager()

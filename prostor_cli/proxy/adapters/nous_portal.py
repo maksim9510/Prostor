@@ -11,7 +11,7 @@ import logging
 import threading
 from typing import Any, Dict, FrozenSet, Optional
 
-from prostor_cli.auth import (
+from hermes_cli.auth import (
     AuthError,
     DEFAULT_NOUS_INFERENCE_URL,
     _load_auth_store,
@@ -24,7 +24,7 @@ from prostor_cli.auth import (
     _write_shared_nous_state,
     resolve_nous_runtime_credentials,
 )
-from prostor_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
+from hermes_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ class NousPortalAdapter(UpstreamAdapter):
 
     # ------------------------------------------------------------------
     # Internal helpers — auth.json access. Kept local rather than added
-    # to prostor_cli.auth to avoid expanding that module's public surface.
+    # to hermes_cli.auth to avoid expanding that module's public surface.
     # ------------------------------------------------------------------
 
     def _read_state(self) -> Optional[Dict[str, Any]]:

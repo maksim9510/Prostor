@@ -1,6 +1,6 @@
 """``prostor claw`` subcommand parser.
 
-Extracted from ``prostor_cli/main.py:main()`` (god-file Phase 2 follow-up).
+Extracted from ``hermes_cli/main.py:main()`` (god-file Phase 2 follow-up).
 Handler injected to avoid importing ``main``.
 """
 

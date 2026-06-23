@@ -6,12 +6,12 @@ from unittest.mock import patch, MagicMock, mock_open
 
 import pytest
 
-import prostor_cli.gateway as gateway
-import prostor_constants
+import hermes_cli.gateway as gateway
+import hermes_constants
 
 
 # =============================================================================
-# is_wsl() in prostor_constants
+# is_wsl() in hermes_constants
 # =============================================================================
 
 class TestIsWsl:
@@ -19,7 +19,7 @@ class TestIsWsl:
 
     def setup_method(self):
         # Reset cached value between tests
-        prostor_constants._wsl_detected = None
+        hermes_constants._wsl_detected = None
 
     def test_detects_wsl2(self):
         fake_content = (
@@ -27,7 +27,7 @@ class TestIsWsl:
             "(gcc (GCC) 11.2.0) #1 SMP Thu Jan 11 04:09:03 UTC 2024\n"
         )
         with patch("builtins.open", mock_open(read_data=fake_content)):
-            assert prostor_constants.is_wsl() is True
+            assert hermes_constants.is_wsl() is True
 
     def test_detects_wsl1(self):
         fake_content = (
@@ -35,7 +35,7 @@ class TestIsWsl:
             "(Microsoft@Microsoft.com) (gcc version 5.4.0) #1\n"
         )
         with patch("builtins.open", mock_open(read_data=fake_content)):
-            assert prostor_constants.is_wsl() is True
+            assert hermes_constants.is_wsl() is True
 
     def test_native_linux(self):
         fake_content = (
@@ -43,18 +43,18 @@ class TestIsWsl:
             "(x86_64-linux-gnu-gcc-12 (Ubuntu 12.3.0-1ubuntu1~22.04) 12.3.0) #44\n"
         )
         with patch("builtins.open", mock_open(read_data=fake_content)):
-            assert prostor_constants.is_wsl() is False
+            assert hermes_constants.is_wsl() is False
 
     def test_no_proc_version(self):
         with patch("builtins.open", side_effect=FileNotFoundError):
-            assert prostor_constants.is_wsl() is False
+            assert hermes_constants.is_wsl() is False
 
     def test_result_is_cached(self):
         """After first detection, subsequent calls return the cached value."""
-        prostor_constants._wsl_detected = True
+        hermes_constants._wsl_detected = True
         # Even with open raising, cached value is returned
         with patch("builtins.open", side_effect=FileNotFoundError):
-            assert prostor_constants.is_wsl() is True
+            assert hermes_constants.is_wsl() is True
 
 
 # =============================================================================
@@ -172,7 +172,7 @@ class TestGatewayCommandWSLMessages:
         # the WSL guidance branch, invoking gateway_windows.install() which
         # writes a Startup-folder .cmd into the real user's Startup folder
         # (NOT tmp_path) pointing at a now-vanished pytest fixture path.
-        # The user then sees a broken Prostor_Gateway.cmd flash a cmd.exe
+        # The user then sees a broken Hermes_Gateway.cmd flash a cmd.exe
         # window on every login. See fix/windows-gateway-reliability.
         monkeypatch.setattr(gateway, "is_windows", lambda: False)
 

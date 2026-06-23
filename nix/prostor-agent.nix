@@ -37,21 +37,21 @@
 }:
 let
   nodejs = nodejs_22;
-  prostorVenv = callPackage ./python.nix {
+  hermesVenv = callPackage ./python.nix {
     inherit uv2nix pyproject-nix pyproject-build-systems;
     dependency-groups = [ "all" ] ++ extraDependencyGroups;
   };
 
-  prostorNpmLib = callPackage ./lib.nix {
+  hermesNpmLib = callPackage ./lib.nix {
     inherit npm-lockfile-fix nodejs;
   };
 
-  prostorTui = callPackage ./tui.nix {
-    inherit prostorNpmLib;
+  hermesTui = callPackage ./tui.nix {
+    inherit hermesNpmLib;
   };
 
-  prostorWeb = callPackage ./web.nix {
-    inherit prostorNpmLib;
+  hermesWeb = callPackage ./web.nix {
+    inherit hermesNpmLib;
   };
 
   bundledSkills = lib.cleanSourceWith {
@@ -120,7 +120,7 @@ let
 
     # Collect core venv package names
     core = set()
-    venv_sp = pathlib.Path('${prostorVenv}/${sitePackagesPath}')
+    venv_sp = pathlib.Path('${hermesVenv}/${sitePackagesPath}')
     for di in venv_sp.glob('*.dist-info'):
         meta = di / 'METADATA'
         if meta.exists():
@@ -167,21 +167,21 @@ stdenv.mkDerivation (finalAttrs: {
     cp -r ${bundledSkills} $out/share/prostor-agent/skills
     cp -r ${bundledPlugins} $out/share/prostor-agent/plugins
     cp -r ${bundledLocales} $out/share/prostor-agent/locales
-    cp -r ${prostorWeb} $out/share/prostor-agent/web_dist
+    cp -r ${hermesWeb} $out/share/prostor-agent/web_dist
 
     mkdir -p $out/ui-tui
-    cp -r ${prostorTui}/lib/prostor-tui/* $out/ui-tui/
+    cp -r ${hermesTui}/lib/prostor-tui/* $out/ui-tui/
 
     ${lib.concatMapStringsSep "\n"
       (name: ''
-        makeWrapper ${prostorVenv}/bin/${name} $out/bin/${name} \
+        makeWrapper ${hermesVenv}/bin/${name} $out/bin/${name} \
           --suffix PATH : "${runtimePath}" \
           --set PROSTOR_BUNDLED_SKILLS $out/share/prostor-agent/skills \
           --set PROSTOR_BUNDLED_PLUGINS $out/share/prostor-agent/plugins \
           --set PROSTOR_BUNDLED_LOCALES $out/share/prostor-agent/locales \
           --set PROSTOR_WEB_DIST $out/share/prostor-agent/web_dist \
           --set PROSTOR_TUI_DIR $out/ui-tui \
-          --set PROSTOR_PYTHON ${prostorVenv}/bin/python3 \
+          --set PROSTOR_PYTHON ${hermesVenv}/bin/python3 \
           --set PROSTOR_NODE ${lib.getExe nodejs} \
           ${lib.optionalString (rev != null) ''--set PROSTOR_REVISION ${rev} \''}
           ${lib.optionalString (extraPythonPackages != [ ]) ''--suffix PYTHONPATH : "${pythonPath}"''}
@@ -195,7 +195,7 @@ stdenv.mkDerivation (finalAttrs: {
 
     ${lib.optionalString (extraPythonPackages != [ ]) ''
       echo "=== Checking for plugin/core package collisions ==="
-      ${prostorVenv}/bin/python3 -c "${checkPackageCollisions}"
+      ${hermesVenv}/bin/python3 -c "${checkPackageCollisions}"
       echo "=== No collisions ==="
     ''}
 
@@ -204,10 +204,10 @@ stdenv.mkDerivation (finalAttrs: {
 
   passthru = {
     inherit
-      prostorTui
-      prostorWeb
-      prostorNpmLib
-      prostorVenv
+      hermesTui
+      hermesWeb
+      hermesNpmLib
+      hermesVenv
       ;
 
     # `prostorDesktop` references `finalAttrs.finalPackage` (this whole
@@ -218,8 +218,8 @@ stdenv.mkDerivation (finalAttrs: {
     # runtime PATH (ripgrep/git/ffmpeg/etc).  No re-implementation
     # of the agent resolution in the desktop wrapper.
     prostorDesktop = callPackage ./desktop.nix {
-      inherit prostorNpmLib electron;
-      prostorAgent = finalAttrs.finalPackage;
+      inherit hermesNpmLib electron;
+      hermesAgent = finalAttrs.finalPackage;
     };
 
     devShellHook = ''
@@ -235,7 +235,7 @@ stdenv.mkDerivation (finalAttrs: {
         echo "$STAMP_VALUE" > "$STAMP"
       else
         source .venv/bin/activate
-        export PROSTOR_PYTHON=${prostorVenv}/bin/python3
+        export PROSTOR_PYTHON=${hermesVenv}/bin/python3
       fi
     '';
   };

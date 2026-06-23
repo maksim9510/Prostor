@@ -1,6 +1,6 @@
 """``prostor gateway`` and ``prostor proxy`` subcommand parsers.
 
-Extracted verbatim from ``prostor_cli/main.py:main()`` (god-file Phase 2).
+Extracted verbatim from ``hermes_cli/main.py:main()`` (god-file Phase 2).
 Both parsers are built together because they shared one inline block (the
 ``gateway`` section also defined ``proxy``). Handlers injected to avoid
 importing ``main``.
@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 from typing import Callable
 
-from prostor_cli.subcommands._shared import add_accept_hooks_flag
+from hermes_cli.subcommands._shared import add_accept_hooks_flag
 
 
 def _add_compat_platform_flag(parser: argparse.ArgumentParser) -> None:

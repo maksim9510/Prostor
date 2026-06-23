@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from prostor_cli.dashboard_auth.base import (
+from hermes_cli.dashboard_auth.base import (
     DashboardAuthProvider,
     Session,
     LoginStart,
@@ -41,10 +41,10 @@ def test_session_has_required_fields():
 def test_login_start_has_redirect_and_state():
     ls = LoginStart(
         redirect_url="https://portal/authorize?...",
-        cookie_payload={"prostor_session_pkce": "verifier=abc;state=xyz"},
+        cookie_payload={"hermes_session_pkce": "verifier=abc;state=xyz"},
     )
     assert ls.redirect_url.startswith("https://")
-    assert "prostor_session_pkce" in ls.cookie_payload
+    assert "hermes_session_pkce" in ls.cookie_payload
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def test_assert_protocol_compliance_rejects_missing_display_name():
 # ---------------------------------------------------------------------------
 
 
-from prostor_cli.dashboard_auth import (  # noqa: E402  (after-imports for clarity)
+from hermes_cli.dashboard_auth import (  # noqa: E402  (after-imports for clarity)
     register_provider,
     get_provider,
     list_providers,

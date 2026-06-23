@@ -15,6 +15,8 @@ import type {
   CronJobUpdates,
   ElevenLabsVoicesResponse,
   EnvVarInfo,
+  ProstorConfig,
+  ProstorConfigRecord,
   LogsResponse,
   MemoryProviderConfig,
   MemoryProviderOAuthStatus,
@@ -34,8 +36,6 @@ import type {
   ProfileSetupCommand,
   ProfileSoul,
   ProfilesResponse,
-  ProstorConfig,
-  ProstorConfigRecord,
   SessionInfo,
   SessionMessagesResponse,
   SessionSearchResponse,
@@ -61,6 +61,9 @@ export type {
   AudioTranscriptionResponse,
   AuxiliaryModelsResponse,
   BackendUpdateCheckResponse,
+  ComputerUseCheck,
+  ComputerUsePermissionSource,
+  ComputerUseStatus,
   ConfigFieldSchema,
   ConfigSchemaResponse,
   CronJob,
@@ -71,8 +74,11 @@ export type {
   ElevenLabsVoicesResponse,
   EnvVarInfo,
   GatewayReadyPayload,
+  ProstorConfig,
+  ProstorConfigRecord,
   LogsResponse,
   MemoryProviderConfig,
+  MemoryProviderOAuthStatus,
   MessagingEnvVarInfo,
   MessagingHomeChannel,
   MessagingPlatformInfo,
@@ -90,8 +96,6 @@ export type {
   ProfileSetupCommand,
   ProfileSoul,
   ProfilesResponse,
-  ProstorConfig,
-  ProstorConfigRecord,
   RpcEvent,
   SessionCreateResponse,
   SessionInfo,
@@ -455,13 +459,8 @@ export function cancelOAuthSession(sessionId: string): Promise<{ ok: boolean }> 
   })
 }
 
-export function getSkills(): Promise<SkillInfo[]> {
-  return window.prostorDesktop.api<SkillInfo[]>({
-    ...profileScoped(),
-    path: '/api/skills'
-  })
-}
-
+// Memory-provider OAuth connect (provider-keyed; 404s for providers without an
+// OAuth flow). Profile-scoped: the grant lands in the active profile's config.
 export function startMemoryProviderOAuth(provider: string): Promise<MemoryProviderOAuthStatus> {
   return window.prostorDesktop.api<MemoryProviderOAuthStatus>({
     ...profileScoped(),
@@ -477,25 +476,10 @@ export function getMemoryProviderOAuthStatus(provider: string): Promise<MemoryPr
   })
 }
 
-export function getComputerUseStatus(): Promise<ComputerUseStatus> {
-  return window.prostorDesktop.api<ComputerUseStatus>({
+export function getSkills(): Promise<SkillInfo[]> {
+  return window.prostorDesktop.api<SkillInfo[]>({
     ...profileScoped(),
-    path: '/api/tools/computer-use/status'
-  })
-}
-
-export function grantComputerUsePermissions(): Promise<ActionResponse> {
-  return window.prostorDesktop.api<ActionResponse>({
-    ...profileScoped(),
-    path: '/api/tools/computer-use/permissions/grant',
-    method: 'POST'
-  })
-}
-
-export function updateProstor(): Promise<ActionResponse> {
-  return window.prostorDesktop.api<ActionResponse>({
-    path: '/api/prostor/update',
-    method: 'POST'
+    path: '/api/skills'
   })
 }
 
@@ -552,6 +536,21 @@ export function runToolsetPostSetup(name: string, key: string): Promise<ActionRe
     path: `/api/tools/toolsets/${encodeURIComponent(name)}/post-setup`,
     method: 'POST',
     body: { key }
+  })
+}
+
+export function getComputerUseStatus(): Promise<ComputerUseStatus> {
+  return window.prostorDesktop.api<ComputerUseStatus>({
+    ...profileScoped(),
+    path: '/api/tools/computer-use/status'
+  })
+}
+
+export function grantComputerUsePermissions(): Promise<ActionResponse> {
+  return window.prostorDesktop.api<ActionResponse>({
+    ...profileScoped(),
+    path: '/api/tools/computer-use/permissions/grant',
+    method: 'POST'
   })
 }
 

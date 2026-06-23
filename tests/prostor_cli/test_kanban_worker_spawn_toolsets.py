@@ -59,9 +59,9 @@ agent:
     root.joinpath("config.yaml").write_text("toolsets:\n  - kanban\n", encoding="utf-8")
     monkeypatch.setenv("PROSTOR_HOME", str(root))
 
-    from prostor_cli import kanban_db as kb
+    from hermes_cli import kanban_db as kb
 
-    monkeypatch.setattr(kb, "_resolve_prostor_argv", lambda: ["prostor"])
+    monkeypatch.setattr(kb, "_resolve_hermes_argv", lambda: ["prostor"])
 
     captured = {}
 
@@ -107,7 +107,7 @@ toolsets:
     )
     monkeypatch.setenv("PROSTOR_HOME", str(root))
 
-    from prostor_cli import kanban_db as kb
+    from hermes_cli import kanban_db as kb
 
     resolved = kb._resolve_worker_cli_toolsets(str(profile))
 

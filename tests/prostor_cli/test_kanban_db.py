@@ -1,10 +1,11 @@
-"""Tests for the Kanban DB layer (prostor_cli.kanban_db)."""
+"""Tests for the Kanban DB layer (hermes_cli.kanban_db)."""
 
 from __future__ import annotations
 
 import concurrent.futures
 import os
 import sqlite3
+import subprocess
 import sys
 import time
 import types
@@ -13,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from prostor_cli import kanban_db as kb
+from hermes_cli import kanban_db as kb
 
 
 @pytest.fixture
@@ -25,6 +26,16 @@ def kanban_home(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
     return home
+
+
+def _init_git_repo(repo: Path) -> None:
+    repo.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "kanban@example.com"], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Kanban Test"], check=True, capture_output=True, text=True)
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True, text=True)
 
 
 # ---------------------------------------------------------------------------
@@ -68,10 +79,15 @@ def test_connect_honors_kanban_busy_timeout_env(kanban_home, monkeypatch):
 
 
 def test_cross_process_init_lock_uses_windows_byte_range_lock(tmp_path, monkeypatch):
-    """Windows must use a real process lock, not a no-op sidecar open."""
+    """Windows must use a real (non-blocking) process lock, not a no-op open.
+
+    The init lock acquires with LK_NBLCK in a bounded retry loop (#36644) so a
+    wedged holder can never block connect() forever; a clean acquire takes the
+    lock once and releases it once.
+    """
     calls: list[tuple[int, int, int]] = []
     fake_msvcrt = types.SimpleNamespace(
-        LK_LOCK=1,
+        LK_NBLCK=3,
         LK_UNLCK=2,
         locking=lambda fd, mode, nbytes: calls.append((fd, mode, nbytes)),
     )
@@ -80,10 +96,12 @@ def test_cross_process_init_lock_uses_windows_byte_range_lock(tmp_path, monkeypa
 
     db_path = tmp_path / "kanban.db"
     with kb._cross_process_init_lock(db_path):
-        assert calls == [(calls[0][0], fake_msvcrt.LK_LOCK, 1)]
+        # Acquired exactly once via the non-blocking byte-range lock.
+        assert [call[1:] for call in calls] == [(fake_msvcrt.LK_NBLCK, 1)]
 
+    # Released once on exit.
     assert [call[1:] for call in calls] == [
-        (fake_msvcrt.LK_LOCK, 1),
+        (fake_msvcrt.LK_NBLCK, 1),
         (fake_msvcrt.LK_UNLCK, 1),
     ]
 
@@ -409,7 +427,7 @@ def test_unblock_scheduled_rechecks_parent_gate(kanban_home):
 
 def test_stale_claim_reclaimed(kanban_home, monkeypatch):
     import signal
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="x", assignee="a")
@@ -443,7 +461,7 @@ def test_stale_claim_with_live_pid_extends_instead_of_reclaiming(
     ``DEFAULT_CLAIM_TTL_SECONDS`` inside a single tool-free LLM call;
     killing those healthy workers produces a respawn loop with zero
     progress."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="x", assignee="a")
@@ -481,7 +499,7 @@ def test_stale_claim_with_live_pid_extends_instead_of_reclaiming(
 def test_stale_claim_with_live_pid_uses_env_ttl_override(
     kanban_home, monkeypatch,
 ):
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setenv("PROSTOR_KANBAN_CLAIM_TTL_SECONDS", "3600")
 
@@ -515,7 +533,7 @@ def test_stale_claim_deferred_when_live_worker_survives_termination(
     in uninterruptible (D) state, where a pending SIGKILL cannot land. The claim
     is held (extended) and retried next tick instead.
     """
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="x", assignee="a")
@@ -566,7 +584,7 @@ def test_stale_claim_reclaimed_when_termination_succeeds(
     kanban_home, monkeypatch,
 ):
     """When the worker is actually killed, the claim is released as before."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="x", assignee="a")
@@ -600,7 +618,7 @@ def test_stale_claim_released_when_worker_not_host_local(
     A claim we cannot manage (different host, or no kill attempted) must still
     be released, otherwise a foreign-host claim could strand a task forever.
     """
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="x", assignee="a")
@@ -628,7 +646,7 @@ def test_stale_claim_released_when_worker_not_host_local(
 
 def test_detect_stale_defers_when_live_worker_survives(kanban_home, monkeypatch):
     """detect_stale_running must also hold the claim when the worker survives."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="wedged", assignee="worker")
@@ -678,7 +696,7 @@ def test_stale_claim_reclaim_event_records_diagnostic_payload(
     (#23025: previous payload only had ``stale_lock`` which gives no
     timing context)."""
     import json
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="x", assignee="a")
@@ -712,7 +730,7 @@ def test_detect_crashed_workers_systemic_failure_fast_block(
     kanban_home, monkeypatch,
 ):
     """When many tasks crash with the same error, trip the breaker faster."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setattr(_kb, "_pid_alive", lambda _pid: False)
 
@@ -743,7 +761,7 @@ def test_detect_crashed_workers_isolated_failure_normal_retry(
     kanban_home, monkeypatch,
 ):
     """Below the systemic threshold, tasks retain normal retry budget."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setattr(_kb, "_pid_alive", lambda _pid: False)
 
@@ -774,7 +792,7 @@ def test_detect_crashed_workers_skips_freshly_claimed_tasks(
     kanban_home, monkeypatch,
 ):
     """Grace period prevents reclaim of freshly-started tasks."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setattr(_kb, "_pid_alive", lambda _pid: False)
     monkeypatch.delenv("PROSTOR_KANBAN_CRASH_GRACE_SECONDS", raising=False)
@@ -806,7 +824,7 @@ def test_detect_crashed_workers_grace_period_env_override(
     kanban_home, monkeypatch,
 ):
     """PROSTOR_KANBAN_CRASH_GRACE_SECONDS env var adjusts the window."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setattr(_kb, "_pid_alive", lambda _pid: False)
     monkeypatch.setenv("PROSTOR_KANBAN_CRASH_GRACE_SECONDS", "5")
@@ -834,7 +852,7 @@ def test_detect_crashed_workers_grace_period_env_override(
 
 def test_resolve_crash_grace_seconds_handles_bad_env(monkeypatch):
     """Bad env values fall back to DEFAULT_CRASH_GRACE_SECONDS."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     for bad_val in ("notanumber", "-5", ""):
         monkeypatch.setenv("PROSTOR_KANBAN_CRASH_GRACE_SECONDS", bad_val)
@@ -859,7 +877,7 @@ def _exited_status(code: int) -> int:
 
 
 def test_classify_worker_exit_recognizes_rate_limit_sentinel(kanban_home):
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     pid = 31337
     _kb._record_worker_exit(pid, _exited_status(_kb.KANBAN_RATE_LIMIT_EXIT_CODE))
@@ -878,7 +896,7 @@ def test_rate_limit_exit_requeues_without_counting_failure(
     """A rate-limit sentinel exit releases the task to ``ready`` and leaves
     ``consecutive_failures`` untouched — the breaker must never trip on a
     transient throttle, even across many quota-wall hits."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setattr(_kb, "_pid_alive", lambda _pid: False)
     monkeypatch.setenv("PROSTOR_KANBAN_CRASH_GRACE_SECONDS", "0")
@@ -938,7 +956,7 @@ def test_real_crash_still_counts_and_trips_breaker(kanban_home, monkeypatch):
     """Sanity: a genuine non-zero crash (not the sentinel) still increments
     the failure counter and trips the breaker — the rate-limit carve-out is
     surgical, not a blanket "never count crashes"."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setattr(_kb, "_pid_alive", lambda _pid: False)
 
@@ -969,7 +987,7 @@ def test_respawn_guard_defers_rate_limited_within_cooldown(
     """Within the cooldown after a rate-limit requeue, the guard defers the
     respawn; after the cooldown it allows a probe — and crucially does NOT
     fall into ``blocker_auth`` (which would defer forever)."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setenv("PROSTOR_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS", "300")
     now = 5_000_000
@@ -1007,7 +1025,7 @@ def test_respawn_guard_rate_limit_cooldown_zero_allows_immediately(
 ):
     """Cooldown of 0 disables the wait — task is spawnable on the next tick,
     and the stamped rate-limit text does not re-trap it via blocker_auth."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setenv("PROSTOR_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS", "0")
     now = 6_000_000
@@ -1033,7 +1051,7 @@ def test_respawn_guard_rate_limit_cooldown_zero_allows_immediately(
 
 
 def test_resolve_rate_limit_cooldown_handles_bad_env(monkeypatch):
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     for bad_val in ("notanumber", "-5", ""):
         monkeypatch.setenv(
@@ -1649,7 +1667,7 @@ def test_dispatch_skips_nonspawnable_into_separate_bucket(kanban_home, monkeypat
     ``skipped_unassigned`` (which is operator-actionable) — they go in
     the dedicated ``skipped_nonspawnable`` bucket so health telemetry
     can suppress false-positive "stuck" warnings."""
-    from prostor_cli import profiles
+    from hermes_cli import profiles
     monkeypatch.setattr(profiles, "profile_exists", lambda name: False)
     with kb.connect() as conn:
         t = kb.create_task(conn, title="for-terminal", assignee="orion-cc")
@@ -1663,7 +1681,7 @@ def test_has_spawnable_ready_false_when_only_terminal_lanes(kanban_home, monkeyp
     """``has_spawnable_ready`` returns False when every ready task is
     assigned to a control-plane lane — used by gateway/CLI dispatchers
     to silence the stuck-warn while terminals still have queued work."""
-    from prostor_cli import profiles
+    from hermes_cli import profiles
     monkeypatch.setattr(profiles, "profile_exists", lambda name: False)
     with kb.connect() as conn:
         kb.create_task(conn, title="t1", assignee="orion-cc")
@@ -1675,7 +1693,7 @@ def test_has_spawnable_ready_true_when_real_profile_present(kanban_home, monkeyp
     """``has_spawnable_ready`` returns True as soon as ANY ready task
     has an assignee that maps to a real Prostor profile — preserves the
     real "stuck" signal when a daily/agent task is queued."""
-    from prostor_cli import profiles
+    from hermes_cli import profiles
     monkeypatch.setattr(
         profiles, "profile_exists", lambda name: name == "daily"
     )
@@ -2060,10 +2078,11 @@ def test_dispatch_respawn_guard_emits_event_for_skipped_task(
 # Workspace resolution
 # ---------------------------------------------------------------------------
 
-def test_scratch_workspace_created_under_prostor_home(kanban_home):
+def test_scratch_workspace_created_under_hermes_home(kanban_home):
     with kb.connect() as conn:
         t = kb.create_task(conn, title="x")
         task = kb.get_task(conn, t)
+        assert task is not None
         ws = kb.resolve_workspace(task)
     assert ws.exists()
     assert ws.is_dir()
@@ -2077,21 +2096,230 @@ def test_dir_workspace_honors_given_path(kanban_home, tmp_path):
             conn, title="biz", workspace_kind="dir", workspace_path=str(target)
         )
         task = kb.get_task(conn, t)
+        assert task is not None
         ws = kb.resolve_workspace(task)
     assert ws == target
     assert ws.exists()
 
 
-def test_worktree_workspace_returns_intended_path(kanban_home, tmp_path):
-    target = str(tmp_path / ".worktrees" / "my-task")
+def test_worktree_workspace_repo_root_anchor_materializes_linked_worktree(kanban_home, tmp_path):
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
     with kb.connect() as conn:
         t = kb.create_task(
-            conn, title="ship", workspace_kind="worktree", workspace_path=target
+            conn, title="ship", workspace_kind="worktree", workspace_path=str(repo)
         )
         task = kb.get_task(conn, t)
+        assert task is not None
         ws = kb.resolve_workspace(task)
-    # We do NOT auto-create worktrees; the worker's skill handles that.
-    assert str(ws) == target
+
+    expected = repo / ".worktrees" / t
+    assert ws == expected
+    assert ws.exists()
+    repo_common = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    ws_common = subprocess.run(
+        ["git", "-C", str(ws), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert ws_common == repo_common
+    listed = subprocess.run(
+        ["git", "-C", str(repo), "worktree", "list", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert f"worktree {expected}" in listed
+    assert f"branch refs/heads/wt/{t}" in listed
+
+
+def test_worktree_no_path_anchors_on_board_default_workdir(kanban_home, tmp_path):
+    """A worktree task created with no explicit path inherits the board's
+    default_workdir as its anchor and materializes a per-task linked worktree
+    at ``<repo>/.worktrees/<id>`` — NOT the dispatcher's CWD, and NOT the
+    shared default_workdir verbatim (which would collapse every task into one
+    directory)."""
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    kb.create_board("wt-default-board", default_workdir=str(repo))
+    with kb.connect(board="wt-default-board") as conn:
+        t = kb.create_task(
+            conn, title="ship", workspace_kind="worktree", board="wt-default-board"
+        )
+        task = kb.get_task(conn, t)
+        assert task is not None
+        ws = kb.resolve_workspace(task, board="wt-default-board")
+
+    expected = repo / ".worktrees" / t
+    assert ws == expected
+    assert ws.exists()
+    assert ws != repo  # not the shared default verbatim
+
+
+def test_worktree_no_path_no_board_default_raises(kanban_home, tmp_path, monkeypatch):
+    """With neither an explicit workspace_path nor a board default_workdir,
+    resolution fails loudly pointing at default_workdir / worktree:<path> —
+    rather than silently materializing under the dispatcher's CWD (the old
+    behavior that scattered worktrees under whatever dir launched the
+    gateway)."""
+    # Park the dispatcher CWD inside a real git repo so the OLD cwd-anchored
+    # code would have "succeeded" — proving the new code does NOT use cwd.
+    decoy_repo = tmp_path / "decoy"
+    _init_git_repo(decoy_repo)
+    monkeypatch.chdir(decoy_repo)
+    with kb.connect() as conn:
+        t = kb.create_task(conn, title="ship", workspace_kind="worktree")
+        task = kb.get_task(conn, t)
+        assert task is not None
+        with pytest.raises(ValueError, match="default_workdir"):
+            kb.resolve_workspace(task)
+
+
+def test_worktree_workspace_explicit_target_materializes_linked_worktree(kanban_home, tmp_path):
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    target = repo / ".worktrees" / "custom-task"
+    branch = "wt/custom-task"
+    with kb.connect() as conn:
+        t = kb.create_task(
+            conn,
+            title="ship",
+            workspace_kind="worktree",
+            workspace_path=str(target),
+            branch_name=branch,
+        )
+        task = kb.get_task(conn, t)
+        assert task is not None
+        ws = kb.resolve_workspace(task)
+
+    assert ws == target
+    assert ws.exists()
+    repo_common = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    ws_common = subprocess.run(
+        ["git", "-C", str(ws), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert ws_common == repo_common
+    listed = subprocess.run(
+        ["git", "-C", str(repo), "worktree", "list", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert f"worktree {target}" in listed
+    assert f"branch refs/heads/{branch}" in listed
+
+
+def test_dispatch_worktree_task_persists_materialized_workspace_and_branch(kanban_home, tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    kb.create_board("worktree-board", default_workdir=str(repo))
+    import hermes_cli.profiles as profiles
+    monkeypatch.setattr(profiles, "profile_exists", lambda _name: True)
+    spawns: list[tuple[str, str]] = []
+
+    def fake_spawn(task, workspace, board=None):
+        spawns.append((task.id, workspace))
+        return None
+
+    with kb.connect(board="worktree-board") as conn:
+        tid = kb.create_task(
+            conn,
+            title="ship",
+            assignee="sentinel",
+            workspace_kind="worktree",
+            board="worktree-board",
+        )
+        result = kb.dispatch_once(conn, spawn_fn=fake_spawn, board="worktree-board")
+        task = kb.get_task(conn, tid)
+
+    expected = repo / ".worktrees" / tid
+    assert result.spawned == [(tid, "sentinel", str(expected))]
+    assert spawns == [(tid, str(expected))]
+    assert task is not None
+    assert task.workspace_path == str(expected)
+    assert task.branch_name == f"wt/{tid}"
+    listed = subprocess.run(
+        ["git", "-C", str(repo), "worktree", "list", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert f"worktree {expected}" in listed
+    assert f"branch refs/heads/wt/{tid}" in listed
+
+
+def test_dispatch_worktree_task_rerun_reuses_existing_linked_worktree_and_branch(kanban_home, tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    kb.create_board("worktree-rerun-board", default_workdir=str(repo))
+    import hermes_cli.profiles as profiles
+    monkeypatch.setattr(profiles, "profile_exists", lambda _name: True)
+    spawns: list[tuple[str, str]] = []
+
+    def fake_spawn(task, workspace, board=None):
+        spawns.append((task.id, workspace))
+        return None
+
+    with kb.connect(board="worktree-rerun-board") as conn:
+        tid = kb.create_task(
+            conn,
+            title="ship",
+            assignee="sentinel",
+            workspace_kind="worktree",
+            board="worktree-rerun-board",
+        )
+        first = kb.dispatch_once(conn, spawn_fn=fake_spawn, board="worktree-rerun-board")
+        first_task = kb.get_task(conn, tid)
+        assert first_task is not None
+        expected = repo / ".worktrees" / tid
+        assert first_task.workspace_path == str(expected)
+        assert first_task.branch_name == f"wt/{tid}"
+
+        conn.execute(
+            "UPDATE tasks SET status='ready', claim_lock=NULL, claim_expires=NULL, worker_pid=NULL WHERE id=?",
+            (tid,),
+        )
+        conn.commit()
+
+        second = kb.dispatch_once(conn, spawn_fn=fake_spawn, board="worktree-rerun-board")
+        second_task = kb.get_task(conn, tid)
+
+    assert first.spawned == [(tid, "sentinel", str(expected))]
+    assert second.spawned == [(tid, "sentinel", str(expected))]
+    assert spawns == [(tid, str(expected)), (tid, str(expected))]
+    assert second_task is not None
+    assert second_task.workspace_path == str(expected)
+    actual_branch = subprocess.run(
+        ["git", "-C", str(expected), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert actual_branch == f"wt/{tid}"
+    assert second_task.branch_name == actual_branch
+    listed = subprocess.run(
+        ["git", "-C", str(repo), "worktree", "list", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert listed.count(f"worktree {expected}\n") == 1
+    assert f"worktree {expected}/.worktrees/{tid}" not in listed
+    assert f"branch refs/heads/{actual_branch}" in listed
 
 
 # ---------------------------------------------------------------------------
@@ -2103,6 +2331,7 @@ def test_cleanup_workspace_removes_managed_scratch_dir(kanban_home):
     with kb.connect() as conn:
         t = kb.create_task(conn, title="scratchy")
         task = kb.get_task(conn, t)
+        assert task is not None
         ws = kb.resolve_workspace(task)
         kb.set_workspace_path(conn, t, ws)
         assert ws.is_dir()
@@ -2460,12 +2689,12 @@ class TestSharedBoardPaths:
     """`kanban_home`/`kanban_db_path`/`workspaces_root`/`worker_log_path`
     must anchor at the **shared root**, not the active profile's PROSTOR_HOME."""
 
-    def _set_home(self, monkeypatch, tmp_path, prostor_home):
+    def _set_home(self, monkeypatch, tmp_path, hermes_home):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
         monkeypatch.delenv("PROSTOR_KANBAN_HOME", raising=False)
 
-    def test_default_install_anchors_at_home_dot_prostor(
+    def test_default_install_anchors_at_home_dot_hermes(
         self, tmp_path, monkeypatch
     ):
         # Standard install: PROSTOR_HOME == ~/.prostor, no profile active.
@@ -2535,11 +2764,11 @@ class TestSharedBoardPaths:
         assert dispatcher_ws == worker_ws
         assert dispatcher_log == worker_log
 
-    def test_docker_custom_prostor_home_uses_env_path_directly(
+    def test_docker_custom_hermes_home_uses_env_path_directly(
         self, tmp_path, monkeypatch
     ):
         # Docker / custom deployment: PROSTOR_HOME points outside ~/.prostor.
-        # `get_default_prostor_root()` returns env_home directly when it
+        # `get_default_hermes_root()` returns env_home directly when it
         # is not a `<root>/profiles/<name>` shape and not under
         # `Path.home() / ".prostor"`.
         custom_root = tmp_path / "opt" / "prostor"
@@ -2553,7 +2782,7 @@ class TestSharedBoardPaths:
         self, tmp_path, monkeypatch
     ):
         # Docker profile shape: PROSTOR_HOME=/opt/prostor/profiles/coder;
-        # `get_default_prostor_root()` walks up to /opt/prostor because
+        # `get_default_hermes_root()` walks up to /opt/prostor because
         # the immediate parent dir is named "profiles".
         custom_root = tmp_path / "opt" / "prostor"
         profile = custom_root / "profiles" / "coder"
@@ -2563,7 +2792,7 @@ class TestSharedBoardPaths:
         assert kb.kanban_home() == custom_root
         assert kb.kanban_db_path() == custom_root / "kanban.db"
 
-    def test_explicit_override_via_prostor_kanban_home(
+    def test_explicit_override_via_hermes_kanban_home(
         self, tmp_path, monkeypatch
     ):
         # Explicit override: PROSTOR_KANBAN_HOME beats every other
@@ -2616,11 +2845,11 @@ class TestSharedBoardPaths:
         assert task is not None
         assert task.title == "cross-profile"
 
-    def test_prostor_kanban_db_pin_beats_kanban_home(
+    def test_hermes_kanban_db_pin_beats_kanban_home(
         self, tmp_path, monkeypatch
     ):
         # PROSTOR_KANBAN_DB pins the file path directly and beats both
-        # PROSTOR_KANBAN_HOME and the `get_default_prostor_root()` path.
+        # PROSTOR_KANBAN_HOME and the `get_default_hermes_root()` path.
         # This is the env the dispatcher injects into workers.
         default_home = tmp_path / ".prostor"
         default_home.mkdir()
@@ -2639,7 +2868,7 @@ class TestSharedBoardPaths:
         # are independent.
         assert kb.workspaces_root() == umbrella / "kanban" / "workspaces"
 
-    def test_prostor_kanban_workspaces_root_pin_beats_kanban_home(
+    def test_hermes_kanban_workspaces_root_pin_beats_kanban_home(
         self, tmp_path, monkeypatch
     ):
         # PROSTOR_KANBAN_WORKSPACES_ROOT pins the workspaces root directly.
@@ -2803,7 +3032,7 @@ def test_latest_summaries_batch_omits_tasks_without_summary(kanban_home):
 
 
 # ---------------------------------------------------------------------------
-# NFS / network-filesystem fallback (see prostor_state.apply_wal_with_fallback)
+# NFS / network-filesystem fallback (see hermes_state.apply_wal_with_fallback)
 # ---------------------------------------------------------------------------
 
 def test_connect_falls_back_to_delete_on_locking_protocol(tmp_path, monkeypatch, caplog):
@@ -2847,8 +3076,8 @@ def test_connect_falls_back_to_delete_on_locking_protocol(tmp_path, monkeypatch,
             *args, factory=_WalBlockingConnection, **kwargs
         )
 
-    with _patch("prostor_cli.kanban_db.sqlite3.connect", side_effect=wal_blocking_connect):
-        with caplog.at_level("WARNING", logger="prostor_state"):
+    with _patch("hermes_cli.kanban_db.sqlite3.connect", side_effect=wal_blocking_connect):
+        with caplog.at_level("WARNING", logger="hermes_state"):
             conn = kb.connect()
 
     # One fallback warning, naming kanban.db
@@ -3009,7 +3238,7 @@ def test_migrate_add_optional_columns_tolerates_concurrent_migration(kanban_home
 
 
 # ---------------------------------------------------------------------------
-# Dispatcher spawn invocation — _resolve_prostor_argv()
+# Dispatcher spawn invocation — _resolve_hermes_argv()
 #
 # Workers spawned by the dispatcher must use a `prostor` invocation that does
 # not depend on PATH being set up correctly. cron jobs, systemd User= services,
@@ -3021,32 +3250,32 @@ def test_migrate_add_optional_columns_tolerates_concurrent_migration(kanban_home
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_prostor_argv_prefers_path_shim(monkeypatch):
+def test_resolve_hermes_argv_prefers_path_shim(monkeypatch):
     """When `prostor` is on PATH, use the shim — preserves familiar ps output."""
     import shutil
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
     monkeypatch.delenv("PROSTOR_BIN", raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/prostor")
-    argv = kb._resolve_prostor_argv()
+    argv = kb._resolve_hermes_argv()
     assert argv == ["/usr/local/bin/prostor"]
 
 
-def test_resolve_prostor_argv_absolutizes_relative_exe_shim(monkeypatch, tmp_path):
+def test_resolve_hermes_argv_absolutizes_relative_exe_shim(monkeypatch, tmp_path):
     """A relative executable override must not remain workspace-cwd-dependent."""
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PROSTOR_BIN", ".\\prostor.exe")
     monkeypatch.setattr(kb, "_IS_WINDOWS", True)
 
-    assert kb._resolve_prostor_argv() == [os.path.abspath(".\\prostor.exe")]
+    assert kb._resolve_hermes_argv() == [os.path.abspath(".\\prostor.exe")]
 
 
-def test_resolve_prostor_argv_avoids_implicit_windows_batch_shim(monkeypatch, tmp_path):
+def test_resolve_hermes_argv_avoids_implicit_windows_batch_shim(monkeypatch, tmp_path):
     """Implicit .cmd/.bat shims use the module fallback, not batch argv[0]."""
     import sys
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -3056,13 +3285,13 @@ def test_resolve_prostor_argv_avoids_implicit_windows_batch_shim(monkeypatch, tm
     monkeypatch.setenv("PATHEXT", ".CMD")
     monkeypatch.setattr(kb, "_IS_WINDOWS", True)
 
-    assert kb._resolve_prostor_argv() == [sys.executable, "-m", "prostor_cli.main"]
+    assert kb._resolve_hermes_argv() == [sys.executable, "-m", "hermes_cli.main"]
 
 
-def test_resolve_prostor_argv_honors_prostor_bin_path_override(monkeypatch, tmp_path):
+def test_resolve_hermes_argv_honors_hermes_bin_path_override(monkeypatch, tmp_path):
     """An explicit path-like PROSTOR_BIN lets service managers pin the executable."""
     import shutil
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
     shim = tmp_path / "bin" / "prostor"
     shim.parent.mkdir()
@@ -3070,32 +3299,32 @@ def test_resolve_prostor_argv_honors_prostor_bin_path_override(monkeypatch, tmp_
     monkeypatch.setenv("PROSTOR_BIN", str(shim))
     monkeypatch.setattr(shutil, "which", lambda name: None)
 
-    assert kb._resolve_prostor_argv() == [str(shim)]
+    assert kb._resolve_hermes_argv() == [str(shim)]
 
 
-def test_resolve_prostor_argv_prostor_bin_bare_name_uses_path(monkeypatch, tmp_path):
+def test_resolve_hermes_argv_hermes_bin_bare_name_uses_path(monkeypatch, tmp_path):
     """Bare PROSTOR_BIN values keep PATH semantics instead of cwd shadowing."""
     import stat
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
-    cwd_prostor = tmp_path / "prostor"
-    cwd_prostor.write_text("wrong\n", encoding="utf-8")
-    cwd_prostor.chmod(cwd_prostor.stat().st_mode | stat.S_IXUSR)
-    path_prostor = tmp_path / "bin" / "prostor"
-    path_prostor.parent.mkdir()
-    path_prostor.write_text("right\n", encoding="utf-8")
-    path_prostor.chmod(path_prostor.stat().st_mode | stat.S_IXUSR)
+    cwd_hermes = tmp_path / "prostor"
+    cwd_hermes.write_text("wrong\n", encoding="utf-8")
+    cwd_hermes.chmod(cwd_hermes.stat().st_mode | stat.S_IXUSR)
+    path_hermes = tmp_path / "bin" / "prostor"
+    path_hermes.parent.mkdir()
+    path_hermes.write_text("right\n", encoding="utf-8")
+    path_hermes.chmod(path_hermes.stat().st_mode | stat.S_IXUSR)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("PATH", str(path_prostor.parent))
+    monkeypatch.setenv("PATH", str(path_hermes.parent))
     monkeypatch.setenv("PROSTOR_BIN", "prostor")
 
-    assert kb._resolve_prostor_argv() == [str(path_prostor)]
+    assert kb._resolve_hermes_argv() == [str(path_hermes)]
 
 
-def test_resolve_prostor_argv_prostor_bin_bare_name_ignores_cwd(monkeypatch, tmp_path):
+def test_resolve_hermes_argv_hermes_bin_bare_name_ignores_cwd(monkeypatch, tmp_path):
     """Bare PROSTOR_BIN does not accept current-directory shadow executables."""
     import sys
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
     (tmp_path / "prostor.exe").write_text("wrong\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
@@ -3103,13 +3332,13 @@ def test_resolve_prostor_argv_prostor_bin_bare_name_ignores_cwd(monkeypatch, tmp
     monkeypatch.setenv("PROSTOR_BIN", "prostor")
     monkeypatch.setattr(kb, "_IS_WINDOWS", True)
 
-    assert kb._resolve_prostor_argv() == [sys.executable, "-m", "prostor_cli.main"]
+    assert kb._resolve_hermes_argv() == [sys.executable, "-m", "hermes_cli.main"]
 
 
-def test_resolve_prostor_argv_prostor_bin_bare_cmd_uses_module_fallback(monkeypatch, tmp_path):
+def test_resolve_hermes_argv_hermes_bin_bare_cmd_uses_module_fallback(monkeypatch, tmp_path):
     """A PATH-resolved PROSTOR_BIN batch shim is not used as worker argv[0]."""
     import sys
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -3119,22 +3348,22 @@ def test_resolve_prostor_argv_prostor_bin_bare_cmd_uses_module_fallback(monkeypa
     monkeypatch.setenv("PROSTOR_BIN", "prostor")
     monkeypatch.setattr(kb, "_IS_WINDOWS", True)
 
-    assert kb._resolve_prostor_argv() == [sys.executable, "-m", "prostor_cli.main"]
+    assert kb._resolve_hermes_argv() == [sys.executable, "-m", "hermes_cli.main"]
 
 
-def test_resolve_prostor_argv_prostor_bin_unresolved_bare_name_falls_back(monkeypatch):
+def test_resolve_hermes_argv_hermes_bin_unresolved_bare_name_falls_back(monkeypatch):
     """Unresolved PROSTOR_BIN command names do not delegate cwd search to Popen."""
     import sys
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
     monkeypatch.setenv("PATH", "")
     monkeypatch.setenv("PROSTOR_BIN", "prostor")
 
-    assert kb._resolve_prostor_argv() == [sys.executable, "-m", "prostor_cli.main"]
+    assert kb._resolve_hermes_argv() == [sys.executable, "-m", "hermes_cli.main"]
 
 
-def test_resolve_prostor_argv_falls_back_to_module_form_when_no_path_shim(monkeypatch):
-    """When the shim is not on PATH, fall back to `python -m prostor_cli.main`.
+def test_resolve_hermes_argv_falls_back_to_module_form_when_no_path_shim(monkeypatch):
+    """When the shim is not on PATH, fall back to `python -m hermes_cli.main`.
 
     Pins the correct module name (NOT `prostor` — there is no top-level
     `prostor` package). Regression for #23198: the original PR shipped
@@ -3143,32 +3372,32 @@ def test_resolve_prostor_argv_falls_back_to_module_form_when_no_path_shim(monkey
     """
     import shutil
     import sys
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
 
     monkeypatch.delenv("PROSTOR_BIN", raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: None)
-    argv = kb._resolve_prostor_argv()
-    assert argv == [sys.executable, "-m", "prostor_cli.main"]
+    argv = kb._resolve_hermes_argv()
+    assert argv == [sys.executable, "-m", "hermes_cli.main"]
 
 
-def test_resolve_prostor_argv_module_actually_runs():
+def test_resolve_hermes_argv_module_actually_runs():
     """The fallback module name must be importable + runnable.
 
     A unit test that pins the literal string is necessary but not
-    sufficient — if `prostor_cli.main` ever loses `if __name__ == "__main__"`
-    handling or its argparse setup, `python -m prostor_cli.main --version`
+    sufficient — if `hermes_cli.main` ever loses `if __name__ == "__main__"`
+    handling or its argparse setup, `python -m hermes_cli.main --version`
     would fail and so would every dispatcher spawn that hits the fallback.
     Run it as a real subprocess to catch that regression.
     """
     import subprocess
-    import prostor_cli.kanban_db as kb
+    import hermes_cli.kanban_db as kb
     import shutil
     import unittest.mock as mock
 
     with mock.patch.dict(os.environ, {}, clear=False):
         os.environ.pop("PROSTOR_BIN", None)
         with mock.patch.object(shutil, "which", return_value=None):
-            argv = kb._resolve_prostor_argv()
+            argv = kb._resolve_hermes_argv()
     r = subprocess.run(argv + ["--version"], capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, (
         f"`{' '.join(argv)} --version` failed (rc={r.returncode}); "
@@ -3574,7 +3803,7 @@ def test_has_spawnable_review_false_when_only_terminal_lanes(
     kanban_home, monkeypatch,
 ):
     """has_spawnable_review returns False when review tasks are terminal lanes."""
-    from prostor_cli import profiles
+    from hermes_cli import profiles
     monkeypatch.setattr(profiles, "profile_exists", lambda name: False)
     with kb.connect() as conn:
         t = kb.create_task(conn, title="review", assignee="orion-cc")
@@ -3584,7 +3813,7 @@ def test_has_spawnable_review_false_when_only_terminal_lanes(
 
 def test_dispatch_review_skips_nonspawnable(kanban_home, monkeypatch):
     """Review tasks with non-existent profiles go to skipped_nonspawnable."""
-    from prostor_cli import profiles
+    from hermes_cli import profiles
     monkeypatch.setattr(profiles, "profile_exists", lambda name: False)
     with kb.connect() as conn:
         t = kb.create_task(conn, title="review", assignee="orion-cc")
@@ -3614,7 +3843,7 @@ def test_dispatch_review_does_not_claim_ready_tasks(
 
 def test_detect_stale_returns_running_task_with_no_heartbeat(kanban_home, monkeypatch):
     """A task running > timeout with zero heartbeats gets reclaimed as stale."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="stale-no-hb", assignee="worker")
@@ -3646,7 +3875,7 @@ def test_detect_stale_returns_running_task_with_no_heartbeat(kanban_home, monkey
 
 def test_detect_stale_returns_task_with_stale_heartbeat(kanban_home, monkeypatch):
     """A task running > timeout with a heartbeat older than 1h gets reclaimed."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="stale-hb", assignee="worker")
@@ -3679,7 +3908,7 @@ def test_detect_stale_returns_task_with_stale_heartbeat(kanban_home, monkeypatch
 
 def test_detect_stale_skips_task_with_recent_heartbeat(kanban_home, monkeypatch):
     """A task running > timeout but with a recent heartbeat is NOT reclaimed."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="alive-hb", assignee="worker")
@@ -3710,7 +3939,7 @@ def test_detect_stale_skips_task_with_recent_heartbeat(kanban_home, monkeypatch)
 
 def test_detect_stale_skips_recently_started_task(kanban_home, monkeypatch):
     """A task started < timeout ago is NOT reclaimed even with no heartbeat."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="fresh", assignee="worker")
@@ -3765,7 +3994,7 @@ def test_detect_stale_skips_when_timeout_zero(kanban_home, monkeypatch):
 
 def test_detect_stale_skips_blocked_tasks(kanban_home, monkeypatch):
     """Blocked tasks are NOT reclaimed by stale detection."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="blocked-task", assignee="worker")
@@ -3804,7 +4033,7 @@ def test_detect_stale_does_not_tick_failure_counter(kanban_home, monkeypatch):
     task_events is the right audit surface; the consecutive_failures
     counter is reserved for spawn_failed / timed_out / crashed.
     """
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
         t = kb.create_task(conn, title="stale-no-counter-tick", assignee="worker")
@@ -4013,7 +4242,7 @@ def test_maybe_emit_scratch_tip_fires_once_per_install(kanban_home, caplog):
     # Sentinel must not exist yet on a fresh install.
     assert not kb._scratch_tip_shown()
 
-    with caplog.at_level(logging.WARNING, logger="prostor_cli.kanban_db"):
+    with caplog.at_level(logging.WARNING, logger="hermes_cli.kanban_db"):
         with kb.connect() as conn:
             kb._maybe_emit_scratch_tip(conn, t1, "scratch")
 
@@ -4045,7 +4274,7 @@ def test_maybe_emit_scratch_tip_fires_once_per_install(kanban_home, caplog):
 
     # Second scratch materialization on the same install stays silent.
     caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="prostor_cli.kanban_db"):
+    with caplog.at_level(logging.WARNING, logger="hermes_cli.kanban_db"):
         with kb.connect() as conn:
             kb._maybe_emit_scratch_tip(conn, t2, "scratch")
     tip_records2 = [
@@ -4077,7 +4306,7 @@ def test_maybe_emit_scratch_tip_skips_non_scratch_workspaces(kanban_home, caplog
 
     assert not kb._scratch_tip_shown()
 
-    with caplog.at_level(logging.WARNING, logger="prostor_cli.kanban_db"):
+    with caplog.at_level(logging.WARNING, logger="hermes_cli.kanban_db"):
         with kb.connect() as conn:
             kb._maybe_emit_scratch_tip(conn, t_wt, "worktree")
             kb._maybe_emit_scratch_tip(conn, t_dir, "dir")
@@ -4221,7 +4450,7 @@ def test_write_txn_preserves_original_exception_when_rollback_fails(kanban_home)
     )
 def test_write_txn_healthy_commit_no_exception(tmp_path):
     """Normal commit does not trigger the torn-extend check."""
-    from prostor_cli.kanban_db import connect, write_txn
+    from hermes_cli.kanban_db import connect, write_txn
     db = tmp_path / "test.db"
     conn = connect(db_path=db)
     # Should not raise
@@ -4237,7 +4466,7 @@ def test_write_txn_healthy_commit_no_exception(tmp_path):
 
 def test_write_txn_raises_on_truncated_file(tmp_path):
     """A mocked smaller file size triggers the torn-extend check."""
-    from prostor_cli.kanban_db import connect, write_txn
+    from hermes_cli.kanban_db import connect, write_txn
     db = tmp_path / "test.db"
     conn = connect(db_path=db)
     # Get actual page size so we can fake a smaller file
@@ -4250,7 +4479,7 @@ def test_write_txn_raises_on_truncated_file(tmp_path):
         return max(0, real_size - page_size)
 
     with pytest.raises(sqlite3.DatabaseError, match="torn-extend|page count mismatch"):
-        with unittest.mock.patch("prostor_cli.kanban_db.os.path.getsize", side_effect=fake_getsize):
+        with unittest.mock.patch("hermes_cli.kanban_db.os.path.getsize", side_effect=fake_getsize):
             with write_txn(conn) as c:
                 c.execute(
                     "INSERT INTO tasks (id, title, assignee, status, priority, created_at) "
@@ -4261,8 +4490,8 @@ def test_write_txn_raises_on_truncated_file(tmp_path):
 
 def test_write_txn_post_commit_check_fires_every_call(tmp_path):
     """The invariant check runs on every write_txn call."""
-    from prostor_cli.kanban_db import connect, write_txn
-    import prostor_cli.kanban_db as kanban_db_module
+    from hermes_cli.kanban_db import connect, write_txn
+    import hermes_cli.kanban_db as kanban_db_module
     db = tmp_path / "test.db"
     conn = connect(db_path=db)
     call_count = 0
@@ -4286,7 +4515,7 @@ def test_write_txn_post_commit_check_fires_every_call(tmp_path):
 
 def test_connect_sets_wal_autocheckpoint_100(tmp_path):
     """connect() sets wal_autocheckpoint to 100."""
-    from prostor_cli.kanban_db import connect
+    from hermes_cli.kanban_db import connect
     db = tmp_path / "test.db"
     conn = connect(db_path=db)
     val = conn.execute("PRAGMA wal_autocheckpoint").fetchone()[0]
@@ -4297,7 +4526,7 @@ def test_connect_sets_wal_autocheckpoint_100(tmp_path):
 def test_write_txn_check_reads_correct_header_fields(tmp_path):
     """Synthetic DB file with mismatched header page_count triggers the check."""
     import struct
-    from prostor_cli.kanban_db import connect, _check_file_length_invariant
+    from hermes_cli.kanban_db import connect, _check_file_length_invariant
     db = tmp_path / "synthetic.db"
     conn = connect(db_path=db)
     page_size = conn.execute("PRAGMA page_size").fetchone()[0]
@@ -4341,8 +4570,8 @@ def test_reap_worker_zombies_returns_count():
             return p, 0
         return 0, 0
 
-    with patch("prostor_cli.kanban_db.os.waitpid", side_effect=fake_waitpid):
-        with patch("prostor_cli.kanban_db._record_worker_exit"):
+    with patch("hermes_cli.kanban_db.os.waitpid", side_effect=fake_waitpid):
+        with patch("hermes_cli.kanban_db._record_worker_exit"):
             pids = kb.reap_worker_zombies()
     assert pids == [12345, 67890, 11111]
 
@@ -4351,8 +4580,8 @@ def test_reap_worker_zombies_noop_on_windows(monkeypatch):
     """reap_worker_zombies() returns 0 and never calls os.waitpid on Windows."""
     from unittest.mock import patch
 
-    monkeypatch.setattr("prostor_cli.kanban_db.os.name", "nt")
-    with patch("prostor_cli.kanban_db.os.waitpid") as mock_waitpid:
+    monkeypatch.setattr("hermes_cli.kanban_db.os.name", "nt")
+    with patch("hermes_cli.kanban_db.os.waitpid") as mock_waitpid:
         result = kb.reap_worker_zombies()
     mock_waitpid.assert_not_called()
     assert result == []
@@ -4362,7 +4591,7 @@ def test_reap_worker_zombies_noop_no_children():
     """reap_worker_zombies() returns 0 without error when there are no children."""
     from unittest.mock import patch
 
-    with patch("prostor_cli.kanban_db.os.waitpid", side_effect=ChildProcessError):
+    with patch("hermes_cli.kanban_db.os.waitpid", side_effect=ChildProcessError):
         result = kb.reap_worker_zombies()
     assert result == []
 
@@ -4380,9 +4609,9 @@ def test_reap_worker_zombies_records_exit_status():
             return 12345, 0
         return 0, 0
 
-    with patch("prostor_cli.kanban_db.os.waitpid", side_effect=fake_waitpid):
+    with patch("hermes_cli.kanban_db.os.waitpid", side_effect=fake_waitpid):
         with patch(
-            "prostor_cli.kanban_db._record_worker_exit",
+            "hermes_cli.kanban_db._record_worker_exit",
             side_effect=lambda p, s: calls.append((p, s)),
         ):
             kb.reap_worker_zombies()
@@ -4394,7 +4623,7 @@ def test_reap_worker_zombies_handles_waitpid_os_error():
     """reap_worker_zombies() does not propagate generic OSError from os.waitpid."""
     from unittest.mock import patch
 
-    with patch("prostor_cli.kanban_db.os.waitpid", side_effect=OSError("test error")):
+    with patch("hermes_cli.kanban_db.os.waitpid", side_effect=OSError("test error")):
         result = kb.reap_worker_zombies()
     assert result == []
 
@@ -4411,8 +4640,8 @@ def test_zombie_reaper_runs_despite_board_connect_failure():
             return [12345, 67890][call_count[0] - 1], 0
         return 0, 0
 
-    with patch("prostor_cli.kanban_db.os.waitpid", side_effect=fake_waitpid):
-        with patch("prostor_cli.kanban_db._record_worker_exit"):
+    with patch("hermes_cli.kanban_db.os.waitpid", side_effect=fake_waitpid):
+        with patch("hermes_cli.kanban_db._record_worker_exit"):
             # Simulate a board tick failure before reaping
             try:
                 raise sqlite3.OperationalError("disk I/O error")
@@ -4447,9 +4676,9 @@ def test_zombie_reaper_survives_all_boards_failing():
     for tick in range(5):
         pids = [tick * 100 + 1, tick * 100 + 2]
         with patch(
-            "prostor_cli.kanban_db.os.waitpid", side_effect=make_fake_waitpid(pids)
+            "hermes_cli.kanban_db.os.waitpid", side_effect=make_fake_waitpid(pids)
         ):
-            with patch("prostor_cli.kanban_db._record_worker_exit"):
+            with patch("hermes_cli.kanban_db._record_worker_exit"):
                 pids = kb.reap_worker_zombies()
         total_reaped += len(pids)
 
@@ -4468,9 +4697,9 @@ def test_dispatch_once_still_reaps_via_extracted_fn(kanban_home):
             return 99999, 0
         return 0, 0
 
-    with patch("prostor_cli.kanban_db.os.waitpid", side_effect=fake_waitpid):
-        with patch("prostor_cli.kanban_db._record_worker_exit"):
-            with patch("prostor_cli.kanban_db.os.name", "posix"):
+    with patch("hermes_cli.kanban_db.os.waitpid", side_effect=fake_waitpid):
+        with patch("hermes_cli.kanban_db._record_worker_exit"):
+            with patch("hermes_cli.kanban_db.os.name", "posix"):
                 pids = kb.reap_worker_zombies()
 
     assert pids == [99999]

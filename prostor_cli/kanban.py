@@ -24,9 +24,9 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from prostor_cli import kanban_db as kb
-from prostor_cli import kanban_swarm as ks
-from prostor_cli.profiles import get_active_profile_name, get_profile_dir, seed_profile_skills
+from hermes_cli import kanban_db as kb
+from hermes_cli import kanban_swarm as ks
+from hermes_cli.profiles import get_active_profile_name
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +158,7 @@ def _check_dispatcher_presence() -> tuple[bool, str]:
 
     # Even if the gateway is up, dispatch_in_gateway may be off.
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
         dispatch_on = bool(cfg.get("kanban", {}).get("dispatch_in_gateway", True))
     except Exception:
@@ -201,7 +201,7 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
             "Durable SQLite-backed task board shared across Prostor profiles. "
             "Tasks are claimed atomically, can depend on other tasks, and "
             "are executed by a named profile in an isolated workspace. "
-            "See https://github.com/maksim9510/Prostor/docs/user-guide/features/kanban "
+            "See https://prostor-agent.nousresearch.com/docs/user-guide/features/kanban "
             "or docs/prostor-kanban-v1-spec.pdf for the full design."
         ),
     )
@@ -330,8 +330,8 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
                           help="Author name recorded on the task (default: user)")
     p_create.add_argument("--skill", action="append", default=[], dest="skills",
                           help="Skill to force-load into the worker "
-                               "(repeatable). Appended to the built-in "
-                               "kanban-worker skill. Example: "
+                               "(repeatable). The kanban lifecycle is already "
+                               "injected automatically. Example: "
                                "--skill translation --skill github-code-review")
     p_create.add_argument("--max-retries", type=int, default=None,
                           metavar="N",
@@ -982,7 +982,7 @@ def _profile_author() -> str:
         if v:
             return v
     try:
-        from prostor_cli.profiles import get_active_profile_name
+        from hermes_cli.profiles import get_active_profile_name
         return get_active_profile_name() or "user"
     except Exception:
         return "user"
@@ -1223,21 +1223,6 @@ def _cmd_init(args: argparse.Namespace) -> int:
     path = kb.init_db()
     print(f"Kanban DB initialized at {path}")
 
-    # Seed bundled skills (e.g. kanban-worker) into the active profile so
-    # the kanban dispatcher can use them without a separate `prostor profile
-    # create` step.  This is best-effort — a missing or broken profile is
-    # not fatal to `kanban init`.
-    try:
-        profile_name = get_active_profile_name() or "default"
-        profile_dir = get_profile_dir(profile_name)
-        result = seed_profile_skills(profile_dir, quiet=True)
-        if result:
-            copied = result.get("copied", [])
-            if copied:
-                print(f"Seeded skill(s) into profile {profile_name}: {', '.join(copied)}")
-    except Exception:
-        pass  # best-effort
-
     print()
     # Enumerate profiles on disk so the user knows what assignees are
     # already addressable. Multica does this auto-detection on its
@@ -1461,8 +1446,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
         parents = kb.parent_ids(conn, args.task_id)
         children = kb.child_ids(conn, args.task_id)
         runs = kb.list_runs(conn, args.task_id, **rsk)
-        # Workers hand off via ``task_runs.summary`` (kanban-worker skill);
-        # ``tasks.result`` is left NULL unless the caller explicitly passed
+        # Workers hand off via ``task_runs.summary``; ``tasks.result`` is left NULL unless the caller explicitly passed
         # ``result=``. Surfacing the latest summary here keeps ``show`` from
         # looking like a no-op when the worker actually did real work.
         latest_summary = kb.latest_summary(conn, args.task_id)
@@ -1527,7 +1511,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
         print(f"  max-retries: {task.max_retries} (task)")
     else:
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             cfg = load_config()
             cfg_val = (cfg.get("kanban", {}) or {}).get("failure_limit")
         except Exception:
@@ -1541,7 +1525,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
     # Diagnostics section — surface active distress signals at the top
     # of show output so CLI users see them before scrolling through
     # comments / runs.
-    from prostor_cli import kanban_diagnostics as kd
+    from hermes_cli import kanban_diagnostics as kd
     diags = kd.compute_task_diagnostics(task, events, runs)
     if diags:
         sev_marker = {"warning": "⚠", "error": "!!", "critical": "!!!"}
@@ -1669,8 +1653,8 @@ def _cmd_diagnostics(args: argparse.Namespace) -> int:
     """List active diagnostics on the board. Wraps the same rule engine
     the dashboard uses, so CLI output matches what the UI shows.
     """
-    from prostor_cli import kanban_diagnostics as kd
-    from prostor_cli.config import load_config
+    from hermes_cli import kanban_diagnostics as kd
+    from hermes_cli.config import load_config
 
     diag_config = kd.config_from_runtime_config(load_config())
 
@@ -2108,7 +2092,7 @@ def _cmd_dispatch(args: argparse.Namespace) -> int:
     # matches whether the user runs the CLI directly or relies on the
     # gateway-embedded dispatcher.
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         _cfg = load_config()
         _kanban_cfg = _cfg.get("kanban", {}) if isinstance(_cfg, dict) else {}
         default_assignee = (_kanban_cfg.get("default_assignee") or "").strip() or None
@@ -2533,7 +2517,7 @@ def _cmd_context(args: argparse.Namespace) -> int:
 def _cmd_specify(args: argparse.Namespace) -> int:
     """Flesh out a triage task (or all of them) via auxiliary LLM,
     then promote to todo. Thin wrapper over ``kanban_specify``."""
-    from prostor_cli import kanban_specify as spec
+    from hermes_cli import kanban_specify as spec
 
     all_flag = bool(getattr(args, "all_triage", False))
     tenant = getattr(args, "tenant", None)
@@ -2607,7 +2591,7 @@ def _cmd_decompose(args: argparse.Namespace) -> int:
     """Fan a triage task (or all of them) out into a graph of child
     tasks via the auxiliary LLM, routed to specialist profiles by
     description. Thin wrapper over ``kanban_decompose``."""
-    from prostor_cli import kanban_decompose as decomp
+    from hermes_cli import kanban_decompose as decomp
 
     all_flag = bool(getattr(args, "all_triage", False))
     tenant = getattr(args, "tenant", None)

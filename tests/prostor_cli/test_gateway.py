@@ -1,4 +1,4 @@
-"""Tests for prostor_cli.gateway."""
+"""Tests for hermes_cli.gateway."""
 
 import argparse
 import sys
@@ -6,7 +6,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-import prostor_cli.gateway as gateway
+import hermes_cli.gateway as gateway
 
 
 def _install_fake_gateway_run(monkeypatch, start_gateway):
@@ -264,9 +264,9 @@ def test_s6_runtime_snapshot_reports_supervised_service(monkeypatch, tmp_path):
             return True
 
     monkeypatch.setattr(gateway, "is_linux", lambda: True)
-    monkeypatch.setattr("prostor_constants.is_container", lambda: True)
-    monkeypatch.setattr("prostor_cli.service_manager.detect_service_manager", lambda: "s6")
-    monkeypatch.setattr("prostor_cli.service_manager.get_service_manager", lambda: FakeS6Manager())
+    monkeypatch.setattr("hermes_constants.is_container", lambda: True)
+    monkeypatch.setattr("hermes_cli.service_manager.detect_service_manager", lambda: "s6")
+    monkeypatch.setattr("hermes_cli.service_manager.get_service_manager", lambda: FakeS6Manager())
     monkeypatch.setattr(gateway, "find_gateway_pids", lambda: [123])
     monkeypatch.setattr(gateway, "_profile_suffix", lambda: "")
 
@@ -296,7 +296,7 @@ def test_running_under_gateway_supervisor_markers(monkeypatch):
 
 
 def test_gateway_run_force_flag_survives_parser_extraction():
-    from prostor_cli.subcommands.gateway import build_gateway_parser
+    from hermes_cli.subcommands.gateway import build_gateway_parser
 
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command")
@@ -507,7 +507,7 @@ def test_gateway_restart_on_windows_without_service_uses_detached_backend(monkey
     down. The Windows backend restarts via detached pythonw.exe even when no
     Scheduled Task / Startup item is installed.
     """
-    import prostor_cli.gateway_windows as gateway_windows
+    import hermes_cli.gateway_windows as gateway_windows
 
     calls = []
 
@@ -535,7 +535,7 @@ def test_gateway_restart_on_windows_without_service_uses_detached_backend(monkey
 
 def test_gateway_restart_on_windows_preserves_failure_fallback(monkeypatch):
     """If the Windows backend cannot launch, keep the existing fallback."""
-    import prostor_cli.gateway_windows as gateway_windows
+    import hermes_cli.gateway_windows as gateway_windows
 
     calls = []
 
@@ -821,7 +821,7 @@ def test_find_gateway_pids_falls_back_to_pid_file_when_process_scan_fails(monkey
     assert gateway.find_gateway_pids() == [321]
 
 
-def test_scan_gateway_pids_detects_windows_prostor_exe_case_variants(monkeypatch):
+def test_scan_gateway_pids_detects_windows_hermes_exe_case_variants(monkeypatch):
     monkeypatch.setattr(gateway, "is_windows", lambda: True)
     monkeypatch.setattr(gateway, "_get_ancestor_pids", lambda: set())
     monkeypatch.setattr(gateway.shutil, "which", lambda name: "wmic.exe" if name == "wmic" else None)
@@ -965,4 +965,4 @@ class TestStopProfileGateway:
 def test_module_has_logger():
     """Verify module has a logger instance (regression guard for #27154)."""
     assert hasattr(gateway, "logger")
-    assert gateway.logger.name == "prostor_cli.gateway"
+    assert gateway.logger.name == "hermes_cli.gateway"

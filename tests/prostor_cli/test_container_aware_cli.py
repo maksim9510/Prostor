@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prostor_cli.config import (
+from hermes_cli.config import (
     get_container_exec_info,
 )
 
@@ -24,37 +24,37 @@ from prostor_cli.config import (
 @pytest.fixture
 def container_env(tmp_path, monkeypatch):
     """Set up a fake PROSTOR_HOME with .container-mode file."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.delenv("PROSTOR_DEV", raising=False)
 
-    container_mode = prostor_home / ".container-mode"
+    container_mode = hermes_home / ".container-mode"
     container_mode.write_text(
         "# Written by NixOS activation script. Do not edit manually.\n"
         "backend=podman\n"
         "container_name=prostor-agent\n"
         "exec_user=prostor\n"
-        "prostor_bin=/data/current-package/bin/prostor\n"
+        "hermes_bin=/data/current-package/bin/prostor\n"
     )
-    return prostor_home
+    return hermes_home
 
 
 def test_get_container_exec_info_returns_metadata(container_env):
     """Reads .container-mode and returns all fields including exec_user."""
-    with patch("prostor_constants.is_container", return_value=False):
+    with patch("hermes_constants.is_container", return_value=False):
         info = get_container_exec_info()
 
     assert info is not None
     assert info["backend"] == "podman"
     assert info["container_name"] == "prostor-agent"
     assert info["exec_user"] == "prostor"
-    assert info["prostor_bin"] == "/data/current-package/bin/prostor"
+    assert info["hermes_bin"] == "/data/current-package/bin/prostor"
 
 
 def test_get_container_exec_info_none_inside_container(container_env):
     """Returns None when we're already inside a container."""
-    with patch("prostor_constants.is_container", return_value=True):
+    with patch("hermes_constants.is_container", return_value=True):
         info = get_container_exec_info()
 
     assert info is None
@@ -62,32 +62,32 @@ def test_get_container_exec_info_none_inside_container(container_env):
 
 def test_get_container_exec_info_none_without_file(tmp_path, monkeypatch):
     """Returns None when .container-mode doesn't exist (native mode)."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.delenv("PROSTOR_DEV", raising=False)
 
-    with patch("prostor_constants.is_container", return_value=False):
+    with patch("hermes_constants.is_container", return_value=False):
         info = get_container_exec_info()
 
     assert info is None
 
 
-def test_get_container_exec_info_skipped_when_prostor_dev(container_env, monkeypatch):
+def test_get_container_exec_info_skipped_when_hermes_dev(container_env, monkeypatch):
     """Returns None when PROSTOR_DEV=1 is set (dev mode bypass)."""
     monkeypatch.setenv("PROSTOR_DEV", "1")
 
-    with patch("prostor_constants.is_container", return_value=False):
+    with patch("hermes_constants.is_container", return_value=False):
         info = get_container_exec_info()
 
     assert info is None
 
 
-def test_get_container_exec_info_not_skipped_when_prostor_dev_zero(container_env, monkeypatch):
+def test_get_container_exec_info_not_skipped_when_hermes_dev_zero(container_env, monkeypatch):
     """PROSTOR_DEV=0 does NOT trigger bypass — only '1' does."""
     monkeypatch.setenv("PROSTOR_DEV", "0")
 
-    with patch("prostor_constants.is_container", return_value=False):
+    with patch("hermes_constants.is_container", return_value=False):
         info = get_container_exec_info()
 
     assert info is not None
@@ -98,14 +98,14 @@ def test_get_container_exec_info_defaults():
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        prostor_home = Path(tmpdir) / ".prostor"
-        prostor_home.mkdir()
-        (prostor_home / ".container-mode").write_text(
+        hermes_home = Path(tmpdir) / ".prostor"
+        hermes_home.mkdir()
+        (hermes_home / ".container-mode").write_text(
             "# minimal file with no keys\n"
         )
 
-        with patch("prostor_constants.is_container", return_value=False), \
-             patch.dict(get_container_exec_info.__globals__, {"get_prostor_home": lambda: prostor_home}), \
+        with patch("hermes_constants.is_container", return_value=False), \
+             patch.dict(get_container_exec_info.__globals__, {"get_hermes_home": lambda: hermes_home}), \
              patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PROSTOR_DEV", None)
             info = get_container_exec_info()
@@ -114,7 +114,7 @@ def test_get_container_exec_info_defaults():
         assert info["backend"] == "docker"
         assert info["container_name"] == "prostor-agent"
         assert info["exec_user"] == "prostor"
-        assert info["prostor_bin"] == "/data/current-package/bin/prostor"
+        assert info["hermes_bin"] == "/data/current-package/bin/prostor"
 
 
 def test_get_container_exec_info_docker_backend(container_env):
@@ -123,21 +123,21 @@ def test_get_container_exec_info_docker_backend(container_env):
         "backend=docker\n"
         "container_name=prostor-custom\n"
         "exec_user=myuser\n"
-        "prostor_bin=/opt/prostor/bin/prostor\n"
+        "hermes_bin=/opt/prostor/bin/prostor\n"
     )
 
-    with patch("prostor_constants.is_container", return_value=False):
+    with patch("hermes_constants.is_container", return_value=False):
         info = get_container_exec_info()
 
     assert info["backend"] == "docker"
     assert info["container_name"] == "prostor-custom"
     assert info["exec_user"] == "myuser"
-    assert info["prostor_bin"] == "/opt/prostor/bin/prostor"
+    assert info["hermes_bin"] == "/opt/prostor/bin/prostor"
 
 
 def test_get_container_exec_info_crashes_on_permission_error(container_env):
     """PermissionError propagates instead of being silently swallowed."""
-    with patch("prostor_constants.is_container", return_value=False), \
+    with patch("hermes_constants.is_container", return_value=False), \
          patch("builtins.open", side_effect=PermissionError("permission denied")):
         with pytest.raises(PermissionError):
             get_container_exec_info()
@@ -154,7 +154,7 @@ def docker_container_info():
         "backend": "docker",
         "container_name": "prostor-agent",
         "exec_user": "prostor",
-        "prostor_bin": "/data/current-package/bin/prostor",
+        "hermes_bin": "/data/current-package/bin/prostor",
     }
 
 
@@ -164,14 +164,14 @@ def podman_container_info():
         "backend": "podman",
         "container_name": "prostor-agent",
         "exec_user": "prostor",
-        "prostor_bin": "/data/current-package/bin/prostor",
+        "hermes_bin": "/data/current-package/bin/prostor",
     }
 
 
 def test_exec_in_container_calls_execvp(docker_container_info):
     """Verifies os.execvp is called with correct args: runtime, tty flags,
     user, env vars, container name, binary, and CLI args."""
-    from prostor_cli.main import _exec_in_container
+    from hermes_cli.main import _exec_in_container
 
     with patch("shutil.which", return_value="/usr/bin/docker"), \
          patch("subprocess.run") as mock_run, \
@@ -202,7 +202,7 @@ def test_exec_in_container_calls_execvp(docker_container_info):
 
 def test_exec_in_container_non_tty_uses_i_only(docker_container_info):
     """Non-TTY mode uses -i instead of -it."""
-    from prostor_cli.main import _exec_in_container
+    from hermes_cli.main import _exec_in_container
 
     with patch("shutil.which", return_value="/usr/bin/docker"), \
          patch("subprocess.run") as mock_run, \
@@ -220,7 +220,7 @@ def test_exec_in_container_non_tty_uses_i_only(docker_container_info):
 
 def test_exec_in_container_no_runtime_hard_fails(podman_container_info):
     """Hard fails when runtime not found (no fallback)."""
-    from prostor_cli.main import _exec_in_container
+    from hermes_cli.main import _exec_in_container
 
     with patch("shutil.which", return_value=None), \
          patch("subprocess.run") as mock_run, \
@@ -236,7 +236,7 @@ def test_exec_in_container_no_runtime_hard_fails(podman_container_info):
 def test_exec_in_container_sudo_probe_sets_prefix(podman_container_info):
     """When first probe fails and sudo probe succeeds, execvp is called
     with sudo -n prefix."""
-    from prostor_cli.main import _exec_in_container
+    from hermes_cli.main import _exec_in_container
 
     def which_side_effect(name):
         if name == "podman":
@@ -268,7 +268,7 @@ def test_exec_in_container_sudo_probe_sets_prefix(podman_container_info):
 def test_exec_in_container_probe_timeout_prints_message(docker_container_info):
     """TimeoutExpired from probe produces a human-readable error, not a
     raw traceback."""
-    from prostor_cli.main import _exec_in_container
+    from hermes_cli.main import _exec_in_container
 
     with patch("shutil.which", return_value="/usr/bin/docker"), \
          patch("subprocess.run", side_effect=subprocess.TimeoutExpired(
@@ -284,7 +284,7 @@ def test_exec_in_container_probe_timeout_prints_message(docker_container_info):
 def test_exec_in_container_container_not_running_no_sudo(docker_container_info):
     """When runtime exists but container not found and no sudo available,
     prints helpful error about root containers."""
-    from prostor_cli.main import _exec_in_container
+    from hermes_cli.main import _exec_in_container
 
     def which_side_effect(name):
         if name == "docker":

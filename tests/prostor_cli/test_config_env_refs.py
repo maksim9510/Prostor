@@ -1,6 +1,6 @@
 import textwrap
 
-from prostor_cli.config import load_config, save_config
+from hermes_cli.config import load_config, save_config
 
 
 def _write_config(tmp_path, body: str):

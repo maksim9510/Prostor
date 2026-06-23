@@ -12,7 +12,7 @@ import sys
 from unittest.mock import MagicMock
 
 
-from prostor_cli.plugins import (
+from hermes_cli.plugins import (
     PluginContext,
     PluginManager,
     PluginManifest,

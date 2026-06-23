@@ -79,6 +79,50 @@ def should_skip(rel: str) -> bool:
     return False
 
 
+def _rename_hermes_entries(root: Path) -> int:
+    """Rename files and directories containing 'hermes' to 'prostor'.
+
+    Walks bottom-up so child entries are renamed before parents.
+    """
+    skip_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "release", "build"}
+    renamed = 0
+
+    paths: list[Path] = []
+    try:
+        for p in root.rglob("*"):
+            if p.name.lower() in skip_dirs:
+                continue
+            paths.append(p)
+    except OSError:
+        pass
+
+    paths.sort(key=lambda p: len(p.parts), reverse=True)
+
+    for p in paths:
+        if not p.exists():
+            continue
+        name = p.name
+        new_name = None
+        if name.lower().startswith("hermes"):
+            new_name = "prostor" + name[6:]
+        elif "-hermes" in name.lower():
+            new_name = name.replace("-hermes", "-prostor").replace("_hermes", "_prostor")
+        elif "_hermes" in name.lower():
+            new_name = name.replace("_hermes", "_prostor")
+
+        if new_name and new_name != name:
+            target = p.parent / new_name
+            if target.exists():
+                continue
+            try:
+                p.rename(target)
+                renamed += 1
+            except OSError:
+                continue
+
+    return renamed
+
+
 def main(root: Path) -> int:
     """Walk root and rebrand all non-skipped text files.
 
@@ -143,6 +187,10 @@ def main(root: Path) -> int:
     if errors:
         for e in errors[:20]:
             print(f"    {e}")
+
+    # Phase 2: rename files and directories containing 'hermes' → 'prostor'
+    renamed = _rename_hermes_entries(root)
+    print(f"  Renamed:   {renamed}")
     return 0 if error_count == 0 else 1
 
 

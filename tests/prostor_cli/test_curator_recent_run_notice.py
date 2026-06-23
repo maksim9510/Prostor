@@ -27,16 +27,16 @@ def curator_env(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("PROSTOR_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-    import prostor_constants
-    importlib.reload(prostor_constants)
+    import hermes_constants
+    importlib.reload(hermes_constants)
     from agent import curator
     importlib.reload(curator)
-    from prostor_cli import main as prostor_main
-    importlib.reload(prostor_main)
+    from hermes_cli import main as hermes_main
+    importlib.reload(hermes_main)
 
     yield {
         "curator": curator,
-        "main": prostor_main,
+        "main": hermes_main,
         "capsys": capsys,
     }
 

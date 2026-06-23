@@ -23,18 +23,18 @@ from __future__ import annotations
 import sys
 import webbrowser
 
-from prostor_cli.colors import Colors, color
-from prostor_cli.config import load_config
+from hermes_cli.colors import Colors, color
+from hermes_cli.config import load_config
 
 DEFAULT_PORTAL_URL = "https://portal.nousresearch.com"
 SUBSCRIPTION_URL = "https://portal.nousresearch.com/manage-subscription"
-DOCS_URL = "https://github.com/maksim9510/Prostor/docs/user-guide/features/tool-gateway"
+DOCS_URL = "https://prostor-agent.nousresearch.com/docs/user-guide/features/tool-gateway"
 
 
 def _cmd_status(args) -> int:
     """Show Portal auth + Tool Gateway routing summary."""
-    from prostor_cli.auth import get_nous_auth_status
-    from prostor_cli.nous_subscription import get_nous_subscription_features
+    from hermes_cli.auth import get_nous_auth_status
+    from hermes_cli.nous_subscription import get_nous_subscription_features
 
     config = load_config() or {}
 
@@ -120,7 +120,7 @@ def _cmd_open(args) -> int:
 
 def _cmd_tools(args) -> int:
     """List the Tool Gateway catalog + current routing."""
-    from prostor_cli.nous_subscription import get_nous_subscription_features
+    from hermes_cli.nous_subscription import get_nous_subscription_features
 
     config = load_config() or {}
     try:
@@ -176,7 +176,7 @@ def _cmd_login(args) -> int:
     commands stay in lockstep: device-code login, pick a Nous model, switch the
     inference provider to Nous, then offer the Tool Gateway opt-in.
     """
-    from prostor_cli.setup import _run_portal_one_shot
+    from hermes_cli.setup import _run_portal_one_shot
 
     config = load_config() or {}
     try:

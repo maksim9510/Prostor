@@ -5,8 +5,8 @@ functions previously duplicated across setup.py, tools_config.py,
 mcp_config.py, and memory_setup.py.
 """
 
-from prostor_cli.colors import Colors, color
-from prostor_cli.secret_prompt import masked_secret_prompt
+from hermes_cli.colors import Colors, color
+from hermes_cli.secret_prompt import masked_secret_prompt
 
 
 # ─── Print Helpers ────────────────────────────────────────────────────────────

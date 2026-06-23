@@ -1,11 +1,11 @@
-"""Agent-construction and session-resume display methods for ``ProstorCLI``.
+"""Agent-construction and session-resume display methods for ``HermesCLI``.
 
 Extracted from ``cli.py`` as part of the god-file decomposition campaign
 (``~/.prostor/plans/god-file-decomposition.md``, Phase 4 step 2). This mixin holds
 the agent lifecycle/setup cluster: runtime-credential resolution, per-turn agent
 config, first-use agent construction, and resumed-session preload + history recap.
 
-Behavior-neutral: every method is lifted verbatim from ``ProstorCLI``. ``self.*``
+Behavior-neutral: every method is lifted verbatim from ``HermesCLI``. ``self.*``
 calls resolve unchanged via the MRO. Neutral dependencies are imported at module
 top level; ``cli.py``-internal helpers/constants are imported lazily inside each
 method (``from cli import ...`` resolves at call time, when ``cli`` is fully
@@ -20,7 +20,7 @@ from rich.markup import escape as _escape
 
 
 class CLIAgentSetupMixin:
-    """Agent construction + session-resume display methods for ``ProstorCLI``."""
+    """Agent construction + session-resume display methods for ``HermesCLI``."""
 
     def _ensure_runtime_credentials(self) -> bool:
         """
@@ -30,7 +30,7 @@ class CLIAgentSetupMixin:
         Returns True if credentials are ready, False on auth failure.
         """
         from cli import ChatConsole, _cprint, logger
-        from prostor_cli.runtime_provider import (
+        from hermes_cli.runtime_provider import (
             resolve_runtime_provider,
             format_runtime_provider_error,
         )
@@ -48,7 +48,7 @@ class CLIAgentSetupMixin:
 
         # Primary provider auth failed — try fallback providers before giving up.
         if runtime is None and _primary_exc is not None:
-            from prostor_cli.auth import AuthError
+            from hermes_cli.auth import AuthError
             if isinstance(_primary_exc, AuthError):
                 _fb_chain = self._fallback_model if isinstance(self._fallback_model, list) else []
                 for _fb in _fb_chain:
@@ -148,7 +148,7 @@ class CLIAgentSetupMixin:
         # model so the API call doesn't fail with "model must be non-empty".
         if not self.model and resolved_provider:
             try:
-                from prostor_cli.models import get_default_model_for_provider
+                from hermes_cli.models import get_default_model_for_provider
                 _default = get_default_model_for_provider(resolved_provider)
                 if _default:
                     self.model = _default
@@ -179,7 +179,7 @@ class CLIAgentSetupMixin:
         Processing / Anthropic fast mode, attach `request_overrides` so the
         API call is marked accordingly.
         """
-        from prostor_cli.models import resolve_fast_mode_overrides
+        from hermes_cli.models import resolve_fast_mode_overrides
 
         runtime = {
             "api_key": self.api_key,
@@ -234,14 +234,14 @@ class CLIAgentSetupMixin:
         if not self._ensure_runtime_credentials():
             return False
 
-        from prostor_cli.mcp_startup import wait_for_mcp_discovery
+        from hermes_cli.mcp_startup import wait_for_mcp_discovery
 
         wait_for_mcp_discovery()
 
         # Initialize SQLite session store for CLI sessions (if not already done in __init__)
         if self._session_db is None:
             try:
-                from prostor_state import SessionDB
+                from hermes_state import SessionDB
                 self._session_db = SessionDB()
             except Exception as e:
                 logger.warning("SQLite session store not available — session will NOT be indexed: %s", e)
@@ -634,7 +634,7 @@ class CLIAgentSetupMixin:
         from rich.text import Text
 
         try:
-            from prostor_cli.skin_engine import get_active_skin
+            from hermes_cli.skin_engine import get_active_skin
             _skin = get_active_skin()
             _history_text_c = _skin.get_color("banner_text", "#FFF8DC")
             _session_label_c = _skin.get_color("session_label", "#DAA520")

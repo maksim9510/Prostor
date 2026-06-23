@@ -18,7 +18,7 @@ from unittest.mock import patch
 # scope. Under the test runner argv (`pytest …`) it's a no-op, but we import
 # at file scope so individual tests don't race the import side-effect with
 # their `patch("os.write")` context.
-from prostor_cli.main import _suppress_mouse_residue_early
+from hermes_cli.main import _suppress_mouse_residue_early
 
 EXPECTED = (
     b"\x1b[?1003l\x1b[?1002l\x1b[?1001l\x1b[?1000l\x1b[?9l"
@@ -37,7 +37,7 @@ class TestEarlyMouseDisable:
 
         mock_write.assert_called_once_with(1, EXPECTED)
 
-    def test_writes_disable_sequence_when_prostor_tui_env_set(self, monkeypatch):
+    def test_writes_disable_sequence_when_hermes_tui_env_set(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["prostor"])
         monkeypatch.setenv("PROSTOR_TUI", "1")
         monkeypatch.delenv("PROSTOR_TUI_NO_EARLY_DISABLE", raising=False)

@@ -1,6 +1,6 @@
 """``prostor gui`` subcommand parser.
 
-Extracted verbatim from ``prostor_cli/main.py:main()`` (god-file Phase 2).
+Extracted verbatim from ``hermes_cli/main.py:main()`` (god-file Phase 2).
 Handler injected to avoid importing ``main``.
 """
 
@@ -44,7 +44,7 @@ def build_gui_parser(subparsers, *, cmd_gui: Callable) -> None:
     )
     gui_parser.add_argument(
         "--prostor-root",
-        help="Override the Prostor source root used by Desktop (sets PROSTOR_DESKTOP_PROSTOR_ROOT)",
+        help="Override the Prostor source root used by Desktop (sets PROSTOR_DESKTOP_HERMES_ROOT)",
     )
     gui_parser.add_argument(
         "--cwd",

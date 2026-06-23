@@ -11,7 +11,7 @@ run silently.
 from __future__ import annotations
 
 
-from prostor_cli.config import DEFAULT_CONFIG
+from hermes_cli.config import DEFAULT_CONFIG
 
 
 class TestMcpReloadConfirmDefault:
@@ -54,7 +54,7 @@ class TestUserConfigMerge:
         monkeypatch.setenv("PROSTOR_HOME", str(home))
         # Force a fresh reimport of config.py so the PROSTOR_HOME is honored.
         import importlib
-        import prostor_cli.config as cfg_mod
+        import hermes_cli.config as cfg_mod
         importlib.reload(cfg_mod)
 
         cfg = cfg_mod.load_config()
@@ -83,7 +83,7 @@ class TestUserConfigMerge:
 
         monkeypatch.setenv("PROSTOR_HOME", str(home))
         import importlib
-        import prostor_cli.config as cfg_mod
+        import hermes_cli.config as cfg_mod
         importlib.reload(cfg_mod)
 
         cfg = cfg_mod.load_config()

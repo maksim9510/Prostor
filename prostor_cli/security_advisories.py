@@ -207,7 +207,7 @@ def get_acked_ids() -> set[str]:
     config is repaired, which is fine).
     """
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
     except Exception:
         logger.debug("Could not load config for advisory acks", exc_info=True)
@@ -228,7 +228,7 @@ def ack_advisory(advisory_id: str) -> bool:
     if not advisory_id:
         return False
     try:
-        from prostor_cli.config import load_config, save_config
+        from hermes_cli.config import load_config, save_config
     except Exception:
         logger.warning("Could not import config module to persist ack")
         return False
@@ -326,8 +326,8 @@ _BANNER_REPEAT_HOURS = 24
 
 def _banner_cache_path() -> Optional[Path]:
     try:
-        from prostor_constants import get_prostor_home
-        cache_dir = Path(get_prostor_home()) / "cache"
+        from hermes_constants import get_hermes_home
+        cache_dir = Path(get_hermes_home()) / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / _BANNER_CACHE_FILE
     except Exception:

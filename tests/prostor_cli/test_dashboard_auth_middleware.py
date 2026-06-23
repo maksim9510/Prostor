@@ -24,10 +24,10 @@ import pytest
 pytestmark = pytest.mark.xdist_group("dashboard_auth_app_state")
 from fastapi.testclient import TestClient
 
-from prostor_cli import web_server
-from prostor_cli.dashboard_auth import clear_providers, register_provider
-from prostor_cli.dashboard_auth.cookies import SESSION_AT_COOKIE
-from tests.prostor_cli.conftest_dashboard_auth import StubAuthProvider
+from hermes_cli import web_server
+from hermes_cli.dashboard_auth import clear_providers, register_provider
+from hermes_cli.dashboard_auth.cookies import SESSION_AT_COOKIE
+from tests.hermes_cli.conftest_dashboard_auth import StubAuthProvider
 
 
 @pytest.fixture
@@ -156,7 +156,7 @@ def test_full_login_round_trip_unlocks_gated_api(gated_app):
     assert r1.status_code == 302
     pkce = next(
         (c for c in r1.headers.get_list("set-cookie")
-         if "prostor_session_pkce" in c),
+         if "hermes_session_pkce" in c),
         None,
     )
     assert pkce and "HttpOnly" in pkce
@@ -176,8 +176,8 @@ def test_full_login_round_trip_unlocks_gated_api(gated_app):
     assert r2.status_code == 302
     assert r2.headers["location"] == "/"
     set_cookies = r2.headers.get_list("set-cookie")
-    assert any("prostor_session_at" in c for c in set_cookies)
-    assert any("prostor_session_rt" in c for c in set_cookies)
+    assert any("hermes_session_at" in c for c in set_cookies)
+    assert any("hermes_session_rt" in c for c in set_cookies)
 
     # 3) A gated API route (``/api/sessions``) now succeeds because we
     #    have a valid session cookie. (We deliberately don't probe
@@ -195,7 +195,7 @@ def _complete_stub_login(client) -> None:
     """Walk the stub OAuth round trip so ``client`` carries a valid session.
 
     TestClient persists Set-Cookie across calls, so after this returns the
-    client's cookie jar holds ``prostor_session_at`` / ``prostor_session_rt``
+    client's cookie jar holds ``hermes_session_at`` / ``hermes_session_rt``
     and subsequent gated requests authenticate.
     """
     r1 = client.get("/auth/login?provider=stub", follow_redirects=False)
@@ -364,11 +364,11 @@ def test_logout_clears_cookies_and_redirects_to_login(gated_app):
     assert r.headers["location"] == "/login"
     set_cookies = r.headers.get_list("set-cookie")
     assert any(
-        c.startswith("prostor_session_at=") and "Max-Age=0" in c
+        c.startswith("hermes_session_at=") and "Max-Age=0" in c
         for c in set_cookies
     )
     assert any(
-        c.startswith("prostor_session_rt=") and "Max-Age=0" in c
+        c.startswith("hermes_session_rt=") and "Max-Age=0" in c
         for c in set_cookies
     )
 
@@ -466,12 +466,12 @@ class _UnreachableProvider(StubAuthProvider):
     display_name = "Unreachable IdP (test only)"
 
     def verify_session(self, *, access_token: str):
-        from prostor_cli.dashboard_auth.base import ProviderError
+        from hermes_cli.dashboard_auth.base import ProviderError
 
         raise ProviderError("simulated: IDP/JWKS unreachable")
 
     def refresh_session(self, *, refresh_token: str):
-        from prostor_cli.dashboard_auth.base import ProviderError
+        from hermes_cli.dashboard_auth.base import ProviderError
 
         raise ProviderError("simulated: IDP/JWKS unreachable")
 
@@ -482,12 +482,12 @@ def _mint_stub_at(stub: StubAuthProvider) -> str:
     ls = stub.start_login(redirect_uri="https://fly-app.fly.dev/auth/callback")
     state = dict(
         seg.split("=", 1)
-        for seg in ls.cookie_payload["prostor_session_pkce"].split(";")
+        for seg in ls.cookie_payload["hermes_session_pkce"].split(";")
         if "=" in seg
     )["state"]
     verifier = dict(
         seg.split("=", 1)
-        for seg in ls.cookie_payload["prostor_session_pkce"].split(";")
+        for seg in ls.cookie_payload["hermes_session_pkce"].split(";")
         if "=" in seg
     )["verifier"]
     session = stub.complete_login(

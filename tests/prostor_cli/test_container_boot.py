@@ -1,4 +1,4 @@
-"""Tests for prostor_cli.container_boot — the cont-init.d-time
+"""Tests for hermes_cli.container_boot — the cont-init.d-time
 reconciliation that recreates per-profile gateway s6 service slots
 from the persistent profiles directory.
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from prostor_cli.container_boot import (
+from hermes_cli.container_boot import (
     ReconcileAction,
     reconcile_profile_gateways,
 )
@@ -25,8 +25,31 @@ from prostor_cli.container_boot import (
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_container_argv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default ``_read_container_argv()`` to empty for the whole module.
+
+    ``_read_container_argv()`` walks the entire ``/proc`` table looking for
+    a process whose argv contains ``main-wrapper.sh`` (the s6-overlay v3
+    fallback). On a host that is *also* running prostor containers, those
+    containers' ``main-wrapper.sh`` processes are visible in the host's
+    ``/proc`` (shared PID view), so the scan would pick up a foreign
+    ``gateway run`` argv and make ``_maybe_migrate_legacy_gateway_run_state``
+    synthesize ``running`` state — flaking any test that reconciles without
+    injecting ``container_argv``. Inside the real container ``/proc`` is the
+    container's own PID namespace, so production is unaffected; this fixture
+    just makes the unit suite hermetic. Tests that need a specific argv
+    either pass ``container_argv=`` to ``reconcile_profile_gateways`` or
+    monkeypatch ``_read_container_argv`` themselves (both override this).
+    """
+    monkeypatch.setattr(
+        "hermes_cli.container_boot._read_container_argv",
+        lambda: (),
+    )
+
+
 def _make_profile(
-    prostor_home: Path,
+    hermes_home: Path,
     name: str,
     *,
     state: str | None,
@@ -34,8 +57,8 @@ def _make_profile(
     with_pid: bool = False,
     config: bool = True,
 ) -> Path:
-    """Create a fake profile directory under prostor_home/profiles/<name>/."""
-    p = prostor_home / "profiles" / name
+    """Create a fake profile directory under hermes_home/profiles/<name>/."""
+    p = hermes_home / "profiles" / name
     p.mkdir(parents=True)
     if config:
         # SOUL.md is what the reconciler keys on — it's always seeded by
@@ -57,7 +80,7 @@ def _make_profile(
 
 
 def _seed_default_root(
-    prostor_home: Path,
+    hermes_home: Path,
     *,
     state: str | None = None,
     with_pid: bool = False,
@@ -65,14 +88,14 @@ def _seed_default_root(
     """Populate gateway_state.json / stale runtime files at the
     PROSTOR_HOME root (the implicit default profile)."""
     if state is not None:
-        (prostor_home / "gateway_state.json").write_text(json.dumps({
+        (hermes_home / "gateway_state.json").write_text(json.dumps({
             "gateway_state": state, "timestamp": 1234567890,
         }))
     if with_pid:
-        (prostor_home / "gateway.pid").write_text(json.dumps(
+        (hermes_home / "gateway.pid").write_text(json.dumps(
             {"pid": 99999, "host": "old-container"},
         ))
-        (prostor_home / "processes.json").write_text("[]")
+        (hermes_home / "processes.json").write_text("[]")
 
 
 def _named_actions(actions: list[ReconcileAction]) -> list[ReconcileAction]:
@@ -91,7 +114,7 @@ def test_running_profile_is_registered_and_autostarted(tmp_path: Path) -> None:
     _make_profile(tmp_path, "coder", state="running")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert _named_actions(actions) == [ReconcileAction(
@@ -110,7 +133,7 @@ def test_stopped_profile_is_registered_but_not_started(tmp_path: Path) -> None:
     _make_profile(tmp_path, "writer", state="stopped")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert _named_actions(actions) == [ReconcileAction(
@@ -126,7 +149,7 @@ def test_startup_failed_does_not_autostart(tmp_path: Path) -> None:
     _make_profile(tmp_path, "broken", state="startup_failed")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     named = _named_actions(actions)
@@ -145,7 +168,7 @@ def test_desired_state_running_autostarts_even_if_runtime_failed(tmp_path: Path)
     )
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert _named_actions(actions) == [ReconcileAction(
@@ -165,7 +188,7 @@ def test_desired_state_stopped_blocks_legacy_running_runtime(tmp_path: Path) -> 
     )
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert _named_actions(actions) == [ReconcileAction(
@@ -181,7 +204,7 @@ def test_starting_state_does_not_autostart(tmp_path: Path) -> None:
     _make_profile(tmp_path, "unlucky", state="starting")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     named = _named_actions(actions)
@@ -195,7 +218,7 @@ def test_stale_runtime_files_are_removed(tmp_path: Path) -> None:
     assert (profile / "processes.json").exists()
 
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert not (profile / "gateway.pid").exists()
@@ -211,7 +234,7 @@ def test_profile_without_state_file_is_registered_but_not_started(
     _make_profile(tmp_path, "fresh", state=None)
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert _named_actions(actions) == [ReconcileAction(
@@ -228,7 +251,7 @@ def test_directory_without_marker_file_is_skipped(tmp_path: Path) -> None:
     (tmp_path / "profiles" / "stray").mkdir(parents=True)
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert _named_actions(actions) == []
@@ -243,7 +266,7 @@ def test_corrupt_state_file_treated_as_no_prior_state(tmp_path: Path) -> None:
     (profile / "gateway_state.json").write_text("{ not valid json")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     named = _named_actions(actions)
@@ -257,7 +280,7 @@ def test_reconcile_log_is_written(tmp_path: Path) -> None:
     _make_profile(tmp_path, "b", state="stopped")
 
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     log = (tmp_path / "logs" / "container-boot.log").read_text()
@@ -273,7 +296,7 @@ def test_reconcile_log_rotates_when_size_exceeded(
 ) -> None:
     """When container-boot.log exceeds _LOG_ROTATE_BYTES, the existing
     file is rotated to .1 before the new entries are appended."""
-    from prostor_cli import container_boot
+    from hermes_cli import container_boot
 
     # Tighten the threshold so we don't have to write 256 KiB.
     monkeypatch.setattr(container_boot, "_LOG_ROTATE_BYTES", 200)
@@ -286,7 +309,7 @@ def test_reconcile_log_rotates_when_size_exceeded(
     _make_profile(tmp_path, "coder", state="running")
 
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     rotated = tmp_path / "logs" / "container-boot.log.1"
@@ -303,7 +326,7 @@ def test_reconcile_log_does_not_rotate_below_threshold(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A small existing log is appended to in place; no .1 is created."""
-    from prostor_cli import container_boot
+    from hermes_cli import container_boot
     monkeypatch.setattr(container_boot, "_LOG_ROTATE_BYTES", 10_000_000)
 
     log_path = tmp_path / "logs" / "container-boot.log"
@@ -314,7 +337,7 @@ def test_reconcile_log_does_not_rotate_below_threshold(
     _make_profile(tmp_path, "coder", state="running")
 
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert not (tmp_path / "logs" / "container-boot.log.1").exists()
@@ -329,7 +352,7 @@ def test_reconcile_log_rotation_overwrites_existing_dot1(
 ) -> None:
     """Rotating again replaces the prior .1 — we keep at most one
     rotated file (soft cap of ~2 × threshold)."""
-    from prostor_cli import container_boot
+    from hermes_cli import container_boot
     monkeypatch.setattr(container_boot, "_LOG_ROTATE_BYTES", 200)
 
     log_dir = tmp_path / "logs"; log_dir.mkdir()
@@ -340,7 +363,7 @@ def test_reconcile_log_rotation_overwrites_existing_dot1(
     _make_profile(tmp_path, "coder", state="running")
 
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     # .1 now contains the previous .log (Ys), not OLD ROTATION.
@@ -354,7 +377,7 @@ def test_dry_run_makes_no_filesystem_changes(tmp_path: Path) -> None:
     profile = _make_profile(tmp_path, "coder", state="running", with_pid=True)
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=True,
+        hermes_home=tmp_path, scandir=scandir, dry_run=True,
     )
 
     # The action list is still produced...
@@ -377,7 +400,7 @@ def test_missing_profiles_root_still_registers_default_slot(
     so `prostor gateway start` (no -p) has somewhere to land."""
     scandir = tmp_path / "run-service"; scandir.mkdir()
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
     assert actions == [ReconcileAction(
         profile="default", prior_state=None, action="registered",
@@ -394,7 +417,7 @@ def test_invalid_profile_name_in_directory_raises(tmp_path: Path) -> None:
     _make_profile(tmp_path, "BadName", state="running")
     with pytest.raises(ValueError):
         reconcile_profile_gateways(
-            prostor_home=tmp_path, scandir=scandir, dry_run=False,
+            hermes_home=tmp_path, scandir=scandir, dry_run=False,
         )
 
 
@@ -412,7 +435,7 @@ def test_register_service_publishes_atomically(tmp_path: Path) -> None:
     _make_profile(tmp_path, "coder", state="running")
 
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     # No leftover tmp dir.
@@ -434,7 +457,7 @@ def test_register_service_overwrites_existing_slot(tmp_path: Path) -> None:
 
     # First pass.
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
     first_run = (scandir / "gateway-coder" / "run").read_text()
 
@@ -445,7 +468,7 @@ def test_register_service_overwrites_existing_slot(tmp_path: Path) -> None:
         '{"gateway_state": "stopped"}',
     )
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     # Slot still exists, no .tmp remnants.
@@ -466,7 +489,7 @@ def test_register_service_cleans_up_stale_tmp_dir(tmp_path: Path) -> None:
 
     _make_profile(tmp_path, "coder", state="running")
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert not stale_tmp.exists()
@@ -484,7 +507,7 @@ def test_default_slot_always_registered_on_empty_home(tmp_path: Path) -> None:
     scandir = tmp_path / "run-service"; scandir.mkdir()
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert actions == [ReconcileAction(
@@ -503,7 +526,7 @@ def test_default_slot_run_script_omits_profile_flag(tmp_path: Path) -> None:
     scandir = tmp_path / "run-service"; scandir.mkdir()
 
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     run = (scandir / "gateway-default" / "run").read_text()
@@ -519,7 +542,7 @@ def test_default_slot_autostarts_when_root_state_running(tmp_path: Path) -> None
     _seed_default_root(tmp_path, state="running")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     default_action = next(a for a in actions if a.profile == "default")
@@ -545,7 +568,7 @@ def test_legacy_gateway_run_cmd_seeds_default_running_state(
     scandir = tmp_path / "run-service"; scandir.mkdir()
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path,
+        hermes_home=tmp_path,
         scandir=scandir,
         dry_run=False,
         container_argv=container_argv,
@@ -576,7 +599,7 @@ def test_legacy_gateway_run_no_supervise_does_not_seed_s6_state(
     scandir = tmp_path / "run-service"; scandir.mkdir()
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path,
+        hermes_home=tmp_path,
         scandir=scandir,
         dry_run=False,
         container_argv=container_argv,
@@ -598,7 +621,7 @@ def test_legacy_gateway_run_env_no_supervise_does_not_seed_s6_state(
     monkeypatch.setenv("PROSTOR_GATEWAY_NO_SUPERVISE", "1")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path,
+        hermes_home=tmp_path,
         scandir=scandir,
         dry_run=False,
         container_argv=("gateway", "run"),
@@ -618,7 +641,7 @@ def test_default_slot_does_not_autostart_when_root_state_stopped(
     _seed_default_root(tmp_path, state="stopped")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path,
+        hermes_home=tmp_path,
         scandir=scandir,
         dry_run=False,
         container_argv=("gateway", "run"),
@@ -639,7 +662,7 @@ def test_default_slot_does_not_autostart_when_root_state_startup_failed(
     _seed_default_root(tmp_path, state="startup_failed")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     default_action = next(a for a in actions if a.profile == "default")
@@ -657,7 +680,7 @@ def test_default_slot_cleans_up_stale_runtime_files_at_root(
     assert (tmp_path / "gateway.pid").exists()
 
     reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert not (tmp_path / "gateway.pid").exists()
@@ -673,7 +696,7 @@ def test_default_slot_appears_before_named_profiles(tmp_path: Path) -> None:
     _make_profile(tmp_path, "a-first-alphabetically", state="stopped")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     assert [a.profile for a in actions] == [
@@ -696,7 +719,7 @@ def test_profiles_default_subdir_is_skipped_with_warning(
     _make_profile(tmp_path, "default", state="running")
 
     actions = reconcile_profile_gateways(
-        prostor_home=tmp_path, scandir=scandir, dry_run=False,
+        hermes_home=tmp_path, scandir=scandir, dry_run=False,
     )
 
     # Only the root-profile default slot appears — not the colliding
@@ -733,13 +756,31 @@ def test_profiles_default_subdir_is_skipped_with_warning(
         ),
         # Wrapper that kept the explicit `prostor` argv0.
         ("/init", "/opt/prostor/docker/main-wrapper.sh", "prostor", "dashboard"),
+        # s6-overlay v3: PID 1 is s6-svscan, so the role is read off the
+        # rc.init-launched process whose argv is
+        # `/bin/sh -e .../rc.init top .../main-wrapper.sh dashboard ...`.
+        # This is the exact shape that regressed in issue #49196.
+        (
+            "/bin/sh",
+            "-e",
+            "/run/s6/basedir/scripts/rc.init",
+            "top",
+            "/opt/prostor/docker/main-wrapper.sh",
+            "dashboard",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9119",
+            "--no-open",
+            "--insecure",
+        ),
     ],
 )
 def test_is_dashboard_container_true_for_dashboard_argv(
     container_argv: tuple[str, ...],
 ) -> None:
     """A dashboard command is detected across every wrapper prefix shape."""
-    from prostor_cli.container_boot import _is_dashboard_container
+    from hermes_cli.container_boot import _is_dashboard_container
 
     assert _is_dashboard_container(container_argv) is True
 
@@ -756,13 +797,24 @@ def test_is_dashboard_container_true_for_dashboard_argv(
         # we key on is the SUBCOMMAND, and `gateway run -p dashboard` is a
         # gateway container.
         ("gateway", "run", "-p", "dashboard"),
+        # s6-overlay v3 gateway container — the rc.init-launched argv for a
+        # gateway role must still read as non-dashboard (issue #49196 shape).
+        (
+            "/bin/sh",
+            "-e",
+            "/run/s6/basedir/scripts/rc.init",
+            "top",
+            "/opt/prostor/docker/main-wrapper.sh",
+            "gateway",
+            "run",
+        ),
     ],
 )
 def test_is_dashboard_container_false_for_non_dashboard_argv(
     container_argv: tuple[str, ...],
 ) -> None:
     """Gateway / other commands (and empty argv) are not the dashboard."""
-    from prostor_cli.container_boot import _is_dashboard_container
+    from hermes_cli.container_boot import _is_dashboard_container
 
     assert _is_dashboard_container(container_argv) is False
 
@@ -778,7 +830,7 @@ def test_main_skips_reconcile_in_dashboard_container(
     the gateway-<profile> slot. Asserting the slot is absent proves the
     skip is real, not just a log line.
     """
-    from prostor_cli import container_boot
+    from hermes_cli import container_boot
 
     scandir = tmp_path / "run-service"; scandir.mkdir()
     _make_profile(tmp_path, "worker", state="running")
@@ -798,13 +850,61 @@ def test_main_skips_reconcile_in_dashboard_container(
     assert "skipping (dashboard container" in capsys.readouterr().out
 
 
+def test_main_skips_reconcile_in_dashboard_container_s6v3(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The dashboard skip must fire under the s6-overlay v3 argv shape.
+
+    Regression test for issue #49196: under s6-overlay v3 the container
+    command is read off the rc.init-launched process, whose argv is
+    ``/bin/sh -e .../rc.init top .../main-wrapper.sh dashboard ...`` — not a
+    bare ``/init`` prefix. Before the fix, the prefix-strip left ``/bin/sh``
+    at args[0], so the role read as non-dashboard, the dashboard container
+    reconciled, and it started its own gateway-default (dual Telegram
+    getUpdates 409). Asserting the slot is absent proves the skip fires.
+    """
+    from hermes_cli import container_boot
+
+    scandir = tmp_path / "run-service"; scandir.mkdir()
+    _make_profile(tmp_path, "worker", state="running")
+    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
+    monkeypatch.setenv("S6_PROFILE_GATEWAY_SCANDIR", str(scandir))
+    monkeypatch.setattr(
+        container_boot,
+        "_read_container_argv",
+        lambda: (
+            "/bin/sh",
+            "-e",
+            "/run/s6/basedir/scripts/rc.init",
+            "top",
+            "/opt/prostor/docker/main-wrapper.sh",
+            "dashboard",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9119",
+            "--no-open",
+            "--insecure",
+        ),
+    )
+
+    rc = container_boot.main()
+
+    assert rc == 0
+    assert not (scandir / "gateway-worker").exists()
+    assert not (scandir / "gateway-default").exists()
+    assert "skipping (dashboard container" in capsys.readouterr().out
+
+
 def test_main_reconciles_in_gateway_container(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """main() reconciles normally when PID 1 argv is the gateway command —
     the dashboard skip is scoped strictly to the dashboard role."""
-    from prostor_cli import container_boot
+    from hermes_cli import container_boot
 
     scandir = tmp_path / "run-service"; scandir.mkdir()
     _make_profile(tmp_path, "worker", state="running")
@@ -831,7 +931,7 @@ def test_main_ignores_removed_skip_reconcile_env_var(
     """The legacy PROSTOR_SKIP_PROFILE_RECONCILE flag is gone: setting it on a
     gateway container must NOT suppress reconciliation. Role is decided by
     PID 1 argv alone, so a stale flag in someone's manifest is inert."""
-    from prostor_cli import container_boot
+    from hermes_cli import container_boot
 
     scandir = tmp_path / "run-service"; scandir.mkdir()
     _make_profile(tmp_path, "worker", state="running")

@@ -28,7 +28,7 @@ _WORKTREE = Path(__file__).resolve().parents[2]
 if str(_WORKTREE) not in sys.path:
     sys.path.insert(0, str(_WORKTREE))
 
-from prostor_cli import kanban_db as kb
+from hermes_cli import kanban_db as kb
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ def fresh_home(tmp_path, monkeypatch):
     fixture layers a per-test PROSTOR_HOME plus a path-init cache reset
     so each test sees a truly empty board set.
     """
-    home = tmp_path / "prostor_home"
+    home = tmp_path / "hermes_home"
     home.mkdir()
     monkeypatch.setenv("PROSTOR_HOME", str(home))
     for var in (
@@ -53,10 +53,10 @@ def fresh_home(tmp_path, monkeypatch):
         "PROSTOR_KANBAN_BOARD",
     ):
         monkeypatch.delenv(var, raising=False)
-    # Also reset prostor_constants cache so get_default_prostor_root() re-reads.
+    # Also reset hermes_constants cache so get_default_hermes_root() re-reads.
     try:
-        import prostor_constants
-        prostor_constants._cached_default_prostor_root = None  # type: ignore[attr-defined]
+        import hermes_constants
+        hermes_constants._cached_default_hermes_root = None  # type: ignore[attr-defined]
     except Exception:
         pass
     # Kanban module-level init cache must not leak between tests.
@@ -474,7 +474,7 @@ def _cli(args: list[str], env_extra: dict | None = None) -> subprocess.Completed
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
-        [sys.executable, "-m", "prostor_cli.main", "kanban"] + args,
+        [sys.executable, "-m", "hermes_cli.main", "kanban"] + args,
         env=env,
         capture_output=True,
         text=True,

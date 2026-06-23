@@ -2,7 +2,7 @@
 Interactive setup wizard for the WhatsApp Cloud API adapter.
 
 Entry point: ``prostor whatsapp-cloud`` (dispatched from
-``cmd_whatsapp_cloud`` in ``prostor_cli/main.py``).
+``cmd_whatsapp_cloud`` in ``hermes_cli/main.py``).
 
 Walks the user through the 6 credentials Meta requires + recipient
 allowlist, auto-generates the verify token, and prints exact follow-up
@@ -235,7 +235,7 @@ def run_whatsapp_cloud_setup() -> int:
     Returns 0 on full success, 1 on user abort, 2 on partial completion
     (some fields written but the user bailed before finishing).
     """
-    from prostor_cli.config import get_env_value, save_env_value
+    from hermes_cli.config import get_env_value, save_env_value
 
     print()
     print("⚕ WhatsApp Business Cloud API Setup")
@@ -535,7 +535,7 @@ def run_whatsapp_cloud_setup() -> int:
     print("        Requires Meta's business verification process —")
     print("        Business Manager → Security Center → Start Verification.")
     print()
-    print("  Docs: https://github.com/maksim9510/Prostor/docs/user-guide/")
+    print("  Docs: https://prostor-agent.nousresearch.com/docs/user-guide/")
     print("        messaging/whatsapp-cloud")
     print()
     return 0

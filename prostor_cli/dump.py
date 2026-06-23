@@ -13,9 +13,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from prostor_cli.config import get_prostor_home, get_env_path, get_project_root, load_config
-from prostor_cli.env_loader import load_prostor_dotenv
-from prostor_constants import display_prostor_home
+from hermes_cli.config import get_hermes_home, get_env_path, get_project_root, load_config
+from hermes_cli.env_loader import load_hermes_dotenv
+from hermes_constants import display_hermes_home
 from agent.skill_utils import is_excluded_skill_path
 
 
@@ -25,8 +25,8 @@ def _get_git_commit(project_root: Path) -> str:
     Source installs and dev images resolve this live via ``git rev-parse``.
     The published Docker image excludes ``.git`` from the build context, so
     that lookup always fails — we fall back to the baked-in build SHA written
-    to ``<project_root>/.prostor_build_sha`` by the Dockerfile's
-    ``PROSTOR_GIT_SHA`` build-arg (see ``prostor_cli/build_info.py``).
+    to ``<project_root>/.hermes_build_sha`` by the Dockerfile's
+    ``PROSTOR_GIT_SHA`` build-arg (see ``hermes_cli/build_info.py``).
     The output format is identical regardless of source.
     """
     try:
@@ -46,7 +46,7 @@ def _get_git_commit(project_root: Path) -> str:
     # images, absent otherwise).  Defers the import so the dump module
     # stays cheap on non-dump code paths.
     try:
-        from prostor_cli.build_info import get_build_sha
+        from hermes_cli.build_info import get_build_sha
         baked = get_build_sha(short=8)
         if baked:
             return baked
@@ -94,7 +94,7 @@ def _redact(value: str) -> str:
 def _gateway_status() -> str:
     """Return a short gateway status string."""
     try:
-        from prostor_cli.gateway import get_gateway_runtime_snapshot
+        from hermes_cli.gateway import get_gateway_runtime_snapshot
 
         snapshot = get_gateway_runtime_snapshot()
         if snapshot.running:
@@ -109,9 +109,9 @@ def _gateway_status() -> str:
         return "unknown" if sys.platform.startswith(("linux", "darwin")) else "N/A"
 
 
-def _count_skills(prostor_home: Path) -> int:
+def _count_skills(hermes_home: Path) -> int:
     """Count installed skills."""
-    skills_dir = prostor_home / "skills"
+    skills_dir = hermes_home / "skills"
     if not skills_dir.is_dir():
         return 0
     count = 0
@@ -129,9 +129,9 @@ def _count_mcp_servers(config: dict) -> int:
     return len(servers)
 
 
-def _cron_summary(prostor_home: Path) -> str:
+def _cron_summary(hermes_home: Path) -> str:
     """Return cron jobs summary."""
-    jobs_file = prostor_home / "cron" / "jobs.json"
+    jobs_file = hermes_home / "cron" / "jobs.json"
     if not jobs_file.exists():
         return "0"
     try:
@@ -194,7 +194,7 @@ def _config_overrides(config: dict) -> dict[str, str]:
     
     Returns a flat dict of dotpath -> value for interesting overrides.
     """
-    from prostor_cli.config import DEFAULT_CONFIG
+    from hermes_cli.config import DEFAULT_CONFIG
 
     overrides = {}
 
@@ -246,16 +246,16 @@ def run_dump(args):
 
     # Load env from .env file so key checks work
     env_path = get_env_path()
-    load_prostor_dotenv(
-        prostor_home=env_path.parent,
+    load_hermes_dotenv(
+        hermes_home=env_path.parent,
         project_env=get_project_root() / ".env",
     )
 
     project_root = get_project_root()
-    prostor_home = get_prostor_home()
+    hermes_home = get_hermes_home()
 
     try:
-        from prostor_cli import __version__
+        from hermes_cli import __version__
     except ImportError:
         __version__ = "(unknown)"
 
@@ -271,7 +271,7 @@ def run_dump(args):
 
     # Profile
     try:
-        from prostor_cli.profiles import get_active_profile_name
+        from hermes_cli.profiles import get_active_profile_name
         profile = get_active_profile_name() or "(default)"
     except Exception:
         profile = "(default)"
@@ -320,7 +320,7 @@ def run_dump(args):
     lines.append(f"python:           {sys.version.split()[0]}")
     lines.append(f"openai_sdk:       {openai_ver}")
     lines.append(f"profile:          {profile}")
-    lines.append(f"prostor_home:      {display_prostor_home()}")
+    lines.append(f"hermes_home:      {display_hermes_home()}")
     lines.append(f"model:            {model}")
     lines.append(f"provider:         {provider}")
     lines.append(f"terminal:         {backend}")
@@ -386,8 +386,8 @@ def run_dump(args):
 
     platforms = _configured_platforms()
     lines.append(f"  platforms:          {', '.join(platforms) if platforms else 'none'}")
-    lines.append(f"  cron_jobs:          {_cron_summary(prostor_home)}")
-    lines.append(f"  skills:             {_count_skills(prostor_home)}")
+    lines.append(f"  cron_jobs:          {_cron_summary(hermes_home)}")
+    lines.append(f"  skills:             {_count_skills(hermes_home)}")
 
     # Config overrides (non-default values)
     overrides = _config_overrides(config)

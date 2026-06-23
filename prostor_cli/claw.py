@@ -18,9 +18,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from prostor_cli.config import get_prostor_home, get_config_path, load_config, save_config
-from prostor_constants import get_optional_skills_dir
-from prostor_cli.setup import (
+from hermes_cli.config import get_hermes_home, get_config_path, load_config, save_config
+from hermes_constants import get_optional_skills_dir
+from hermes_cli.setup import (
     Colors,
     color,
     print_header,
@@ -39,17 +39,17 @@ _OPENCLAW_SCRIPT = (
     / "migration"
     / "openclaw-migration"
     / "scripts"
-    / "openclaw_to_prostor.py"
+    / "openclaw_to_hermes.py"
 )
 
 # Fallback: user may have installed the skill from the Hub
 _OPENCLAW_SCRIPT_INSTALLED = (
-    get_prostor_home()
+    get_hermes_home()
     / "skills"
     / "migration"
     / "openclaw-migration"
     / "scripts"
-    / "openclaw_to_prostor.py"
+    / "openclaw_to_hermes.py"
 )
 
 # Known OpenClaw directory names (current + legacy)
@@ -194,7 +194,7 @@ _WORKSPACE_STATE_GLOBS = (
 
 
 def _find_migration_script() -> Path | None:
-    """Find the openclaw_to_prostor.py script in known locations."""
+    """Find the openclaw_to_hermes.py script in known locations."""
     for candidate in [_OPENCLAW_SCRIPT, _OPENCLAW_SCRIPT_INSTALLED]:
         if candidate.exists():
             return candidate
@@ -203,7 +203,7 @@ def _find_migration_script() -> Path | None:
 
 def _load_migration_module(script_path: Path):
     """Dynamically load the migration script as a module."""
-    spec = importlib.util.spec_from_file_location("openclaw_to_prostor", script_path)
+    spec = importlib.util.spec_from_file_location("openclaw_to_hermes", script_path)
     if spec is None or spec.loader is None:
         return None
     mod = importlib.util.module_from_spec(spec)
@@ -379,12 +379,12 @@ def _cmd_migrate(args):
         return
 
     # Show what we're doing
-    prostor_home = get_prostor_home()
+    hermes_home = get_hermes_home()
     auto_yes = getattr(args, "yes", False)
     print()
     print_header("Migration Settings")
     print_info(f"Source:      {source_dir}")
-    print_info(f"Target:      {prostor_home}")
+    print_info(f"Target:      {hermes_home}")
     print_info(f"Preset:      {preset}")
     print_info(f"Overwrite:   {'yes' if overwrite else 'no (skip conflicts)'}")
     print_info(f"Secrets:     {'yes (allowlisted only)' if migrate_secrets else 'no'}")
@@ -425,7 +425,7 @@ def _cmd_migrate(args):
     try:
         preview = mod.Migrator(
             source_root=source_dir.resolve(),
-            target_root=prostor_home.resolve(),
+            target_root=hermes_home.resolve(),
             execute=False,
             workspace_target=ws_target,
             overwrite=overwrite,
@@ -499,7 +499,7 @@ def _cmd_migrate(args):
             return
 
     # ── Phase 2b: Pre-apply backup of the Prostor home ─────────
-    # Delegates to prostor_cli.backup.create_pre_migration_backup(), which
+    # Delegates to hermes_cli.backup.create_pre_migration_backup(), which
     # shares implementation with the pre-update backup (same exclusion
     # rules, same SQLite safe-copy, zip format) so the archive is
     # restorable with `prostor import`.  Mirrors OpenClaw's
@@ -508,8 +508,8 @@ def _cmd_migrate(args):
     backup_archive: Optional[Path] = None
     if not no_backup:
         try:
-            from prostor_cli.backup import create_pre_migration_backup, _format_size
-            backup_archive = create_pre_migration_backup(prostor_home=prostor_home)
+            from hermes_cli.backup import create_pre_migration_backup, _format_size
+            backup_archive = create_pre_migration_backup(hermes_home=hermes_home)
             if backup_archive:
                 size_str = _format_size(backup_archive.stat().st_size)
                 print()
@@ -527,7 +527,7 @@ def _cmd_migrate(args):
     try:
         migrator = mod.Migrator(
             source_root=source_dir.resolve(),
-            target_root=prostor_home.resolve(),
+            target_root=hermes_home.resolve(),
             execute=True,
             workspace_target=ws_target,
             overwrite=overwrite,

@@ -1,5 +1,3 @@
-from prostor_cli.web_server_models import *  # noqa: F401,F403
-
 """
 Prostor Agent — Web UI server.
 
@@ -7,8 +5,8 @@ Provides a FastAPI backend serving the Vite/React frontend and REST API
 endpoints for managing configuration, environment variables, and sessions.
 
 Usage:
-    python -m prostor_cli.main web          # Start on http://127.0.0.1:9119
-    python -m prostor_cli.main web --port 8080
+    python -m hermes_cli.main web          # Start on http://127.0.0.1:9119
+    python -m hermes_cli.main web --port 8080
 """
 
 from contextlib import asynccontextmanager, contextmanager
@@ -45,15 +43,15 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from prostor_cli import __version__, __release_date__
-from prostor_cli.config import (
+from hermes_cli import __version__, __release_date__
+from hermes_cli.config import (
     cfg_get,
     DEFAULT_CONFIG,
     OPTIONAL_ENV_VARS,
     clear_model_endpoint_credentials,
     get_config_path,
     get_env_path,
-    get_prostor_home,
+    get_hermes_home,
     load_config,
     load_env,
     save_config,
@@ -64,15 +62,19 @@ from prostor_cli.config import (
     format_docker_update_message,
     recommended_update_command_for_method,
     redact_key,
+    write_platform_config_field,
 )
-from prostor_cli.memory_providers import (
+from hermes_cli.memory_providers import (
     MemoryProvider,
     ProviderField,
     get_memory_provider,
 )
 from gateway.status import (
+    derive_gateway_busy,
+    derive_gateway_drainable,
     get_running_pid,
     get_runtime_status_running_pid,
+    parse_active_agents,
     read_runtime_status,
 )
 from utils import env_var_enabled
@@ -143,6 +145,22 @@ def _start_desktop_cron_ticker(stop_event: "threading.Event", interval: int = 60
     provider.start(stop_event, interval=interval)
 
 
+def _warm_gateway_module() -> None:
+    try:
+        import hermes_cli.gateway  # noqa: F401
+    except Exception:
+        pass
+
+
+def _resolve_restart_drain_timeout() -> float:
+    try:
+        from hermes_cli.gateway import _get_restart_drain_timeout
+        return _get_restart_drain_timeout()
+    except ImportError:
+        from gateway.restart import DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT
+        return DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT
+
+
 @asynccontextmanager
 async def _lifespan(app: "FastAPI"):
     app.state.event_channels = {}  # dict[str, set]
@@ -152,6 +170,14 @@ async def _lifespan(app: "FastAPI"):
     # On app.state (not a module global) so the Lock binds to the running
     # event loop during lifespan startup — see _get_event_state's docstring.
     app.state.chat_argv_lock = asyncio.Lock()
+
+    # Fire hermes_cli.gateway import into a background thread so the event
+    # loop is not blocked and PROSTOR_DASHBOARD_READY fires without delay.
+    # On a cold Windows install the module chain triggers .pyc compilation
+    # and Defender real-time scans that can stall the event loop for 15-30s.
+    # Running in an executor means the cost is paid in a worker thread while
+    # the server socket is already open and accepting probes.
+    asyncio.get_event_loop().run_in_executor(None, _warm_gateway_module)
 
     # Desktop-spawned backends (PROSTOR_DESKTOP=1) fire cron jobs themselves,
     # since the app has no gateway running the scheduler. Server `prostor
@@ -208,6 +234,11 @@ def _get_chat_argv_lock(app: "FastAPI") -> asyncio.Lock:
 
 app = FastAPI(title="Prostor Agent", version=__version__, lifespan=_lifespan)
 
+# Memory-provider OAuth connect routes live in the memory layer, not here.
+from hermes_cli.memory_oauth import router as _memory_oauth_router  # noqa: E402
+
+app.include_router(_memory_oauth_router)
+
 # ---------------------------------------------------------------------------
 # Session token for protecting sensitive endpoints (reveal).
 # The desktop shell mints the token and injects it via
@@ -247,7 +278,7 @@ app.add_middleware(
 # Endpoints that do NOT require the session token.  Everything else under
 # /api/ is gated by the auth middleware below.
 #
-# This list is defined in ``prostor_cli.dashboard_auth.public_paths`` so the
+# This list is defined in ``hermes_cli.dashboard_auth.public_paths`` so the
 # OAuth gate middleware can honour the same allowlist — keeping the two
 # gates in lockstep avoids drift like the wildcard-subdomain regression
 # where ``/api/status`` was public under the legacy gate but 401'd under
@@ -256,7 +287,7 @@ app.add_middleware(
 # Keep the upstream list minimal — only truly non-sensitive, read-only
 # endpoints belong there.
 # ---------------------------------------------------------------------------
-from prostor_cli.dashboard_auth.public_paths import (
+from hermes_cli.dashboard_auth.public_paths import (
     PUBLIC_API_PATHS as _PUBLIC_API_PATHS,
 )
 
@@ -335,20 +366,26 @@ _LOOPBACK_HOST_VALUES: frozenset = frozenset({
 })
 
 
-def should_require_auth(host: str, allow_public: bool) -> bool:
-    """Return True iff the dashboard OAuth auth gate must be active.
+def should_require_auth(host: str, allow_public: bool = False) -> bool:
+    """Return True iff the dashboard auth gate must be active.
 
     Truth table:
-      host == loopback                              → False (no auth)
-      host != loopback AND allow_public (--insecure)→ False (legacy escape hatch)
-      host != loopback AND NOT allow_public         → True  (gate engages)
+      host == loopback        → False (no auth — local-only, trusted operator)
+      host != loopback        → True  (gate engages — OAuth or password required)
 
-    "Loopback" matches the same set used by ``--insecure`` enforcement in
-    ``start_server``: 127.0.0.1, localhost, ::1. RFC1918 / CGNAT / link-local
-    are deliberately treated as PUBLIC — a hostile device on the same LAN is
-    exactly the threat model the gate is designed for.
+    "Loopback" is 127.0.0.1, localhost, ::1. RFC1918 / CGNAT / link-local are
+    deliberately treated as PUBLIC — a hostile device on the same LAN is exactly
+    the threat model the gate is designed for.
+
+    ``allow_public`` (the legacy ``--insecure`` escape hatch) NO LONGER disables
+    the gate. It is accepted for backward-compat with old launch scripts and
+    desktop shells but is ignored: a non-loopback bind ALWAYS requires an auth
+    provider (OAuth or the bundled password provider). This closes the
+    unauthenticated-public-dashboard hole behind the June 2026 ``prostor-0day``
+    MCP-persistence campaign, where ``--insecure --host 0.0.0.0`` left the
+    config/MCP/agent surface open to internet scanners.
     """
-    return (host not in _LOOPBACK_HOST_VALUES) and (not allow_public)
+    return host not in _LOOPBACK_HOST_VALUES
 
 
 def _is_accepted_host(host_header: str, bound_host: str) -> bool:
@@ -436,7 +473,7 @@ async def host_header_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def _dashboard_auth_gate(request: Request, call_next):
-    from prostor_cli.dashboard_auth.middleware import gated_auth_middleware
+    from hermes_cli.dashboard_auth.middleware import gated_auth_middleware
     return await gated_auth_middleware(request, call_next)
 
 
@@ -591,6 +628,10 @@ _CATEGORY_MERGE: Dict[str, str] = {
     # with the other messaging-platform config (discord) so it isn't an
     # orphan tab of one field.
     "telegram": "discord",
+    # `computer_use.cua_telemetry` is the only schema-surfaced computer_use
+    # field — fold it into the agent tab rather than spawning a one-field
+    # orphan category.
+    "computer_use": "agent",
 }
 
 # Display order for tabs — unlisted categories sort alphabetically after these.
@@ -670,6 +711,75 @@ for _k, _v in CONFIG_SCHEMA.items():
 CONFIG_SCHEMA = _ordered_schema
 
 
+class ConfigUpdate(BaseModel):
+    config: dict
+    profile: Optional[str] = None
+
+
+class EnvVarUpdate(BaseModel):
+    key: str
+    value: str
+    profile: Optional[str] = None
+    # Optional bearer key for the connectivity probe of a custom/local endpoint
+    # (``key == "OPENAI_BASE_URL"``). Self-hosted endpoints that gate
+    # ``/v1/models`` behind auth otherwise look "reachable but empty"; sending
+    # the key lets the probe enumerate the served models. Ignored for the
+    # regular PUT /api/env path (which only reads key/value).
+    api_key: str = ""
+
+
+class EnvVarDelete(BaseModel):
+    key: str
+    profile: Optional[str] = None
+
+
+class EnvVarReveal(BaseModel):
+    key: str
+    profile: Optional[str] = None
+
+
+class MemoryProviderConfigUpdate(BaseModel):
+    values: Dict[str, str] = {}
+
+
+class MessagingPlatformUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    env: Dict[str, str] = {}
+    clear_env: List[str] = []
+    # Explicit body profile beats the query param injected by the global
+    # dashboard profile switcher (same precedence as other scoped writes).
+    profile: Optional[str] = None
+
+
+class TelegramOnboardingStart(BaseModel):
+    bot_name: Optional[str] = None
+
+
+class TelegramOnboardingApply(BaseModel):
+    allowed_user_ids: List[str]
+    profile: Optional[str] = None
+
+
+class AudioTranscriptionRequest(BaseModel):
+    data_url: str
+    mime_type: Optional[str] = None
+
+
+class ManagedFileUpload(BaseModel):
+    path: str
+    data_url: str
+    overwrite: bool = True
+
+
+class ManagedDirectoryCreate(BaseModel):
+    path: str
+
+
+class ManagedFileDelete(BaseModel):
+    path: str
+    recursive: bool = False
+
+
 _AUDIO_MIME_EXTENSIONS: Dict[str, str] = {
     "audio/aac": ".aac",
     "audio/flac": ".flac",
@@ -691,6 +801,34 @@ _MAX_TRANSCRIPTION_UPLOAD_BYTES = 25 * 1024 * 1024
 def _audio_extension_for_mime(mime_type: str) -> str:
     normalized = (mime_type or "").split(";", 1)[0].strip().lower()
     return _AUDIO_MIME_EXTENSIONS.get(normalized, ".webm")
+
+
+class ModelAssignment(BaseModel):
+    """Payload for POST /api/model/set — assign a provider/model to a slot.
+
+    scope="main"        → writes model.provider + model.default
+    scope="auxiliary"   → writes auxiliary.<task>.provider + auxiliary.<task>.model
+    scope="auxiliary" with task=""  → applied to every auxiliary.* slot
+    scope="auxiliary" with task="__reset__"  → resets every slot to provider="auto"
+    """
+    scope: str
+    provider: str
+    model: str
+    task: str = ""
+    # Optional OpenAI-compatible endpoint URL. Only honored for custom/local
+    # providers on the main slot — lets the GUI configure a self-hosted endpoint
+    # (vLLM, llama.cpp, Ollama, …) that needs no API key. The runtime resolver
+    # reads model.base_url from config (it ignores OPENAI_BASE_URL), so this is
+    # the path that actually wires a local endpoint into resolution.
+    base_url: str = ""
+    # Optional API key for a custom/local endpoint. Persisted to
+    # ``model.api_key`` (where the runtime resolver reads it) so a self-hosted
+    # endpoint that requires auth works from the GUI — mirrors the key the
+    # ``prostor model`` custom flow collects. Honored only on the main slot for
+    # custom/local providers.
+    api_key: str = ""
+    confirm_expensive_model: bool = False
+    profile: Optional[str] = None
 
 
 def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, str]:
@@ -720,8 +858,8 @@ def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, st
        ``normalize_model_for_provider`` (e.g. ``anthropic/claude-opus-4.6``
        on native anthropic → ``claude-opus-4-6``).
     """
-    from prostor_cli.models import _KNOWN_PROVIDER_NAMES, normalize_provider
-    from prostor_cli.model_normalize import normalize_model_for_provider
+    from hermes_cli.models import _KNOWN_PROVIDER_NAMES, normalize_provider
+    from hermes_cli.model_normalize import normalize_model_for_provider
 
     prov_in = (provider or "").strip()
     model_in = (model or "").strip()
@@ -739,7 +877,7 @@ def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, st
             )
         except Exception:
             cur_provider = ""
-        from prostor_cli.models import _AGGREGATOR_PROVIDERS
+        from hermes_cli.models import _AGGREGATOR_PROVIDERS
         if cur_provider and normalize_provider(cur_provider) in _AGGREGATOR_PROVIDERS:
             canonical = normalize_provider(cur_provider)
             prov_in = cur_provider
@@ -1082,7 +1220,7 @@ def _media_serve_roots() -> list[Path]:
     key or a screenshot outside the cache) merely because the suffix passes the
     allowlist.
     """
-    home = get_prostor_home()
+    home = get_hermes_home()
     roots = [home / "images", home / "screenshots", home / "cache"]
     out: list[Path] = []
     for root in roots:
@@ -1169,14 +1307,14 @@ def _local_dashboard_request(request: Request) -> bool:
     return host in local_hosts or client_host in local_hosts
 
 
-def _default_prostor_root_is_opt_data() -> bool:
+def _default_hermes_root_is_opt_data() -> bool:
     raw = os.environ.get("PROSTOR_HOME", "").strip()
     if not raw:
         return False
     try:
-        from prostor_constants import get_default_prostor_root
+        from hermes_constants import get_default_hermes_root
 
-        root = get_default_prostor_root().expanduser().resolve(strict=False)
+        root = get_default_hermes_root().expanduser().resolve(strict=False)
     except (OSError, RuntimeError):
         root = Path(raw).expanduser().resolve(strict=False)
     return root == _HOSTED_MANAGED_FILES_ROOT
@@ -1189,13 +1327,35 @@ def _dashboard_local_update_managed_externally() -> bool:
     in-browser local update action. Keep this dashboard capability separate
     from install-method detection: manual git/pip installs inside containers can
     still behave like their actual install method in the CLI.
-    """
-    try:
-        from prostor_constants import is_container
 
-        return is_container()
+    However, when the install method is ``git`` (a bind-mounted checkout inside
+    a container — e.g. the prostor-webui image sharing the Prostor source tree),
+    the dashboard's ``prostor update`` button is the correct update path and
+    should not be suppressed. Other containerized install methods remain
+    externally managed unless their apply path is proven safe inside the
+    running container filesystem.
+    """
+    if _default_hermes_root_is_opt_data():
+        return True
+    try:
+        from hermes_constants import is_container
+
+        if not is_container():
+            return False
     except Exception:
         return False
+    # We are inside a container, but the install may still be self-managed.
+    # If the install method is git, the dashboard update button works against
+    # the mounted checkout and should be offered. Keep pip blocked inside
+    # containers: its apply path mutates the running container filesystem and
+    # is not the bind-mounted checkout case this gate is meant to recover.
+    try:
+        method = detect_install_method(PROJECT_ROOT)
+        if method == "git":
+            return False
+    except Exception:
+        pass
+    return True
 
 
 def _managed_files_policy(request: Request, *, create_root: bool = True) -> ManagedFilesPolicy:
@@ -1209,7 +1369,7 @@ def _managed_files_policy(request: Request, *, create_root: bool = True) -> Mana
     # and still expect the Files page to browse their local home directory. Lock
     # to /opt/data only when the installation's Prostor root is actually /opt/data
     # (the container/hosted layout) or when PROSTOR_DASHBOARD_FILES_ROOT is set.
-    if _default_prostor_root_is_opt_data():
+    if _default_hermes_root_is_opt_data():
         root = _ensure_managed_root(_HOSTED_MANAGED_FILES_ROOT) if create_root else _HOSTED_MANAGED_FILES_ROOT
         return ManagedFilesPolicy(default_path=root, locked_root=root, can_change_path=False)
 
@@ -1638,7 +1798,7 @@ async def get_status(profile: Optional[str] = None):
     # Use the config-only (contextvar) scope, NOT _profile_scope: this handler
     # awaits the remote-health probe, and _profile_scope swaps process-global
     # skills-module attributes that a concurrent request would cross-restore
-    # across that await. Status only resolves get_prostor_home() at call time
+    # across that await. Status only resolves get_hermes_home() at call time
     # (config/env/gateway state), which the task-local contextvar covers.
     if requested_profile and requested_profile.lower() != "current":
         status_scope = _config_profile_scope(requested_profile)
@@ -1725,7 +1885,7 @@ async def get_status(profile: Optional[str] = None):
 
         active_sessions = 0
         try:
-            from prostor_state import SessionDB
+            from hermes_state import SessionDB
             db = SessionDB()
             try:
                 sessions = db.list_sessions_rich(limit=50)
@@ -1740,6 +1900,33 @@ async def get_status(profile: Optional[str] = None):
         except Exception:
             pass
 
+        # Busy/drainable readout (NAS lifecycle-safety gate).  active_agents is
+        # the in-flight gateway-turn count the gateway now persists at every
+        # turn boundary; gateway_busy/gateway_drainable are derived from it +
+        # liveness via the single shared contract in gateway.status.  Liveness
+        # keys off gateway_running (a live PID/health probe), NEVER
+        # gateway_updated_at — a healthy idle gateway never advances that.
+        active_agents = parse_active_agents((runtime or {}).get("active_agents", 0))
+        gateway_busy = derive_gateway_busy(
+            gateway_running=gateway_running,
+            gateway_state=gateway_state,
+            active_agents=active_agents,
+        )
+        gateway_drainable = derive_gateway_drainable(
+            gateway_running=gateway_running,
+            gateway_state=gateway_state,
+        )
+        # Resolved drain timeout (seconds) so NAS can size its poll deadline
+        # without out-of-band knowledge.  Offload to a thread: on a cold
+        # Windows install the first import of hermes_cli.gateway blocks the
+        # asyncio event loop for 15-30s (.pyc compilation + Defender scans),
+        # exceeding the desktop handshake's 15s socket timeout.  After the
+        # first call the module is in sys.modules and run_in_executor returns
+        # in microseconds.
+        restart_drain_timeout = await asyncio.get_running_loop().run_in_executor(
+            None, _resolve_restart_drain_timeout
+        )
+
         # Dashboard auth gate (Phase 7): surface whether the gate is engaged
         # and which providers are registered so ``prostor status`` and the
         # SPA's StatusPage can show "OAuth gate ON via Nous Research" or
@@ -1747,7 +1934,7 @@ async def get_status(profile: Optional[str] = None):
         auth_required = bool(getattr(app.state, "auth_required", False))
         auth_providers: list[str] = []
         try:
-            from prostor_cli.dashboard_auth import list_providers as _list_providers
+            from hermes_cli.dashboard_auth import list_providers as _list_providers
             auth_providers = [p.name for p in _list_providers()]
         except Exception:
             # Module not importable yet (early startup) — leave as [].
@@ -1762,12 +1949,16 @@ async def get_status(profile: Optional[str] = None):
             "release_date": __release_date__,
             "config_version": current_ver,
             "latest_config_version": latest_ver,
-            "can_update_prostor": not _dashboard_local_update_managed_externally(),
+            "can_update_hermes": not _dashboard_local_update_managed_externally(),
             "gateway_running": gateway_running,
             "gateway_state": gateway_state,
             "gateway_platforms": gateway_platforms,
             "gateway_exit_reason": gateway_exit_reason,
             "gateway_updated_at": gateway_updated_at,
+            "active_agents": active_agents,
+            "gateway_busy": gateway_busy,
+            "gateway_drainable": gateway_drainable,
+            "restart_drain_timeout": restart_drain_timeout,
             "active_sessions": active_sessions,
             "auth_required": auth_required,
             "auth_providers": auth_providers,
@@ -1785,7 +1976,7 @@ async def get_status(profile: Optional[str] = None):
         # envelope — the same loopback/gated split ``should_require_auth`` draws.
         if not auth_required:
             status.update({
-                "prostor_home": str(get_prostor_home()),
+                "hermes_home": str(get_hermes_home()),
                 "config_path": str(get_config_path()),
                 "env_path": str(get_env_path()),
                 "gateway_pid": gateway_pid,
@@ -1862,7 +2053,7 @@ async def get_system_stats():
         "hostname": _platform.node(),
         "python_version": _platform.python_version(),
         "python_impl": _platform.python_implementation(),
-        "prostor_version": __version__,
+        "hermes_version": __version__,
         "cpu_count": os.cpu_count(),
     }
 
@@ -1878,7 +2069,7 @@ async def get_system_stats():
             "percent": vm.percent,
         }
         try:
-            du = psutil.disk_usage(str(get_prostor_home()))
+            du = psutil.disk_usage(str(get_hermes_home()))
             info["disk"] = {
                 "total": du.total,
                 "used": du.used,
@@ -1952,6 +2143,10 @@ async def get_curator_status():
     }
 
 
+class CuratorPause(BaseModel):
+    paused: bool
+
+
 @app.put("/api/curator/paused")
 async def set_curator_paused(body: CuratorPause):
     from agent import curator
@@ -1964,7 +2159,7 @@ async def set_curator_paused(body: CuratorPause):
 async def run_curator():
     """Trigger a curator review now (backgrounded; tail via action status)."""
     try:
-        proc = _spawn_prostor_action(["curator", "run"], "curator-run")
+        proc = _spawn_hermes_action(["curator", "run"], "curator-run")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to run curator: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "curator-run"}
@@ -1988,7 +2183,7 @@ async def get_portal_status():
     cfg = load_config() or {}
     auth: Dict[str, Any] = {}
     try:
-        from prostor_cli.auth import get_nous_auth_status
+        from hermes_cli.auth import get_nous_auth_status
 
         auth = get_nous_auth_status() or {}
     except Exception:
@@ -1996,7 +2191,7 @@ async def get_portal_status():
 
     features = []
     try:
-        from prostor_cli.nous_subscription import get_nous_subscription_features
+        from hermes_cli.nous_subscription import get_nous_subscription_features
 
         feats = get_nous_subscription_features(cfg)
         if feats is not None:
@@ -2034,7 +2229,7 @@ async def get_portal_status():
 @app.post("/api/ops/prompt-size")
 async def run_prompt_size():
     try:
-        proc = _spawn_prostor_action(["prompt-size"], "prompt-size")
+        proc = _spawn_hermes_action(["prompt-size"], "prompt-size")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "prompt-size"}
@@ -2043,7 +2238,7 @@ async def run_prompt_size():
 @app.post("/api/ops/dump")
 async def run_dump():
     try:
-        proc = _spawn_prostor_action(["dump"], "dump")
+        proc = _spawn_hermes_action(["dump"], "dump")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "dump"}
@@ -2052,10 +2247,19 @@ async def run_dump():
 @app.post("/api/ops/config-migrate")
 async def run_config_migrate():
     try:
-        proc = _spawn_prostor_action(["config", "migrate"], "config-migrate")
+        proc = _spawn_hermes_action(["config", "migrate"], "config-migrate")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "config-migrate"}
+
+
+class DebugShareRequest(BaseModel):
+    # Redaction is ON by default — force-mode scrubs credential-shaped tokens
+    # out of log content before it leaves the machine. The toggle exists so an
+    # operator who knows the logs are clean can opt out for fuller fidelity.
+    redact: bool = True
+    # Recent log lines included in the summary tail (full logs are separate).
+    lines: int = 200
 
 
 @app.post("/api/ops/debug-share")
@@ -2069,7 +2273,7 @@ async def run_debug_share_endpoint(body: DebugShareRequest | None = None):
     dashboard renders those as real, copyable links instead of scraping a log
     tail. Pastes auto-delete after 6 hours (handled inside the share core).
     """
-    from prostor_cli.debug import build_debug_share
+    from hermes_cli.debug import build_debug_share
 
     req = body or DebugShareRequest()
     try:
@@ -2104,7 +2308,7 @@ async def run_debug_share_endpoint(body: DebugShareRequest | None = None):
 # the dashboard can tail them back to the user.
 # ---------------------------------------------------------------------------
 
-_ACTION_LOG_DIR: Path = get_prostor_home() / "logs"
+_ACTION_LOG_DIR: Path = get_hermes_home() / "logs"
 
 # Short ``name`` (from the URL) → absolute log file path.
 _ACTION_LOG_FILES: Dict[str, str] = {
@@ -2154,10 +2358,10 @@ def _record_completed_action(name: str, message: str, exit_code: int = 1) -> Non
     _ACTION_RESULTS[name] = {"exit_code": exit_code, "pid": None}
 
 
-def _spawn_prostor_action(subcommand: List[str], name: str) -> subprocess.Popen:
+def _spawn_hermes_action(subcommand: List[str], name: str) -> subprocess.Popen:
     """Spawn ``prostor <subcommand>`` detached and record the Popen handle.
 
-    Uses the running interpreter's ``prostor_cli.main`` module so the action
+    Uses the running interpreter's ``hermes_cli.main`` module so the action
     inherits the same venv/PYTHONPATH the web server is using.
     """
     log_file_name = _ACTION_LOG_FILES[name]
@@ -2168,7 +2372,7 @@ def _spawn_prostor_action(subcommand: List[str], name: str) -> subprocess.Popen:
         f"\n=== {name} started {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n".encode()
     )
 
-    cmd = [sys.executable, "-m", "prostor_cli.main", *subcommand]
+    cmd = [sys.executable, "-m", "hermes_cli.main", *subcommand]
 
     popen_kwargs: Dict[str, Any] = {
         "cwd": str(PROJECT_ROOT),
@@ -2273,7 +2477,7 @@ def _spawn_gateway_restart(profile: Optional[str] = None) -> Tuple[subprocess.Po
         if existing_command is None or existing_command == tuple(subcommand):
             return existing, True
         raise RuntimeError("gateway restart already in progress for another profile")
-    return _spawn_prostor_action(subcommand, "gateway-restart"), False
+    return _spawn_hermes_action(subcommand, "gateway-restart"), False
 
 
 def _restart_gateway_after_webhook_enable(profile: Optional[str] = None) -> dict[str, Any]:
@@ -2316,7 +2520,7 @@ async def restart_gateway(profile: Optional[str] = None):
 
 
 @app.post("/api/prostor/update")
-async def update_prostor():
+async def update_hermes():
     """Kick off ``prostor update`` in the background."""
     if _dashboard_local_update_managed_externally():
         message = (
@@ -2348,7 +2552,7 @@ async def update_prostor():
         }
 
     try:
-        proc = _spawn_prostor_action(["update"], "prostor-update")
+        proc = _spawn_hermes_action(["update"], "prostor-update")
     except Exception as exc:
         _log.exception("Failed to spawn prostor update")
         raise HTTPException(status_code=500, detail=f"Failed to start update: {exc}")
@@ -2408,7 +2612,7 @@ def _recent_upstream_commits(n: int = 20) -> List[Dict[str, Any]]:
 
 
 @app.get("/api/prostor/update/check")
-async def check_prostor_update(force: bool = False):
+async def check_hermes_update(force: bool = False):
     """Report whether a Prostor update is available, without applying it.
 
     Powers the dashboard's "check before you update" flow: the System page
@@ -2468,11 +2672,11 @@ async def check_prostor_update(force: bool = False):
     # caches the result for 6h. ``force`` busts the cache so the "Check now"
     # button reflects reality immediately.
     try:
-        from prostor_cli.banner import check_for_updates
+        from hermes_cli.banner import check_for_updates
 
         if force:
             try:
-                (get_prostor_home() / ".update_check").unlink()
+                (get_hermes_home() / ".update_check").unlink()
             except OSError:
                 pass
 
@@ -2569,6 +2773,10 @@ async def transcribe_audio_upload(payload: AudioTranscriptionRequest):
         "transcript": str(result.get("transcript") or "").strip(),
         "provider": result.get("provider"),
     }
+
+
+class TTSSpeakRequest(BaseModel):
+    text: str
 
 
 def _elevenlabs_voice_label(voice: Dict[str, Any]) -> str:
@@ -2842,8 +3050,8 @@ async def get_profiles_sessions(
     if order not in ("created", "recent"):
         raise HTTPException(status_code=400, detail="order must be one of: created, recent")
 
-    from prostor_state import SessionDB
-    from prostor_cli import profiles as profiles_mod
+    from hermes_state import SessionDB
+    from hermes_cli import profiles as profiles_mod
 
     targets: List[Tuple[str, Path]] = []
     if profile and profile != "all":
@@ -3124,7 +3332,7 @@ def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _memory_provider_config_path(provider: MemoryProvider) -> Path:
-    return get_prostor_home() / provider.name / "config.json"
+    return get_hermes_home() / provider.name / "config.json"
 
 
 def _read_memory_provider_file(provider: MemoryProvider) -> Dict[str, Any]:
@@ -3394,7 +3602,7 @@ def get_model_info(profile: Optional[str] = None):
 # ---------------------------------------------------------------------------
 
 # Canonical auxiliary task slots. Keep in sync with DEFAULT_CONFIG["auxiliary"]
-# in prostor_cli/config.py — listed here for deterministic ordering in the UI.
+# in hermes_cli/config.py — listed here for deterministic ordering in the UI.
 _AUX_TASK_SLOTS: Tuple[str, ...] = (
     "vision",
     "web_extract",
@@ -3428,7 +3636,7 @@ def get_model_options(profile: Optional[str] = None, refresh: bool = False):
     Models" control. Normal opens leave it false to stay on the 1h cache.
     """
     try:
-        from prostor_cli.inventory import build_models_payload, load_picker_context
+        from hermes_cli.inventory import build_models_payload, load_picker_context
 
         # include_unconfigured + picker_hints + canonical_order mirror the
         # tui_gateway `model.options` JSON-RPC handler exactly, so every GUI
@@ -3473,7 +3681,7 @@ def get_recommended_default_model(provider: str = ""):
 
     if slug == "nous":
         try:
-            from prostor_cli.models import (
+            from hermes_cli.models import (
                 get_curated_nous_model_ids,
                 get_pricing_for_provider,
                 check_nous_free_tier,
@@ -3481,7 +3689,7 @@ def get_recommended_default_model(provider: str = ""):
                 union_with_portal_free_recommendations,
                 union_with_portal_paid_recommendations,
             )
-            from prostor_cli.auth import get_provider_auth_state
+            from hermes_cli.auth import get_provider_auth_state
 
             model_ids = get_curated_nous_model_ids()
             pricing = get_pricing_for_provider("nous") or {}
@@ -3514,7 +3722,7 @@ def get_recommended_default_model(provider: str = ""):
 
     # Non-Nous: first curated model for the provider, matching prior behaviour.
     try:
-        from prostor_cli.inventory import build_models_payload, load_picker_context
+        from hermes_cli.inventory import build_models_payload, load_picker_context
 
         payload = build_models_payload(load_picker_context())
         for row in payload.get("providers", []):
@@ -3603,7 +3811,7 @@ async def set_model_assignment(body: ModelAssignment, profile: Optional[str] = N
         # event-loop thread could cross-restore the module globals).
         if model and not body.confirm_expensive_model:
             try:
-                from prostor_cli.model_cost_guard import expensive_model_warning
+                from hermes_cli.model_cost_guard import expensive_model_warning
 
                 # Pricing lookup can hit models.dev / a /models endpoint on a
                 # cache miss — keep it off the event loop.
@@ -3660,7 +3868,7 @@ def _apply_model_assignment_sync(
         cfg["model"] = model_cfg
 
         # When switching the main provider to Nous, mirror the CLI's
-        # post-model-selection behaviour (prostor_cli/main.py
+        # post-model-selection behaviour (hermes_cli/main.py
         # prompt_enable_tool_gateway / tools_config apply_nous_managed_defaults):
         # auto-route any *unconfigured* tools through the Nous Tool Gateway.
         # This is purely additive — apply_nous_managed_defaults skips every
@@ -3671,8 +3879,8 @@ def _apply_model_assignment_sync(
         gateway_tools: list[str] = []
         if provider.strip().lower() == "nous":
             try:
-                from prostor_cli.nous_subscription import apply_nous_managed_defaults
-                from prostor_cli.tools_config import _get_platform_tools
+                from hermes_cli.nous_subscription import apply_nous_managed_defaults
+                from hermes_cli.tools_config import _get_platform_tools
 
                 enabled = _get_platform_tools(
                     cfg, "cli", include_default_mcp_servers=False
@@ -3698,7 +3906,7 @@ def _apply_model_assignment_sync(
         # provider. Dedups by base_url, so re-saving is idempotent.
         if provider.strip().lower() in {"custom", "local"} and base_url:
             try:
-                from prostor_cli.main import _auto_provider_name, _save_custom_provider
+                from hermes_cli.main import _auto_provider_name, _save_custom_provider
 
                 _save_custom_provider(
                     base_url,
@@ -3882,7 +4090,7 @@ def _catalog_provider_env_metadata() -> dict:
     this only supplies membership + grouping + sensible fallbacks.
     """
     try:
-        from prostor_cli.provider_catalog import provider_catalog
+        from hermes_cli.provider_catalog import provider_catalog
     except Exception:
         return {}
 
@@ -3891,7 +4099,7 @@ def _catalog_provider_env_metadata() -> dict:
     # promoted into a provider card. Copilot lists GITHUB_TOKEN among its auth
     # aliases, but its provider card uses the provider-owned COPILOT_GITHUB_TOKEN.
     try:
-        from prostor_cli.config import OPTIONAL_ENV_VARS as _OPT
+        from hermes_cli.config import OPTIONAL_ENV_VARS as _OPT
     except Exception:
         _OPT = {}
     _non_provider_keys = {
@@ -4243,7 +4451,7 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     "email": {
         "name": "Email",
         "description": "Talk to Prostor through an IMAP/SMTP mailbox.",
-        "docs_url": "https://github.com/maksim9510/Prostor/docs/user-guide/messaging/",
+        "docs_url": "https://prostor-agent.nousresearch.com/docs/user-guide/messaging/",
         "env_vars": (
             "EMAIL_ADDRESS",
             "EMAIL_PASSWORD",
@@ -4310,7 +4518,7 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     "weixin": {
         "name": "Weixin / WeChat (Personal)",
         "description": "Connect a personal WeChat account through Tencent's iLink Bot API.",
-        "docs_url": "https://github.com/maksim9510/Prostor/docs/user-guide/messaging/weixin/",
+        "docs_url": "https://prostor-agent.nousresearch.com/docs/user-guide/messaging/weixin/",
         "env_vars": ("WEIXIN_ACCOUNT_ID", "WEIXIN_TOKEN", "WEIXIN_BASE_URL"),
         "required_env": ("WEIXIN_ACCOUNT_ID", "WEIXIN_TOKEN"),
     },
@@ -4341,7 +4549,7 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     "api_server": {
         "name": "API server",
         "description": "Expose Prostor as an OpenAI-compatible HTTP API for tools like Open WebUI.",
-        "docs_url": "https://github.com/maksim9510/Prostor/docs/user-guide/messaging/",
+        "docs_url": "https://prostor-agent.nousresearch.com/docs/user-guide/messaging/",
         "env_vars": (
             "API_SERVER_ENABLED",
             "API_SERVER_KEY",
@@ -4354,7 +4562,7 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     "webhook": {
         "name": "Webhooks",
         "description": "Receive events from GitHub, GitLab, and other webhook sources.",
-        "docs_url": "https://github.com/maksim9510/Prostor/docs/user-guide/messaging/webhooks/",
+        "docs_url": "https://prostor-agent.nousresearch.com/docs/user-guide/messaging/webhooks/",
         "env_vars": ("WEBHOOK_ENABLED", "WEBHOOK_PORT", "WEBHOOK_SECRET"),
         "required_env": (),
     },
@@ -4830,21 +5038,11 @@ def _messaging_platform_payload(
 
 
 def _write_platform_enabled(platform_id: str, enabled: bool) -> None:
-    config = load_config()
-    platforms = config.setdefault("platforms", {})
-    if not isinstance(platforms, dict):
-        platforms = {}
-        config["platforms"] = platforms
-    platform_config = platforms.setdefault(platform_id, {})
-    if not isinstance(platform_config, dict):
-        platform_config = {}
-        platforms[platform_id] = platform_config
-    platform_config["enabled"] = enabled
-    save_config(config)
+    write_platform_config_field(platform_id, "enabled", enabled)
 
 
-_TELEGRAM_ONBOARDING_DEFAULT_URL = "https://setup.github.com/maksim9510/Prostor"
-_TELEGRAM_ONBOARDING_USER_AGENT = f"ProstorDashboard/{__version__}"
+_TELEGRAM_ONBOARDING_DEFAULT_URL = "https://setup.prostor-agent.nousresearch.com"
+_TELEGRAM_ONBOARDING_USER_AGENT = f"HermesDashboard/{__version__}"
 _TELEGRAM_USER_ID_RE = re.compile(r"^\d+$")
 
 
@@ -5375,7 +5573,7 @@ def _anthropic_oauth_status() -> Dict[str, Any]:
     2. ``ANTHROPIC_API_KEY`` → ``ANTHROPIC_TOKEN`` → ``CLAUDE_CODE_OAUTH_TOKEN``
        env vars (registry order) — from ``.env``, the shell, or an external
        secret source like Bitwarden (whose keys are injected into the process
-       env during ``load_prostor_dotenv()``, so the same check covers them)
+       env during ``load_hermes_dotenv()``, so the same check covers them)
 
     Claude Code's ``~/.claude/.credentials.json`` is deliberately NOT read
     here — it has its own dedicated catalog entry (``claude-code`` →
@@ -5384,43 +5582,43 @@ def _anthropic_oauth_status() -> Dict[str, Any]:
     """
     try:
         from agent.anthropic_adapter import (
-            read_prostor_oauth_credentials,
-            _PROSTOR_OAUTH_FILE,
+            read_hermes_oauth_credentials,
+            _HERMES_OAUTH_FILE,
         )
     except ImportError:
-        read_prostor_oauth_credentials = None  # type: ignore
-        _PROSTOR_OAUTH_FILE = None  # type: ignore
+        read_hermes_oauth_credentials = None  # type: ignore
+        _HERMES_OAUTH_FILE = None  # type: ignore
 
-    prostor_creds = None
-    if read_prostor_oauth_credentials:
+    hermes_creds = None
+    if read_hermes_oauth_credentials:
         try:
-            prostor_creds = read_prostor_oauth_credentials()
+            hermes_creds = read_hermes_oauth_credentials()
         except Exception:
-            prostor_creds = None
-    if prostor_creds and prostor_creds.get("accessToken"):
+            hermes_creds = None
+    if hermes_creds and hermes_creds.get("accessToken"):
         return {
             "logged_in": True,
-            "source": "prostor_pkce",
-            "source_label": f"Prostor PKCE ({_PROSTOR_OAUTH_FILE})",
-            "token_preview": _truncate_token(prostor_creds.get("accessToken")),
-            "expires_at": prostor_creds.get("expiresAt"),
-            "has_refresh_token": bool(prostor_creds.get("refreshToken")),
+            "source": "hermes_pkce",
+            "source_label": f"Prostor PKCE ({_HERMES_OAUTH_FILE})",
+            "token_preview": _truncate_token(hermes_creds.get("accessToken")),
+            "expires_at": hermes_creds.get("expiresAt"),
+            "has_refresh_token": bool(hermes_creds.get("refreshToken")),
         }
 
     # Env-var / secret-source path. ``get_env_value`` checks the process
     # environment first (where Bitwarden-sourced secrets land) then .env.
     env_var_order: tuple = ("ANTHROPIC_API_KEY", "ANTHROPIC_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
     try:
-        from prostor_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.auth import PROVIDER_REGISTRY
         env_var_order = PROVIDER_REGISTRY["anthropic"].api_key_env_vars
     except (ImportError, KeyError):
         pass
     try:
-        from prostor_cli.config import get_env_value
+        from hermes_cli.config import get_env_value
     except ImportError:
         get_env_value = None  # type: ignore
     try:
-        from prostor_cli.env_loader import format_secret_source_suffix
+        from hermes_cli.env_loader import format_secret_source_suffix
     except ImportError:
         format_secret_source_suffix = None  # type: ignore
 
@@ -5462,23 +5660,6 @@ def _claude_code_only_status() -> Dict[str, Any]:
             "has_refresh_token": bool(creds.get("refreshToken")),
         }
     return {"logged_in": False, "source": None}
-
-
-def _gemini_cli_status() -> Dict[str, Any]:
-    """Status for the google-gemini-cli OAuth provider (Code Assist login)."""
-    try:
-        from prostor_cli import auth as hauth
-        raw = hauth.get_gemini_oauth_auth_status()
-    except Exception as e:
-        return {"logged_in": False, "error": str(e)}
-    return {
-        "logged_in": bool(raw.get("logged_in")),
-        "source": raw.get("source") or "google_oauth",
-        "source_label": raw.get("email") or raw.get("auth_file") or "Google Code Assist",
-        "token_preview": _truncate_token(raw.get("api_key")),
-        "expires_at": None,
-        "has_refresh_token": True,
-    }
 
 
 def _copilot_acp_status() -> Dict[str, Any]:
@@ -5557,16 +5738,8 @@ _OAUTH_PROVIDER_CATALOG: tuple[Dict[str, Any], ...] = (
         # lands back on the loopback listener — no code to copy/paste.
         "flow": "loopback",
         "cli_command": "prostor auth add xai-oauth",
-        "docs_url": "https://github.com/maksim9510/Prostor/docs/guides/xai-grok-oauth",
+        "docs_url": "https://prostor-agent.nousresearch.com/docs/guides/xai-grok-oauth",
         "status_fn": None,  # dispatched via auth.get_xai_oauth_auth_status
-    },
-    {
-        "id": "google-gemini-cli",
-        "name": "Google Gemini (OAuth + Code Assist)",
-        "flow": "external",
-        "cli_command": "prostor auth add google-gemini-cli",
-        "docs_url": "https://ai.google.dev/gemini-api/docs",
-        "status_fn": _gemini_cli_status,
     },
     {
         "id": "copilot-acp",
@@ -5606,7 +5779,7 @@ def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
         except Exception as e:
             return {"logged_in": False, "error": str(e)}
     try:
-        from prostor_cli import auth as hauth
+        from hermes_cli import auth as hauth
         if provider_id == "nous":
             raw = hauth.get_nous_auth_status()
             return {
@@ -5761,7 +5934,7 @@ def _build_oauth_catalog() -> list[Dict[str, Any]]:
     # 2. Catalog accounts-providers not already covered — keeps the Accounts tab
     #    in lockstep with the `prostor model` universe (zero-edit for new plugins).
     try:
-        from prostor_cli.provider_catalog import provider_catalog
+        from hermes_cli.provider_catalog import provider_catalog
         for d in provider_catalog():
             if d.tab != "accounts" or d.slug in seen:
                 continue
@@ -5794,7 +5967,7 @@ async def list_oauth_providers(profile: Optional[str] = None):
         docs_url        external docs/portal link for the "Learn more" link
         status:
           logged_in        bool — currently has usable creds
-          source           short slug ("prostor_pkce", "claude_code", ...)
+          source           short slug ("hermes_pkce", "claude_code", ...)
           source_label     human-readable origin (file path, env var name)
           token_preview    last N chars of the token, never the full token
           expires_at       ISO timestamp string or null
@@ -5863,15 +6036,15 @@ async def disconnect_oauth_provider(
         if provider_id == "anthropic":
             cleared = False
             try:
-                from agent.anthropic_adapter import _PROSTOR_OAUTH_FILE
-                if _PROSTOR_OAUTH_FILE.exists():
-                    _PROSTOR_OAUTH_FILE.unlink()
+                from agent.anthropic_adapter import _HERMES_OAUTH_FILE
+                if _HERMES_OAUTH_FILE.exists():
+                    _HERMES_OAUTH_FILE.unlink()
                     cleared = True
             except Exception:
                 pass
             # Also clear the credential pool entry if present.
             try:
-                from prostor_cli.auth import clear_provider_auth
+                from hermes_cli.auth import clear_provider_auth
                 cleared = clear_provider_auth("anthropic") or cleared
             except Exception:
                 pass
@@ -5879,7 +6052,7 @@ async def disconnect_oauth_provider(
             return {"ok": bool(cleared), "provider": provider_id}
 
         try:
-            from prostor_cli.auth import clear_provider_auth, invalidate_nous_auth_status_cache
+            from hermes_cli.auth import clear_provider_auth, invalidate_nous_auth_status_cache
             cleared = clear_provider_auth(provider_id)
             if provider_id == "nous":
                 invalidate_nous_auth_status_cache()
@@ -6021,24 +6194,24 @@ def _save_anthropic_oauth_creds(access_token: str, refresh_token: str, expires_a
     Mirrors what auth_commands.add_command does so the dashboard flow leaves
     the system in the same state as ``prostor auth add anthropic``.
     """
-    from agent.anthropic_adapter import _PROSTOR_OAUTH_FILE
+    from agent.anthropic_adapter import _HERMES_OAUTH_FILE
     payload = {
         "accessToken": access_token,
         "refreshToken": refresh_token,
         "expiresAt": expires_at_ms,
     }
-    _PROSTOR_OAUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = _PROSTOR_OAUTH_FILE.with_name(
-        f"{_PROSTOR_OAUTH_FILE.name}.tmp.{os.getpid()}.{secrets.token_hex(8)}"
+    _HERMES_OAUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = _HERMES_OAUTH_FILE.with_name(
+        f"{_HERMES_OAUTH_FILE.name}.tmp.{os.getpid()}.{secrets.token_hex(8)}"
     )
     try:
         with tmp_path.open("w", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, indent=2))
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp_path, _PROSTOR_OAUTH_FILE)
+        os.replace(tmp_path, _HERMES_OAUTH_FILE)
         try:
-            _PROSTOR_OAUTH_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
+            _HERMES_OAUTH_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
         except OSError:
             pass
     finally:
@@ -6191,7 +6364,7 @@ async def _start_device_code_flow(
     so the UI can render the verification page link + user code.
     """
     if provider_id == "nous":
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             _request_device_code,
             PROVIDER_REGISTRY,
         )
@@ -6284,7 +6457,7 @@ async def _start_device_code_flow(
         # flow; the PKCE bit (verifier + challenge from
         # _minimax_pkce_pair) is a security extension that binds the
         # token exchange to the original session.
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             _minimax_pkce_pair,
             _minimax_request_user_code,
             MINIMAX_OAUTH_CLIENT_ID,
@@ -6372,7 +6545,7 @@ def _start_xai_loopback_flow(profile: Optional[str] = None) -> Dict[str, Any]:
     background worker that waits for the redirect and finishes the exchange.
     Returns the authorize URL for the client to open in the browser.
     """
-    from prostor_cli import auth as hauth
+    from hermes_cli import auth as hauth
 
     discovery = hauth._xai_oauth_discovery()
     server, thread, callback_result, redirect_uri = hauth._xai_start_callback_server()
@@ -6431,7 +6604,7 @@ def _xai_loopback_worker(session_id: str) -> None:
     """Wait for the xAI loopback callback, exchange the code, persist tokens."""
     from datetime import datetime, timezone
 
-    from prostor_cli import auth as hauth
+    from hermes_cli import auth as hauth
 
     with _oauth_sessions_lock:
         sess = _oauth_sessions.get(session_id)
@@ -6573,7 +6746,7 @@ def _add_xai_oauth_pool_entry(
 
 def _nous_poller(session_id: str) -> None:
     """Background poller that drives a Nous device-code flow to completion."""
-    from prostor_cli.auth import (
+    from hermes_cli.auth import (
         _poll_for_token,
         refresh_nous_oauth_from_state,
     )
@@ -6623,7 +6796,7 @@ def _nous_poller(session_id: str) -> None:
                 timeout_seconds=15.0,
                 force_refresh=False,
             )
-            from prostor_cli.auth import persist_nous_credentials
+            from hermes_cli.auth import persist_nous_credentials
             persist_nous_credentials(full_state)
         with _oauth_sessions_lock:
             sess["status"] = "approved"
@@ -6646,7 +6819,7 @@ def _minimax_poller(session_id: str) -> None:
     path leaves the system in the same state as
     ``prostor auth add minimax-oauth``.
     """
-    from prostor_cli.auth import (
+    from hermes_cli.auth import (
         _minimax_poll_token,
         _minimax_resolve_token_expiry_unix,
         _minimax_save_auth_state,
@@ -6736,7 +6909,7 @@ def _codex_full_login_worker(session_id: str) -> None:
     """
     try:
         import httpx
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             CODEX_OAUTH_CLIENT_ID,
             CODEX_OAUTH_TOKEN_URL,
             DEFAULT_CODEX_BASE_URL,
@@ -6819,7 +6992,7 @@ def _codex_full_login_worker(session_id: str) -> None:
         if not access_token:
             raise RuntimeError("token exchange did not return access_token")
 
-        from prostor_cli.auth import _save_codex_tokens
+        from hermes_cli.auth import _save_codex_tokens
 
         with _profile_scope(_oauth_session_profile(session_id)):
             _save_codex_tokens({
@@ -6878,6 +7051,11 @@ async def start_oauth_login(
         _log.exception("oauth/start %s failed", provider_id)
         raise HTTPException(status_code=500, detail=str(e))
     raise HTTPException(status_code=400, detail="Unsupported flow")
+
+
+class OAuthSubmitBody(BaseModel):
+    session_id: str
+    code: str
 
 
 @app.post("/api/providers/oauth/{provider_id}/submit")
@@ -6977,7 +7155,7 @@ def _session_latest_descendant(session_id: str):
     /model may create child sessions. Dashboard refresh should continue the
     newest child instead of reopening the old parent.
     """
-    from prostor_state import SessionDB
+    from hermes_state import SessionDB
 
     def row_get(row, key, index):
         if isinstance(row, dict):
@@ -7058,6 +7236,11 @@ def _session_latest_descendant(session_id: str):
 # succeed and delete the wrong row). Same story as the older
 # ``/api/sessions/search`` endpoint up at line ~1191. If you split or
 # reorder this block, move every route in it together.
+class BulkDeleteSessions(BaseModel):
+    ids: List[str]
+    profile: Optional[str] = None
+
+
 @app.post("/api/sessions/bulk-delete")
 async def bulk_delete_sessions_endpoint(body: BulkDeleteSessions):
     """Delete every session in ``body.ids`` in a single DB transaction.
@@ -7190,7 +7373,7 @@ def _open_session_db_for_profile(profile: Optional[str]):
     ``state.db`` directly so the primary backend can serve cross-profile reads
     (transcripts, detail) without spawning that profile's backend.
     """
-    from prostor_state import SessionDB
+    from hermes_state import SessionDB
     if not profile:
         return SessionDB()
     _name, home = _cron_profile_home(profile)
@@ -7264,6 +7447,14 @@ async def delete_session_endpoint(session_id: str, profile: Optional[str] = None
         db.close()
 
 
+class SessionRename(BaseModel):
+    title: Optional[str] = None
+    archived: Optional[bool] = None
+    # Mutate a session belonging to another profile (opens its state.db). Omit
+    # for the current/default profile.
+    profile: Optional[str] = None
+
+
 @app.patch("/api/sessions/{session_id}")
 async def rename_session_endpoint(session_id: str, body: SessionRename):
     """Update a session: rename (or clear its title) and/or archive it.
@@ -7314,12 +7505,18 @@ async def export_session_endpoint(session_id: str, profile: Optional[str] = None
         db.close()
 
 
+class SessionPrune(BaseModel):
+    older_than_days: int = 90
+    source: Optional[str] = None
+    profile: Optional[str] = None
+
+
 @app.post("/api/sessions/prune")
 async def prune_sessions_endpoint(body: SessionPrune):
     """Delete ended sessions older than N days (mirrors `prostor sessions prune`)."""
     if body.older_than_days < 1:
         raise HTTPException(status_code=400, detail="older_than_days must be >= 1")
-    profile_home = _cron_profile_home(body.profile)[1] if body.profile else get_prostor_home()
+    profile_home = _cron_profile_home(body.profile)[1] if body.profile else get_hermes_home()
     db = _open_session_db_for_profile(body.profile)
     try:
         sessions_dir = profile_home / "sessions"
@@ -7346,17 +7543,17 @@ async def get_logs(
     component: Optional[str] = None,
     search: Optional[str] = None,
 ):
-    from prostor_cli.logs import _read_tail, LOG_FILES
+    from hermes_cli.logs import _read_tail, LOG_FILES
 
     log_name = LOG_FILES.get(file)
     if not log_name:
         raise HTTPException(status_code=400, detail=f"Unknown log file: {file}")
-    log_path = get_prostor_home() / "logs" / log_name
+    log_path = get_hermes_home() / "logs" / log_name
     if not log_path.exists():
         return {"file": file, "lines": []}
 
     try:
-        from prostor_logging import COMPONENT_PREFIXES
+        from hermes_logging import COMPONENT_PREFIXES
     except ImportError:
         COMPONENT_PREFIXES = {}
 
@@ -7396,12 +7593,24 @@ async def get_logs(
 # ---------------------------------------------------------------------------
 
 
+class CronJobCreate(BaseModel):
+    prompt: str
+    schedule: str
+    name: str = ""
+    deliver: str = "local"
+    skills: Optional[List[str]] = None
+
+
+class CronJobUpdate(BaseModel):
+    updates: dict
+
+
 _CRON_PROFILE_LOCK = threading.RLock()
 
 
 def _cron_profile_dicts() -> List[Dict[str, Any]]:
     """Return dashboard profile records, falling back to a directory scan."""
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     try:
         return [_profile_to_dict(p) for p in profiles_mod.list_profiles()]
     except Exception:
@@ -7411,7 +7620,7 @@ def _cron_profile_dicts() -> List[Dict[str, Any]]:
 
 def _cron_profile_home(profile: Optional[str]) -> Tuple[str, Path]:
     """Resolve a profile query value to (profile_name, PROSTOR_HOME)."""
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
 
     raw = (profile or "default").strip() or "default"
     try:
@@ -7428,7 +7637,7 @@ def _annotate_cron_job(job: Dict[str, Any], profile: str, home: Path) -> Dict[st
     annotated = dict(job)
     annotated["profile"] = profile
     annotated["profile_name"] = profile
-    annotated["prostor_home"] = str(home)
+    annotated["hermes_home"] = str(home)
     annotated["is_default_profile"] = profile == "default"
     return annotated
 
@@ -7749,6 +7958,11 @@ async def cron_fire_webhook(request: Request):
 # slot schema as a form; submitting instantiates a real cron job via the same
 # create_job path. See cron/blueprint_catalog.py for the single source of truth.
 # ---------------------------------------------------------------------------
+class AutomationBlueprintInstantiate(BaseModel):
+    blueprint: str                      # blueprint key, e.g. "morning-brief"
+    values: Dict[str, Any] = {}      # filled slot values from the form
+
+
 @app.get("/api/cron/blueprints")
 async def list_cron_blueprints():
     """Return the blueprint catalog as form schemas for the dashboard gallery.
@@ -7811,11 +8025,23 @@ async def instantiate_blueprint(body: AutomationBlueprintInstantiate, profile: s
 # ---------------------------------------------------------------------------
 # MCP server endpoints — list / add / remove / test.
 #
-# Wraps the same config data layer the CLI uses (prostor_cli.mcp_config), so
+# Wraps the same config data layer the CLI uses (hermes_cli.mcp_config), so
 # servers managed here show up under `prostor mcp list` and vice versa.  Secrets
 # in stdio `env` blocks are redacted on read; the agent picks them up from
 # config.yaml at session start exactly as with CLI-added servers.
 # ---------------------------------------------------------------------------
+
+
+class MCPServerCreate(BaseModel):
+    name: str
+    url: Optional[str] = None
+    command: Optional[str] = None
+    args: List[str] = []
+    # env: KEY=VALUE map for stdio servers (API keys, etc.)
+    env: Dict[str, str] = {}
+    # auth: "oauth" | "header" | None
+    auth: Optional[str] = None
+    profile: Optional[str] = None
 
 
 def _redact_mcp_env(env: Dict[str, Any]) -> Dict[str, str]:
@@ -7847,7 +8073,7 @@ def _mcp_server_summary(name: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/api/mcp/servers")
 async def list_mcp_servers(profile: Optional[str] = None):
-    from prostor_cli.mcp_config import _get_mcp_servers
+    from hermes_cli.mcp_config import _get_mcp_servers
 
     with _profile_scope(profile):
         servers = _get_mcp_servers()
@@ -7860,7 +8086,7 @@ async def list_mcp_servers(profile: Optional[str] = None):
 
 @app.post("/api/mcp/servers")
 async def add_mcp_server(body: MCPServerCreate, profile: Optional[str] = None):
-    from prostor_cli.mcp_config import _get_mcp_servers, _save_mcp_server
+    from hermes_cli.mcp_config import _get_mcp_servers, _save_mcp_server
 
     name = (body.name or "").strip()
     if not name:
@@ -7905,7 +8131,7 @@ async def add_mcp_server(body: MCPServerCreate, profile: Optional[str] = None):
 
 @app.delete("/api/mcp/servers/{name}")
 async def remove_mcp_server(name: str, profile: Optional[str] = None):
-    from prostor_cli.mcp_config import _remove_mcp_server
+    from hermes_cli.mcp_config import _remove_mcp_server
 
     with _profile_scope(profile):
         removed = _remove_mcp_server(name)
@@ -7917,7 +8143,7 @@ async def remove_mcp_server(name: str, profile: Optional[str] = None):
 @app.post("/api/mcp/servers/{name}/test")
 async def test_mcp_server(name: str, profile: Optional[str] = None):
     """Connect to the server, list its tools, disconnect.  Returns tool list."""
-    from prostor_cli.mcp_config import _get_mcp_servers, _probe_single_server
+    from hermes_cli.mcp_config import _get_mcp_servers, _probe_single_server
 
     with _profile_scope(profile):
         servers = _get_mcp_servers()
@@ -7954,6 +8180,11 @@ async def test_mcp_server(name: str, profile: Optional[str] = None):
     }
 
 
+class MCPEnabledToggle(BaseModel):
+    enabled: bool
+    profile: Optional[str] = None
+
+
 @app.put("/api/mcp/servers/{name}/enabled")
 async def set_mcp_server_enabled(
     name: str, body: MCPEnabledToggle, profile: Optional[str] = None
@@ -7987,7 +8218,7 @@ async def list_mcp_catalog(profile: Optional[str] = None):
     and identical for every profile).
     """
     try:
-        from prostor_cli import mcp_catalog
+        from hermes_cli import mcp_catalog
     except Exception as exc:
         _log.exception("mcp_catalog import failed")
         raise HTTPException(status_code=500, detail=f"Catalog unavailable: {exc}")
@@ -8053,6 +8284,14 @@ async def list_mcp_catalog(profile: Optional[str] = None):
     return {"entries": entries, "diagnostics": diagnostics}
 
 
+class MCPCatalogInstall(BaseModel):
+    name: str
+    # env: KEY=VALUE map for catalog entries that declare required env vars.
+    env: Dict[str, str] = {}
+    enable: bool = True
+    profile: Optional[str] = None
+
+
 @app.post("/api/mcp/catalog/install")
 async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[str] = None):
     """Install a catalog MCP into config.yaml.
@@ -8062,7 +8301,7 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[s
     Entries that need a git bootstrap (``needs_install``) are installed via
     the CLI action path because the clone can take time.
     """
-    from prostor_cli import mcp_catalog
+    from hermes_cli import mcp_catalog
 
     name = (body.name or "").strip()
     entry = mcp_catalog.get_entry(name)
@@ -8083,7 +8322,7 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[s
     # The -p subprocess rebinds PROSTOR_HOME-derived paths in the child.
     if entry.install is not None:
         try:
-            proc = _spawn_prostor_action(
+            proc = _spawn_hermes_action(
                 _profile_cli_args(effective_profile) + ["mcp", "install", name],
                 "mcp-install",
             )
@@ -8115,6 +8354,7 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[s
 
 # Register the mcp-install action log so /api/actions/mcp-install/status works.
 _ACTION_LOG_FILES.setdefault("mcp-install", "action-mcp-install.log")
+_ACTION_LOG_FILES.setdefault("computer-use-grant", "action-computer-use-grant.log")
 
 
 # ---------------------------------------------------------------------------
@@ -8123,6 +8363,16 @@ _ACTION_LOG_FILES.setdefault("mcp-install", "action-mcp-install.log")
 # These are how a remote admin onboards messaging users (Telegram, Discord, …)
 # without shell access.  Wraps gateway.pairing.PairingStore directly.
 # ---------------------------------------------------------------------------
+
+
+class PairingApprove(BaseModel):
+    platform: str
+    code: str
+
+
+class PairingRevoke(BaseModel):
+    platform: str
+    user_id: str
 
 
 def _pairing_store():
@@ -8186,10 +8436,23 @@ async def clear_pending_pairing():
 # ---------------------------------------------------------------------------
 # Webhook subscription endpoints — list / subscribe / remove.
 #
-# Wraps the same JSON store the CLI uses (prostor_cli.webhook); the webhook
+# Wraps the same JSON store the CLI uses (hermes_cli.webhook); the webhook
 # adapter hot-reloads it without a gateway restart.  Per-route HMAC secrets
 # are redacted on read and surfaced once on create.
 # ---------------------------------------------------------------------------
+
+
+class WebhookCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    events: List[str] = []
+    prompt: Optional[str] = None
+    skills: List[str] = []
+    deliver: str = "log"
+    deliver_only: bool = False
+    deliver_chat_id: Optional[str] = None
+    # secret: omit to auto-generate
+    secret: Optional[str] = None
 
 
 def _webhook_route_summary(name: str, route: Dict[str, Any], base_url: str) -> Dict[str, Any]:
@@ -8212,7 +8475,7 @@ def _webhook_route_summary(name: str, route: Dict[str, Any], base_url: str) -> D
 
 @app.get("/api/webhooks")
 async def list_webhooks():
-    import prostor_cli.webhook as wh
+    import hermes_cli.webhook as wh
 
     base_url = wh._get_webhook_base_url()
     subs = wh._load_subscriptions()
@@ -8252,7 +8515,7 @@ async def create_webhook(body: WebhookCreate):
     import re as _re
     import secrets as _secrets
     import time as _time
-    import prostor_cli.webhook as wh
+    import hermes_cli.webhook as wh
 
     if not wh._is_webhook_enabled():
         raise HTTPException(
@@ -8301,7 +8564,7 @@ async def create_webhook(body: WebhookCreate):
 
 @app.delete("/api/webhooks/{name}")
 async def delete_webhook(name: str):
-    import prostor_cli.webhook as wh
+    import hermes_cli.webhook as wh
 
     key = (name or "").strip().lower()
     subs = wh._load_subscriptions()
@@ -8310,6 +8573,10 @@ async def delete_webhook(name: str):
     del subs[key]
     wh._save_subscriptions(subs)
     return {"ok": True}
+
+
+class WebhookEnabledToggle(BaseModel):
+    enabled: bool
 
 
 @app.put("/api/webhooks/{name}/enabled")
@@ -8321,7 +8588,7 @@ async def set_webhook_enabled(name: str, body: WebhookEnabledToggle):
     gateway hot-reloads the subscriptions file, so this takes effect on the
     next event without a restart.
     """
-    import prostor_cli.webhook as wh
+    import hermes_cli.webhook as wh
 
     key = (name or "").strip().lower()
     subs = wh._load_subscriptions()
@@ -8345,7 +8612,7 @@ async def set_webhook_enabled(name: str, body: WebhookEnabledToggle):
 @app.post("/api/gateway/start")
 async def start_gateway(profile: Optional[str] = None):
     try:
-        proc = _spawn_prostor_action(_gateway_subcommand(profile, "start"), "gateway-start")
+        proc = _spawn_hermes_action(_gateway_subcommand(profile, "start"), "gateway-start")
     except HTTPException:
         raise
     except Exception as exc:
@@ -8357,7 +8624,7 @@ async def start_gateway(profile: Optional[str] = None):
 @app.post("/api/gateway/stop")
 async def stop_gateway(profile: Optional[str] = None):
     try:
-        proc = _spawn_prostor_action(_gateway_subcommand(profile, "stop"), "gateway-stop")
+        proc = _spawn_hermes_action(_gateway_subcommand(profile, "stop"), "gateway-stop")
     except HTTPException:
         raise
     except Exception as exc:
@@ -8373,6 +8640,14 @@ async def stop_gateway(profile: Optional[str] = None):
 # rotating API keys the agent round-robins through.  Secrets are redacted on
 # read; only the agent ever sees the raw values at session start.
 # ---------------------------------------------------------------------------
+
+
+class CredentialPoolAdd(BaseModel):
+    provider: str
+    # api_key for API-key providers; OAuth pooling stays CLI-only (it needs
+    # an interactive browser flow that doesn't belong in a single POST).
+    api_key: str
+    label: Optional[str] = None
 
 
 def _pool_entry_summary(entry: Any, index: int) -> Dict[str, Any]:
@@ -8398,7 +8673,7 @@ def _pool_entry_summary(entry: Any, index: int) -> Dict[str, Any]:
 @app.get("/api/credentials/pool")
 async def list_credential_pool():
     from agent.credential_pool import load_pool
-    from prostor_cli.auth import read_credential_pool
+    from hermes_cli.auth import read_credential_pool
 
     providers = []
     # read_credential_pool(None) lists every provider that has pooled entries;
@@ -8484,6 +8759,16 @@ async def remove_credential_pool_entry(provider: str, index: int):
 # ---------------------------------------------------------------------------
 
 
+class MemoryProviderSelect(BaseModel):
+    # "" or "built-in" disables the external provider (built-in only).
+    provider: str
+
+
+class MemoryReset(BaseModel):
+    # "all" | "memory" | "user"
+    target: str = "all"
+
+
 @app.get("/api/memory")
 async def get_memory_status():
     from plugins.memory import discover_memory_providers
@@ -8506,7 +8791,7 @@ async def get_memory_status():
         _log.exception("discover_memory_providers failed")
 
     # Built-in memory file sizes (so the UI can show what a reset would erase).
-    mem_dir = get_prostor_home() / "memories"
+    mem_dir = get_hermes_home() / "memories"
     files = {}
     for fname, key in (("MEMORY.md", "memory"), ("USER.md", "user")):
         path = mem_dir / fname
@@ -8549,7 +8834,7 @@ async def reset_memory(body: MemoryReset):
     if target not in {"all", "memory", "user"}:
         raise HTTPException(status_code=400, detail="target must be all, memory, or user")
 
-    mem_dir = get_prostor_home() / "memories"
+    mem_dir = get_hermes_home() / "memories"
     deleted = []
     targets = []
     if target in {"all", "memory"}:
@@ -8583,7 +8868,7 @@ async def reset_memory(body: MemoryReset):
 @app.post("/api/ops/doctor")
 async def run_doctor():
     try:
-        proc = _spawn_prostor_action(["doctor"], "doctor")
+        proc = _spawn_hermes_action(["doctor"], "doctor")
     except Exception as exc:
         _log.exception("Failed to spawn doctor")
         raise HTTPException(status_code=500, detail=f"Failed to run doctor: {exc}")
@@ -8593,11 +8878,16 @@ async def run_doctor():
 @app.post("/api/ops/security-audit")
 async def run_security_audit():
     try:
-        proc = _spawn_prostor_action(["security", "audit"], "security-audit")
+        proc = _spawn_hermes_action(["security", "audit"], "security-audit")
     except Exception as exc:
         _log.exception("Failed to spawn security audit")
         raise HTTPException(status_code=500, detail=f"Failed to run security audit: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "security-audit"}
+
+
+class BackupRequest(BaseModel):
+    # Optional output path; defaults to a timestamped zip in the home dir.
+    output: Optional[str] = None
 
 
 @app.post("/api/ops/backup")
@@ -8606,11 +8896,23 @@ async def run_backup(body: BackupRequest):
     if body.output:
         args.append(body.output.strip())
     try:
-        proc = _spawn_prostor_action(args, "backup")
+        proc = _spawn_hermes_action(args, "backup")
     except Exception as exc:
         _log.exception("Failed to spawn backup")
         raise HTTPException(status_code=500, detail=f"Failed to run backup: {exc}")
     return {"ok": True, "pid": proc.pid, "name": "backup"}
+
+
+class ImportRequest(BaseModel):
+    archive: str
+    # Pass --force to `prostor import`. The spawned action runs with
+    # stdin=DEVNULL, so the CLI's interactive "Continue? [y/N]" overwrite
+    # prompt hits EOF and auto-aborts ("Aborted.", exit 1) whenever the
+    # target already has a config — which it always does when the dashboard
+    # itself is running from it. The dashboard shows its own confirm modal
+    # before calling this endpoint, then sends force=True so the restore
+    # proceeds non-interactively.
+    force: bool = False
 
 
 @app.post("/api/ops/import")
@@ -8624,7 +8926,7 @@ async def run_import(body: ImportRequest):
     if body.force:
         args.append("--force")
     try:
-        proc = _spawn_prostor_action(args, "import")
+        proc = _spawn_hermes_action(args, "import")
     except Exception as exc:
         _log.exception("Failed to spawn import")
         raise HTTPException(status_code=500, detail=f"Failed to run import: {exc}")
@@ -8639,11 +8941,11 @@ async def list_hooks():
     currently executable, plus the set of valid hook events so the create
     form can offer them.
     """
-    from prostor_cli.config import load_config as _load_config
+    from hermes_cli.config import load_config as _load_config
     from agent import shell_hooks
 
     try:
-        from prostor_cli.plugins import VALID_HOOKS
+        from hermes_cli.plugins import VALID_HOOKS
         valid_events = sorted(VALID_HOOKS)
     except Exception:
         valid_events = []
@@ -8679,6 +8981,17 @@ async def list_hooks():
     return {"hooks": out, "valid_events": valid_events}
 
 
+class HookCreate(BaseModel):
+    event: str
+    command: str
+    matcher: Optional[str] = None
+    timeout: Optional[int] = None
+    # approve: write the consent allowlist entry too (the operator using the
+    # authenticated dashboard is giving consent). Without it the hook is
+    # configured but won't fire until approved.
+    approve: bool = True
+
+
 @app.post("/api/ops/hooks")
 async def create_hook(body: HookCreate):
     """Add a shell hook to config.yaml (and optionally approve it).
@@ -8696,7 +9009,7 @@ async def create_hook(body: HookCreate):
         raise HTTPException(status_code=400, detail="event and command are required")
 
     try:
-        from prostor_cli.plugins import VALID_HOOKS
+        from hermes_cli.plugins import VALID_HOOKS
         if event not in VALID_HOOKS:
             raise HTTPException(
                 status_code=400,
@@ -8734,6 +9047,11 @@ async def create_hook(body: HookCreate):
             _log.exception("hook consent record failed")
 
     return {"ok": True, "event": event, "command": command, "approved": approved}
+
+
+class HookDelete(BaseModel):
+    event: str
+    command: str
 
 
 @app.delete("/api/ops/hooks")
@@ -8776,11 +9094,11 @@ async def delete_hook(body: HookDelete):
 @app.get("/api/ops/checkpoints")
 async def list_checkpoints():
     """List the /rollback shadow store checkpoints (read-only)."""
-    # Checkpoints live under <prostor_home>/checkpoints/.  Surface a count +
+    # Checkpoints live under <hermes_home>/checkpoints/.  Surface a count +
     # total size so the dashboard can show what a prune would reclaim; the
     # actual prune is a spawned action so confirmation/pruning logic stays
     # in one place (the CLI).
-    cp_dir = get_prostor_home() / "checkpoints"
+    cp_dir = get_hermes_home() / "checkpoints"
     sessions = []
     total_bytes = 0
     if cp_dir.is_dir():
@@ -8808,7 +9126,7 @@ async def list_checkpoints():
 @app.post("/api/ops/checkpoints/prune")
 async def prune_checkpoints():
     try:
-        proc = _spawn_prostor_action(["checkpoints", "prune"], "checkpoints-prune")
+        proc = _spawn_hermes_action(["checkpoints", "prune"], "checkpoints-prune")
     except Exception as exc:
         _log.exception("Failed to spawn checkpoints prune")
         raise HTTPException(status_code=500, detail=f"Failed to prune checkpoints: {exc}")
@@ -8825,6 +9143,11 @@ async def prune_checkpoints():
 # ---------------------------------------------------------------------------
 
 
+class SkillInstallRequest(BaseModel):
+    identifier: str
+    profile: Optional[str] = None
+
+
 def _profile_cli_args(profile: Optional[str]) -> List[str]:
     """Return ``["-p", <name>]`` for a validated non-default profile.
 
@@ -8837,7 +9160,7 @@ def _profile_cli_args(profile: Optional[str]) -> List[str]:
     requested = (profile or "").strip()
     if not requested or requested.lower() in {"current", "default"}:
         return []
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     _resolve_profile_dir(requested)
     return ["-p", profiles_mod.normalize_profile_name(requested)]
 
@@ -8848,7 +9171,7 @@ async def install_skill_hub(body: SkillInstallRequest, profile: Optional[str] = 
     if not identifier:
         raise HTTPException(status_code=400, detail="identifier is required")
     try:
-        proc = _spawn_prostor_action(
+        proc = _spawn_hermes_action(
             _profile_cli_args(body.profile or profile)
             + ["skills", "install", identifier, "--yes"],
             "skills-install",
@@ -8861,13 +9184,18 @@ async def install_skill_hub(body: SkillInstallRequest, profile: Optional[str] = 
     return {"ok": True, "pid": proc.pid, "name": "skills-install"}
 
 
+class SkillUninstallRequest(BaseModel):
+    name: str
+    profile: Optional[str] = None
+
+
 @app.post("/api/skills/hub/uninstall")
 async def uninstall_skill_hub(body: SkillUninstallRequest, profile: Optional[str] = None):
     name = (body.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
     try:
-        proc = _spawn_prostor_action(
+        proc = _spawn_hermes_action(
             _profile_cli_args(body.profile or profile) + ["skills", "uninstall", name, "--yes"],
             "skills-uninstall",
         )
@@ -8879,13 +9207,17 @@ async def uninstall_skill_hub(body: SkillUninstallRequest, profile: Optional[str
     return {"ok": True, "pid": proc.pid, "name": "skills-uninstall"}
 
 
+class SkillsUpdateRequest(BaseModel):
+    profile: Optional[str] = None
+
+
 @app.post("/api/skills/hub/update")
 async def update_skills_hub(
     body: Optional[SkillsUpdateRequest] = None, profile: Optional[str] = None
 ):
     try:
         effective = (body.profile if body else None) or profile
-        proc = _spawn_prostor_action(
+        proc = _spawn_hermes_action(
             _profile_cli_args(effective) + ["skills", "update"], "skills-update"
         )
     except HTTPException:
@@ -9080,7 +9412,7 @@ async def preview_skill_hub(identifier: str = ""):
         raise HTTPException(status_code=400, detail="identifier is required")
 
     def _run():
-        from prostor_cli.skills_hub import _resolve_source_meta_and_bundle
+        from hermes_cli.skills_hub import _resolve_source_meta_and_bundle
         from tools.skills_hub import create_source_router
 
         sources = create_source_router()
@@ -9144,7 +9476,7 @@ async def scan_skill_hub(identifier: str = ""):
     def _run():
         import shutil as _shutil
 
-        from prostor_cli.skills_hub import _resolve_source_meta_and_bundle
+        from hermes_cli.skills_hub import _resolve_source_meta_and_bundle
         from tools.skills_hub import create_source_router, quarantine_bundle
         from tools.skills_guard import scan_skill, should_allow_install
 
@@ -9223,6 +9555,59 @@ async def scan_skill_hub(identifier: str = ""):
 # ---------------------------------------------------------------------------
 
 
+class ProfileCreate(BaseModel):
+    name: str
+    clone_from: Optional[str] = None
+    # Backward compatibility for older dashboard/desktop clients. New clients
+    # send clone_from="default" (or another profile name) explicitly.
+    clone_from_default: bool = False
+    clone_all: bool = False
+    no_skills: bool = False
+    description: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    # Profile-builder additions — all optional, all applied best-effort AFTER
+    # the profile directory exists, so a hiccup in any of them never 500s the
+    # create (the user can fix it from the relevant dashboard page afterward).
+    # MCP servers to write into the new profile's config.yaml.
+    mcp_servers: List["MCPServerCreate"] = []
+    # Built-in / optional skills to KEEP active. When this list is non-empty,
+    # the builder uses "replace" semantics: the bundle is seeded, then every
+    # seeded skill NOT in this list is added to the profile's disabled list.
+    # Empty list = leave the seeded bundle untouched (legacy behaviour).
+    keep_skills: List[str] = []
+    # Skills-hub identifiers to install into the new profile. Installed async
+    # via a subprocess scoped to the profile (`prostor -p <name> skills install`)
+    # because skills_hub.SKILLS_DIR is import-time-bound and the PROSTOR_HOME
+    # override can't redirect it. Returns spawned PIDs for the UI to poll.
+    hub_skills: List[str] = []
+
+
+class ProfileRename(BaseModel):
+    new_name: str
+
+
+class ProfileSoulUpdate(BaseModel):
+    content: str
+
+
+class ProfileActiveUpdate(BaseModel):
+    name: str
+
+
+class ProfileDescriptionUpdate(BaseModel):
+    description: str = ""
+
+
+class ProfileModelUpdate(BaseModel):
+    provider: str
+    model: str
+
+
+class ProfileDescribeAuto(BaseModel):
+    overwrite: bool = False
+
+
 def _profile_attr(info, name: str, default: Any = None) -> Any:
     try:
         return getattr(info, name)
@@ -9257,7 +9642,7 @@ def _fallback_profile_dicts(profiles_mod) -> List[Dict[str, Any]]:
             return default
 
     profiles: List[Dict[str, Any]] = []
-    default_home = profiles_mod._get_default_prostor_home()
+    default_home = profiles_mod._get_default_hermes_home()
     if default_home.is_dir():
         model, provider = _safe(lambda: profiles_mod._read_config_model(default_home), (None, None))
         profiles.append({
@@ -9305,7 +9690,7 @@ def _fallback_profile_dicts(profiles_mod) -> List[Dict[str, Any]]:
 
 def _resolve_profile_dir(name: str) -> Path:
     """Validate ``name`` and resolve to its directory or raise an HTTPException."""
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     try:
         profiles_mod.validate_profile_name(name)
     except ValueError as e:
@@ -9330,16 +9715,16 @@ def _write_profile_model(profile_dir: Path, provider: str, model: str) -> None:
     Clears any stale ``base_url`` / ``context_length`` the same way
     ``POST /api/model/set`` does, since the new model may differ.
     """
-    from prostor_constants import set_prostor_home_override, reset_prostor_home_override
+    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
 
-    token = set_prostor_home_override(str(profile_dir))
+    token = set_hermes_home_override(str(profile_dir))
     try:
         provider, model = _normalize_main_model_assignment(provider, model)
         cfg = load_config()
         cfg["model"] = _apply_main_model_assignment(cfg.get("model", {}), provider, model)
         save_config(cfg)
     finally:
-        reset_prostor_home_override(token)
+        reset_hermes_home_override(token)
 
 
 def _write_profile_mcp_servers(profile_dir: Path, servers: List["MCPServerCreate"]) -> int:
@@ -9354,11 +9739,11 @@ def _write_profile_mcp_servers(profile_dir: Path, servers: List["MCPServerCreate
     but batched so the whole profile-create write is a single config save.
     Returns the number of servers written.
     """
-    from prostor_constants import set_prostor_home_override, reset_prostor_home_override
-    from prostor_cli.mcp_security import validate_mcp_server_entry
+    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+    from hermes_cli.mcp_security import validate_mcp_server_entry
 
     written = 0
-    token = set_prostor_home_override(str(profile_dir))
+    token = set_hermes_home_override(str(profile_dir))
     try:
         cfg = load_config()
         mcp = cfg.setdefault("mcp_servers", {})
@@ -9395,7 +9780,7 @@ def _write_profile_mcp_servers(profile_dir: Path, servers: List["MCPServerCreate
             cfg.pop("mcp_servers", None)
             save_config(cfg)
     finally:
-        reset_prostor_home_override(token)
+        reset_hermes_home_override(token)
     return written
 
 
@@ -9410,12 +9795,12 @@ def _disable_unselected_skills(profile_dir: Path, keep: List[str]) -> int:
     install.) Scoped to the profile via the PROSTOR_HOME override. Returns the
     number of skills newly disabled.
     """
-    from prostor_constants import set_prostor_home_override, reset_prostor_home_override
-    from prostor_cli.skills_config import get_disabled_skills, save_disabled_skills
+    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+    from hermes_cli.skills_config import get_disabled_skills, save_disabled_skills
 
     keep_set = {s.strip() for s in keep if s and s.strip()}
     disabled_count = 0
-    token = set_prostor_home_override(str(profile_dir))
+    token = set_hermes_home_override(str(profile_dir))
     try:
         installed: List[str] = []
         skills_root = profile_dir / "skills"
@@ -9431,13 +9816,13 @@ def _disable_unselected_skills(profile_dir: Path, keep: List[str]) -> int:
         if disabled_count:
             save_disabled_skills(cfg, disabled)
     finally:
-        reset_prostor_home_override(token)
+        reset_hermes_home_override(token)
     return disabled_count
 
 
 @app.get("/api/profiles")
 async def list_profiles_endpoint():
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     try:
         return {"profiles": [_profile_to_dict(p) for p in profiles_mod.list_profiles()]}
     except Exception:
@@ -9447,7 +9832,7 @@ async def list_profiles_endpoint():
 
 @app.post("/api/profiles")
 async def create_profile_endpoint(body: ProfileCreate):
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     explicit_source = (body.clone_from or "").strip()
     if explicit_source:
         # Duplicating a specific profile: clone its config/skills/SOUL (or full
@@ -9534,7 +9919,7 @@ async def create_profile_endpoint(body: ProfileCreate):
         if not ident:
             continue
         try:
-            proc = _spawn_prostor_action(
+            proc = _spawn_hermes_action(
                 ["-p", body.name, "skills", "install", ident, "--yes"],
                 "skills-install",
             )
@@ -9567,7 +9952,7 @@ async def get_active_profile_endpoint():
     the profile new CLI invocations pick up. ``current`` is the profile
     the running dashboard/gateway is scoped to (derived from PROSTOR_HOME).
     """
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     try:
         active = profiles_mod.get_active_profile() or "default"
     except Exception:
@@ -9586,7 +9971,7 @@ async def set_active_profile_endpoint(body: ProfileActiveUpdate):
     Note: this does not retarget the already-running dashboard process —
     it changes which profile subsequent CLI commands and gateways use.
     """
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     try:
         profiles_mod.set_active_profile(body.name)
     except FileNotFoundError as e:
@@ -9660,7 +10045,7 @@ async def open_profile_terminal_endpoint(name: str):
 
 @app.patch("/api/profiles/{name}")
 async def rename_profile_endpoint(name: str, body: ProfileRename):
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     try:
         path = profiles_mod.rename_profile(name, body.new_name)
     except FileNotFoundError as e:
@@ -9678,7 +10063,7 @@ async def delete_profile_endpoint(name: str):
     """Delete a profile. The dashboard collects the user's confirmation in
     its own dialog before this request, so we always pass ``yes=True`` to
     skip the CLI's interactive prompt."""
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     try:
         path = profiles_mod.delete_profile(name, yes=True)
     except FileNotFoundError as e:
@@ -9721,7 +10106,7 @@ async def update_profile_description_endpoint(name: str, body: ProfileDescriptio
     user-authored description (``description_auto: false``) so the
     auto-describer won't overwrite it on a sweep.
     """
-    from prostor_cli import profiles as profiles_mod
+    from hermes_cli import profiles as profiles_mod
     profile_dir = _resolve_profile_dir(name)
     text = (body.description or "").strip()
     try:
@@ -9768,7 +10153,7 @@ async def describe_profile_auto_endpoint(name: str, body: ProfileDescribeAuto):
     """
     _resolve_profile_dir(name)
     try:
-        from prostor_cli import profile_describer
+        from hermes_cli import profile_describer
         outcome = profile_describer.describe_profile(name, overwrite=bool(body.overwrite))
     except Exception as e:
         _log.exception("POST /api/profiles/%s/describe-auto failed", name)
@@ -9806,8 +10191,8 @@ def _profile_scope(profile: Optional[str]):
 
     Two seams must be redirected for skills/toolsets endpoints:
 
-    1. ``load_config``/``save_config`` resolve ``get_prostor_home()`` at call
-       time — the context-local override from ``set_prostor_home_override``
+    1. ``load_config``/``save_config`` resolve ``get_hermes_home()`` at call
+       time — the context-local override from ``set_hermes_home_override``
        reaches them (same pattern as ``_write_profile_model``).
     2. ``tools.skills_tool`` and ``tools.skill_manager_tool`` bind
        ``SKILLS_DIR`` at import time, so the override CANNOT reach them.
@@ -9817,27 +10202,27 @@ def _profile_scope(profile: Optional[str]):
 
     ``profile`` of None/""/"current" means "the dashboard's own profile" —
     config resolution is untouched, but the skill-module globals are still
-    retargeted to the *current* ``get_prostor_home()`` so writes land in the
+    retargeted to the *current* ``get_hermes_home()`` so writes land in the
     live home even when the import-time binding is stale (e.g. the process
     imported the modules before a PROSTOR_HOME override, or under test
     isolation).
     """
     requested = (profile or "").strip()
 
-    from prostor_constants import (
-        get_prostor_home,
-        set_prostor_home_override,
-        reset_prostor_home_override,
+    from hermes_constants import (
+        get_hermes_home,
+        set_hermes_home_override,
+        reset_hermes_home_override,
     )
     from tools import skills_tool as _skills_tool
     from tools import skill_manager_tool as _skill_mgr
 
     token = None
     if not requested or requested.lower() == "current":
-        profile_dir = get_prostor_home()
+        profile_dir = get_hermes_home()
     else:
         profile_dir = _resolve_profile_dir(requested)
-        token = set_prostor_home_override(str(profile_dir))
+        token = set_hermes_home_override(str(profile_dir))
 
     with _SKILLS_PROFILE_LOCK:
         old_home = _skills_tool.PROSTOR_HOME
@@ -9856,7 +10241,7 @@ def _profile_scope(profile: Optional[str]):
             _skill_mgr.PROSTOR_HOME = old_mgr_home
             _skill_mgr.SKILLS_DIR = old_mgr_skills_dir
             if token is not None:
-                reset_prostor_home_override(token)
+                reset_hermes_home_override(token)
 
 
 @contextmanager
@@ -9864,13 +10249,13 @@ def _config_profile_scope(profile: Optional[str]):
     """Await-safe, config-only profile scope for handlers that ``await``.
 
     Unlike ``_profile_scope`` this touches ONLY the context-local
-    ``set_prostor_home_override`` contextvar — it does NOT swap the
+    ``set_hermes_home_override`` contextvar — it does NOT swap the
     process-global ``skills_tool``/``skill_manager`` module attributes.
     Those globals are shared across all event-loop tasks, so holding them
     across an ``await`` lets a concurrent skills request restore THIS
     request's profile dir on its ``finally`` (cross-contamination). The
     contextvar override is task-local and survives an ``await`` cleanly,
-    which is all endpoints that resolve ``get_prostor_home()`` at call time
+    which is all endpoints that resolve ``get_hermes_home()`` at call time
     (config, env, gateway status) actually need.
 
     None/""/"current" means the dashboard's own profile — no override.
@@ -9880,23 +10265,29 @@ def _config_profile_scope(profile: Optional[str]):
         yield None
         return
 
-    from prostor_constants import (
-        set_prostor_home_override,
-        reset_prostor_home_override,
+    from hermes_constants import (
+        set_hermes_home_override,
+        reset_hermes_home_override,
     )
 
     profile_dir = _resolve_profile_dir(requested)
-    token = set_prostor_home_override(str(profile_dir))
+    token = set_hermes_home_override(str(profile_dir))
     try:
         yield profile_dir
     finally:
-        reset_prostor_home_override(token)
+        reset_hermes_home_override(token)
+
+
+class SkillToggle(BaseModel):
+    name: str
+    enabled: bool
+    profile: Optional[str] = None
 
 
 @app.get("/api/skills")
 async def get_skills(profile: Optional[str] = None):
     from tools.skills_tool import _find_all_skills
-    from prostor_cli.skills_config import get_disabled_skills
+    from hermes_cli.skills_config import get_disabled_skills
     with _profile_scope(profile):
         config = load_config()
         disabled = get_disabled_skills(config)
@@ -9908,7 +10299,7 @@ async def get_skills(profile: Optional[str] = None):
 
 @app.put("/api/skills/toggle")
 async def toggle_skill(body: SkillToggle, profile: Optional[str] = None):
-    from prostor_cli.skills_config import get_disabled_skills, save_disabled_skills
+    from hermes_cli.skills_config import get_disabled_skills, save_disabled_skills
     with _profile_scope(body.profile or profile):
         config = load_config()
         disabled = get_disabled_skills(config)
@@ -9918,6 +10309,19 @@ async def toggle_skill(body: SkillToggle, profile: Optional[str] = None):
             disabled.add(body.name)
         save_disabled_skills(config, disabled)
     return {"ok": True, "name": body.name, "enabled": body.enabled}
+
+
+class SkillCreate(BaseModel):
+    name: str
+    content: str
+    category: Optional[str] = None
+    profile: Optional[str] = None
+
+
+class SkillContentUpdate(BaseModel):
+    name: str
+    content: str
+    profile: Optional[str] = None
 
 
 def _clear_skills_prompt_cache() -> None:
@@ -9988,7 +10392,7 @@ async def update_skill_content(body: SkillContentUpdate):
 
 @app.get("/api/tools/toolsets")
 async def get_toolsets(profile: Optional[str] = None):
-    from prostor_cli.tools_config import (
+    from hermes_cli.tools_config import (
         _get_effective_configurable_toolsets,
         _get_platform_tools,
         _toolset_has_keys,
@@ -10022,6 +10426,11 @@ async def get_toolsets(profile: Optional[str] = None):
     return result
 
 
+class ToolsetToggle(BaseModel):
+    enabled: bool
+    profile: Optional[str] = None
+
+
 @app.put("/api/tools/toolsets/{name}")
 async def toggle_toolset(name: str, body: ToolsetToggle, profile: Optional[str] = None):
     """Enable/disable a configurable toolset for the desktop (cli) platform.
@@ -10031,7 +10440,7 @@ async def toggle_toolset(name: str, body: ToolsetToggle, profile: Optional[str] 
     lockstep. Scoped to ``body.profile`` when provided. Returns 400 for
     unknown toolset keys.
     """
-    from prostor_cli.tools_config import (
+    from hermes_cli.tools_config import (
         _get_effective_configurable_toolsets,
         _get_platform_tools,
         _save_platform_tools,
@@ -10064,13 +10473,13 @@ async def get_toolset_config(name: str, profile: Optional[str] = None):
     entry. Toolsets without a ``TOOL_CATEGORIES`` entry return an empty
     provider list and ``has_category: false``. Returns 400 for unknown keys.
     """
-    from prostor_cli.tools_config import (
+    from hermes_cli.tools_config import (
         TOOL_CATEGORIES,
         _get_effective_configurable_toolsets,
         _is_provider_active,
         _visible_providers,
     )
-    from prostor_cli.config import get_env_value
+    from hermes_cli.config import get_env_value
 
     valid = {ts_key for ts_key, _, _ in _get_effective_configurable_toolsets()}
     if name not in valid:
@@ -10117,6 +10526,11 @@ async def get_toolset_config(name: str, profile: Optional[str] = None):
     }
 
 
+class ToolsetProviderSelect(BaseModel):
+    provider: str
+    profile: Optional[str] = None
+
+
 @app.put("/api/tools/toolsets/{name}/provider")
 async def select_toolset_provider(
     name: str, body: ToolsetProviderSelect, profile: Optional[str] = None
@@ -10129,7 +10543,7 @@ async def select_toolset_provider(
     API keys and post-setup flows are handled by separate endpoints. Returns
     400 for unknown toolset or provider names.
     """
-    from prostor_cli.tools_config import (
+    from hermes_cli.tools_config import (
         apply_provider_selection,
         _get_effective_configurable_toolsets,
     )
@@ -10148,6 +10562,11 @@ async def select_toolset_provider(
     return {"ok": True, "name": name, "provider": body.provider}
 
 
+class ToolsetEnvUpdate(BaseModel):
+    env: Dict[str, str]
+    profile: Optional[str] = None
+
+
 @app.put("/api/tools/toolsets/{name}/env")
 async def save_toolset_env(name: str, body: ToolsetEnvUpdate, profile: Optional[str] = None):
     """Persist API keys for a toolset's provider env vars.
@@ -10160,12 +10579,12 @@ async def save_toolset_env(name: str, body: ToolsetEnvUpdate, profile: Optional[
     "leave unchanged" and skipped. Returns the saved/skipped key lists and the
     refreshed ``is_set`` status. Returns 400 for unknown toolset or env keys.
     """
-    from prostor_cli.tools_config import (
+    from hermes_cli.tools_config import (
         TOOL_CATEGORIES,
         _get_effective_configurable_toolsets,
         _visible_providers,
     )
-    from prostor_cli.config import get_env_value, save_env_value
+    from hermes_cli.config import get_env_value, save_env_value
 
     valid_ts = {ts_key for ts_key, _, _ in _get_effective_configurable_toolsets()}
     if name not in valid_ts:
@@ -10203,6 +10622,11 @@ async def save_toolset_env(name: str, body: ToolsetEnvUpdate, profile: Optional[
     return {"ok": True, "name": name, "saved": saved, "skipped": skipped, "is_set": status}
 
 
+class ToolsetPostSetup(BaseModel):
+    key: str
+    profile: Optional[str] = None
+
+
 @app.post("/api/tools/toolsets/{name}/post-setup")
 async def run_toolset_post_setup(
     name: str, body: ToolsetPostSetup, profile: Optional[str] = None
@@ -10223,7 +10647,7 @@ async def run_toolset_post_setup(
     write per-profile state must see the same PROSTOR_HOME the rest of the
     drawer's writes targeted — so the scope is threaded for consistency.
     """
-    from prostor_cli.tools_config import (
+    from hermes_cli.tools_config import (
         _get_effective_configurable_toolsets,
         valid_post_setup_keys,
     )
@@ -10238,7 +10662,7 @@ async def run_toolset_post_setup(
         )
 
     try:
-        proc = _spawn_prostor_action(
+        proc = _spawn_hermes_action(
             _profile_cli_args(body.profile or profile)
             + ["tools", "post-setup", body.key],
             "tools-post-setup",
@@ -10254,8 +10678,70 @@ async def run_toolset_post_setup(
 
 
 # ---------------------------------------------------------------------------
+# Computer Use (cua-driver) — cross-platform readiness + macOS permission grant
+#
+# cua-driver runs on macOS, Windows, and Linux. The desktop card reflects
+# per-OS readiness: on macOS the Accessibility + Screen Recording TCC grants
+# (which attach to cua-driver's OWN identity, com.trycua.driver — not Prostor,
+# so no app entitlement is involved); elsewhere, driver health from
+# `cua-driver doctor`. The grant flow is macOS-only (no TCC toggles to request
+# on Windows/Linux).
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/tools/computer-use/status")
+async def get_computer_use_status(profile: Optional[str] = None):
+    """Cross-platform Computer Use readiness for the desktop card.
+
+    See ``tools.computer_use.permissions.computer_use_status`` for the payload
+    shape. Read-only and fast (shells ``cua-driver doctor`` + macOS
+    ``permissions status``).
+    """
+    from tools.computer_use.permissions import computer_use_status
+
+    with _profile_scope(profile):
+        return computer_use_status()
+
+
+@app.post("/api/tools/computer-use/permissions/grant")
+async def grant_computer_use_permissions(profile: Optional[str] = None):
+    """Spawn ``prostor computer-use permissions grant`` as a background action.
+
+    macOS-only: ``cua-driver permissions grant`` launches CuaDriver via
+    LaunchServices so the TCC dialog is attributed to com.trycua.driver, then
+    waits for approval. The frontend polls ``GET /api/actions/computer-use-
+    grant/status`` and re-reads ``/status`` once it exits. Windows/Linux have
+    no TCC toggles to grant, so this returns 400 there.
+    """
+    if sys.platform != "darwin":
+        raise HTTPException(
+            status_code=400,
+            detail="Computer Use permission grants are a macOS concept.",
+        )
+    try:
+        proc = _spawn_hermes_action(
+            _profile_cli_args(profile)
+            + ["computer-use", "permissions", "grant"],
+            "computer-use-grant",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _log.exception("Failed to spawn computer-use permissions grant")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to request permissions: {exc}"
+        )
+    return {"ok": True, "pid": proc.pid, "name": "computer-use-grant"}
+
+
+# ---------------------------------------------------------------------------
 # Raw YAML config endpoint
 # ---------------------------------------------------------------------------
+
+
+class RawConfigUpdate(BaseModel):
+    yaml_text: str
+    profile: Optional[str] = None
 
 
 @app.get("/api/config/raw")
@@ -10535,7 +11021,7 @@ async def get_models_analytics(days: int = 30, profile: Optional[str] = None):
 # so the /api/pty WebSocket handler needs no platform guards.
 if sys.platform.startswith("win"):
     try:
-        from prostor_cli.win_pty_bridge import WinPtyBridge as PtyBridge, PtyUnavailableError
+        from hermes_cli.win_pty_bridge import WinPtyBridge as PtyBridge, PtyUnavailableError
         _PTY_BRIDGE_AVAILABLE = True
     except ImportError:  # pragma: no cover - pywinpty missing
         PtyBridge = None  # type: ignore[assignment]
@@ -10546,7 +11032,7 @@ if sys.platform.startswith("win"):
             pass
 else:
     try:
-        from prostor_cli.pty_bridge import PtyBridge, PtyUnavailableError
+        from hermes_cli.pty_bridge import PtyBridge, PtyUnavailableError
         _PTY_BRIDGE_AVAILABLE = True
     except ImportError:  # pragma: no cover - dev env without ptyprocess
         PtyBridge = None  # type: ignore[assignment]
@@ -10580,7 +11066,12 @@ def _ws_client_reason(ws: "WebSocket") -> Optional[str]:
         return None
     client_host = ws.client.host if ws.client else ""
     if not client_host:
-        return None
+        # Fail-closed: a loopback-bound dashboard with auth disabled must
+        # not accept a WebSocket with no identifiable peer. ASGI servers
+        # behind a misconfigured proxy or unix socket can deliver
+        # ws.client == None or "" — treating that as "allowed" would let
+        # an unidentified peer reach a loopback-only surface.
+        return f"missing_or_empty_peer bound={bound_host or '?'}"
     if client_host in _LOOPBACK_HOSTS:
         return None
     return f"peer_not_loopback peer={client_host} bound={bound_host or '?'}"
@@ -10622,7 +11113,10 @@ def _ws_client_is_allowed(ws: "WebSocket") -> bool:
         return True
     client_host = ws.client.host if ws.client else ""
     if not client_host:
-        return True
+        # Fail-closed: see _ws_client_reason for rationale. An empty
+        # client_host on a loopback-bound dashboard with auth disabled
+        # must be rejected, not accepted as a default-allow.
+        return False
     return client_host in _LOOPBACK_HOSTS
 
 
@@ -10728,8 +11222,8 @@ def _ws_auth_reason(ws: "WebSocket") -> tuple[Optional[str], str]:
     if auth_required:
         # Lazy import — keeps this function importable in test harnesses
         # that don't bring in the dashboard_auth layer.
-        from prostor_cli.dashboard_auth.audit import AuditEvent, audit_log
-        from prostor_cli.dashboard_auth.ws_tickets import (
+        from hermes_cli.dashboard_auth.audit import AuditEvent, audit_log
+        from hermes_cli.dashboard_auth.ws_tickets import (
             TicketInvalid,
             consume_internal_credential,
             consume_ticket,
@@ -10800,7 +11294,7 @@ def _resolve_chat_argv(
     so nothing has to build Node or the TUI bundle.
 
     Session resume is propagated via the ``PROSTOR_TUI_RESUME`` env var —
-    matching what ``prostor_cli.main._launch_tui`` does for the CLI path.
+    matching what ``hermes_cli.main._launch_tui`` does for the CLI path.
     Appending ``--resume <id>`` to argv doesn't work because ``ui-tui`` does
     not parse its argv.
 
@@ -10815,14 +11309,14 @@ def _resolve_chat_argv(
     `profile` (when set) scopes the ENTIRE chat to that profile by pointing
     ``PROSTOR_HOME`` at the profile dir in the child env. Every spawned
     process (the TUI and the ``tui_gateway.entry`` it launches) resolves
-    ``get_prostor_home()`` from that env var at its own import, so the child
+    ``get_hermes_home()`` from that env var at its own import, so the child
     binds the profile's config, skills, memory, and state.db from the start
     — the same propagation ``prostor -p <name>`` performs. The in-process
     ``PROSTOR_TUI_GATEWAY_URL`` attach is SKIPPED for scoped chats: the
     dashboard's in-memory gateway runs under the dashboard's own profile,
     so a profile-scoped chat must spawn its own gateway subprocess.
     """
-    from prostor_cli.main import PROJECT_ROOT, _make_tui_argv
+    from hermes_cli.main import PROJECT_ROOT, _make_tui_argv
 
     profile_dir: Optional[Path] = None
     requested = (profile or "").strip()
@@ -10832,7 +11326,7 @@ def _resolve_chat_argv(
     argv, cwd = _make_tui_argv(PROJECT_ROOT / "ui-tui", tui_dev=False)
     env = os.environ.copy()
     try:
-        from prostor_cli.config import apply_terminal_config_to_env
+        from hermes_cli.config import apply_terminal_config_to_env
         apply_terminal_config_to_env(env=env)
     except Exception:
         _log.debug("Failed to apply terminal config bridge for dashboard chat", exc_info=True)
@@ -10894,7 +11388,7 @@ def _build_gateway_ws_url() -> Optional[str]:
     )
 
     if getattr(app.state, "auth_required", False):
-        from prostor_cli.dashboard_auth.ws_tickets import internal_ws_credential
+        from hermes_cli.dashboard_auth.ws_tickets import internal_ws_credential
 
         qs = urllib.parse.urlencode({"internal": internal_ws_credential()})
     else:
@@ -10952,7 +11446,7 @@ def _build_sidecar_url(channel: str) -> Optional[str]:
     if getattr(app.state, "auth_required", False):
         # Gated mode — use the internal credential so the WS upgrade survives
         # _ws_auth_ok and the child can reconnect.
-        from prostor_cli.dashboard_auth.ws_tickets import internal_ws_credential
+        from hermes_cli.dashboard_auth.ws_tickets import internal_ws_credential
 
         qs = urllib.parse.urlencode(
             {"internal": internal_ws_credential(), "channel": channel}
@@ -11254,12 +11748,12 @@ async def events_ws(ws: WebSocket) -> None:
 def _normalise_prefix(raw: Optional[str]) -> str:
     """Normalise an X-Forwarded-Prefix header value.
 
-    Thin re-export of :func:`prostor_cli.dashboard_auth.prefix.normalise_prefix`
+    Thin re-export of :func:`hermes_cli.dashboard_auth.prefix.normalise_prefix`
     — the single source of truth lives in the dashboard_auth package so
     the gate middleware, the OAuth routes, the cookie helpers, and the
     SPA mount all agree on validation rules.
     """
-    from prostor_cli.dashboard_auth.prefix import normalise_prefix
+    from hermes_cli.dashboard_auth.prefix import normalise_prefix
     return normalise_prefix(raw)
 
 
@@ -11274,7 +11768,7 @@ def mount_spa(application: FastAPI):
     ``mission-control.tilos.com/prostor/*`` -> local Caddy -> :9119), the
     proxy injects ``X-Forwarded-Prefix: /prostor`` on every request. We
     rewrite the served ``index.html`` so absolute asset URLs (``/assets/...``)
-    and the SPA's runtime ``__PROSTOR_BASE_PATH__`` honour that prefix
+    and the SPA's runtime ``__HERMES_BASE_PATH__`` honour that prefix
     without rebuilding the bundle.
     """
     if not WEB_DIST.exists():
@@ -11297,7 +11791,7 @@ def mount_spa(application: FastAPI):
         When the OAuth auth gate is active (``app.state.auth_required``),
         the legacy ``_SESSION_TOKEN`` is NOT injected — the SPA reads
         identity from ``/api/auth/me`` over cookie auth instead.  The
-        ``__PROSTOR_AUTH_REQUIRED__`` flag lets the SPA pick the right
+        ``__HERMES_AUTH_REQUIRED__`` flag lets the SPA pick the right
         auth scheme for /api/pty and /api/ws (ticket vs token).
         """
         html = _index_path.read_text(encoding="utf-8")
@@ -11307,17 +11801,17 @@ def mount_spa(application: FastAPI):
         if gated:
             bootstrap_script = (
                 f"<script>"
-                f"window.__PROSTOR_DASHBOARD_EMBEDDED_CHAT__={chat_js};"
-                f'window.__PROSTOR_BASE_PATH__="{prefix}";'
-                f"window.__PROSTOR_AUTH_REQUIRED__={gated_js};"
+                f"window.__HERMES_DASHBOARD_EMBEDDED_CHAT__={chat_js};"
+                f'window.__HERMES_BASE_PATH__="{prefix}";'
+                f"window.__HERMES_AUTH_REQUIRED__={gated_js};"
                 f"</script>"
             )
         else:
             bootstrap_script = (
-                f'<script>window.__PROSTOR_SESSION_TOKEN__="{_SESSION_TOKEN}";'
-                f"window.__PROSTOR_DASHBOARD_EMBEDDED_CHAT__={chat_js};"
-                f'window.__PROSTOR_BASE_PATH__="{prefix}";'
-                f"window.__PROSTOR_AUTH_REQUIRED__={gated_js};"
+                f'<script>window.__HERMES_SESSION_TOKEN__="{_SESSION_TOKEN}";'
+                f"window.__HERMES_DASHBOARD_EMBEDDED_CHAT__={chat_js};"
+                f'window.__HERMES_BASE_PATH__="{prefix}";'
+                f"window.__HERMES_AUTH_REQUIRED__={gated_js};"
                 f"</script>"
             )
         if prefix:
@@ -11625,7 +12119,7 @@ def _discover_user_themes() -> list:
     to the frontend, so the client can apply them without a secondary
     round-trip or a built-in stub.
     """
-    themes_dir = get_prostor_home() / "dashboard-themes"
+    themes_dir = get_hermes_home() / "dashboard-themes"
     if not themes_dir.is_dir():
         return []
     result = []
@@ -11671,6 +12165,10 @@ async def get_dashboard_themes():
     return {"themes": themes, "active": active}
 
 
+class ThemeSetBody(BaseModel):
+    name: str
+
+
 @app.put("/api/dashboard/theme")
 async def set_dashboard_theme(body: ThemeSetBody):
     """Set the active dashboard theme (persists to config.yaml)."""
@@ -11704,6 +12202,10 @@ async def get_dashboard_font():
     if font not in _FONT_CHOICES:
         font = _FONT_DEFAULT_ID
     return {"font": font}
+
+
+class FontSetBody(BaseModel):
+    font: str
 
 
 @app.put("/api/dashboard/font")
@@ -11765,23 +12267,31 @@ def _safe_plugin_api_relpath(api_field: Any, *, dashboard_dir: Path) -> Optional
     return api_field
 
 
+# Plugin sources whose Python backend (dashboard manifest `api` file) must NEVER
+# be auto-imported by the dashboard web server — only bundled plugins may. Shared
+# by the discovery-time scrub and the mount-time refuse guards so a typo in one
+# site cannot silently disable a security gate (GHSA-5qr3-c538-wm9j / #43719).
+_NON_BUNDLED_PLUGIN_SOURCES = frozenset({"user", "project"})
+
+
 def _discover_dashboard_plugins() -> list:
     """Scan plugins/*/dashboard/manifest.json for dashboard extensions.
 
-    Checks three plugin sources (same as prostor_cli.plugins):
-    1. User plugins:    ~/.prostor/plugins/<name>/dashboard/manifest.json
-    2. Bundled plugins: <repo>/plugins/<name>/dashboard/manifest.json  (memory/, etc.)
+    Checks three plugin sources. Bundled dashboard plugins win name conflicts
+    so non-bundled plugins cannot shadow trusted backend-capable routes:
+    1. Bundled plugins: <repo>/plugins/<name>/dashboard/manifest.json  (memory/, etc.)
+    2. User plugins:    ~/.prostor/plugins/<name>/dashboard/manifest.json
     3. Project plugins: ./.prostor/plugins/  (only if PROSTOR_ENABLE_PROJECT_PLUGINS)
     """
     plugins = []
     seen_names: set = set()
 
-    from prostor_cli.plugins import get_bundled_plugins_dir
+    from hermes_cli.plugins import get_bundled_plugins_dir
     bundled_root = get_bundled_plugins_dir()
     search_dirs = [
-        (get_prostor_home() / "plugins", "user"),
         (bundled_root / "memory", "bundled"),
         (bundled_root, "bundled"),
+        (get_hermes_home() / "plugins", "user"),
     ]
     # GHSA-5qr3-c538-wm9j (#29156): the previous ``os.environ.get(...)``
     # check treated *any* non-empty string as truthy, so ``=0``, ``=false``,
@@ -11791,7 +12301,7 @@ def _discover_dashboard_plugins() -> list:
     # the manifest's ``api`` field (now patched below), this turned the
     # opt-in into a sticky always-on switch.  Use the shared truthy
     # semantics (``1`` / ``true`` / ``yes`` / ``on``) so the gate matches
-    # ``prostor_cli/plugins.py`` and the documented user contract.
+    # ``hermes_cli/plugins.py`` and the documented user contract.
     if env_var_enabled("PROSTOR_ENABLE_PROJECT_PLUGINS"):
         search_dirs.append((Path.cwd() / ".prostor" / "plugins", "project"))
 
@@ -11840,10 +12350,20 @@ def _discover_dashboard_plugins() -> list:
                 raw_api = data.get("api")
                 dashboard_dir = child / "dashboard"
                 safe_api = _safe_plugin_api_relpath(raw_api, dashboard_dir=dashboard_dir)
+                if source in _NON_BUNDLED_PLUGIN_SOURCES and safe_api:
+                    _log.warning(
+                        "Plugin %s: refusing dashboard backend api=%s "
+                        "(only bundled plugins may auto-import Python "
+                        "backend routes; non-bundled plugins may extend "
+                        "the dashboard with static UI assets only)",
+                        name, safe_api,
+                    )
+                    safe_api = None
+                    raw_api = None
                 if raw_api and safe_api is None:
                     _log.warning(
                         "Plugin %s: refusing unsafe api path %r (must be a "
-                        "relative file inside the plugin's dashboard/ "
+                        "relative file inside a bundled plugin's dashboard/ "
                         "directory); backend routes from this plugin will "
                         "not be mounted",
                         name, raw_api,
@@ -11905,13 +12425,19 @@ async def rescan_dashboard_plugins():
     return {"ok": True, "count": len(plugins)}
 
 
+class _AgentPluginInstallBody(BaseModel):
+    identifier: str
+    force: bool = False
+    enable: bool = True
+
+
 def _strip_dashboard_manifest(p: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in p.items() if not k.startswith("_")}
 
 
 def _merged_plugins_hub() -> Dict[str, Any]:
     """Agent discovery + dashboard manifests + optional provider picker metadata."""
-    from prostor_cli.plugins_cmd import (
+    from hermes_cli.plugins_cmd import (
         _discover_all_plugins,
         _get_current_context_engine,
         _get_current_memory_provider,
@@ -11932,7 +12458,7 @@ def _merged_plugins_hub() -> Dict[str, Any]:
     config = load_config()
     hidden_plugins: list = cfg_get(config, "dashboard", "hidden_plugins", default=[]) or []
 
-    plugins_root_resolved = (get_prostor_home() / "plugins").resolve()
+    plugins_root_resolved = (get_hermes_home() / "plugins").resolve()
     rows: List[Dict[str, Any]] = []
 
     for name, version, description, source, dir_str, key in _discover_all_plugins():
@@ -12044,7 +12570,7 @@ async def get_plugins_hub(request: Request):
 @app.post("/api/dashboard/agent-plugins/install")
 async def post_agent_plugin_install(request: Request, body: _AgentPluginInstallBody):
     _require_token(request)
-    from prostor_cli.plugins_cmd import dashboard_install_plugin
+    from hermes_cli.plugins_cmd import dashboard_install_plugin
 
     result = dashboard_install_plugin(
         body.identifier.strip(),
@@ -12074,7 +12600,7 @@ def _validate_plugin_name(name: str) -> str:
 async def post_agent_plugin_enable(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
-    from prostor_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
+    from hermes_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
 
     result = dashboard_set_agent_plugin_enabled(name, enabled=True)
     if not result.get("ok"):
@@ -12086,7 +12612,7 @@ async def post_agent_plugin_enable(request: Request, name: str):
 async def post_agent_plugin_disable(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
-    from prostor_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
+    from hermes_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
 
     result = dashboard_set_agent_plugin_enabled(name, enabled=False)
     if not result.get("ok"):
@@ -12098,7 +12624,7 @@ async def post_agent_plugin_disable(request: Request, name: str):
 async def post_agent_plugin_update(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
-    from prostor_cli.plugins_cmd import dashboard_update_user_plugin
+    from hermes_cli.plugins_cmd import dashboard_update_user_plugin
 
     result = dashboard_update_user_plugin(name)
     if not result.get("ok"):
@@ -12111,7 +12637,7 @@ async def post_agent_plugin_update(request: Request, name: str):
 async def delete_agent_plugin(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
-    from prostor_cli.plugins_cmd import dashboard_remove_user_plugin
+    from hermes_cli.plugins_cmd import dashboard_remove_user_plugin
 
     result = dashboard_remove_user_plugin(name)
     if not result.get("ok"):
@@ -12120,11 +12646,16 @@ async def delete_agent_plugin(request: Request, name: str):
     return result
 
 
+class _PluginProvidersPutBody(BaseModel):
+    memory_provider: Optional[str] = None
+    context_engine: Optional[str] = None
+
+
 @app.put("/api/dashboard/plugin-providers")
 async def put_plugin_providers(request: Request, body: _PluginProvidersPutBody):
     """Persist memory provider / context engine selection (writes config.yaml)."""
     _require_token(request)
-    from prostor_cli.plugins_cmd import (
+    from hermes_cli.plugins_cmd import (
         _save_context_engine,
         _save_memory_provider,
     )
@@ -12134,6 +12665,10 @@ async def put_plugin_providers(request: Request, body: _PluginProvidersPutBody):
     if body.context_engine is not None:
         _save_context_engine(body.context_engine)
     return {"ok": True}
+
+
+class _PluginVisibilityBody(BaseModel):
+    hidden: bool
 
 
 @app.post("/api/dashboard/plugins/{name:path}/visibility")
@@ -12235,23 +12770,36 @@ def _mount_plugin_api_routes():
     a ``router`` (FastAPI APIRouter).  Routes are mounted under
     ``/api/plugins/<name>/``.
 
-    Backend import is restricted to ``bundled`` and ``user`` sources.
-    Project plugins (``./.prostor/plugins/``) ship with the CWD and are
-    therefore attacker-controlled in any threat model where the user
-    opens a malicious repo; they can extend the dashboard UI via
-    static JS/CSS but their Python ``api`` file is never auto-imported
-    by the web server.  See GHSA-5qr3-c538-wm9j (#29156).
+    Backend import is restricted to bundled plugins. User and project
+    plugins can extend the dashboard UI via static JS/CSS, but their
+    Python ``api`` files are never auto-imported by the web server.
+    See GHSA-5qr3-c538-wm9j (#29156) and #43719.
     """
     for plugin in _get_dashboard_plugins():
         api_file_name = plugin.get("_api_file")
         if not api_file_name:
             continue
-        if plugin.get("source") == "project":
+        source = plugin.get("source")
+        if source in _NON_BUNDLED_PLUGIN_SOURCES:
+            # Backend Python auto-import is reserved for bundled plugins; user
+            # and project plugins extend the dashboard with static UI assets
+            # only (GHSA-5qr3-c538-wm9j / #43719). Defence-in-depth: discovery
+            # already nulls _api_file for these sources, but re-refusing here —
+            # at the actual importlib call site — keeps the import primitive
+            # contained even if a future caller or a tampered cache entry slips
+            # a non-bundled plugin through with an _api_file set.
+            _reason = {
+                "user": (
+                    "user-installed plugins may not auto-import Python code"
+                ),
+                "project": (
+                    "project plugins may not auto-import Python code; backend "
+                    "auto-import is reserved for bundled plugins"
+                ),
+            }.get(source, "only bundled plugins may auto-import Python code")
             _log.warning(
-                "Plugin %s: ignoring backend api=%s (project plugins may "
-                "not auto-import Python code; move the plugin to "
-                "~/.prostor/plugins/ if you trust it)",
-                plugin["name"], api_file_name,
+                "Plugin %s: ignoring backend api=%s (%s)",
+                plugin["name"], api_file_name, _reason,
             )
             continue
         dashboard_dir = Path(plugin["_dir"])
@@ -12274,7 +12822,7 @@ def _mount_plugin_api_routes():
             _log.warning("Plugin %s declares api=%s but file not found", plugin["name"], api_file_name)
             continue
         try:
-            module_name = f"prostor_dashboard_plugin_{plugin['name']}"
+            module_name = f"hermes_dashboard_plugin_{plugin['name']}"
             spec = importlib.util.spec_from_file_location(module_name, api_path)
             if spec is None or spec.loader is None:
                 continue
@@ -12308,7 +12856,7 @@ _mount_plugin_api_routes()
 # SPA catch-all so /{full_path:path} doesn't swallow them.  These are
 # always mounted — the gate middleware decides whether to enforce auth,
 # not whether the routes exist.
-from prostor_cli.dashboard_auth.routes import router as _dashboard_auth_router  # noqa: E402
+from hermes_cli.dashboard_auth.routes import router as _dashboard_auth_router  # noqa: E402
 app.include_router(_dashboard_auth_router)
 
 mount_spa(app)
@@ -12386,17 +12934,37 @@ def start_server(
     """
     import uvicorn
 
+    try:
+        from hermes_cli.nous_auth_keepalive import start_nous_auth_keepalive
+
+        start_nous_auth_keepalive()
+    except Exception as exc:
+        _log.debug("Nous auth keepalive did not start: %s", exc)
+
     # Phase 0: stash the auth-gate flag on app.state so middleware / SPA-token
     # injection / WS-auth paths can branch on it consistently.  Phase 3.5
     # uses this to decide whether to refuse the bind, log the gate-on
     # banner, and enable uvicorn proxy_headers.
-    app.state.auth_required = should_require_auth(host, allow_public)
+    app.state.auth_required = should_require_auth(host)
+
+    # ``--insecure`` no longer disables the auth gate (June 2026 hardening:
+    # the prostor-0day MCP-persistence campaign abused unauthenticated public
+    # dashboards). If a caller still passes it, warn that it is now a no-op
+    # rather than silently changing their expectation of an open bind.
+    if allow_public and host not in _LOOPBACK_HOST_VALUES:
+        _log.warning(
+            "--insecure no longer bypasses dashboard authentication. A "
+            "non-loopback bind (%s) now ALWAYS requires an auth provider "
+            "(OAuth or the bundled password provider). Configure one — see "
+            "below — or bind to 127.0.0.1 and reach it over an SSH tunnel / "
+            "Tailscale.", host,
+        )
 
     if app.state.auth_required:
-        # Phase 3.5: the gate engages on non-loopback binds.  The legacy
-        # "refusing to bind" guard is replaced by "require at least one
-        # provider to be registered, else fail closed".
-        from prostor_cli.dashboard_auth import list_providers
+        # The gate engages on every non-loopback bind. Require at least one
+        # provider to be registered, else fail closed — there is no longer an
+        # escape hatch that serves the dashboard without authentication.
+        from hermes_cli.dashboard_auth import list_providers
         if not list_providers():
             # Surface the *specific* reason any bundled provider declined
             # to register (e.g. missing PROSTOR_DASHBOARD_OAUTH_CLIENT_ID).
@@ -12415,39 +12983,37 @@ def start_server(
             except Exception:
                 pass
 
+            _fix_hint = (
+                "Configure an auth provider before exposing the dashboard:\n"
+                "  • Password: set dashboard.basic_auth.username + "
+                "password_hash in config.yaml\n"
+                "    (hash with: python -c \"from "
+                "plugins.dashboard_auth.basic import hash_password; "
+                "print(hash_password('your-password'))\")\n"
+                "  • OAuth: run `prostor dashboard register` (Nous Portal) or "
+                "install a DashboardAuthProvider plugin.\n"
+                "There is no unauthenticated public-bind option — to keep it "
+                "local, bind 127.0.0.1 and tunnel in (SSH / Tailscale)."
+            )
             if skip_reasons:
                 raise SystemExit(
-                    f"Refusing to bind dashboard to {host} — the OAuth auth "
-                    f"gate engages on non-loopback binds, but no auth "
-                    f"providers are registered.\n"
-                    f"\n"
+                    f"Refusing to bind dashboard to {host} — the auth gate "
+                    f"engages on non-loopback binds, but no auth providers "
+                    f"are registered.\n\n"
                     f"Bundled providers reported these issues:\n"
                     + "\n".join(skip_reasons)
-                    + "\n"
-                    f"\n"
-                    f"Or pass --insecure to skip the auth gate (NOT "
-                    f"recommended on untrusted networks)."
+                    + "\n\n"
+                    + _fix_hint
                 )
             raise SystemExit(
-                f"Refusing to bind dashboard to {host} — the OAuth auth "
-                f"gate engages on non-loopback binds, but no auth providers "
-                f"are registered and no bundled plugin reported a reason "
-                f"(was the dashboard_auth/nous plugin removed?).\n"
-                f"Install a DashboardAuthProvider plugin, or pass --insecure "
-                f"to skip the auth gate (NOT recommended on untrusted "
-                f"networks)."
+                f"Refusing to bind dashboard to {host} — the auth gate "
+                f"engages on non-loopback binds, but no auth providers are "
+                f"registered.\n\n" + _fix_hint
             )
         _log.info(
-            "Dashboard binding to %s with OAuth auth gate enabled. "
-            "Providers: %s",
+            "Dashboard binding to %s with auth gate enabled. Providers: %s",
             host,
             ", ".join(p.name for p in list_providers()),
-        )
-    elif host not in _LOOPBACK_HOST_VALUES and allow_public:
-        # --insecure path — no auth, loud warning.
-        _log.warning(
-            "Binding to %s with --insecure — the dashboard has no robust "
-            "authentication. Only use on trusted networks.", host,
         )
 
     # Record the bound host so host_header_middleware can validate incoming

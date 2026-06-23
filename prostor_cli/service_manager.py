@@ -8,8 +8,8 @@ from those methods, and callers MUST check supports_runtime_registration()
 before invoking them.
 
 Host-side call sites (setup wizard, uninstall, status) continue to use
-the existing module-level functions in prostor_cli.gateway and
-prostor_cli.gateway_windows directly. This protocol is a thin facade
+the existing module-level functions in hermes_cli.gateway and
+hermes_cli.gateway_windows directly. This protocol is a thin facade
 used by new code that needs to be backend-agnostic — specifically the
 profile create/delete hooks (Phase 4) and the s6 dispatch path in
 ``prostor gateway start/stop/restart`` when running inside a container.
@@ -102,7 +102,7 @@ def detect_service_manager() -> ServiceManagerKind:
     # Imports deferred so importing this module doesn't drag in the
     # whole gateway dependency graph for callers that only need the
     # Protocol type or validate_profile_name().
-    from prostor_cli.gateway import (
+    from hermes_cli.gateway import (
         is_macos,
         is_windows,
         supports_systemd_services,
@@ -163,7 +163,7 @@ def _s6_running() -> bool:
 # Backend wrappers
 #
 # These adapters are thin facades over the existing module-level functions
-# in ``prostor_cli.gateway`` (systemd/launchd) and ``prostor_cli.gateway_windows``
+# in ``hermes_cli.gateway`` (systemd/launchd) and ``hermes_cli.gateway_windows``
 # (Windows Scheduled Tasks). The protocol's ``name`` parameter is currently
 # unused for host backends — they operate on whichever profile is currently
 # active (set via the ``prostor -p <profile>`` flag before the call). This
@@ -201,7 +201,7 @@ class _RegistrationUnsupportedMixin:
 
 
 class SystemdServiceManager(_RegistrationUnsupportedMixin):
-    """Thin wrapper around the ``systemd_*`` functions in prostor_cli.gateway.
+    """Thin wrapper around the ``systemd_*`` functions in hermes_cli.gateway.
 
     Existing host call sites continue to use those functions directly;
     this wrapper exists for new code that needs to be backend-agnostic
@@ -211,47 +211,47 @@ class SystemdServiceManager(_RegistrationUnsupportedMixin):
     kind: ServiceManagerKind = "systemd"
 
     def start(self, name: str) -> None:
-        from prostor_cli.gateway import systemd_start
+        from hermes_cli.gateway import systemd_start
         systemd_start()
 
     def stop(self, name: str) -> None:
-        from prostor_cli.gateway import systemd_stop
+        from hermes_cli.gateway import systemd_stop
         systemd_stop()
 
     def restart(self, name: str) -> None:
-        from prostor_cli.gateway import systemd_restart
+        from hermes_cli.gateway import systemd_restart
         systemd_restart()
 
     def is_running(self, name: str) -> bool:
-        from prostor_cli.gateway import _probe_systemd_service_running
+        from hermes_cli.gateway import _probe_systemd_service_running
         _, running = _probe_systemd_service_running()
         return running
 
 
 class LaunchdServiceManager(_RegistrationUnsupportedMixin):
-    """Thin wrapper around the ``launchd_*`` functions in prostor_cli.gateway."""
+    """Thin wrapper around the ``launchd_*`` functions in hermes_cli.gateway."""
 
     kind: ServiceManagerKind = "launchd"
 
     def start(self, name: str) -> None:
-        from prostor_cli.gateway import launchd_start
+        from hermes_cli.gateway import launchd_start
         launchd_start()
 
     def stop(self, name: str) -> None:
-        from prostor_cli.gateway import launchd_stop
+        from hermes_cli.gateway import launchd_stop
         launchd_stop()
 
     def restart(self, name: str) -> None:
-        from prostor_cli.gateway import launchd_restart
+        from hermes_cli.gateway import launchd_restart
         launchd_restart()
 
     def is_running(self, name: str) -> bool:
-        from prostor_cli.gateway import _probe_launchd_service_running
+        from hermes_cli.gateway import _probe_launchd_service_running
         return _probe_launchd_service_running()
 
 
 class WindowsServiceManager(_RegistrationUnsupportedMixin):
-    """Thin wrapper around ``prostor_cli.gateway_windows`` (Scheduled Task /
+    """Thin wrapper around ``hermes_cli.gateway_windows`` (Scheduled Task /
     Startup-folder fallback).
 
     The native Windows backend uses a Scheduled Task rather than a true
@@ -272,7 +272,7 @@ class WindowsServiceManager(_RegistrationUnsupportedMixin):
         start_on_login: bool | None = None,
         elevated_handoff: bool = False,
     ) -> None:
-        from prostor_cli import gateway_windows
+        from hermes_cli import gateway_windows
         gateway_windows.install(
             force=force,
             start_now=start_now,
@@ -281,20 +281,20 @@ class WindowsServiceManager(_RegistrationUnsupportedMixin):
         )
 
     def start(self, name: str) -> None:
-        from prostor_cli import gateway_windows
+        from hermes_cli import gateway_windows
         gateway_windows.start()
 
     def stop(self, name: str) -> None:
-        from prostor_cli import gateway_windows
+        from hermes_cli import gateway_windows
         gateway_windows.stop()
 
     def restart(self, name: str) -> None:
-        from prostor_cli import gateway_windows
+        from hermes_cli import gateway_windows
         gateway_windows.restart()
 
     def is_running(self, name: str) -> bool:
-        from prostor_cli import gateway_windows
-        from prostor_cli.gateway import find_gateway_pids
+        from hermes_cli import gateway_windows
+        from hermes_cli.gateway import find_gateway_pids
         if not gateway_windows.is_installed():
             return False
         return bool(find_gateway_pids())
@@ -348,11 +348,11 @@ def _profile_dir_for_gateway_service(name: str) -> Path:
 
     profile = name[len(S6_SERVICE_PREFIX):] if name.startswith(S6_SERVICE_PREFIX) else name
     validate_profile_name(profile)
-    prostor_home = Path(os.environ.get("PROSTOR_HOME", "/opt/data"))
-    if prostor_home.parent.name == "profiles":
-        root = prostor_home.parent.parent
+    hermes_home = Path(os.environ.get("PROSTOR_HOME", "/opt/data"))
+    if hermes_home.parent.name == "profiles":
+        root = hermes_home.parent.parent
     else:
-        root = prostor_home
+        root = hermes_home
     return root if profile == "default" else root / "profiles" / profile
 
 
@@ -409,8 +409,8 @@ _S6_BIN_DIR = "/command"
 # ``stage2-hook.sh`` enforces (the runtime invariant — see also
 # tests/docker/test_uid_remap.py). The container starts s6-supervise
 # under root and immediately drops to this UID via ``s6-setuidgid``.
-_PROSTOR_UID = 10000
-_PROSTOR_GID = 10000
+_HERMES_UID = 10000
+_HERMES_GID = 10000
 
 
 def _seed_supervise_skeleton(svc_dir: Path) -> None:
@@ -489,7 +489,7 @@ def _seed_supervise_skeleton(svc_dir: Path) -> None:
         path.mkdir(parents=False, exist_ok=False)
         path.chmod(mode)
         try:
-            os.chown(path, _PROSTOR_UID, _PROSTOR_GID)
+            os.chown(path, _HERMES_UID, _HERMES_GID)
         except PermissionError:
             # Running as the prostor user already — directory is prostor-
             # owned by default. The chown is a no-op in that case, so
@@ -519,7 +519,7 @@ def _seed_supervise_skeleton(svc_dir: Path) -> None:
         os.mkfifo(control, 0o660)
         control.chmod(0o660)
         try:
-            os.chown(control, _PROSTOR_UID, _PROSTOR_GID)
+            os.chown(control, _HERMES_UID, _HERMES_GID)
         except PermissionError:
             pass
 
@@ -539,7 +539,7 @@ def _seed_supervise_skeleton(svc_dir: Path) -> None:
             os.mkfifo(log_control, 0o660)
             log_control.chmod(0o660)
             try:
-                os.chown(log_control, _PROSTOR_UID, _PROSTOR_GID)
+                os.chown(log_control, _HERMES_UID, _HERMES_GID)
             except PermissionError:
                 pass
 
@@ -645,7 +645,7 @@ class S6ServiceManager:
         the top of $PROSTOR_HOME, not under profiles/). It must be
         spelled this way because ``_profile_suffix()`` returns the
         empty string for the root profile, and the dispatcher in
-        ``prostor_cli.gateway`` maps that empty string to the
+        ``hermes_cli.gateway`` maps that empty string to the
         ``gateway-default`` service slot. Passing ``-p default`` here
         would instead look up ``$PROSTOR_HOME/profiles/default/`` — a
         completely different (and almost always nonexistent) profile.
@@ -661,7 +661,7 @@ class S6ServiceManager:
         its ``.env``. Previously this method took a ``port`` parameter
         that was passed in but never substituted into the rendered
         script (carried for "API parity" with a deterministic SHA-256
-        allocator in ``prostor_cli.profiles._allocate_gateway_port``).
+        allocator in ``hermes_cli.profiles._allocate_gateway_port``).
         PR #30136 review item I5 retired both the allocator and the
         parameter because they were dead code through the entire stack.
         """

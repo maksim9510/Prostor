@@ -12,9 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 
-from prostor_cli.colors import Colors, color
+from hermes_cli.colors import Colors, color
 
 def log_info(msg: str):
     print(f"{color('→', Colors.CYAN)} {msg}")
@@ -107,9 +107,9 @@ def remove_wrapper_script():
     for wrapper in wrapper_paths:
         if wrapper.exists():
             try:
-                # Check if it's our wrapper (contains prostor_cli reference)
+                # Check if it's our wrapper (contains hermes_cli reference)
                 content = wrapper.read_text()
-                if 'prostor_cli' in content or 'prostor-agent' in content:
+                if 'hermes_cli' in content or 'prostor-agent' in content:
                     wrapper.unlink()
                     removed.append(wrapper)
             except Exception as e:
@@ -131,7 +131,7 @@ def _node_symlink_candidate_dirs() -> "list[Path]":
     return dirs
 
 
-def remove_node_symlinks(prostor_home: Path) -> list:
+def remove_node_symlinks(hermes_home: Path) -> list:
     """Remove the node/npm/npx symlinks the installer placed on PATH.
 
     The POSIX installer (``scripts/install.sh`` / ``scripts/lib/node-bootstrap.sh``)
@@ -148,7 +148,7 @@ def remove_node_symlinks(prostor_home: Path) -> list:
     directory are removed — links the user has repointed elsewhere (nvm, fnm,
     etc.) are left untouched.
     """
-    node_dir = (prostor_home / "node").resolve()
+    node_dir = (hermes_home / "node").resolve()
     removed = []
 
     for name in ("node", "npm", "npx"):
@@ -192,7 +192,7 @@ def uninstall_gateway_service():
 
     # 1. Kill any standalone gateway processes (all platforms, including Termux)
     try:
-        from prostor_cli.gateway import kill_gateway_processes, find_gateway_pids
+        from hermes_cli.gateway import kill_gateway_processes, find_gateway_pids
         pids = find_gateway_pids()
         if pids:
             killed = kill_gateway_processes()
@@ -213,7 +213,7 @@ def uninstall_gateway_service():
     # 2. Linux: uninstall systemd services (both user and system scopes)
     if system == "Linux":
         try:
-            from prostor_cli.gateway import (
+            from hermes_cli.gateway import (
                 get_systemd_unit_path,
                 get_service_name,
                 _systemctl_cmd,
@@ -250,7 +250,7 @@ def uninstall_gateway_service():
     # 3. macOS: uninstall launchd plist
     elif system == "Darwin":
         try:
-            from prostor_cli.gateway import get_launchd_plist_path
+            from hermes_cli.gateway import get_launchd_plist_path
             plist_path = get_launchd_plist_path()
             if plist_path.exists():
                 subprocess.run(["launchctl", "unload", str(plist_path)],
@@ -268,7 +268,7 @@ def uninstall_gateway_service():
     #    uninstall logic stays in exactly one place.
     elif system == "Windows":
         try:
-            from prostor_cli import gateway_windows
+            from hermes_cli import gateway_windows
             if gateway_windows.is_installed() or gateway_windows.is_task_registered() \
                     or gateway_windows.is_startup_entry_installed():
                 try:
@@ -319,20 +319,20 @@ def uninstall_gateway_service():
 # or open a new terminal anyway).
 
 
-def _prostor_path_markers(prostor_home: Path) -> list[str]:
+def _hermes_path_markers(hermes_home: Path) -> list[str]:
     """Path-entry substrings that identify Prostor-owned User-PATH entries."""
-    root = str(prostor_home).rstrip("\\/")
+    root = str(hermes_home).rstrip("\\/")
     # Match on prefix so sub-entries (git\cmd, git\bin, git\usr\bin, node, etc.)
     # all get swept.  Also match the bare prostor-agent install dir.
     markers = [root + "\\prostor-agent", root + "\\git", root + "\\node", root + "\\venv"]
     # Also match if PROSTOR_HOME was customised to somewhere else — find-and-nuke
     # any entry whose path component contains "prostor".  We don't want to catch
-    # unrelated entries like "cprostor-foo" or "ephermeral", so we look for
+    # unrelated entries like "chermes-foo" or "ephermeral", so we look for
     # backslash-prostor as a word-ish boundary.
     return markers
 
 
-def remove_path_from_windows_registry(prostor_home: Path) -> list[str]:
+def remove_path_from_windows_registry(hermes_home: Path) -> list[str]:
     """Strip Prostor-owned entries from User-scope PATH in the registry.
 
     Returns the list of removed path entries.  Operates on HKCU\\Environment,
@@ -354,7 +354,7 @@ def remove_path_from_windows_registry(prostor_home: Path) -> list[str]:
                 return []
             # Preserve REG_EXPAND_SZ vs REG_SZ so unexpanded %VARS% survive.
             entries = [e for e in path_value.split(";") if e]
-            markers = _prostor_path_markers(prostor_home)
+            markers = _hermes_path_markers(hermes_home)
             kept: list[str] = []
             for entry in entries:
                 entry_norm = entry.rstrip("\\/")
@@ -371,7 +371,7 @@ def remove_path_from_windows_registry(prostor_home: Path) -> list[str]:
     return removed
 
 
-def remove_prostor_env_vars_windows() -> list[str]:
+def remove_hermes_env_vars_windows() -> list[str]:
     """Delete PROSTOR_HOME and PROSTOR_GIT_BASH_PATH from User-scope env vars."""
     try:
         import winreg
@@ -397,13 +397,13 @@ def remove_prostor_env_vars_windows() -> list[str]:
     return removed
 
 
-def remove_portable_tooling_windows(prostor_home: Path) -> list[Path]:
+def remove_portable_tooling_windows(hermes_home: Path) -> list[Path]:
     """Delete PortableGit and Node installs the Windows installer created under
     ``%LOCALAPPDATA%\\prostor\\``.  Only called on full uninstall; they're
     isolated from any system Git / Node so they cannot break other tools."""
     removed: list[Path] = []
     for sub in ("git", "node", "gateway-service"):
-        target = prostor_home / sub
+        target = hermes_home / sub
         if target.exists():
             try:
                 shutil.rmtree(target, ignore_errors=False)
@@ -418,11 +418,11 @@ def _is_windows() -> bool:
     return sys.platform == "win32"
 
 
-def _is_default_prostor_home(prostor_home: Path) -> bool:
-    """Return True when ``prostor_home`` points at the default (non-profile) root."""
+def _is_default_hermes_home(hermes_home: Path) -> bool:
+    """Return True when ``hermes_home`` points at the default (non-profile) root."""
     try:
-        from prostor_constants import get_default_prostor_root
-        return prostor_home.resolve() == get_default_prostor_root().resolve()
+        from hermes_constants import get_default_hermes_root
+        return hermes_home.resolve() == get_default_hermes_root().resolve()
     except Exception:
         return False
 
@@ -432,7 +432,7 @@ def _discover_named_profiles():
     if profile support is unavailable or nothing is installed beyond the
     default root."""
     try:
-        from prostor_cli.profiles import list_profiles
+        from hermes_cli.profiles import list_profiles
     except Exception:
         return []
     try:
@@ -457,13 +457,13 @@ def _uninstall_profile(profile) -> None:
     log_info(f"Uninstalling profile '{name}'...")
 
     # 1. Stop and remove this profile's gateway service.
-    #    Use `python -m prostor_cli.main` so we don't depend on a `prostor`
+    #    Use `python -m hermes_cli.main` so we don't depend on a `prostor`
     #    wrapper that may be half-removed mid-uninstall.
-    prostor_invocation = [_sys.executable, "-m", "prostor_cli.main", "--profile", name]
+    hermes_invocation = [_sys.executable, "-m", "hermes_cli.main", "--profile", name]
     for subcmd in ("stop", "uninstall"):
         try:
             subprocess.run(
-                prostor_invocation + ["gateway", subcmd],
+                hermes_invocation + ["gateway", subcmd],
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -500,14 +500,14 @@ def run_gui_uninstall(args):
     userData dir — nothing under ``$PROSTOR_HOME`` config/sessions/.env, and
     never the Python agent or its venv.
     """
-    from prostor_cli.gui_uninstall import (
+    from hermes_cli.gui_uninstall import (
         agent_is_installed,
         gui_install_summary,
         uninstall_gui,
     )
 
-    prostor_home = get_prostor_home()
-    summary = gui_install_summary(prostor_home)
+    hermes_home = get_hermes_home()
+    summary = gui_install_summary(hermes_home)
     skip_confirm = bool(getattr(args, "yes", False))
 
     print()
@@ -518,7 +518,7 @@ def run_gui_uninstall(args):
 
     if not summary["gui_installed"]:
         print("No Prostor Chat GUI installation was found.")
-        print(f"  Checked: {prostor_home}, and the standard app locations for this OS.")
+        print(f"  Checked: {hermes_home}, and the standard app locations for this OS.")
         return
 
     print(color("This removes the Chat GUI only. The Prostor agent stays installed.", Colors.CYAN))
@@ -531,10 +531,10 @@ def run_gui_uninstall(args):
     if summary["userdata_exists"]:
         print(f"  • {summary['userdata_dir']}  (desktop app data)")
     print()
-    if agent_is_installed(prostor_home):
+    if agent_is_installed(hermes_home):
         print(color("Kept intact:", Colors.GREEN, Colors.BOLD))
-        print(f"  • The Prostor agent at {prostor_home / 'prostor-agent'}")
-        print(f"  • Your config, sessions, and secrets under {prostor_home}")
+        print(f"  • The Prostor agent at {hermes_home / 'prostor-agent'}")
+        print(f"  • Your config, sessions, and secrets under {hermes_home}")
         print()
 
     if not skip_confirm:
@@ -552,7 +552,7 @@ def run_gui_uninstall(args):
     print()
     print(color("Uninstalling Chat GUI...", Colors.CYAN, Colors.BOLD))
     print()
-    uninstall_gui(prostor_home)
+    uninstall_gui(hermes_home)
 
     print()
     print(color("┌─────────────────────────────────────────────────────────┐", Colors.GREEN, Colors.BOLD))
@@ -573,12 +573,12 @@ def run_uninstall(args):
     - Keep data: removes code but keeps ~/.prostor/ for future reinstall
     """
     project_root = get_project_root()
-    prostor_home = get_prostor_home()
+    hermes_home = get_hermes_home()
 
     # Detect named profiles when uninstalling from the default root —
     # offer to clean them up too instead of leaving zombie PROSTOR_HOMEs
     # and systemd units behind.
-    is_default_profile = _is_default_prostor_home(prostor_home)
+    is_default_profile = _is_default_hermes_home(hermes_home)
     named_profiles = _discover_named_profiles() if is_default_profile else []
 
     # Non-interactive fast path (``--yes``): no prompts. ``--full`` selects a
@@ -592,7 +592,7 @@ def run_uninstall(args):
         full_uninstall = bool(getattr(args, "full", False))
         _perform_uninstall(
             project_root=project_root,
-            prostor_home=prostor_home,
+            hermes_home=hermes_home,
             full_uninstall=full_uninstall,
             remove_profiles=False,
             named_profiles=named_profiles,
@@ -608,9 +608,9 @@ def run_uninstall(args):
     # Show what will be affected
     print(color("Current Installation:", Colors.CYAN, Colors.BOLD))
     print(f"  Code:    {project_root}")
-    print(f"  Config:  {prostor_home / 'config.yaml'}")
-    print(f"  Secrets: {prostor_home / '.env'}")
-    print(f"  Data:    {prostor_home / 'cron/'}, {prostor_home / 'sessions/'}, {prostor_home / 'logs/'}")
+    print(f"  Config:  {hermes_home / 'config.yaml'}")
+    print(f"  Secrets: {hermes_home / '.env'}")
+    print(f"  Data:    {hermes_home / 'cron/'}, {hermes_home / 'sessions/'}, {hermes_home / 'logs/'}")
     print()
 
     if named_profiles:
@@ -697,7 +697,7 @@ def run_uninstall(args):
 
     _perform_uninstall(
         project_root=project_root,
-        prostor_home=prostor_home,
+        hermes_home=hermes_home,
         full_uninstall=full_uninstall,
         remove_profiles=remove_profiles,
         named_profiles=named_profiles,
@@ -707,7 +707,7 @@ def run_uninstall(args):
 def _perform_uninstall(
     *,
     project_root: Path,
-    prostor_home: Path,
+    hermes_home: Path,
     full_uninstall: bool,
     remove_profiles: bool,
     named_profiles: list,
@@ -742,10 +742,10 @@ def _perform_uninstall(
 
     if _is_windows():
         log_info("Removing PATH entries from Windows User environment...")
-        # Expand %LOCALAPPDATA% etc. in prostor_home so the marker matching is
+        # Expand %LOCALAPPDATA% etc. in hermes_home so the marker matching is
         # against fully resolved paths — installer writes literal strings
         # like C:\Users\<u>\AppData\Local\prostor\git\cmd, not %LOCALAPPDATA%.
-        removed_path_entries = remove_path_from_windows_registry(Path(os.path.expandvars(str(prostor_home))))
+        removed_path_entries = remove_path_from_windows_registry(Path(os.path.expandvars(str(hermes_home))))
         if removed_path_entries:
             for entry in removed_path_entries:
                 log_success(f"Removed from User PATH: {entry}")
@@ -753,7 +753,7 @@ def _perform_uninstall(
             log_info("No Prostor-owned PATH entries in User environment")
 
         log_info("Removing PROSTOR_HOME / PROSTOR_GIT_BASH_PATH User env vars...")
-        removed_env = remove_prostor_env_vars_windows()
+        removed_env = remove_hermes_env_vars_windows()
         if removed_env:
             for name in removed_env:
                 log_success(f"Removed User env var: {name}")
@@ -773,7 +773,7 @@ def _perform_uninstall(
     #     (only when they still point into this Prostor home's node dir, so we
     #     never clobber an existing nvm / user-managed Node).
     log_info("Removing Prostor-managed node/npm/npx symlinks...")
-    removed_node_links = remove_node_symlinks(prostor_home)
+    removed_node_links = remove_node_symlinks(hermes_home)
     if removed_node_links:
         for link in removed_node_links:
             log_success(f"Removed {link}")
@@ -786,13 +786,13 @@ def _perform_uninstall(
     #     code, so the GUI — which is just another consumer of the same
     #     checkout — should go with it. uninstall_gui() never touches config /
     #     sessions / .env, so it's safe in keep-data mode; on full uninstall the
-    #     step-5 rmtree(prostor_home) would sweep the in-tree artifacts anyway,
+    #     step-5 rmtree(hermes_home) would sweep the in-tree artifacts anyway,
     #     but the packaged app + Electron userData live OUTSIDE PROSTOR_HOME and
     #     must be cleaned explicitly here.
     log_info("Removing desktop Chat GUI artifacts...")
     try:
-        from prostor_cli.gui_uninstall import uninstall_gui
-        gui_removed = uninstall_gui(prostor_home)
+        from hermes_cli.gui_uninstall import uninstall_gui
+        gui_removed = uninstall_gui(hermes_home)
         if not gui_removed:
             log_info("No desktop GUI artifacts found")
     except Exception as e:
@@ -806,7 +806,7 @@ def _perform_uninstall(
     try:
         if project_root.exists():
             # If the install is inside ~/.prostor/, just remove the prostor-agent subdir
-            if prostor_home in project_root.parents or project_root.parent == prostor_home:
+            if hermes_home in project_root.parents or project_root.parent == hermes_home:
                 shutil.rmtree(project_root)
                 log_success(f"Removed {project_root}")
             else:
@@ -821,11 +821,11 @@ def _perform_uninstall(
     #     PortableGit, bundled Node, gateway-service dir.  Installer put them
     #     under PROSTOR_HOME but they're install tooling, not config — safe to
     #     remove even in "keep data" mode.  If we're doing a full uninstall
-    #     the step-5 rmtree(prostor_home) would sweep them anyway; calling
+    #     the step-5 rmtree(hermes_home) would sweep them anyway; calling
     #     this helper there is a no-op since they'll already be gone.
     if _is_windows():
         log_info("Removing Windows installer artifacts (PortableGit, Node, gateway-service)...")
-        removed_artifacts = remove_portable_tooling_windows(prostor_home)
+        removed_artifacts = remove_portable_tooling_windows(hermes_home)
         if removed_artifacts:
             for path in removed_artifacts:
                 log_success(f"Removed {path}")
@@ -845,14 +845,14 @@ def _perform_uninstall(
 
         log_info("Removing configuration and data...")
         try:
-            if prostor_home.exists():
-                shutil.rmtree(prostor_home)
-                log_success(f"Removed {prostor_home}")
+            if hermes_home.exists():
+                shutil.rmtree(hermes_home)
+                log_success(f"Removed {hermes_home}")
         except Exception as e:
-            log_warn(f"Could not fully remove {prostor_home}: {e}")
+            log_warn(f"Could not fully remove {hermes_home}: {e}")
             log_info("You may need to manually remove it")
     else:
-        log_info(f"Keeping configuration and data in {prostor_home}")
+        log_info(f"Keeping configuration and data in {hermes_home}")
     
     # Done
     print()
@@ -863,13 +863,13 @@ def _perform_uninstall(
     
     if not full_uninstall:
         print(color("Your configuration and data have been preserved:", Colors.CYAN))
-        print(f"  {prostor_home}/")
+        print(f"  {hermes_home}/")
         print()
         print("To reinstall later with your existing settings:")
         if _is_windows():
-            print(color("  iex (irm https://github.com/maksim9510/Prostor/install.ps1)", Colors.DIM))
+            print(color("  iex (irm https://prostor-agent.nousresearch.com/install.ps1)", Colors.DIM))
         else:
-            print(color("  curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash", Colors.DIM))
+            print(color("  curl -fsSL https://prostor-agent.nousresearch.com/install.sh | bash", Colors.DIM))
         print()
 
     if _is_windows():
@@ -894,22 +894,22 @@ class _UninstallArgs:
 
 
 def main(argv=None) -> int:
-    """Module entrypoint: ``python -m prostor_cli.uninstall --mode <gui|lite|full>``.
+    """Module entrypoint: ``python -m hermes_cli.uninstall --mode <gui|lite|full>``.
 
     Exists so the desktop app can run the uninstall under a Python interpreter
     OUTSIDE the venv being deleted. On Windows, ``lite``/``full`` rmtree the
     venv that contains the running ``python.exe`` — and a running .exe is
     mandatory-locked, so doing that from the venv's own interpreter half-fails.
     The desktop launches this with the system Python + ``PYTHONPATH=<agentRoot>``
-    so ``import prostor_cli`` resolves from source while the venv is torn down.
+    so ``import hermes_cli`` resolves from source while the venv is torn down.
 
-    This module imports only stdlib + ``prostor_constants`` + ``prostor_cli.colors``
-    (and lazily ``prostor_cli.gui_uninstall``), so it runs fine under a bare
+    This module imports only stdlib + ``hermes_constants`` + ``hermes_cli.colors``
+    (and lazily ``hermes_cli.gui_uninstall``), so it runs fine under a bare
     system Python with no site-packages from the venv.
     """
     import argparse
 
-    parser = argparse.ArgumentParser(prog="python -m prostor_cli.uninstall")
+    parser = argparse.ArgumentParser(prog="python -m hermes_cli.uninstall")
     parser.add_argument(
         "--mode",
         choices=["gui", "lite", "full"],

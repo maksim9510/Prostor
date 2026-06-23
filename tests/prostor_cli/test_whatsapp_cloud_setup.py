@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from prostor_cli.setup_whatsapp_cloud import (
+from hermes_cli.setup_whatsapp_cloud import (
     _validate_phone_number_id,
     _validate_waba_id,
     _validate_app_id,
@@ -174,8 +174,8 @@ def isolated_home(tmp_path, monkeypatch):
     return prostor
 
 
-def _env_value(prostor_home: Path, key: str) -> str | None:
-    env_file = prostor_home / ".env"
+def _env_value(hermes_home: Path, key: str) -> str | None:
+    env_file = hermes_home / ".env"
     if not env_file.exists():
         return None
     for line in env_file.read_text().splitlines():

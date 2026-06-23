@@ -1,7 +1,7 @@
 """Tests for the ``prostor send`` CLI subcommand.
 
 Covers the argument parsing / stdin / file / list behavior of
-``prostor_cli.send_cmd``. The underlying ``send_message_tool`` is stubbed so
+``hermes_cli.send_cmd``. The underlying ``send_message_tool`` is stubbed so
 no network I/O or gateway is required.
 """
 
@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from prostor_cli import send_cmd
+from hermes_cli import send_cmd
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +333,7 @@ def test_register_send_subparser_is_reusable():
 # ---------------------------------------------------------------------------
 
 
-def test_load_prostor_env_bridges_config_yaml_scalars(tmp_path, monkeypatch):
+def test_load_hermes_env_bridges_config_yaml_scalars(tmp_path, monkeypatch):
     """Top-level config.yaml scalars should be bridged into os.environ.
 
     This mirrors the gateway/run.py bootstrap behavior: without this, running
@@ -344,58 +344,58 @@ def test_load_prostor_env_bridges_config_yaml_scalars(tmp_path, monkeypatch):
     """
     import os
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / ".env").write_text("SOME_TOKEN=abc123\n")
-    (prostor_home / "config.yaml").write_text(
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / ".env").write_text("SOME_TOKEN=abc123\n")
+    (hermes_home / "config.yaml").write_text(
         "TELEGRAM_HOME_CHANNEL: '5550001111'\nnested:\n  ignored: true\n"
     )
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.delenv("TELEGRAM_HOME_CHANNEL", raising=False)
     monkeypatch.delenv("SOME_TOKEN", raising=False)
 
-    # Force get_prostor_home() to re-resolve under the patched env.
+    # Force get_hermes_home() to re-resolve under the patched env.
     from importlib import reload
 
-    import prostor_cli.config as _hc_config
+    import hermes_cli.config as _hc_config
     reload(_hc_config)
 
-    send_cmd._load_prostor_env()
+    send_cmd._load_hermes_env()
 
     assert os.environ.get("SOME_TOKEN") == "abc123"
     assert os.environ.get("TELEGRAM_HOME_CHANNEL") == "5550001111"
 
 
-def test_load_prostor_env_does_not_override_existing(tmp_path, monkeypatch):
+def test_load_hermes_env_does_not_override_existing(tmp_path, monkeypatch):
     """Existing env vars must not be clobbered by config.yaml values."""
     import os
 
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    (prostor_home / "config.yaml").write_text("TELEGRAM_HOME_CHANNEL: yaml_value\n")
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text("TELEGRAM_HOME_CHANNEL: yaml_value\n")
 
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("TELEGRAM_HOME_CHANNEL", "env_value")
 
     from importlib import reload
-    import prostor_cli.config as _hc_config
+    import hermes_cli.config as _hc_config
     reload(_hc_config)
 
-    send_cmd._load_prostor_env()
+    send_cmd._load_hermes_env()
 
     assert os.environ.get("TELEGRAM_HOME_CHANNEL") == "env_value"
 
 
-def test_load_prostor_env_handles_missing_files(tmp_path, monkeypatch):
+def test_load_hermes_env_handles_missing_files(tmp_path, monkeypatch):
     """No .env or config.yaml should be a silent no-op, not an exception."""
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
     from importlib import reload
-    import prostor_cli.config as _hc_config
+    import hermes_cli.config as _hc_config
     reload(_hc_config)
 
     # Should not raise.
-    send_cmd._load_prostor_env()
+    send_cmd._load_hermes_env()

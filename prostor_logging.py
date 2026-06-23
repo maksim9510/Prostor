@@ -2,7 +2,7 @@
 
 Provides a single ``setup_logging()`` entry point that both the CLI and
 gateway call early in their startup path.  All log files live under
-``~/.prostor/logs/`` (profile-aware via ``get_prostor_home()``).
+``~/.prostor/logs/`` (profile-aware via ``get_hermes_home()``).
 
 Log files produced:
     agent.log   — INFO+, all agent/tool/session activity (the main log)
@@ -17,8 +17,8 @@ secrets are never written to disk.
 Component separation:
     gateway.log only receives records from ``gateway.*`` loggers —
     platform adapters, session management, slash commands, delivery.
-    gui.log receives dashboard-side records from ``prostor_cli.web_server``,
-    ``prostor_cli.pty_bridge``, ``tui_gateway.*``, and ``uvicorn.*``.
+    gui.log receives dashboard-side records from ``hermes_cli.web_server``,
+    ``hermes_cli.pty_bridge``, ``tui_gateway.*``, and ``uvicorn.*``.
     agent.log remains the catch-all (everything goes there).
 
 Session context:
@@ -65,7 +65,7 @@ else:
     from logging.handlers import RotatingFileHandler  # noqa: E402
 
 
-from prostor_constants import get_config_path, get_prostor_home
+from hermes_constants import get_config_path, get_hermes_home
 
 # Sentinel to track whether setup_logging() has already run.  The function
 # is idempotent — calling it twice is safe but the second call is a no-op
@@ -170,7 +170,7 @@ def _install_session_record_factory() -> None:
     the module is reloaded.
     """
     current_factory = logging.getLogRecordFactory()
-    if getattr(current_factory, "_prostor_session_injector", False):
+    if getattr(current_factory, "_hermes_session_injector", False):
         return  # already installed
 
     def _session_record_factory(*args, **kwargs):
@@ -179,7 +179,7 @@ def _install_session_record_factory() -> None:
         record.session_tag = f" [{sid}]" if sid else ""  # type: ignore[attr-defined]
         return record
 
-    _session_record_factory._prostor_session_injector = True  # type: ignore[attr-defined]
+    _session_record_factory._hermes_session_injector = True  # type: ignore[attr-defined]
     logging.setLogRecordFactory(_session_record_factory)
 
 
@@ -214,14 +214,14 @@ COMPONENT_PREFIXES = {
     # out of ``gateway/platforms/`` into bundled plugins (#41112) — they are
     # still gateway components and their logs belong in gateway.log / match
     # ``prostor logs --component gateway``.
-    "gateway": ("gateway", "prostor_plugins", "plugins.platforms"),
+    "gateway": ("gateway", "hermes_plugins", "plugins.platforms"),
     "agent": ("agent", "run_agent", "model_tools", "batch_runner"),
     "tools": ("tools",),
-    "cli": ("prostor_cli", "cli"),
+    "cli": ("hermes_cli", "cli"),
     "cron": ("cron",),
     "gui": (
-        "prostor_cli.web_server",
-        "prostor_cli.pty_bridge",
+        "hermes_cli.web_server",
+        "hermes_cli.pty_bridge",
         "tui_gateway",
         "uvicorn",
     ),
@@ -234,7 +234,7 @@ COMPONENT_PREFIXES = {
 
 def setup_logging(
     *,
-    prostor_home: Optional[Path] = None,
+    hermes_home: Optional[Path] = None,
     log_level: Optional[str] = None,
     max_size_mb: Optional[int] = None,
     backup_count: Optional[int] = None,
@@ -248,9 +248,9 @@ def setup_logging(
 
     Parameters
     ----------
-    prostor_home
+    hermes_home
         Override for the Prostor home directory.  Falls back to
-        ``get_prostor_home()`` (profile-aware).
+        ``get_hermes_home()`` (profile-aware).
     log_level
         Minimum level for the ``agent.log`` file handler.  Accepts any
         standard Python level name (``"DEBUG"``, ``"INFO"``, ``"WARNING"``).
@@ -276,7 +276,7 @@ def setup_logging(
         The ``logs/`` directory where files are written.
     """
     global _logging_initialized
-    home = prostor_home or get_prostor_home()
+    home = hermes_home or get_hermes_home()
     log_dir = home / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -364,13 +364,13 @@ def setup_verbose_logging() -> None:
     # Avoid adding duplicate stream handlers.
     for h in root.handlers:
         if isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler):
-            if getattr(h, "_prostor_verbose", False):
+            if getattr(h, "_hermes_verbose", False):
                 return
 
     handler = logging.StreamHandler(_safe_stderr())
     handler.setLevel(logging.DEBUG)
     handler.setFormatter(RedactingFormatter(_LOG_FORMAT_VERBOSE, datefmt="%H:%M:%S"))
-    handler._prostor_verbose = True  # type: ignore[attr-defined]
+    handler._hermes_verbose = True  # type: ignore[attr-defined]
     root.addHandler(handler)
 
     # Lower root logger level so DEBUG records reach all handlers.
@@ -414,7 +414,7 @@ class _ManagedRotatingFileHandler(RotatingFileHandler):
     """
 
     def __init__(self, *args, **kwargs):
-        from prostor_cli.config import is_managed
+        from hermes_cli.config import is_managed
         self._managed = is_managed()
         super().__init__(*args, **kwargs)
         # Snapshot the inode of the currently open stream so emit() can
@@ -560,7 +560,7 @@ def _read_logging_config():
             # Managed scope: an administrator can pin logging.* too. Overlay via
             # the shared helper (fail-open) since this reads config.yaml directly.
             try:
-                from prostor_cli import managed_scope
+                from hermes_cli import managed_scope
                 cfg = managed_scope.apply_managed_overlay(cfg)
             except Exception:
                 pass

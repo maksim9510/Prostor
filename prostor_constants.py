@@ -14,35 +14,35 @@ from pathlib import Path
 
 _profile_fallback_warned: bool = False
 _UNSET = object()
-_PROSTOR_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
-    "_PROSTOR_HOME_OVERRIDE", default=_UNSET
+_HERMES_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
+    "_HERMES_HOME_OVERRIDE", default=_UNSET
 )
 
 
-def set_prostor_home_override(path: str | Path | None) -> Token:
+def set_hermes_home_override(path: str | Path | None) -> Token:
     """Set a context-local Prostor home override and return its reset token.
 
     This is for in-process, per-task scoping.  It deliberately does not mutate
     ``os.environ`` because that is shared by every thread in the process.
     """
     value: str | object = _UNSET if path is None else str(path)
-    return _PROSTOR_HOME_OVERRIDE.set(value)
+    return _HERMES_HOME_OVERRIDE.set(value)
 
 
-def reset_prostor_home_override(token: Token) -> None:
+def reset_hermes_home_override(token: Token) -> None:
     """Restore the previous context-local Prostor home override."""
-    _PROSTOR_HOME_OVERRIDE.reset(token)
+    _HERMES_HOME_OVERRIDE.reset(token)
 
 
-def get_prostor_home_override() -> str | None:
+def get_hermes_home_override() -> str | None:
     """Return the active context-local Prostor home override, if any."""
-    override = _PROSTOR_HOME_OVERRIDE.get()
+    override = _HERMES_HOME_OVERRIDE.get()
     if override is _UNSET or not override:
         return None
     return str(override)
 
 
-def _get_platform_default_prostor_home() -> Path:
+def _get_platform_default_hermes_home() -> Path:
     """Return the platform-native default Prostor home path."""
     if sys.platform == "win32":
         local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
@@ -51,7 +51,7 @@ def _get_platform_default_prostor_home() -> Path:
     return Path.home() / ".prostor"
 
 
-def get_prostor_home() -> Path:
+def get_hermes_home() -> Path:
     """Return the Prostor home directory (default: platform-native path).
 
     Reads PROSTOR_HOME env var, falls back to the platform-native default.
@@ -64,10 +64,10 @@ def get_prostor_home() -> Path:
     the platform-native default — because raising here would brick 30+ module-level
     callers that import this at load time.  Subprocess spawners are
     expected to propagate ``PROSTOR_HOME`` explicitly (see the systemd
-    template in ``prostor_cli/gateway.py`` and the kanban dispatcher in
-    ``prostor_cli/kanban_db.py``).  See https://github.com/maksim9510/Prostor/issues/18594.
+    template in ``hermes_cli/gateway.py`` and the kanban dispatcher in
+    ``hermes_cli/kanban_db.py``).  See https://github.com/NousResearch/prostor-agent/issues/18594.
     """
-    override = get_prostor_home_override()
+    override = get_hermes_home_override()
     if override:
         return Path(override)
 
@@ -80,7 +80,7 @@ def get_prostor_home() -> Path:
     global _profile_fallback_warned
     if not _profile_fallback_warned:
         try:
-            fallback_home = _get_platform_default_prostor_home()
+            fallback_home = _get_platform_default_hermes_home()
             active_path = fallback_home / "active_profile"
             active = active_path.read_text().strip() if active_path.exists() else ""
         except (UnicodeDecodeError, OSError):
@@ -106,10 +106,10 @@ def get_prostor_home() -> Path:
             except Exception:
                 pass
 
-    return _get_platform_default_prostor_home()
+    return _get_platform_default_hermes_home()
 
 
-def get_default_prostor_root() -> Path:
+def get_default_hermes_root() -> Path:
     """Return the root Prostor directory for profile-level operations.
 
     In standard deployments this is the platform-native Prostor home
@@ -126,7 +126,7 @@ def get_default_prostor_root() -> Path:
 
     Import-safe — no dependencies beyond stdlib.
     """
-    native_home = _get_platform_default_prostor_home()
+    native_home = _get_platform_default_hermes_home()
     env_home = os.environ.get("PROSTOR_HOME", "")
     if not env_home:
         return native_home
@@ -180,7 +180,7 @@ def get_optional_skills_dir(default: Path | None = None) -> Path:
         return packaged
     if default is not None:
         return default
-    return get_prostor_home() / "optional-skills"
+    return get_hermes_home() / "optional-skills"
 
 
 def get_optional_mcps_dir(default: Path | None = None) -> Path:
@@ -199,7 +199,7 @@ def get_optional_mcps_dir(default: Path | None = None) -> Path:
         return packaged
     if default is not None:
         return default
-    return get_prostor_home() / "optional-mcps"
+    return get_hermes_home() / "optional-mcps"
 
 
 def get_bundled_skills_dir(default: Path | None = None) -> Path:
@@ -219,10 +219,10 @@ def get_bundled_skills_dir(default: Path | None = None) -> Path:
         return packaged
     if default is not None:
         return default
-    return get_prostor_home() / "skills"
+    return get_hermes_home() / "skills"
 
 
-def get_prostor_dir(new_subpath: str, old_name: str) -> Path:
+def get_hermes_dir(new_subpath: str, old_name: str) -> Path:
     """Resolve a Prostor subdirectory with backward compatibility.
 
     New installs get the consolidated layout (e.g. ``cache/images``).
@@ -236,14 +236,14 @@ def get_prostor_dir(new_subpath: str, old_name: str) -> Path:
     Returns:
         Absolute ``Path`` — old location if it exists on disk, otherwise the new one.
     """
-    home = get_prostor_home()
+    home = get_hermes_home()
     old_path = home / old_name
     if old_path.exists():
         return old_path
     return home / new_subpath
 
 
-def iter_prostor_node_dirs(home: Path | None = None) -> list[Path]:
+def iter_hermes_node_dirs(home: Path | None = None) -> list[Path]:
     """Return Prostor-managed Node.js directories in preferred lookup order.
 
     Windows installs from ``scripts/install.ps1`` unpack portable Node directly
@@ -251,10 +251,10 @@ def iter_prostor_node_dirs(home: Path | None = None) -> list[Path]:
     ``$PROSTOR_HOME/node/bin``. Include both shapes on every platform so mixed
     or migrated installs still work.
     """
-    root = home or get_prostor_home()
+    root = home or get_hermes_home()
     dirs = [root / "node"]
     bin_dir = root / "node" / "bin"
-    # NOTE: keep this ordering in sync with prostorManagedNodePathEntries() in
+    # NOTE: keep this ordering in sync with hermesManagedNodePathEntries() in
     # apps/desktop/electron/main.cjs — the Electron main process is Node and
     # cannot import this module, so the platform-ordering rule is mirrored there.
     if sys.platform == "win32":
@@ -277,15 +277,43 @@ def _candidate_node_command_names(command: str) -> list[str]:
     return [f"{base}.cmd", f"{base}.exe", base]
 
 
-def find_prostor_node_executable(command: str) -> str | None:
+def find_hermes_node_executable(command: str) -> str | None:
     """Return a Prostor-managed Node/npm executable path, if installed."""
     names = _candidate_node_command_names(command)
-    for directory in iter_prostor_node_dirs():
+    for directory in iter_hermes_node_dirs():
         for name in names:
             candidate = directory / name
             if candidate.is_file() and (
                 sys.platform == "win32" or os.access(candidate, os.X_OK)
             ):
+                return str(candidate)
+    return None
+
+
+def find_node_executable_on_path(command: str) -> str | None:
+    """Return a Node/npm executable from PATH with Windows shim ordering.
+
+    ``shutil.which("npm")`` can resolve an extensionless npm shim before the
+    ``.cmd`` shim on Windows. Python's CreateProcess cannot execute that shim
+    directly, so prefer the launchable variants explicitly for Prostor-owned
+    subprocesses.
+    """
+    if sys.platform != "win32":
+        return shutil.which(command)
+
+    command_str = str(command)
+    has_path_separator = any(
+        sep and sep in command_str for sep in (os.sep, os.altsep, "/", "\\")
+    )
+    if has_path_separator:
+        return command_str if Path(command_str).is_file() else None
+
+    for name in _candidate_node_command_names(command_str):
+        for directory in os.environ.get("PATH", "").split(os.pathsep):
+            if not directory:
+                continue
+            candidate = Path(directory) / name
+            if candidate.is_file():
                 return str(candidate)
     return None
 
@@ -296,15 +324,15 @@ def find_node_executable(command: str) -> str | None:
     This is for Prostor-owned subprocesses that should not be broken by a bad,
     missing, or elevation-triggering system Node/npm on PATH.
     """
-    return find_prostor_node_executable(command) or shutil.which(command)
+    return find_hermes_node_executable(command) or find_node_executable_on_path(command)
 
 
-def with_prostor_node_path(env: dict[str, str] | None = None) -> dict[str, str]:
+def with_hermes_node_path(env: dict[str, str] | None = None) -> dict[str, str]:
     """Return *env* with Prostor-managed Node directories prepended to PATH."""
     merged = dict(os.environ if env is None else env)
     existing = merged.get("PATH", "")
     parts = [p for p in existing.split(os.pathsep) if p]
-    managed = [str(path) for path in iter_prostor_node_dirs() if path.is_dir()]
+    managed = [str(path) for path in iter_hermes_node_dirs() if path.is_dir()]
     for entry in reversed(managed):
         if entry not in parts:
             parts.insert(0, entry)
@@ -312,7 +340,7 @@ def with_prostor_node_path(env: dict[str, str] | None = None) -> dict[str, str]:
     return merged
 
 
-def display_prostor_home() -> str:
+def display_hermes_home() -> str:
     """Return a user-friendly display string for the current PROSTOR_HOME.
 
     Uses ``~/`` shorthand for readability::
@@ -323,9 +351,9 @@ def display_prostor_home() -> str:
 
     Use this in **user-facing** print/log messages instead of hardcoding
     ``~/.prostor``.  For code that needs a real ``Path``, use
-    :func:`get_prostor_home` instead.
+    :func:`get_hermes_home` instead.
     """
-    home = get_prostor_home()
+    home = get_hermes_home()
     try:
         return "~/" + str(home.relative_to(Path.home()))
     except ValueError:
@@ -340,7 +368,7 @@ def secure_parent_dir(path: Path) -> None:
     prevent catastrophic host bricking when ``PROSTOR_HOME`` or other path
     env vars resolve to an unexpected location.
 
-    See https://github.com/maksim9510/Prostor/issues/25821.
+    See https://github.com/NousResearch/prostor-agent/issues/25821.
     """
     parent = path.parent.resolve()
     # Refuse root and its direct children (/usr, /home, /var, /tmp, …).
@@ -365,10 +393,10 @@ def _norm_home_path(path: str | None) -> str:
 
 def _profile_home_path(env: dict[str, str] | None = None) -> str | None:
     """Return ``{PROSTOR_HOME}/home`` when the profile-home directory exists."""
-    prostor_home = get_prostor_home_override() or (env or {}).get("PROSTOR_HOME") or os.getenv("PROSTOR_HOME")
-    if not prostor_home:
+    hermes_home = get_hermes_home_override() or (env or {}).get("PROSTOR_HOME") or os.getenv("PROSTOR_HOME")
+    if not hermes_home:
         return None
-    profile_home = os.path.join(prostor_home, "home")
+    profile_home = os.path.join(hermes_home, "home")
     if os.path.isdir(profile_home):
         return profile_home
     return None
@@ -545,7 +573,7 @@ def is_container() -> bool:
 
     Result is cached for the process lifetime.  Import-safe — no heavy deps.
 
-    See: maksim9510/Prostor#47111
+    See: NousResearch/prostor-agent#47111
     """
     global _container_detected
     if _container_detected is not None:
@@ -590,21 +618,21 @@ def is_container() -> bool:
 def get_config_path() -> Path:
     """Return the path to ``config.yaml`` under PROSTOR_HOME.
 
-    Replaces the ``get_prostor_home() / "config.yaml"`` pattern repeated
-    in 7+ files (skill_utils.py, prostor_logging.py, prostor_time.py, etc.).
+    Replaces the ``get_hermes_home() / "config.yaml"`` pattern repeated
+    in 7+ files (skill_utils.py, hermes_logging.py, hermes_time.py, etc.).
     """
-    return get_prostor_home() / "config.yaml"
+    return get_hermes_home() / "config.yaml"
 
 
 def get_skills_dir() -> Path:
     """Return the path to the skills directory under PROSTOR_HOME."""
-    return get_prostor_home() / "skills"
+    return get_hermes_home() / "skills"
 
 
 
 def get_env_path() -> Path:
     """Return the path to the ``.env`` file under PROSTOR_HOME."""
-    return get_prostor_home() / ".env"
+    return get_hermes_home() / ".env"
 
 
 # ─── Network Preferences ─────────────────────────────────────────────────────
@@ -632,7 +660,7 @@ def apply_ipv4_preference(force: bool = False) -> None:
     import socket
 
     # Guard against double-patching
-    if getattr(socket.getaddrinfo, "_prostor_ipv4_patched", False):
+    if getattr(socket.getaddrinfo, "_hermes_ipv4_patched", False):
         return
 
     _original_getaddrinfo = socket.getaddrinfo
@@ -648,7 +676,7 @@ def apply_ipv4_preference(force: bool = False) -> None:
                 return _original_getaddrinfo(host, port, family, type, proto, flags)
         return _original_getaddrinfo(host, port, family, type, proto, flags)
 
-    _ipv4_getaddrinfo._prostor_ipv4_patched = True  # type: ignore[attr-defined]
+    _ipv4_getaddrinfo._hermes_ipv4_patched = True  # type: ignore[attr-defined]
     socket.getaddrinfo = _ipv4_getaddrinfo  # type: ignore[assignment]
 
 

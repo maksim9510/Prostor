@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Set
 
-from prostor_cli.config import get_env_value, load_config
-from prostor_cli.nous_account import (
+from hermes_cli.config import get_env_value, load_config
+from hermes_cli.nous_account import (
     NousPortalAccountInfo,
     format_nous_portal_entitlement_message,
     get_nous_portal_account_info,
@@ -30,7 +30,7 @@ _DEFAULT_PLATFORM_TOOLSETS = {
 }
 
 # Maps a tools_config provider's ``managed_nous_feature`` to the tool-pool
-# coverage category (prostor_cli.nous_account.TOOL_COVERAGE_CATEGORIES). Lets the
+# coverage category (hermes_cli.nous_account.TOOL_COVERAGE_CATEGORIES). Lets the
 # `prostor tools` picker scope its entitlement gate to the selected backend, so a
 # free-tool-pool user is allowed image gen but denied video gen at select time —
 # consistent with the per-category feature gates in get_nous_subscription_features.
@@ -1067,7 +1067,7 @@ def prompt_enable_tool_gateway(
         return set()
 
     try:
-        from prostor_cli.setup import prompt_checklist
+        from hermes_cli.setup import prompt_checklist
     except Exception:
         return set()
 
@@ -1115,7 +1115,7 @@ def prompt_enable_tool_gateway(
 
     changed = apply_gateway_defaults(config, chosen_keys)
     if changed:
-        from prostor_cli.config import save_config
+        from hermes_cli.config import save_config
 
         save_config(config)
         for key in sorted(changed):
@@ -1205,7 +1205,7 @@ def _run_nous_portal_login_only(*, capability: str) -> bool:
     the flow failed.
     """
     try:
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             _auth_store_lock,
             _load_auth_store,
             _nous_device_code_login,

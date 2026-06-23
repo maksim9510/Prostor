@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import pytest
 
-from prostor_cli.dashboard_auth.audit import audit_log, AuditEvent
+from hermes_cli.dashboard_auth.audit import audit_log, AuditEvent
 
 
 @pytest.fixture

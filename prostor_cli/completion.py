@@ -72,7 +72,7 @@ def generate_bash(parser: argparse.ArgumentParser) -> str:
                 f"                    return\n"
                 f"                    ;;\n"
                 f"                {profile_actions.replace(' ', '|')})\n"
-                f"                    COMPREPLY=($(compgen -W \"$(_prostor_profiles)\" -- \"$cur\"))\n"
+                f"                    COMPREPLY=($(compgen -W \"$(_hermes_profiles)\" -- \"$cur\"))\n"
                 f"                    return\n"
                 f"                    ;;\n"
                 f"            esac\n"
@@ -101,7 +101,7 @@ def generate_bash(parser: argparse.ArgumentParser) -> str:
 # Add to ~/.bashrc:
 #   eval "$(prostor completion bash)"
 
-_prostor_profiles() {{
+_hermes_profiles() {{
     local profiles_dir="$HOME/.prostor/profiles"
     local profiles="default"
     if [ -d "$profiles_dir" ]; then
@@ -112,7 +112,7 @@ _prostor_profiles() {{
     echo "$profiles"
 }}
 
-_prostor_completion() {{
+_hermes_completion() {{
     local cur prev
     COMPREPLY=()
     cur="${{COMP_WORDS[COMP_CWORD]}}"
@@ -120,7 +120,7 @@ _prostor_completion() {{
 
     # Complete profile names after -p / --profile
     if [[ "$prev" == "-p" || "$prev" == "--profile" ]]; then
-        COMPREPLY=($(compgen -W "$(_prostor_profiles)" -- "$cur"))
+        COMPREPLY=($(compgen -W "$(_hermes_profiles)" -- "$cur"))
         return
     fi
 
@@ -135,7 +135,7 @@ _prostor_completion() {{
     fi
 }}
 
-complete -F _prostor_completion prostor
+complete -F _hermes_completion prostor
 """
 
 
@@ -169,7 +169,7 @@ def generate_zsh(parser: argparse.ArgumentParser) -> str:
                 f"                profile)\n"
                 f"                    case ${{line[2]}} in\n"
                 f"                        use|delete|show|alias|rename|export)\n"
-                f"                            _prostor_profiles\n"
+                f"                            _hermes_profiles\n"
                 f"                            ;;\n"
                 f"                        *)\n"
                 f"                            local -a profile_cmds\n"
@@ -204,7 +204,7 @@ def generate_zsh(parser: argparse.ArgumentParser) -> str:
 # Add to ~/.zshrc:
 #   eval "$(prostor completion zsh)"
 
-_prostor_profiles() {{
+_hermes_profiles() {{
     local -a profiles
     profiles=(default)
     if [[ -d "$HOME/.prostor/profiles" ]]; then
@@ -213,14 +213,14 @@ _prostor_profiles() {{
     _describe 'profile' profiles
 }}
 
-_prostor() {{
+_hermes() {{
     local context state line
     typeset -A opt_args
 
     _arguments -C \\
         '(-)'{{-h,--help}}'[Show help and exit]' \\
         '(-)'{{-V,--version}}'[Show version and exit]' \\
-        '(-)'{{-p,--profile}}'[Profile name]:profile:_prostor_profiles' \\
+        '(-)'{{-p,--profile}}'[Profile name]:profile:_hermes_profiles' \\
         '1:command:->commands' \\
         '*::arg:->args'
 
@@ -240,7 +240,7 @@ _prostor() {{
     esac
 }}
 
-compdef _prostor prostor
+compdef _hermes prostor
 """
 
 
@@ -259,7 +259,7 @@ def generate_fish(parser: argparse.ArgumentParser) -> str:
         "#   prostor completion fish | source",
         "",
         "# Helper: list available profiles",
-        "function __prostor_profiles",
+        "function __hermes_profiles",
         "    echo default",
         "    if test -d $HOME/.prostor/profiles",
         "        for d in $HOME/.prostor/profiles/*/",
@@ -273,7 +273,7 @@ def generate_fish(parser: argparse.ArgumentParser) -> str:
         "",
         "# Complete profile names after -p / --profile",
         "complete -c prostor -f -s p -l profile"
-        " -d 'Profile name' -xa '(__prostor_profiles)'",
+        " -d 'Profile name' -xa '(__hermes_profiles)'",
         "",
         "# Top-level subcommands",
     ]
@@ -312,7 +312,7 @@ def generate_fish(parser: argparse.ArgumentParser) -> str:
                     f"complete -c prostor -f "
                     f"-n '__fish_seen_subcommand_from {action}; "
                     f"and __fish_seen_subcommand_from profile' "
-                    f"-a '(__prostor_profiles)' -d 'Profile name'"
+                    f"-a '(__hermes_profiles)' -d 'Profile name'"
                 )
 
     lines.append("")

@@ -1,7 +1,7 @@
 """Tests for SIGHUP protection and stdout mirroring in ``prostor update``.
 
 Covers ``_UpdateOutputStream``, ``_install_hangup_protection``, and
-``_finalize_update_output`` in ``prostor_cli/main.py``.  These exist so
+``_finalize_update_output`` in ``hermes_cli/main.py``.  These exist so
 that ``prostor update`` survives a terminal disconnect mid-install
 (SSH drop, shell close) without leaving the venv half-installed.
 """
@@ -14,7 +14,7 @@ import sys
 
 import pytest
 
-from prostor_cli.main import (
+from hermes_cli.main import (
     _UpdateOutputStream,
     _finalize_update_output,
     _install_hangup_protection,
@@ -182,10 +182,10 @@ class TestInstallHangupProtection:
     def test_installs_sighup_ignore(self, tmp_path, monkeypatch):
         """SIGHUP should be set to SIG_IGN so SSH disconnect doesn't kill the update."""
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
-        # Clear cached get_prostor_home if present
-        import prostor_cli.config as _cfg
-        if hasattr(_cfg, "_PROSTOR_HOME_CACHE"):
-            _cfg._PROSTOR_HOME_CACHE = None  # type: ignore[attr-defined]
+        # Clear cached get_hermes_home if present
+        import hermes_cli.config as _cfg
+        if hasattr(_cfg, "_HERMES_HOME_CACHE"):
+            _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
 
         original_handler = signal.getsignal(signal.SIGHUP)
         state = _install_hangup_protection(gateway_mode=False)
@@ -200,9 +200,9 @@ class TestInstallHangupProtection:
     def test_wraps_stdout_and_stderr_with_mirror(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         # Nuke any cached home path
-        import prostor_cli.config as _cfg
-        if hasattr(_cfg, "_PROSTOR_HOME_CACHE"):
-            _cfg._PROSTOR_HOME_CACHE = None  # type: ignore[attr-defined]
+        import hermes_cli.config as _cfg
+        if hasattr(_cfg, "_HERMES_HOME_CACHE"):
+            _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
 
         prev_out, prev_err = sys.stdout, sys.stderr
         state = _install_hangup_protection(gateway_mode=False)
@@ -230,9 +230,9 @@ class TestInstallHangupProtection:
 
     def test_logs_dir_created_if_missing(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
-        import prostor_cli.config as _cfg
-        if hasattr(_cfg, "_PROSTOR_HOME_CACHE"):
-            _cfg._PROSTOR_HOME_CACHE = None  # type: ignore[attr-defined]
+        import hermes_cli.config as _cfg
+        if hasattr(_cfg, "_HERMES_HOME_CACHE"):
+            _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
 
         # No logs/ dir yet.
         assert not (tmp_path / "logs").exists()
@@ -245,7 +245,7 @@ class TestInstallHangupProtection:
             _finalize_update_output(state)
 
     def test_non_fatal_if_log_setup_fails(self, monkeypatch):
-        """If get_prostor_home() raises, stdio must be left untouched but SIGHUP still handled."""
+        """If get_hermes_home() raises, stdio must be left untouched but SIGHUP still handled."""
         prev_out, prev_err = sys.stdout, sys.stderr
 
         def _boom():
@@ -253,7 +253,7 @@ class TestInstallHangupProtection:
 
         # Patch the import inside _install_hangup_protection.
         monkeypatch.setattr(
-            "prostor_cli.config.get_prostor_home", _boom, raising=True
+            "hermes_cli.config.get_hermes_home", _boom, raising=True
         )
 
         original_handler = (
@@ -286,9 +286,9 @@ class TestFinalizeUpdateOutput:
 
     def test_restores_streams_and_closes_log(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
-        import prostor_cli.config as _cfg
-        if hasattr(_cfg, "_PROSTOR_HOME_CACHE"):
-            _cfg._PROSTOR_HOME_CACHE = None  # type: ignore[attr-defined]
+        import hermes_cli.config as _cfg
+        if hasattr(_cfg, "_HERMES_HOME_CACHE"):
+            _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
 
         prev_out = sys.stdout
         state = _install_hangup_protection(gateway_mode=False)

@@ -1,7 +1,7 @@
 import { type MutableRefObject, useCallback, useState } from 'react'
 
-import { BUILTIN_PERSONALITIES, normalizePersonalityValue, personalityNamesFromConfig } from '@/lib/chat-runtime'
 import { getProstorConfig, getProstorConfigDefaults } from '@/prostor'
+import { BUILTIN_PERSONALITIES, normalizePersonalityValue, personalityNamesFromConfig } from '@/lib/chat-runtime'
 import {
   $currentCwd,
   setAvailablePersonalities,

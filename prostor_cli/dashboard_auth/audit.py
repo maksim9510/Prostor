@@ -5,7 +5,7 @@ Format: one JSON object per line. Token-like fields are stripped before
 serialisation to avoid leaking refresh tokens or JWTs to disk.
 
 This module deliberately keeps a minimal dependency surface — no imports
-from ``prostor_constants`` or other prostor_cli modules — so it can be
+from ``hermes_constants`` or other hermes_cli modules — so it can be
 imported safely from middleware code that loads early in the startup
 sequence.
 """
@@ -52,9 +52,9 @@ class AuditEvent(enum.Enum):
 def _resolve_log_path() -> Path:
     """``$PROSTOR_HOME/logs/dashboard-auth.log`` with the standard fallback.
 
-    Mirrors ``prostor_constants.get_prostor_home`` semantics: env var wins,
+    Mirrors ``hermes_constants.get_hermes_home`` semantics: env var wins,
     else ``~/.prostor``. A local copy avoids an import cycle with the
-    middleware which lives below ``prostor_cli``.
+    middleware which lives below ``hermes_cli``.
     """
     home = os.environ.get("PROSTOR_HOME") or str(Path.home() / ".prostor")
     return Path(home) / "logs" / "dashboard-auth.log"

@@ -48,7 +48,7 @@ _PROFILE_DIRS = [
     # Back-compat/Docker HOME for tool subprocesses. Host subprocesses keep
     # the user's real HOME by default so normal CLI credentials remain visible;
     # containers still use this directory for persistent HOME state.
-    # See prostor_constants.get_subprocess_home().
+    # See hermes_constants.get_subprocess_home().
     "home",
 ]
 
@@ -163,7 +163,7 @@ def _clone_all_copytree_ignore(source_dir: Path):
     clone.
     """
     source_resolved = source_dir.resolve()
-    is_default_source = source_resolved == _get_default_prostor_home().resolve()
+    is_default_source = source_resolved == _get_default_hermes_home().resolve()
 
     def _ignore(directory: str, names: List[str]) -> List[str]:
         ignored: list[str] = []
@@ -208,14 +208,14 @@ _DEFAULT_EXPORT_EXCLUDE_ROOT = frozenset({
     "node_modules",         # npm packages
     # Databases & runtime state
     "state.db", "state.db-shm", "state.db-wal",
-    "prostor_state.db",
+    "hermes_state.db",
     "response_store.db", "response_store.db-shm", "response_store.db-wal",
     "gateway.pid", "gateway_state.json", "processes.json",
     "auth.json",            # API keys, OAuth tokens, credential pools
     ".env",                 # API keys (dotenv)
     "auth.lock", "active_profile", ".update_check",
     "errors.log",
-    ".prostor_history",
+    ".hermes_history",
     # Caches (regenerated on use)
     "image_cache", "audio_cache", "document_cache",
     "browser_screenshots", "checkpoints",
@@ -229,7 +229,7 @@ _RESERVED_NAMES = frozenset({
 })
 
 # Prostor subcommands that cannot be used as profile names/aliases
-_PROSTOR_SUBCOMMANDS = frozenset({
+_HERMES_SUBCOMMANDS = frozenset({
     "chat", "model", "gateway", "setup", "whatsapp", "login", "logout",
     "status", "cron", "doctor", "dump", "config", "pairing", "skills", "tools",
     "mcp", "sessions", "insights", "version", "update", "uninstall",
@@ -252,23 +252,23 @@ def _get_profiles_root() -> Path:
     ``~/.prostor``, profiles live under ``PROSTOR_HOME/profiles/`` so
     they persist on the mounted volume.
     """
-    return _get_default_prostor_home() / "profiles"
+    return _get_default_hermes_home() / "profiles"
 
 
-def _get_default_prostor_home() -> Path:
+def _get_default_hermes_home() -> Path:
     """Return the default (pre-profile) PROSTOR_HOME path.
 
     In standard deployments this is ``~/.prostor``.
     In Docker/custom deployments where PROSTOR_HOME is outside ``~/.prostor``
     (e.g. ``/opt/data``), returns PROSTOR_HOME directly.
     """
-    from prostor_constants import get_default_prostor_root
-    return get_default_prostor_root()
+    from hermes_constants import get_default_hermes_root
+    return get_default_hermes_root()
 
 
 def _get_active_profile_path() -> Path:
     """Return the path to the sticky active_profile file."""
-    return _get_default_prostor_home() / "active_profile"
+    return _get_default_hermes_home() / "active_profile"
 
 
 def _get_wrapper_dir() -> Path:
@@ -332,7 +332,7 @@ def get_profile_dir(name: str) -> Path:
     """Resolve a profile name to its PROSTOR_HOME directory."""
     canon = normalize_profile_name(name)
     if canon == "default":
-        return _get_default_prostor_home()
+        return _get_default_hermes_home()
     return _get_profiles_root() / canon
 
 
@@ -356,7 +356,7 @@ def check_alias_collision(name: str) -> Optional[str]:
     canon = normalize_profile_name(name)
     if canon in _RESERVED_NAMES:
         return f"'{canon}' is a reserved name"
-    if canon in _PROSTOR_SUBCOMMANDS:
+    if canon in _HERMES_SUBCOMMANDS:
         return f"'{canon}' conflicts with a prostor subcommand"
 
     # Check existing commands in PATH
@@ -414,7 +414,7 @@ def create_wrapper_script(name: str, target: Optional[str] = None) -> Optional[P
     if is_windows:
         wrapper_path = wrapper_dir / f"{canon}.bat"
         try:
-            wrapper_path.write_text(f"@echo off\r\nprostor -p {profile} %*\r\n")
+            wrapper_path.write_text(f"@echo off\r\nhermes -p {profile} %*\r\n")
             return wrapper_path
         except OSError as e:
             print(f"⚠ Could not create wrapper at {wrapper_path}: {e}")
@@ -422,8 +422,8 @@ def create_wrapper_script(name: str, target: Optional[str] = None) -> Optional[P
     else:
         wrapper_path = wrapper_dir / canon
         try:
-            prostor_exe = shutil.which("prostor") or "prostor"
-            wrapper_path.write_text(f'#!/bin/sh\nexec {shlex.quote(prostor_exe)} -p {profile} "$@"\n')
+            hermes_exe = shutil.which("prostor") or "prostor"
+            wrapper_path.write_text(f'#!/bin/sh\nexec {shlex.quote(hermes_exe)} -p {profile} "$@"\n')
             wrapper_path.chmod(wrapper_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
             return wrapper_path
         except OSError as e:
@@ -469,16 +469,16 @@ def _migrate_profile_config_if_outdated(profile_dir: Path) -> None:
         return
 
     try:
-        from prostor_constants import reset_prostor_home_override, set_prostor_home_override
-        from prostor_cli.config import check_config_version, migrate_config
+        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+        from hermes_cli.config import check_config_version, migrate_config
 
-        token = set_prostor_home_override(str(profile_dir))
+        token = set_hermes_home_override(str(profile_dir))
         try:
             current_ver, latest_ver = check_config_version()
             if current_ver < latest_ver:
                 migrate_config(interactive=False, quiet=True)
         finally:
-            reset_prostor_home_override(token)
+            reset_hermes_home_override(token)
     except Exception:
         # Profile creation should not fail because an old copied config could
         # not be migrated. The next `prostor doctor --fix` can still surface the
@@ -719,7 +719,7 @@ def list_profiles() -> List[ProfileInfo]:
     wrapper_dir = _get_wrapper_dir()
 
     # Default profile
-    default_home = _get_default_prostor_home()
+    default_home = _get_default_hermes_home()
     if default_home.is_dir():
         model, provider = _read_config_model(default_home)
         dist_name, dist_version, dist_source = _read_distribution_meta(default_home)
@@ -782,7 +782,7 @@ def list_profiles() -> List[ProfileInfo]:
 
 
 def profiles_to_serve(multiplex: bool) -> List[Tuple[str, Path]]:
-    """Return the ``(profile_name, prostor_home)`` pairs a gateway should serve.
+    """Return the ``(profile_name, hermes_home)`` pairs a gateway should serve.
 
     This is the single chokepoint for "which profiles does the inbound gateway
     handle" so later multiplexing phases never re-derive the set.
@@ -798,14 +798,14 @@ def profiles_to_serve(multiplex: bool) -> List[Tuple[str, Path]]:
     per-profile config reads, gateway-running probes, or skill counts like
     :func:`list_profiles`. It runs on gateway startup and must stay cheap.
 
-    The returned ``prostor_home`` is the path to pass to
-    ``set_prostor_home_override`` when scoping a turn to that profile.
+    The returned ``hermes_home`` is the path to pass to
+    ``set_hermes_home_override`` when scoping a turn to that profile.
     """
     active = get_active_profile_name() or "default"
     if not multiplex:
         return [(active, get_profile_dir(active))]
 
-    serve: List[Tuple[str, Path]] = [("default", _get_default_prostor_home())]
+    serve: List[Tuple[str, Path]] = [("default", _get_default_hermes_home())]
 
     profiles_root = _get_profiles_root()
     if profiles_root.is_dir():
@@ -880,8 +880,8 @@ def create_profile(
     if clone_from is not None or clone_all or clone_config:
         if clone_from is None:
             # Default: clone from active profile
-            from prostor_constants import get_prostor_home
-            source_dir = get_prostor_home()
+            from hermes_constants import get_hermes_home
+            source_dir = get_hermes_home()
         else:
             clone_from = normalize_profile_name(clone_from)
             validate_profile_name(clone_from)
@@ -964,7 +964,7 @@ def create_profile(
     soul_path = profile_dir / "SOUL.md"
     if not soul_path.exists():
         try:
-            from prostor_cli.default_soul import DEFAULT_SOUL_MD
+            from hermes_cli.default_soul import DEFAULT_SOUL_MD
             soul_path.write_text(DEFAULT_SOUL_MD, encoding="utf-8")
         except Exception:
             pass  # best-effort — don't fail profile creation over this
@@ -1082,7 +1082,7 @@ def backfill_profile_envs(quiet: bool = False) -> List[str]:
     if not profiles_root.is_dir():
         return backfilled
 
-    default_env = _get_default_prostor_home() / ".env"
+    default_env = _get_default_hermes_home() / ".env"
 
     for entry in sorted(profiles_root.iterdir()):
         if not entry.is_dir() or not _PROFILE_ID_RE.match(entry.name):
@@ -1294,10 +1294,10 @@ def _maybe_register_gateway_service(profile_name: str) -> None:
     actually the S6 one.
     """
     try:
-        from prostor_cli.service_manager import detect_service_manager
+        from hermes_cli.service_manager import detect_service_manager
         if detect_service_manager() != "s6":
             return  # host path — silent, no registration needed
-        from prostor_cli.service_manager import get_service_manager
+        from hermes_cli.service_manager import get_service_manager
         mgr = get_service_manager()
     except RuntimeError:
         return  # no backend on this host — nothing to do
@@ -1329,10 +1329,10 @@ def _maybe_unregister_gateway_service(profile_name: str) -> None:
     — see that docstring.
     """
     try:
-        from prostor_cli.service_manager import detect_service_manager
+        from hermes_cli.service_manager import detect_service_manager
         if detect_service_manager() != "s6":
             return  # host path — silent
-        from prostor_cli.service_manager import get_service_manager
+        from hermes_cli.service_manager import get_service_manager
         mgr = get_service_manager()
     except RuntimeError:
         return
@@ -1355,7 +1355,7 @@ def _cleanup_gateway_service(name: str, profile_dir: Path) -> None:
     old_home = os.environ.get("PROSTOR_HOME")
     try:
         os.environ["PROSTOR_HOME"] = str(profile_dir)
-        from prostor_cli.gateway import get_service_name, get_launchd_plist_path
+        from hermes_cli.gateway import get_service_name, get_launchd_plist_path
 
         if _platform.system() == "Linux":
             svc_name = get_service_name()
@@ -1484,11 +1484,11 @@ def get_active_profile_name() -> str:
     Returns the profile name if PROSTOR_HOME points into ``~/.prostor/profiles/<name>``.
     Returns ``"custom"`` if PROSTOR_HOME is set to an unrecognized path.
     """
-    from prostor_constants import get_prostor_home
-    prostor_home = get_prostor_home()
-    resolved = prostor_home.resolve()
+    from hermes_constants import get_hermes_home
+    hermes_home = get_hermes_home()
+    resolved = hermes_home.resolve()
 
-    default_resolved = _get_default_prostor_home().resolve()
+    default_resolved = _get_default_hermes_home().resolve()
     if resolved == default_resolved:
         return "default"
 
@@ -1696,7 +1696,7 @@ def import_profile(archive_path: str, name: Optional[str] = None) -> Path:
     profiles_root = _get_profiles_root()
     profiles_root.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="prostor_profile_import_") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="hermes_profile_import_") as tmpdir:
         staging_root = Path(tmpdir)
         _safe_extract_profile_archive(archive, staging_root)
 
@@ -1722,13 +1722,13 @@ def import_profile(archive_path: str, name: Optional[str] = None) -> Path:
 
 def _migrate_honcho_profile_host(old_name: str, new_name: str, new_dir: Path) -> None:
     """Rename Honcho host blocks for a renamed profile without changing peers."""
-    old_host = f"prostor_{old_name}"
+    old_host = f"hermes_{old_name}"
     legacy_old_host = f"prostor.{old_name}"
-    new_host = f"prostor_{new_name}"
+    new_host = f"hermes_{new_name}"
 
     candidates = [
         new_dir / "honcho.json",
-        _get_default_prostor_home() / "honcho.json",
+        _get_default_hermes_home() / "honcho.json",
         Path.home() / ".honcho" / "config.json",
     ]
 
@@ -1760,7 +1760,7 @@ def _migrate_honcho_profile_host(old_name: str, new_name: str, new_dir: Path) ->
 
         block = hosts[source_host]
         if isinstance(block, dict) and "aiPeer" not in block:
-            if source_host.startswith("prostor_"):
+            if source_host.startswith("hermes_"):
                 bare = source_host.split("_", 1)[1]
             else:
                 bare = source_host.split(".", 1)[1] if "." in source_host else source_host

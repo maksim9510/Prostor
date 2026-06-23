@@ -208,7 +208,7 @@ def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
     return _SUCCESS_EXIT
 
 
-def _load_prostor_env() -> None:
+def _load_hermes_env() -> None:
     """Populate ``os.environ`` from ``~/.prostor/.env`` AND bridge top-level
     ``config.yaml`` keys into the environment so the underlying gateway
     config loader sees platform credentials and home channel IDs.
@@ -234,8 +234,8 @@ def _load_prostor_env() -> None:
         load_dotenv = None  # type: ignore[assignment]
 
     try:
-        from prostor_cli.config import get_prostor_home
-        home = get_prostor_home()
+        from hermes_cli.config import get_hermes_home
+        home = get_hermes_home()
     except Exception:
         return
 
@@ -271,7 +271,7 @@ def _load_prostor_env() -> None:
         return
 
     try:
-        from prostor_cli.config import _expand_env_vars
+        from hermes_cli.config import _expand_env_vars
         raw = _expand_env_vars(raw)
     except Exception:
         pass
@@ -279,7 +279,7 @@ def _load_prostor_env() -> None:
     # Managed scope: overlay administrator-pinned values before bridging to env,
     # so a managed top-level scalar wins here too. Fail-open via the helper.
     try:
-        from prostor_cli import managed_scope
+        from hermes_cli import managed_scope
         raw = managed_scope.apply_managed_overlay(raw if isinstance(raw, dict) else {})
     except Exception:
         pass
@@ -301,7 +301,7 @@ def cmd_send(args: argparse.Namespace) -> None:
     # Bridge ~/.prostor/.env and ~/.prostor/config.yaml into os.environ so the
     # gateway config loader (invoked downstream by send_message_tool and by
     # the channel directory) can see platform credentials and home channels.
-    _load_prostor_env()
+    _load_hermes_env()
 
     # --list short-circuits everything else.
     if getattr(args, "list_targets", False):

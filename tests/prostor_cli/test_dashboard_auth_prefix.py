@@ -5,7 +5,7 @@ prefix (e.g. ``mission-control.tilos.com/prostor/*`` -> local Caddy ->
 :9119), injecting ``X-Forwarded-Prefix: /prostor`` on every request.
 
 The dashboard already honours this for the SPA bundle (rewriting asset
-URLs and the bootstrap ``__PROSTOR_BASE_PATH__``). The OAuth gate must
+URLs and the bootstrap ``__HERMES_BASE_PATH__``). The OAuth gate must
 honour it too:
 
   1. The gate's ``Location:`` redirect to /login (in
@@ -38,9 +38,9 @@ pytestmark = pytest.mark.xdist_group("dashboard_auth_app_state")
 
 from fastapi.testclient import TestClient
 
-from prostor_cli import web_server
-from prostor_cli.dashboard_auth import clear_providers, register_provider
-from tests.prostor_cli.conftest_dashboard_auth import StubAuthProvider
+from hermes_cli import web_server
+from hermes_cli.dashboard_auth import clear_providers, register_provider
+from tests.hermes_cli.conftest_dashboard_auth import StubAuthProvider
 
 
 @pytest.fixture
@@ -234,7 +234,7 @@ class TestPublicUrlOverride:
 
     @pytest.fixture
     def patch_config(self, monkeypatch):
-        """Replace ``prostor_cli.config.load_config`` with a stub
+        """Replace ``hermes_cli.config.load_config`` with a stub
         returning the given ``public_url``. Pass ``None`` to set no
         config-side value."""
 
@@ -243,7 +243,7 @@ class TestPublicUrlOverride:
             if public_url is not None:
                 cfg = {"dashboard": {"public_url": public_url}}
             monkeypatch.setattr(
-                "prostor_cli.config.load_config", lambda: cfg
+                "hermes_cli.config.load_config", lambda: cfg
             )
 
         return _set
@@ -396,7 +396,7 @@ class TestPublicUrlOverride:
         silently discarded. Regression for #42780."""
         import logging
 
-        from prostor_cli.dashboard_auth import prefix as prefix_mod
+        from hermes_cli.dashboard_auth import prefix as prefix_mod
 
         # Reset the per-value dedup cache so the warning fires in-test
         # regardless of test ordering.
@@ -428,7 +428,7 @@ class TestPublicUrlOverride:
         misconfigured deploy doesn't flood the logs."""
         import logging
 
-        from prostor_cli.dashboard_auth import prefix as prefix_mod
+        from hermes_cli.dashboard_auth import prefix as prefix_mod
 
         prefix_mod._warned_malformed_public_urls.clear()
         patch_config(None)
@@ -455,7 +455,7 @@ class TestPublicUrlOverride:
         """A correctly-formed value must not produce a spurious warning."""
         import logging
 
-        from prostor_cli.dashboard_auth import prefix as prefix_mod
+        from hermes_cli.dashboard_auth import prefix as prefix_mod
 
         prefix_mod._warned_malformed_public_urls.clear()
         patch_config(None)
@@ -498,7 +498,7 @@ class TestCookiePathRespectsPrefix:
             follow_redirects=False,
         )
         cookies = r.headers.get_list("set-cookie")
-        pkce = next(c for c in cookies if "prostor_session_pkce" in c)
+        pkce = next(c for c in cookies if "hermes_session_pkce" in c)
         # Browser only sends cookie back if the request path is under
         # the cookie's Path attribute, so we need /prostor here. Bare
         # /-rooted cookies would still be sent but would also be sent
@@ -523,7 +523,7 @@ class TestCookiePathRespectsPrefix:
         # The PKCE cookie name carries the __Secure- prefix.
         pkce_candidates = [
             c for c in cookies
-            if c.startswith("__Secure-prostor_session_pkce=")
+            if c.startswith("__Secure-hermes_session_pkce=")
         ]
         assert pkce_candidates, (
             f"PKCE cookie missing __Secure- prefix: {cookies!r}"
@@ -542,7 +542,7 @@ class TestCookiePathRespectsPrefix:
         cookies = r.headers.get_list("set-cookie")
         pkce_candidates = [
             c for c in cookies
-            if c.startswith("__Host-prostor_session_pkce=")
+            if c.startswith("__Host-hermes_session_pkce=")
         ]
         assert pkce_candidates, (
             f"PKCE cookie missing __Host- prefix on direct deploy: "
@@ -560,7 +560,7 @@ class TestCookiePathRespectsPrefix:
         spec-compatible without Secure."""
         from fastapi import FastAPI
         from fastapi.responses import Response
-        from prostor_cli.dashboard_auth.cookies import set_pkce_cookie
+        from hermes_cli.dashboard_auth.cookies import set_pkce_cookie
 
         app = FastAPI()
 
@@ -574,7 +574,7 @@ class TestCookiePathRespectsPrefix:
         r = client.get("/set")
         cookies = r.headers.get_list("set-cookie")
         # Bare cookie name, no prefix.
-        assert any(c.startswith("prostor_session_pkce=") for c in cookies), (
+        assert any(c.startswith("hermes_session_pkce=") for c in cookies), (
             f"Loopback cookie should be bare-named: {cookies!r}"
         )
         # And no __Host- / __Secure- variant accidentally emitted.
@@ -612,10 +612,10 @@ class TestCookiePathRespectsPrefix:
         )
         pkce_set = next(
             c for c in r1.headers.get_list("set-cookie")
-            if "prostor_session_pkce" in c
+            if "hermes_session_pkce" in c
         )
-        # Parse "__Secure-prostor_session_pkce=...; HttpOnly; ...".
-        pkce_kv = pkce_set.split(";", 1)[0]  # "__Secure-prostor_session_pkce=value"
+        # Parse "__Secure-hermes_session_pkce=...; HttpOnly; ...".
+        pkce_kv = pkce_set.split(";", 1)[0]  # "__Secure-hermes_session_pkce=value"
         state = r1.headers["location"].split("state=")[1]
 
         # Round-trip the cookie by hand because TestClient's jar won't
@@ -633,7 +633,7 @@ class TestCookiePathRespectsPrefix:
         cookies = r2.headers.get_list("set-cookie")
         at_cookies = [
             c for c in cookies
-            if c.startswith("__Secure-prostor_session_at=")
+            if c.startswith("__Secure-hermes_session_at=")
         ]
         assert at_cookies, (
             f"session_at missing __Secure- prefix: {cookies!r}"

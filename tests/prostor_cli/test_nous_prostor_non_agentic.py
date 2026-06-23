@@ -5,7 +5,7 @@ Prior to this check, the warning fired on any model whose name contained
 local Modelfiles such as ``prostor-brain:qwen3-14b-ctx16k`` — a tool-capable
 Qwen3 wrapper that happens to live under the "prostor" tag namespace.
 
-``is_nous_prostor_non_agentic`` should only match the actual Nous Research
+``is_nous_hermes_non_agentic`` should only match the actual Nous Research
 Prostor-3 / Prostor-4 chat family.
 """
 
@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import pytest
 
-from prostor_cli.model_switch import (
-    _PROSTOR_MODEL_WARNING,
-    _check_prostor_model_warning,
-    is_nous_prostor_non_agentic,
+from hermes_cli.model_switch import (
+    _HERMES_MODEL_WARNING,
+    _check_hermes_model_warning,
+    is_nous_hermes_non_agentic,
 )
 
 
@@ -29,18 +29,18 @@ from prostor_cli.model_switch import (
         "Prostor-3",
         "prostor-4",
         "prostor-4-405b",
-        "prostor_4_70b",
-        "openrouter/prostor3:70b",
+        "hermes_4_70b",
+        "openrouter/hermes3:70b",
         "openrouter/nousresearch/prostor-4-405b",
-        "NousResearch/Prostor3",
+        "NousResearch/Hermes3",
         "prostor-3.1",
     ],
 )
-def test_matches_real_nous_prostor_chat_models(model_name: str) -> None:
-    assert is_nous_prostor_non_agentic(model_name), (
+def test_matches_real_nous_hermes_chat_models(model_name: str) -> None:
+    assert is_nous_hermes_non_agentic(model_name), (
         f"expected {model_name!r} to be flagged as Nous Prostor 3/4"
     )
-    assert _check_prostor_model_warning(model_name) == _PROSTOR_MODEL_WARNING
+    assert _check_hermes_model_warning(model_name) == _HERMES_MODEL_WARNING
 
 
 @pytest.mark.parametrize(
@@ -62,7 +62,7 @@ def test_matches_real_nous_prostor_chat_models(model_name: str) -> None:
         "deepseek-chat",
         # Non-chat Prostor models we don't warn about
         "prostor-llm-2",
-        "prostor2-pro",
+        "hermes2-pro",
         "nous-prostor-2-mistral",
         # Edge cases
         "",
@@ -72,13 +72,13 @@ def test_matches_real_nous_prostor_chat_models(model_name: str) -> None:
     ],
 )
 def test_does_not_match_unrelated_models(model_name: str) -> None:
-    assert not is_nous_prostor_non_agentic(model_name), (
+    assert not is_nous_hermes_non_agentic(model_name), (
         f"expected {model_name!r} NOT to be flagged as Nous Prostor 3/4"
     )
-    assert _check_prostor_model_warning(model_name) == ""
+    assert _check_hermes_model_warning(model_name) == ""
 
 
 def test_none_like_inputs_are_safe() -> None:
-    assert is_nous_prostor_non_agentic("") is False
+    assert is_nous_hermes_non_agentic("") is False
     # Defensive: the helper shouldn't crash on None-ish falsy input either.
-    assert _check_prostor_model_warning("") == ""
+    assert _check_hermes_model_warning("") == ""

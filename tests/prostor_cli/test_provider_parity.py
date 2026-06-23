@@ -13,9 +13,9 @@ can never silently drift again when a provider plugin is added.
 
 from fastapi.testclient import TestClient
 
-from prostor_cli.models import CANONICAL_PROVIDERS
-from prostor_cli.provider_catalog import provider_catalog
-from prostor_cli.web_server import _SESSION_TOKEN, app
+from hermes_cli.models import CANONICAL_PROVIDERS
+from hermes_cli.provider_catalog import provider_catalog
+from hermes_cli.web_server import _SESSION_TOKEN, app
 
 client = TestClient(app)
 HEADERS = {"X-Prostor-Session-Token": _SESSION_TOKEN}
@@ -49,7 +49,7 @@ def _accounts_tab_providers() -> set[str]:
     return {p["id"] for p in data["providers"]}
 
 
-def test_every_prostor_model_provider_is_configurable_in_desktop():
+def test_every_hermes_model_provider_is_configurable_in_desktop():
     """PARITY CONTRACT: GUI (keys ∪ accounts) ⊇ `prostor model` universe."""
     gui = _keys_tab_providers() | _accounts_tab_providers()
     missing = [

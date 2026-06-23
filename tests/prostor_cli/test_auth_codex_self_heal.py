@@ -14,8 +14,8 @@ import json
 
 import pytest
 
-import prostor_cli.auth as auth
-from prostor_cli.auth import AuthError, _refresh_codex_auth_tokens, resolve_codex_runtime_credentials
+import hermes_cli.auth as auth
+from hermes_cli.auth import AuthError, _refresh_codex_auth_tokens, resolve_codex_runtime_credentials
 
 STALE = {"access_token": "stale-access", "refresh_token": "stale-refresh"}
 
@@ -148,11 +148,11 @@ def test_reraises_when_imported_token_lacks_refresh_token(monkeypatch):
 
 def test_self_heals_missing_singleton_access_token_from_codex_cli(tmp_path, monkeypatch):
     """Exact cron failure path: Prostor auth has refresh_token but missing access_token."""
-    prostor_home = tmp_path / "prostor"
+    hermes_home = tmp_path / "prostor"
     codex_home = tmp_path / "codex"
-    prostor_home.mkdir()
+    hermes_home.mkdir()
     codex_home.mkdir()
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -168,14 +168,14 @@ def test_self_heals_missing_singleton_access_token_from_codex_cli(tmp_path, monk
             "refresh_token": "fresh-refresh",
         },
     }))
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
     resolved = resolve_codex_runtime_credentials()
 
     assert resolved["api_key"] == "fresh-access"
     assert resolved["source"] == "prostor-auth-store"
-    stored = json.loads((prostor_home / "auth.json").read_text())
+    stored = json.loads((hermes_home / "auth.json").read_text())
     tokens = stored["providers"]["openai-codex"]["tokens"]
     assert tokens["access_token"] == "fresh-access"
     assert tokens["refresh_token"] == "fresh-refresh"
@@ -183,11 +183,11 @@ def test_self_heals_missing_singleton_access_token_from_codex_cli(tmp_path, monk
 
 def test_missing_singleton_access_token_reraises_when_codex_cli_half_token(tmp_path, monkeypatch):
     """Missing access_token must not be masked by a malformed Codex CLI import."""
-    prostor_home = tmp_path / "prostor"
+    hermes_home = tmp_path / "prostor"
     codex_home = tmp_path / "codex"
-    prostor_home.mkdir()
+    hermes_home.mkdir()
     codex_home.mkdir()
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -199,7 +199,7 @@ def test_missing_singleton_access_token_reraises_when_codex_cli_half_token(tmp_p
     (codex_home / "auth.json").write_text(json.dumps({
         "tokens": {"access_token": "fresh-only"},
     }))
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
     with pytest.raises(AuthError) as ei:

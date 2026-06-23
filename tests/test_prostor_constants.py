@@ -1,66 +1,68 @@
-"""Tests for prostor_constants module."""
+"""Tests for hermes_constants module."""
 
 import os
 from pathlib import Path
 
 import pytest
 
-import prostor_constants
-from prostor_constants import (
+import hermes_constants
+from hermes_constants import (
     VALID_REASONING_EFFORTS,
-    find_prostor_node_executable,
-    get_default_prostor_root,
-    get_prostor_home,
-    iter_prostor_node_dirs,
+    find_hermes_node_executable,
+    find_node_executable,
+    find_node_executable_on_path,
+    get_default_hermes_root,
+    get_hermes_home,
+    iter_hermes_node_dirs,
     is_container,
     parse_reasoning_effort,
     secure_parent_dir,
-    with_prostor_node_path,
+    with_hermes_node_path,
 )
 
 
-class TestGetDefaultProstorRoot:
-    """Tests for get_default_prostor_root() — Docker/custom deployment awareness."""
+class TestGetDefaultHermesRoot:
+    """Tests for get_default_hermes_root() — Docker/custom deployment awareness."""
 
-    def test_no_prostor_home_returns_native(self, tmp_path, monkeypatch):
+    def test_no_hermes_home_returns_native(self, tmp_path, monkeypatch):
         """When PROSTOR_HOME is not set, returns ~/.prostor."""
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-        assert get_default_prostor_root() == tmp_path / ".prostor"
+        assert get_default_hermes_root() == tmp_path / ".prostor"
 
-    def test_prostor_home_is_native(self, tmp_path, monkeypatch):
+    def test_hermes_home_is_native(self, tmp_path, monkeypatch):
         """When PROSTOR_HOME = ~/.prostor, returns ~/.prostor."""
         native = tmp_path / ".prostor"
         native.mkdir()
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.setenv("PROSTOR_HOME", str(native))
-        assert get_default_prostor_root() == native
+        assert get_default_hermes_root() == native
 
-    def test_prostor_home_is_profile(self, tmp_path, monkeypatch):
+    def test_hermes_home_is_profile(self, tmp_path, monkeypatch):
         """When PROSTOR_HOME is a profile under ~/.prostor, returns ~/.prostor."""
         native = tmp_path / ".prostor"
         profile = native / "profiles" / "coder"
         profile.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.setenv("PROSTOR_HOME", str(profile))
-        assert get_default_prostor_root() == native
+        assert get_default_hermes_root() == native
 
-    def test_prostor_home_is_docker(self, tmp_path, monkeypatch):
+    def test_hermes_home_is_docker(self, tmp_path, monkeypatch):
         """When PROSTOR_HOME points outside ~/.prostor (Docker), returns PROSTOR_HOME."""
         docker_home = tmp_path / "opt" / "data"
         docker_home.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.setenv("PROSTOR_HOME", str(docker_home))
-        assert get_default_prostor_root() == docker_home
+        assert get_default_hermes_root() == docker_home
 
-    def test_prostor_home_is_custom_path(self, tmp_path, monkeypatch):
+    def test_hermes_home_is_custom_path(self, tmp_path, monkeypatch):
         """Any PROSTOR_HOME outside ~/.prostor is treated as the root."""
         custom = tmp_path / "my-prostor-data"
         custom.mkdir()
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.setenv("PROSTOR_HOME", str(custom))
-        assert get_default_prostor_root() == custom
+        assert get_default_hermes_root() == custom
 
     def test_docker_profile_active(self, tmp_path, monkeypatch):
         """When a Docker profile is active (PROSTOR_HOME=<root>/profiles/<name>),
@@ -70,31 +72,31 @@ class TestGetDefaultProstorRoot:
         profile.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.setenv("PROSTOR_HOME", str(profile))
-        assert get_default_prostor_root() == docker_root
+        assert get_default_hermes_root() == docker_root
 
-    def test_no_prostor_home_returns_localappdata_root_on_windows(self, tmp_path, monkeypatch):
+    def test_no_hermes_home_returns_localappdata_root_on_windows(self, tmp_path, monkeypatch):
         """Native Windows falls back to %LOCALAPPDATA%\\prostor, not ~/.prostor."""
         local_appdata = tmp_path / "LocalAppData"
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
         monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "Home")
-        monkeypatch.setattr(prostor_constants.sys, "platform", "win32")
+        monkeypatch.setattr(hermes_constants.sys, "platform", "win32")
 
-        assert get_default_prostor_root() == local_appdata / "prostor"
+        assert get_default_hermes_root() == local_appdata / "prostor"
 
-    def test_no_prostor_home_uses_windows_path_when_localappdata_missing(self, tmp_path, monkeypatch):
+    def test_no_hermes_home_uses_windows_path_when_localappdata_missing(self, tmp_path, monkeypatch):
         """Windows fallback still uses AppData/Local/prostor without LOCALAPPDATA."""
         home = tmp_path / "Home"
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
         monkeypatch.delenv("LOCALAPPDATA", raising=False)
         monkeypatch.setattr(Path, "home", lambda: home)
-        monkeypatch.setattr(prostor_constants.sys, "platform", "win32")
+        monkeypatch.setattr(hermes_constants.sys, "platform", "win32")
 
-        assert get_default_prostor_root() == home / "AppData" / "Local" / "prostor"
+        assert get_default_hermes_root() == home / "AppData" / "Local" / "prostor"
 
 
-class TestGetProstorHome:
-    """Tests for get_prostor_home() platform-aware fallback."""
+class TestGetHermesHome:
+    """Tests for get_hermes_home() platform-aware fallback."""
 
     def test_windows_fallback_uses_localappdata(self, tmp_path, monkeypatch):
         """When PROSTOR_HOME is unset on Windows, use %LOCALAPPDATA%\\prostor."""
@@ -102,23 +104,23 @@ class TestGetProstorHome:
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
         monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "Home")
-        monkeypatch.setattr(prostor_constants.sys, "platform", "win32")
-        monkeypatch.setattr(prostor_constants, "_profile_fallback_warned", False)
+        monkeypatch.setattr(hermes_constants.sys, "platform", "win32")
+        monkeypatch.setattr(hermes_constants, "_profile_fallback_warned", False)
 
-        assert get_prostor_home() == local_appdata / "prostor"
+        assert get_hermes_home() == local_appdata / "prostor"
 
 
-class TestProstorManagedNode:
+class TestHermesManagedNode:
     def test_windows_node_dir_prefers_portable_root(self, tmp_path, monkeypatch):
         home = tmp_path / "prostor"
         node_dir = home / "node"
         bin_dir = node_dir / "bin"
         node_dir.mkdir(parents=True)
         bin_dir.mkdir()
-        monkeypatch.setattr(prostor_constants.sys, "platform", "win32")
+        monkeypatch.setattr(hermes_constants.sys, "platform", "win32")
         monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-        assert iter_prostor_node_dirs() == [node_dir, bin_dir]
+        assert iter_hermes_node_dirs() == [node_dir, bin_dir]
 
     def test_windows_finds_npm_cmd_before_path(self, tmp_path, monkeypatch):
         home = tmp_path / "prostor"
@@ -126,21 +128,50 @@ class TestProstorManagedNode:
         node_dir.mkdir(parents=True)
         npm_cmd = node_dir / "npm.cmd"
         npm_cmd.write_text("@echo off\n")
-        monkeypatch.setattr(prostor_constants.sys, "platform", "win32")
+        monkeypatch.setattr(hermes_constants.sys, "platform", "win32")
         monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-        assert find_prostor_node_executable("npm") == str(npm_cmd)
+        assert find_hermes_node_executable("npm") == str(npm_cmd)
 
-    def test_with_prostor_node_path_prepends_existing_managed_dirs(self, tmp_path, monkeypatch):
+    def test_windows_path_fallback_prefers_npm_cmd(self, tmp_path, monkeypatch):
+        bin_dir = tmp_path / "nodejs"
+        bin_dir.mkdir()
+        extensionless = bin_dir / "npm"
+        powershell = bin_dir / "npm.ps1"
+        npm_cmd = bin_dir / "npm.cmd"
+        extensionless.write_text("#!/usr/bin/env node\n")
+        powershell.write_text("Write-Output npm\n")
+        npm_cmd.write_text("@echo off\n")
+        monkeypatch.setattr(hermes_constants.sys, "platform", "win32")
+        monkeypatch.setenv("PATH", str(bin_dir))
+
+        assert find_node_executable_on_path("npm") == str(npm_cmd)
+
+    def test_windows_node_executable_falls_back_to_safe_path_shim(self, tmp_path, monkeypatch):
+        home = tmp_path / "prostor"
+        home.mkdir()
+        bin_dir = tmp_path / "nodejs"
+        bin_dir.mkdir()
+        extensionless = bin_dir / "npm"
+        npm_cmd = bin_dir / "npm.cmd"
+        extensionless.write_text("#!/usr/bin/env node\n")
+        npm_cmd.write_text("@echo off\n")
+        monkeypatch.setattr(hermes_constants.sys, "platform", "win32")
+        monkeypatch.setenv("PROSTOR_HOME", str(home))
+        monkeypatch.setenv("PATH", str(bin_dir))
+
+        assert find_node_executable("npm") == str(npm_cmd)
+
+    def test_with_hermes_node_path_prepends_existing_managed_dirs(self, tmp_path, monkeypatch):
         home = tmp_path / "prostor"
         node_dir = home / "node"
         bin_dir = node_dir / "bin"
         node_dir.mkdir(parents=True)
         bin_dir.mkdir()
-        monkeypatch.setattr(prostor_constants.sys, "platform", "win32")
+        monkeypatch.setattr(hermes_constants.sys, "platform", "win32")
         monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-        env = with_prostor_node_path({"PATH": "system-node"})
+        env = with_hermes_node_path({"PATH": "system-node"})
         parts = env["PATH"].split(os.pathsep)
 
         assert parts[:2] == [str(node_dir), str(bin_dir)]
@@ -152,7 +183,7 @@ class TestIsContainer:
 
     def _reset_cache(self, monkeypatch):
         """Reset the cached detection result before each test."""
-        monkeypatch.setattr(prostor_constants, "_container_detected", None)
+        monkeypatch.setattr(hermes_constants, "_container_detected", None)
 
     def test_detects_dockerenv(self, monkeypatch, tmp_path):
         """/.dockerenv triggers container detection."""
@@ -244,7 +275,7 @@ class TestIsContainer:
 
     def test_caches_result(self, monkeypatch):
         """Second call uses cached value without re-probing."""
-        monkeypatch.setattr(prostor_constants, "_container_detected", True)
+        monkeypatch.setattr(hermes_constants, "_container_detected", True)
         assert is_container() is True
         # Even if we make os.path.exists return False, cached value wins
         monkeypatch.setattr(os.path, "exists", lambda p: False)

@@ -1,6 +1,6 @@
 """``prostor acp`` subcommand parser.
 
-Extracted from ``prostor_cli/main.py:main()`` (god-file Phase 2 follow-up).
+Extracted from ``hermes_cli/main.py:main()`` (god-file Phase 2 follow-up).
 Handler injected to avoid importing ``main``.
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from prostor_cli.subcommands._shared import add_accept_hooks_flag
+from hermes_cli.subcommands._shared import add_accept_hooks_flag
 
 
 def build_acp_parser(subparsers, *, cmd_acp: Callable) -> None:

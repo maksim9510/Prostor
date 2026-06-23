@@ -14,21 +14,21 @@ import pytest
 @pytest.fixture
 def memory_env(tmp_path, monkeypatch):
     """Set up a fake PROSTOR_HOME with memory files."""
-    prostor_home = tmp_path / ".prostor"
-    memories = prostor_home / "memories"
+    hermes_home = tmp_path / ".prostor"
+    memories = hermes_home / "memories"
     memories.mkdir(parents=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
     # Create sample memory files
     (memories / "MEMORY.md").write_text(
-        "§\nProstor repo is at ~/.prostor/prostor-agent\n§\nUser prefers dark themes",
+        "§\nHermes repo is at ~/.prostor/prostor-agent\n§\nUser prefers dark themes",
         encoding="utf-8",
     )
     (memories / "USER.md").write_text(
         "§\nUser is Teknium\n§\nTimezone: US Pacific",
         encoding="utf-8",
     )
-    return prostor_home, memories
+    return hermes_home, memories
 
 
 def _run_memory_reset(target="all", yes=False, monkeypatch=None, confirm_input="no"):
@@ -36,9 +36,9 @@ def _run_memory_reset(target="all", yes=False, monkeypatch=None, confirm_input="
 
     Simulates what happens when `prostor memory reset` is run.
     """
-    from prostor_constants import get_prostor_home
+    from hermes_constants import get_hermes_home
 
-    mem_dir = get_prostor_home() / "memories"
+    mem_dir = get_hermes_home() / "memories"
     files_to_reset = []
     if target in {"all", "memory"}:
         files_to_reset.append(("MEMORY.md", "agent notes"))
@@ -64,7 +64,7 @@ class TestMemoryReset:
 
     def test_reset_all_with_yes_flag(self, memory_env):
         """--yes flag should skip confirmation and delete both files."""
-        prostor_home, memories = memory_env
+        hermes_home, memories = memory_env
         assert (memories / "MEMORY.md").exists()
         assert (memories / "USER.md").exists()
 
@@ -75,7 +75,7 @@ class TestMemoryReset:
 
     def test_reset_memory_only(self, memory_env):
         """--target memory should only delete MEMORY.md."""
-        prostor_home, memories = memory_env
+        hermes_home, memories = memory_env
 
         result = _run_memory_reset(target="memory", yes=True)
         assert result == "deleted"
@@ -84,7 +84,7 @@ class TestMemoryReset:
 
     def test_reset_user_only(self, memory_env):
         """--target user should only delete USER.md."""
-        prostor_home, memories = memory_env
+        hermes_home, memories = memory_env
 
         result = _run_memory_reset(target="user", yes=True)
         assert result == "deleted"
@@ -93,16 +93,16 @@ class TestMemoryReset:
 
     def test_reset_no_files_exist(self, tmp_path, monkeypatch):
         """Should return 'nothing' when no memory files exist."""
-        prostor_home = tmp_path / ".prostor"
-        (prostor_home / "memories").mkdir(parents=True)
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        hermes_home = tmp_path / ".prostor"
+        (hermes_home / "memories").mkdir(parents=True)
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
         result = _run_memory_reset(target="all", yes=True)
         assert result == "nothing"
 
     def test_reset_confirmation_denied(self, memory_env):
         """Without --yes and without typing 'yes', should be cancelled."""
-        prostor_home, memories = memory_env
+        hermes_home, memories = memory_env
 
         result = _run_memory_reset(target="all", yes=False, confirm_input="no")
         assert result == "cancelled"
@@ -112,7 +112,7 @@ class TestMemoryReset:
 
     def test_reset_confirmation_accepted(self, memory_env):
         """Typing 'yes' should proceed with deletion."""
-        prostor_home, memories = memory_env
+        hermes_home, memories = memory_env
 
         result = _run_memory_reset(target="all", yes=False, confirm_input="yes")
         assert result == "deleted"
@@ -135,7 +135,7 @@ class TestMemoryReset:
 
     def test_reset_partial_files(self, memory_env):
         """Reset should work when only one memory file exists."""
-        prostor_home, memories = memory_env
+        hermes_home, memories = memory_env
         (memories / "USER.md").unlink()
 
         result = _run_memory_reset(target="all", yes=True)
@@ -144,11 +144,11 @@ class TestMemoryReset:
 
     def test_reset_empty_memories_dir(self, tmp_path, monkeypatch):
         """No memories dir at all should report nothing."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir(parents=True)
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir(parents=True)
         # No memories dir
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
 
-        # The memories dir won't exist; get_prostor_home() / "memories" won't have files
+        # The memories dir won't exist; get_hermes_home() / "memories" won't have files
         result = _run_memory_reset(target="all", yes=True)
         assert result == "nothing"

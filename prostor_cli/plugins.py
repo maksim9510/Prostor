@@ -46,10 +46,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from utils import env_var_enabled
-from prostor_cli.config import cfg_get
-from prostor_cli.middleware import OBSERVER_SCHEMA_VERSION, VALID_MIDDLEWARE
+from hermes_cli.config import cfg_get
+from hermes_cli.middleware import OBSERVER_SCHEMA_VERSION, VALID_MIDDLEWARE
 
 
 def get_bundled_plugins_dir() -> Path:
@@ -167,11 +167,36 @@ VALID_HOOKS: Set[str] = {
     #   choice: "once" | "session" | "always" | "deny" | "timeout"
     "pre_approval_request",
     "post_approval_response",
+    # Kanban task lifecycle hooks. Fired by hermes_cli.kanban_db when a task
+    # transitions state, AFTER the change is committed to the board DB (so the
+    # hook always sees durable state and a slow plugin can never hold the
+    # SQLite write lock). Observers only: return values are ignored.
+    #
+    # WHICH PROCESS each fires in matters, because kanban workers run as
+    # separate `prostor -p <profile> chat -q` subprocesses:
+    #   - kanban_task_claimed   -> the DISPATCHER process (gateway-embedded
+    #                              dispatcher or `prostor kanban dispatch`),
+    #                              right before the worker subprocess spawns.
+    #   - kanban_task_completed -> the WORKER process, when it calls
+    #                              kanban_complete (or a CLI/manual complete).
+    #   - kanban_task_blocked   -> the WORKER process (worker-initiated block)
+    #                              or whichever process drove the block.
+    # A plugin that needs to observe every transition centrally should hook in
+    # the dispatcher; one that needs per-task in-session context should hook in
+    # the worker.
+    #
+    # Common kwargs: task_id: str, board: str | None, assignee: str | None,
+    #   run_id: int | None, profile_name: str.
+    # kanban_task_completed adds: summary: str | None.
+    # kanban_task_blocked adds:   reason: str | None.
+    "kanban_task_claimed",
+    "kanban_task_completed",
+    "kanban_task_blocked",
 }
 
 ENTRY_POINTS_GROUP = "prostor_agent.plugins"
 
-_NS_PARENT = "prostor_plugins"
+_NS_PARENT = "hermes_plugins"
 
 
 def _env_enabled(name: str) -> bool:
@@ -187,7 +212,7 @@ def _get_disabled_plugins() -> set:
     ``plugins.enabled``.
     """
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         config = load_config()
         disabled = cfg_get(config, "plugins", "disabled", default=[])
         return set(disabled) if isinstance(disabled, list) else set()
@@ -210,7 +235,7 @@ def _get_enabled_plugins() -> Optional[set]:
     * ``set(...)`` — the concrete allow-list.
     """
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         config = load_config()
         plugins_cfg = config.get("plugins")
         if not isinstance(plugins_cfg, dict):
@@ -314,6 +339,28 @@ class PluginContext:
             plugin_id = self.manifest.key or self.manifest.name
             self._llm = PluginLlm(plugin_id=plugin_id)
         return self._llm
+
+    # -- profile awareness --------------------------------------------------
+
+    @property
+    def profile_name(self) -> str:
+        """Return the active Prostor profile name (e.g. ``"default"``).
+
+        Derived from ``PROSTOR_HOME`` via
+        :func:`hermes_cli.profiles.get_active_profile_name`, so it works in
+        every execution context — interactive CLI, gateway, and
+        kanban-spawned worker sessions alike — without depending on
+        ``_cli_ref`` (which is ``None`` outside an interactive CLI run).
+
+        Returns ``"default"`` for the default profile, the profile id when
+        running under ``~/.prostor/profiles/<name>``, or ``"custom"`` when
+        ``PROSTOR_HOME`` points somewhere unrecognized.
+        """
+        try:
+            from hermes_cli.profiles import get_active_profile_name
+            return get_active_profile_name()
+        except Exception:
+            return "default"
 
     # -- tool registration --------------------------------------------------
 
@@ -447,7 +494,7 @@ class PluginContext:
 
         # Reject if it conflicts with a built-in command
         try:
-            from prostor_cli.commands import resolve_command
+            from hermes_cli.commands import resolve_command
             if resolve_command(clean) is not None:
                 logger.warning(
                     "Plugin '%s' tried to register command '/%s' which conflicts "
@@ -562,7 +609,7 @@ class PluginContext:
         """Register a dashboard authentication provider.
 
         ``provider`` must be an instance of
-        :class:`prostor_cli.dashboard_auth.DashboardAuthProvider`. Used by
+        :class:`hermes_cli.dashboard_auth.DashboardAuthProvider`. Used by
         the dashboard OAuth auth gate, which engages when the dashboard
         binds to a non-loopback host without ``--insecure``.
 
@@ -571,7 +618,7 @@ class PluginContext:
         cannot crash the host. Same convention as
         ``register_image_gen_provider``.
         """
-        from prostor_cli.dashboard_auth import (
+        from hermes_cli.dashboard_auth import (
             DashboardAuthProvider, register_provider,
         )
 
@@ -946,8 +993,8 @@ class PluginContext:
                 f"must contain only alphanumeric characters and underscores"
             )
 
-        # Lazy import to avoid circular: prostor_cli.main imports plugins indirectly
-        from prostor_cli.main import _AUX_TASKS as _BUILTIN_AUX_TASKS
+        # Lazy import to avoid circular: hermes_cli.main imports plugins indirectly
+        from hermes_cli.main import _AUX_TASKS as _BUILTIN_AUX_TASKS
 
         builtin_keys = {k for k, _name, _desc in _BUILTIN_AUX_TASKS}
         if key in builtin_keys:
@@ -1163,7 +1210,7 @@ class PluginManager:
 
         # 1. Bundled plugins (<repo>/plugins/<name>/)
         #
-        # Repo-shipped plugins live next to prostor_cli/. Two layouts are
+        # Repo-shipped plugins live next to hermes_cli/. Two layouts are
         # supported (see ``_scan_directory`` for details):
         #
         #   - flat: ``plugins/disk-cleanup/plugin.yaml`` (standalone)
@@ -1190,7 +1237,7 @@ class PluginManager:
         manifests.extend(bundled_platforms)
 
         # 2. User plugins (~/.prostor/plugins/)
-        user_dir = get_prostor_home() / "plugins"
+        user_dir = get_hermes_home() / "plugins"
         logger.debug("Scanning user plugins: %s", user_dir)
         user_manifests = self._scan_directory(user_dir, source="user")
         logger.debug("  user: %d manifest(s)", len(user_manifests))
@@ -1596,11 +1643,11 @@ class PluginManager:
         self._plugins[manifest.key or manifest.name] = loaded
 
     def _load_directory_module(self, manifest: PluginManifest) -> types.ModuleType:
-        """Import a directory-based plugin as ``prostor_plugins.<slug>``.
+        """Import a directory-based plugin as ``hermes_plugins.<slug>``.
 
         The module slug is derived from ``manifest.key`` so category-namespaced
         plugins (``image_gen/openai``) import as
-        ``prostor_plugins.image_gen__openai`` without colliding with any
+        ``hermes_plugins.image_gen__openai`` without colliding with any
         future ``tts/openai``.
         """
         plugin_dir = Path(manifest.path)  # type: ignore[arg-type]

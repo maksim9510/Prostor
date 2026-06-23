@@ -1,6 +1,6 @@
 """Tests for the declarative memory-provider registry."""
 
-from prostor_cli.memory_providers import (
+from hermes_cli.memory_providers import (
     KIND_SECRET,
     KIND_SELECT,
     get_memory_provider,

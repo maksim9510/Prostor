@@ -31,7 +31,7 @@ Manifest format (``distribution.yaml`` at the profile root)::
     name: telemetry
     version: 0.1.0
     description: "Compliance monitoring harness"
-    prostor_requires: ">=0.12.0"
+    hermes_requires: ">=0.12.0"
     author: "..."
     license: "..."
     env_requires:
@@ -102,11 +102,11 @@ USER_OWNED_EXCLUDE: frozenset = frozenset({
     "auth.json", ".env",
     # Databases & runtime state
     "state.db", "state.db-shm", "state.db-wal",
-    "prostor_state.db", "response_store.db",
+    "hermes_state.db", "response_store.db",
     "response_store.db-shm", "response_store.db-wal",
     "gateway.pid", "gateway_state.json", "processes.json",
     "auth.lock", "active_profile", ".update_check",
-    "errors.log", ".prostor_history",
+    "errors.log", ".hermes_history",
     # User data
     "memories", "sessions", "logs", "plans", "workspace", "home",
     "image_cache", "audio_cache", "document_cache",
@@ -170,7 +170,7 @@ class DistributionManifest:
     name: str
     version: str = "0.1.0"
     description: str = ""
-    prostor_requires: str = ""
+    hermes_requires: str = ""
     author: str = ""
     license: str = ""
     env_requires: List[EnvRequirement] = field(default_factory=list)
@@ -203,7 +203,7 @@ class DistributionManifest:
             name=name,
             version=str(data.get("version") or "0.1.0"),
             description=str(data.get("description") or ""),
-            prostor_requires=str(data.get("prostor_requires") or ""),
+            hermes_requires=str(data.get("hermes_requires") or ""),
             author=str(data.get("author") or ""),
             license=str(data.get("license") or ""),
             env_requires=env_requires,
@@ -219,8 +219,8 @@ class DistributionManifest:
         }
         if self.description:
             out["description"] = self.description
-        if self.prostor_requires:
-            out["prostor_requires"] = self.prostor_requires
+        if self.hermes_requires:
+            out["hermes_requires"] = self.hermes_requires
         if self.author:
             out["author"] = self.author
         if self.license:
@@ -296,7 +296,7 @@ def _parse_semver(v: str) -> Tuple[int, int, int]:
         raise DistributionError(f"Unparseable version: {v!r}") from exc
 
 
-def check_prostor_requires(spec: str, current_version: str) -> None:
+def check_hermes_requires(spec: str, current_version: str) -> None:
     """Raise DistributionError if ``current_version`` does not satisfy ``spec``.
 
     ``spec`` accepts a single comparator (``>=0.12.0``, ``==0.12.0``, etc.).
@@ -490,12 +490,12 @@ def plan_install(
     override_name: Optional[str] = None,
 ) -> InstallPlan:
     """Stage *source* and produce a plan describing what install would do."""
-    from prostor_cli.profiles import (
+    from hermes_cli.profiles import (
         get_profile_dir,
         normalize_profile_name,
         validate_profile_name,
     )
-    from prostor_cli import __version__ as prostor_version
+    from hermes_cli import __version__ as hermes_version
 
     staged, provenance = _stage_source(source, workdir)
     _reject_distribution_symlinks(staged)
@@ -507,7 +507,7 @@ def plan_install(
         )
 
     # Version check up-front so we fail fast
-    check_prostor_requires(manifest.prostor_requires, prostor_version)
+    check_hermes_requires(manifest.hermes_requires, hermes_version)
 
     # Resolve target profile name
     target_name = override_name or manifest.name
@@ -614,12 +614,12 @@ def install_distribution(
     Returns the resolved :class:`InstallPlan`.  Use :func:`plan_install`
     first if you want to preview + prompt the user before calling this.
     """
-    from prostor_cli.profiles import (
+    from hermes_cli.profiles import (
         check_alias_collision,
         create_wrapper_script,
     )
 
-    with tempfile.TemporaryDirectory(prefix="prostor_dist_install_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="hermes_dist_install_") as tmp:
         plan = plan_install(source, Path(tmp), override_name=name)
 
         if plan.existing and not force:
@@ -657,7 +657,7 @@ def update_distribution(
     data (memories, sessions, auth) is never touched.  ``config.yaml`` is
     preserved unless ``force_config`` is True.
     """
-    from prostor_cli.profiles import (
+    from hermes_cli.profiles import (
         get_profile_dir,
         normalize_profile_name,
         validate_profile_name,
@@ -681,7 +681,7 @@ def update_distribution(
             "`prostor profile install <source> --name {canon} --force`."
         )
 
-    with tempfile.TemporaryDirectory(prefix="prostor_dist_update_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="hermes_dist_update_") as tmp:
         plan = plan_install(
             existing_manifest.source,
             Path(tmp),
@@ -709,7 +709,7 @@ def describe_distribution(profile_name: str) -> Dict[str, Any]:
     Returns an empty dict if the profile exists but has no manifest.
     Raises DistributionError if the profile itself doesn't exist.
     """
-    from prostor_cli.profiles import (
+    from hermes_cli.profiles import (
         get_profile_dir,
         normalize_profile_name,
         validate_profile_name,

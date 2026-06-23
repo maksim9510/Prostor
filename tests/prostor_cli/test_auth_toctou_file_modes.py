@@ -1,4 +1,4 @@
-"""Regression tests for TOCTOU-safe credential file writers in ``prostor_cli.auth``.
+"""Regression tests for TOCTOU-safe credential file writers in ``hermes_cli.auth``.
 
 Background
 ==========
@@ -43,7 +43,7 @@ def test_save_auth_store_writes_0o600_with_0o700_parent(tmp_path, monkeypatch):
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
     old_umask = os.umask(0o022)  # make the race observable if it regresses
     try:
-        from prostor_cli import auth as auth_mod
+        from hermes_cli import auth as auth_mod
 
         auth_store = {
             "version": auth_mod.AUTH_STORE_VERSION,
@@ -81,7 +81,7 @@ def test_save_qwen_cli_tokens_writes_0o600_with_0o700_parent(tmp_path, monkeypat
     monkeypatch.setenv("HOME", str(tmp_path))
     old_umask = os.umask(0o022)
     try:
-        from prostor_cli import auth as auth_mod
+        from hermes_cli import auth as auth_mod
 
         tokens = {
             "access_token": "qwen-secret",
@@ -119,12 +119,12 @@ def test_shared_nous_store_writes_0o600_with_0o700_parent(tmp_path, monkeypatch)
     # pytest runs; redirect it into tmp_path explicitly. Use a distinct
     # subdirectory name (``shared_override``) so the guard's "real user
     # home" reference — which currently tracks PROSTOR_HOME via
-    # get_default_prostor_root() — can't collide with our override and
+    # get_default_hermes_root() — can't collide with our override and
     # falsely claim we're writing to the real user's shared store.
     monkeypatch.setenv("PROSTOR_SHARED_AUTH_DIR", str(tmp_path / "shared_override"))
     old_umask = os.umask(0o022)
     try:
-        from prostor_cli import auth as auth_mod
+        from hermes_cli import auth as auth_mod
 
         state = {
             "access_token": "nous-access-xxx",
@@ -175,7 +175,7 @@ def test_save_auth_store_uses_os_open_with_0o600_mode(tmp_path, monkeypatch):
         return real_os_open(path, flags, mode, *args, **kwargs)
 
     with patch.object(os, "open", spying_os_open):
-        from prostor_cli import auth as auth_mod
+        from hermes_cli import auth as auth_mod
 
         auth_mod._save_auth_store(
             {"version": auth_mod.AUTH_STORE_VERSION, "providers": {}}

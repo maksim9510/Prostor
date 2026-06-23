@@ -21,9 +21,9 @@ def isolated_kanban_home(monkeypatch):
     monkeypatch.setenv("PROSTOR_HOME", test_home)
     # Force-reimport so the fresh PROSTOR_HOME is picked up.
     for mod in list(sys.modules.keys()):
-        if mod.startswith("prostor_cli") or mod.startswith("prostor_state") or mod == "prostor_constants":
+        if mod.startswith("hermes_cli") or mod.startswith("hermes_state") or mod == "hermes_constants":
             del sys.modules[mod]
-    from prostor_cli import kanban_db
+    from hermes_cli import kanban_db
     yield kanban_db, test_home
     # Cleanup is best-effort; tempfile dir survives but pytest isolation
     # gives each test its own monkeypatched PROSTOR_HOME so no cross-test
@@ -148,7 +148,7 @@ def test_dispatch_result_has_auto_assigned_default_field():
     """Schema-level invariant: DispatchResult exposes the
     auto_assigned_default field so CLI / dashboard / gateway can surface
     the new routing decisions."""
-    from prostor_cli.kanban_db import DispatchResult
+    from hermes_cli.kanban_db import DispatchResult
     r = DispatchResult()
     assert hasattr(r, "auto_assigned_default")
     assert r.auto_assigned_default == []

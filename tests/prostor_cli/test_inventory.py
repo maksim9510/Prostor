@@ -1,4 +1,4 @@
-"""Behavior tests for prostor_cli.inventory.
+"""Behavior tests for hermes_cli.inventory.
 
 Locks the invariants the three migrated consumers (web_server.py
 /api/model/options, tui_gateway model.options, tui_gateway model.save_key)
@@ -22,7 +22,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 
-from prostor_cli.inventory import (
+from hermes_cli.inventory import (
     ConfigContext,
     build_models_payload,
     load_picker_context,
@@ -50,7 +50,7 @@ def test_load_picker_context_full_dict():
         providers={"openrouter": {}},
         custom_providers=[{"name": "Ollama", "base_url": "http://localhost:11434/v1"}],
     )
-    with patch("prostor_cli.config.load_config", return_value=cfg):
+    with patch("hermes_cli.config.load_config", return_value=cfg):
         ctx = load_picker_context()
     assert ctx.current_model == "anthropic/claude-sonnet-4.6"
     assert ctx.current_provider == "openrouter"
@@ -64,7 +64,7 @@ def test_load_picker_context_full_dict():
 
 def test_load_picker_context_falls_back_to_name_when_default_missing():
     cfg = _cfg(model={"name": "gpt-5.4", "provider": "openai"})
-    with patch("prostor_cli.config.load_config", return_value=cfg):
+    with patch("hermes_cli.config.load_config", return_value=cfg):
         ctx = load_picker_context()
     assert ctx.current_model == "gpt-5.4"
     assert ctx.current_provider == "openai"
@@ -73,7 +73,7 @@ def test_load_picker_context_falls_back_to_name_when_default_missing():
 def test_load_picker_context_string_model_legacy_shape():
     """config.model can be a bare string in older configs."""
     cfg = {"model": "some-model", "providers": {}, "custom_providers": []}
-    with patch("prostor_cli.config.load_config", return_value=cfg):
+    with patch("hermes_cli.config.load_config", return_value=cfg):
         ctx = load_picker_context()
     assert ctx.current_model == "some-model"
     assert ctx.current_provider == ""
@@ -82,7 +82,7 @@ def test_load_picker_context_string_model_legacy_shape():
 
 def test_load_picker_context_empty_config():
     cfg = _cfg()
-    with patch("prostor_cli.config.load_config", return_value=cfg):
+    with patch("hermes_cli.config.load_config", return_value=cfg):
         ctx = load_picker_context()
     assert ctx.current_provider == ""
     assert ctx.current_model == ""
@@ -136,7 +136,7 @@ def test_with_overrides_no_args_returns_self_or_equivalent():
 def _list_auth_returning(rows: list[dict]):
     """Patch list_authenticated_providers to return a fixed row list."""
     return patch(
-        "prostor_cli.model_switch.list_authenticated_providers",
+        "hermes_cli.model_switch.list_authenticated_providers",
         return_value=rows,
     )
 
@@ -180,7 +180,7 @@ def test_build_models_payload_does_not_call_provider_model_ids():
              "source": "built-in"}]
     ctx = _empty_ctx()
     with _list_auth_returning(rows), \
-         patch("prostor_cli.models.provider_model_ids") as mock_pm:
+         patch("hermes_cli.models.provider_model_ids") as mock_pm:
         build_models_payload(ctx)
     mock_pm.assert_not_called()
 
@@ -195,7 +195,7 @@ def test_build_models_payload_uses_cached_nous_tier_by_default():
     ctx = _empty_ctx(provider="nous", model="openai/gpt-5.5")
     rows = [_nous_row()]
     with patch(
-        "prostor_cli.model_switch.list_authenticated_providers",
+        "hermes_cli.model_switch.list_authenticated_providers",
         return_value=rows,
     ) as mock_list:
         build_models_payload(ctx)
@@ -208,7 +208,7 @@ def test_build_models_payload_can_force_fresh_nous_tier():
     ctx = _empty_ctx(provider="nous", model="openai/gpt-5.5")
     rows = [_nous_row()]
     with patch(
-        "prostor_cli.model_switch.list_authenticated_providers",
+        "hermes_cli.model_switch.list_authenticated_providers",
         return_value=rows,
     ) as mock_list:
         build_models_payload(ctx, force_fresh_nous_tier=True)
@@ -227,7 +227,7 @@ def test_list_authenticated_providers_force_fresh_is_keyword_only():
     """
     import inspect
 
-    from prostor_cli.model_switch import list_authenticated_providers
+    from hermes_cli.model_switch import list_authenticated_providers
 
     sig = inspect.signature(list_authenticated_providers)
     param = sig.parameters["force_fresh_nous_tier"]
@@ -241,7 +241,7 @@ def test_pricing_uses_cached_nous_tier_by_default():
     with (
         _list_auth_returning(rows),
         patch(
-            "prostor_cli.models.get_pricing_for_provider",
+            "hermes_cli.models.get_pricing_for_provider",
             return_value={
                 "openai/gpt-5.5": {
                     "prompt": "0.000001",
@@ -249,7 +249,7 @@ def test_pricing_uses_cached_nous_tier_by_default():
                 },
             },
         ),
-        patch("prostor_cli.models.check_nous_free_tier", return_value=False) as mock_free,
+        patch("hermes_cli.models.check_nous_free_tier", return_value=False) as mock_free,
     ):
         build_models_payload(ctx, pricing=True)
 
@@ -262,7 +262,7 @@ def test_pricing_can_force_fresh_nous_tier():
     with (
         _list_auth_returning(rows),
         patch(
-            "prostor_cli.models.get_pricing_for_provider",
+            "hermes_cli.models.get_pricing_for_provider",
             return_value={
                 "openai/gpt-5.5": {
                     "prompt": "0.000001",
@@ -270,7 +270,7 @@ def test_pricing_can_force_fresh_nous_tier():
                 },
             },
         ),
-        patch("prostor_cli.models.check_nous_free_tier", return_value=False) as mock_free,
+        patch("hermes_cli.models.check_nous_free_tier", return_value=False) as mock_free,
     ):
         build_models_payload(ctx, pricing=True, force_fresh_nous_tier=True)
 
@@ -291,7 +291,7 @@ def test_include_unconfigured_appends_canonical_skeletons():
         payload = build_models_payload(ctx, include_unconfigured=True)
     # All canonical providers other than openrouter should appear as
     # skeleton rows.
-    from prostor_cli.models import CANONICAL_PROVIDERS
+    from hermes_cli.models import CANONICAL_PROVIDERS
 
     seen_slugs = {r["slug"] for r in payload["providers"]}
     for entry in CANONICAL_PROVIDERS:
@@ -385,7 +385,7 @@ def test_canonical_order_uses_slug_not_is_user_defined_flag():
     canonical providers configured via the keyed schema get demoted to
     the tail.
     """
-    from prostor_cli.models import CANONICAL_PROVIDERS
+    from hermes_cli.models import CANONICAL_PROVIDERS
 
     canonical_slug = CANONICAL_PROVIDERS[2].slug  # any canonical
     rows = [
@@ -419,7 +419,7 @@ def test_canonical_order_with_unconfigured_preserves_full_universe():
     has CANONICAL_PROVIDERS in declaration order, hints applied,
     custom rows trailing.
     """
-    from prostor_cli.models import CANONICAL_PROVIDERS
+    from hermes_cli.models import CANONICAL_PROVIDERS
 
     rows = [
         {"slug": "custom:Ollama", "name": "Ollama", "models": [],
@@ -452,7 +452,7 @@ def test_end_to_end_with_real_context_no_credentials_leak(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", canary)
     monkeypatch.setenv("ANTHROPIC_API_KEY", canary)
     cfg = _cfg(model={"provider": "openrouter"})
-    with patch("prostor_cli.config.load_config", return_value=cfg):
+    with patch("hermes_cli.config.load_config", return_value=cfg):
         ctx = load_picker_context()
     payload = build_models_payload(
         ctx, include_unconfigured=True, picker_hints=True,
@@ -639,6 +639,46 @@ def test_aggregator_dedup_does_not_empty_user_defined_custom_provider():
     assert or_row["total_models"] == 1
 
 
+def test_flat_namespace_reseller_keeps_first_party_models_overlapping_user_proxy():
+    """opencode-go / opencode-zen are flagged ``is_aggregator=True`` (their
+    flat ``/v1/models`` returns bare IDs the model-switch resolver searches),
+    but they are NOT routing aggregators — every model they list is a
+    first-party model under the user's subscription. When a user also runs a
+    custom proxy that happens to serve a same-named model, the picker dedup
+    must NOT strip the reseller's own catalog. Regression for #47077, where
+    opencode-go showed only 13 of 19 models because minimax-m3/m2.7/m2.5,
+    glm-5/5.1, and deepseek-v4-flash were deduped against an overlapping
+    custom provider.
+    """
+    rows = [
+        _user_provider_row("custom:my-proxy", [
+            "minimax-m3", "minimax-m2.7", "glm-5", "deepseek-v4-flash",
+        ]),
+        _aggregator_row("opencode-go", [
+            "kimi-k2.6", "minimax-m3", "minimax-m2.7", "glm-5",
+            "deepseek-v4-flash", "qwen3.7-max",
+        ]),
+        _aggregator_row("openrouter", ["minimax-m3", "anthropic/claude-sonnet-4.6"]),
+    ]
+    ctx = _empty_ctx()
+    with _list_auth_returning(rows):
+        payload = build_models_payload(ctx)
+
+    go_row = next(r for r in payload["providers"] if r["slug"] == "opencode-go")
+    or_row = next(r for r in payload["providers"] if r["slug"] == "openrouter")
+
+    # The reseller keeps ALL of its first-party models — nothing stripped.
+    assert go_row["models"] == [
+        "kimi-k2.6", "minimax-m3", "minimax-m2.7", "glm-5",
+        "deepseek-v4-flash", "qwen3.7-max",
+    ]
+    assert go_row["total_models"] == 6
+
+    # A TRUE routing aggregator is still deduped against the user's models.
+    assert "minimax-m3" not in or_row["models"]
+    assert "anthropic/claude-sonnet-4.6" in or_row["models"]
+
+
 def test_two_custom_providers_with_overlap_both_survive():
     """Two user-defined custom endpoints that happen to expose an
     overlapping model must each keep their full catalog. Neither is the
@@ -705,11 +745,11 @@ def test_build_models_payload_forwards_refresh_flag():
         captured["refresh"] = kwargs.get("refresh")
         return []
 
-    with patch("prostor_cli.model_switch.list_authenticated_providers", side_effect=_capture):
+    with patch("hermes_cli.model_switch.list_authenticated_providers", side_effect=_capture):
         build_models_payload(_empty_ctx())
     assert captured["refresh"] is False
 
-    with patch("prostor_cli.model_switch.list_authenticated_providers", side_effect=_capture):
+    with patch("hermes_cli.model_switch.list_authenticated_providers", side_effect=_capture):
         build_models_payload(_empty_ctx(), refresh=True)
     assert captured["refresh"] is True
 
@@ -717,9 +757,9 @@ def test_build_models_payload_forwards_refresh_flag():
 def test_list_authenticated_providers_refresh_busts_cache():
     """refresh=True clears the provider-model disk cache exactly once;
     refresh=False leaves it untouched (so normal picker opens stay snappy)."""
-    from prostor_cli import model_switch
+    from hermes_cli import model_switch
 
-    with patch("prostor_cli.models.clear_provider_models_cache") as clear:
+    with patch("hermes_cli.models.clear_provider_models_cache") as clear:
         model_switch.list_authenticated_providers(refresh=False)
         assert clear.call_count == 0
         model_switch.list_authenticated_providers(refresh=True)

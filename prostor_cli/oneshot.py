@@ -27,7 +27,7 @@ import sys
 from contextlib import redirect_stderr, redirect_stdout
 from typing import Optional
 
-from prostor_cli.fallback_config import get_fallback_chain
+from hermes_cli.fallback_config import get_fallback_chain
 
 
 def _normalize_toolsets(toolsets: object = None) -> list[str] | None:
@@ -63,7 +63,7 @@ def _validate_explicit_toolsets(toolsets: object = None) -> tuple[list[str] | No
 
     if unresolved:
         try:
-            from prostor_cli.plugins import discover_plugins
+            from hermes_cli.plugins import discover_plugins
 
             discover_plugins()
             plugin_valid = [name for name in unresolved if validate_toolset(name)]
@@ -87,8 +87,8 @@ def _validate_explicit_toolsets(toolsets: object = None) -> tuple[list[str] | No
     mcp_disabled: set[str] = set()
     if unresolved:
         try:
-            from prostor_cli.config import read_raw_config
-            from prostor_cli.tools_config import _parse_enabled_flag
+            from hermes_cli.config import read_raw_config
+            from hermes_cli.tools_config import _parse_enabled_flag
 
             cfg = read_raw_config()
             mcp_servers = cfg.get("mcp_servers") if isinstance(cfg.get("mcp_servers"), dict) else {}
@@ -229,12 +229,12 @@ def run_oneshot(
 def _create_session_db_for_oneshot():
     """Best-effort SessionDB for ``prostor -z`` / oneshot mode.
 
-    Oneshot bypasses ``ProstorCLI._init_agent()``, so it must wire the SQLite
+    Oneshot bypasses ``HermesCLI._init_agent()``, so it must wire the SQLite
     session store itself. Without this, the ``session_search``/recall tool is
     advertised but every call returns "Session database not available.".
     """
     try:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         return SessionDB()
     except Exception as exc:
@@ -253,10 +253,10 @@ def _run_agent(
     run a single conversation.  Returns the final response string."""
     # Imports are local so they don't run when prostor is invoked for
     # other commands (keeps top-level CLI startup cheap).
-    from prostor_cli.config import load_config
-    from prostor_cli.models import detect_provider_for_model
-    from prostor_cli.runtime_provider import resolve_runtime_provider
-    from prostor_cli.tools_config import _get_platform_tools
+    from hermes_cli.config import load_config
+    from hermes_cli.models import detect_provider_for_model
+    from hermes_cli.runtime_provider import resolve_runtime_provider
+    from hermes_cli.tools_config import _get_platform_tools
     from run_agent import AIAgent
 
     cfg = load_config()
@@ -291,7 +291,7 @@ def _run_agent(
             # These map a user-defined alias to (model, provider, base_url) for
             # endpoints not in any catalog (local servers, custom proxies, etc.).
             try:
-                from prostor_cli import model_switch as _ms
+                from hermes_cli import model_switch as _ms
                 _ms._ensure_direct_aliases()
                 direct = _ms.DIRECT_ALIASES.get(explicit_model.strip().lower())
             except Exception:

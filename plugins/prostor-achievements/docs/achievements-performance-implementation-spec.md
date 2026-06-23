@@ -1,4 +1,4 @@
-# Prostor Achievements Implementation Spec (Detailed)
+# Hermes Achievements Implementation Spec (Detailed)
 
 This document is implementation-facing detail to execute the performance refactor later.
 
@@ -48,7 +48,7 @@ Responsibilities:
 - expose age and staleness checks
 
 Storage path:
-- `~/.prostor/plugins/prostor-achievements/scan_snapshot.json`
+- `~/.hermes/plugins/hermes-achievements/scan_snapshot.json`
 
 Methods (conceptual):
 - `get()` -> snapshot | null
@@ -125,7 +125,7 @@ Compatibility guidance:
 - Add metadata keys without breaking old callers.
 
 Checkpoint file (new):
-- `~/.prostor/plugins/prostor-achievements/scan_checkpoint.json`
+- `~/.hermes/plugins/hermes-achievements/scan_checkpoint.json`
 
 Suggested checkpoint shape:
 ```json
@@ -204,9 +204,9 @@ Notes:
 - frontend request hygiene: `dashboard/dist/index.js` (or source if available)
 - plugin metadata: `dashboard/manifest.json`
 - persisted runtime files:
-  - `~/.prostor/plugins/prostor-achievements/state.json` (existing unlock state)
-  - `~/.prostor/plugins/prostor-achievements/scan_snapshot.json` (new)
-  - `~/.prostor/plugins/prostor-achievements/scan_checkpoint.json` (new)
+  - `~/.hermes/plugins/hermes-achievements/state.json` (existing unlock state)
+  - `~/.hermes/plugins/hermes-achievements/scan_snapshot.json` (new)
+  - `~/.hermes/plugins/hermes-achievements/scan_checkpoint.json` (new)
 
 ---
 

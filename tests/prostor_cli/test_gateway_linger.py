@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-import prostor_cli.gateway as gateway
+import hermes_cli.gateway as gateway
 
 
 class TestEnsureLingerEnabled:

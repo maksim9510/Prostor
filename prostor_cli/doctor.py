@@ -10,21 +10,21 @@ import subprocess
 import shutil
 from pathlib import Path
 
-from prostor_cli.config import get_project_root, get_prostor_home, get_env_path
-from prostor_cli.env_loader import load_prostor_dotenv
-from prostor_constants import display_prostor_home
+from hermes_cli.config import get_project_root, get_hermes_home, get_env_path
+from hermes_cli.env_loader import load_hermes_dotenv
+from hermes_constants import display_hermes_home
 
 PROJECT_ROOT = get_project_root()
-PROSTOR_HOME = get_prostor_home()
-_DHH = display_prostor_home()  # user-facing display path (e.g. ~/.prostor or ~/.prostor/profiles/coder)
+PROSTOR_HOME = get_hermes_home()
+_DHH = display_hermes_home()  # user-facing display path (e.g. ~/.prostor or ~/.prostor/profiles/coder)
 
 # Load environment variables from ~/.prostor/.env so API key checks work
 _env_path = get_env_path()
-load_prostor_dotenv(prostor_home=_env_path.parent, project_env=PROJECT_ROOT / ".env")
+load_hermes_dotenv(hermes_home=_env_path.parent, project_env=PROJECT_ROOT / ".env")
 
-from prostor_cli.colors import Colors, color
-from prostor_cli.models import _PROSTOR_USER_AGENT
-from prostor_constants import OPENROUTER_MODELS_URL
+from hermes_cli.colors import Colors, color
+from hermes_cli.models import _HERMES_USER_AGENT
+from hermes_constants import OPENROUTER_MODELS_URL
 from utils import base_url_host_matches
 
 
@@ -54,7 +54,7 @@ _PROVIDER_ENV_HINTS = (
 )
 
 
-from prostor_constants import is_termux as _is_termux
+from hermes_constants import is_termux as _is_termux
 
 
 def _python_install_cmd() -> str:
@@ -158,21 +158,15 @@ def _has_healthy_oauth_fallback_for_apikey_provider(provider_label: str) -> bool
     that direct-key problem into the final blocking summary.
     """
     normalized = (provider_label or "").strip().lower()
-    if normalized in {"google / gemini", "gemini"}:
-        try:
-            from prostor_cli.auth import get_gemini_oauth_auth_status
-            return bool((get_gemini_oauth_auth_status() or {}).get("logged_in"))
-        except Exception:
-            return False
     if normalized == "minimax":
         try:
-            from prostor_cli.auth import get_minimax_oauth_auth_status
+            from hermes_cli.auth import get_minimax_oauth_auth_status
             return bool((get_minimax_oauth_auth_status() or {}).get("logged_in"))
         except Exception:
             return False
     if normalized == "xai":
         try:
-            from prostor_cli.auth import get_xai_oauth_auth_status
+            from hermes_cli.auth import get_xai_oauth_auth_status
             return bool((get_xai_oauth_auth_status() or {}).get("logged_in"))
         except Exception:
             return False
@@ -231,7 +225,7 @@ def _read_pyproject_version() -> str | None:
 
 
 def _check_version_consistency(issues: list[str]) -> None:
-    """Verify pyproject.toml version matches prostor_cli.__version__.
+    """Verify pyproject.toml version matches hermes_cli.__version__.
 
     A git conflict resolution (reset/merge) can revert one file without the
     other, leaving ``prostor --version`` reporting a stale version while
@@ -239,7 +233,7 @@ def _check_version_consistency(issues: list[str]) -> None:
     Silent no-op for installed wheels where pyproject.toml isn't present.
     """
     try:
-        from prostor_cli import __version__ as init_version
+        from hermes_cli import __version__ as init_version
     except Exception:
         return
     pyproject_version = _read_pyproject_version()
@@ -251,9 +245,9 @@ def _check_version_consistency(issues: list[str]) -> None:
     else:
         _fail_and_issue(
             "Version mismatch between source files",
-            f"(pyproject.toml {pyproject_version} != prostor_cli/__init__.py {init_version})",
+            f"(pyproject.toml {pyproject_version} != hermes_cli/__init__.py {init_version})",
             "Re-sync version files (e.g. run 'prostor update', or set "
-            "prostor_cli/__init__.py __version__ to match pyproject.toml)",
+            "hermes_cli/__init__.py __version__ to match pyproject.toml)",
             issues,
         )
 
@@ -272,7 +266,7 @@ def _check_s6_supervision(issues: list[str]) -> None:
         currently supervised as ``up``
     """
     try:
-        from prostor_cli.service_manager import (
+        from hermes_cli.service_manager import (
             S6ServiceManager,
             detect_service_manager,
         )
@@ -332,12 +326,12 @@ def _check_gateway_service_linger(issues: list[str]) -> None:
     ``_check_s6_supervision``.
     """
     try:
-        from prostor_cli.gateway import (
+        from hermes_cli.gateway import (
             get_systemd_linger_status,
             get_systemd_unit_path,
             is_linux,
         )
-        from prostor_cli.service_manager import detect_service_manager
+        from hermes_cli.service_manager import detect_service_manager
     except Exception as e:
         check_warn("Gateway service linger", f"(could not import gateway helpers: {e})")
         return
@@ -423,7 +417,7 @@ def _build_apikey_providers_list() -> list:
         from providers import list_providers
         from providers.base import ProviderProfile as _PP
         try:
-            from prostor_cli.providers import normalize_provider as _normalize_provider
+            from hermes_cli.providers import normalize_provider as _normalize_provider
         except Exception:  # pragma: no cover - normalization is best-effort
             def _normalize_provider(_name: str) -> str:
                 return (_name or "").strip().lower()
@@ -471,7 +465,7 @@ def managed_scope_check() -> None:
     foot-gun (see docs/design/managed-scope.md §7) and an operator should see it.
     """
     try:
-        from prostor_cli import managed_scope
+        from hermes_cli import managed_scope
         managed_dir = managed_scope.get_managed_dir()
     except Exception:  # noqa: BLE001 — diagnostics must never crash
         return
@@ -500,7 +494,7 @@ def run_doctor(args):
     # return without running the rest of the diagnostics — the user has
     # already seen the advisory and just wants to silence it.
     if ack_target:
-        from prostor_cli.security_advisories import (
+        from hermes_cli.security_advisories import (
             ADVISORIES,
             ack_advisory,
         )
@@ -538,7 +532,7 @@ def run_doctor(args):
 
     _section("Security Advisories")
     try:
-        from prostor_cli.security_advisories import (
+        from hermes_cli.security_advisories import (
             detect_compromised,
             filter_unacked,
             full_remediation_text,
@@ -584,8 +578,8 @@ def run_doctor(args):
 
     _section("MCP Server Security")
     try:
-        from prostor_cli.config import load_config
-        from prostor_cli.mcp_security import validate_mcp_server_entry
+        from hermes_cli.config import load_config
+        from hermes_cli.mcp_security import validate_mcp_server_entry
 
         servers = load_config().get("mcp_servers") or {}
         suspicious = 0
@@ -630,7 +624,7 @@ def run_doctor(args):
     else:
         check_warn("Not in virtual environment", "(recommended)")
 
-    # Detect drift between pyproject.toml and prostor_cli/__init__.py versions
+    # Detect drift between pyproject.toml and hermes_cli/__init__.py versions
     # (a git conflict resolution can silently revert one but not the other).
     _check_version_consistency(issues)
 
@@ -724,7 +718,7 @@ def run_doctor(args):
 
             known_providers: set = set()
             try:
-                from prostor_cli.auth import (
+                from hermes_cli.auth import (
                     PROVIDER_REGISTRY,
                     resolve_provider as _resolve_auth_provider,
                 )
@@ -733,8 +727,8 @@ def run_doctor(args):
                 _resolve_auth_provider = None
                 pass
             try:
-                from prostor_cli.config import get_compatible_custom_providers as _compatible_custom_providers
-                from prostor_cli.providers import (
+                from hermes_cli.config import get_compatible_custom_providers as _compatible_custom_providers
+                from hermes_cli.providers import (
                     normalize_provider as _normalize_catalog_provider,
                     resolve_provider_full as _resolve_provider_full,
                 )
@@ -854,14 +848,14 @@ def run_doctor(args):
             if runtime_provider and runtime_provider not in ("auto", "custom"):
                 try:
                     if runtime_provider == "openrouter":
-                        from prostor_cli.config import get_env_value
+                        from hermes_cli.config import get_env_value
 
                         configured = bool(
                             str(get_env_value("OPENROUTER_API_KEY") or "").strip()
                             or str(get_env_value("OPENAI_API_KEY") or "").strip()
                         )
                     else:
-                        from prostor_cli.auth import PROVIDER_REGISTRY, get_auth_status
+                        from hermes_cli.auth import PROVIDER_REGISTRY, get_auth_status
 
                         pconfig = PROVIDER_REGISTRY.get(runtime_provider)
                         configured = True
@@ -900,7 +894,7 @@ def run_doctor(args):
                     shutil.copy2(str(example_config), str(config_path))
                     check_ok(f"Created {_DHH}/config.yaml from cli-config.yaml.example")
                 else:
-                    from prostor_cli.config import DEFAULT_CONFIG, save_config
+                    from hermes_cli.config import DEFAULT_CONFIG, save_config
                     save_config(DEFAULT_CONFIG)
                     check_ok(f"Created {_DHH}/config.yaml from defaults")
                 fixed_count += 1
@@ -911,7 +905,7 @@ def run_doctor(args):
     config_path = PROSTOR_HOME / 'config.yaml'
     if config_path.exists():
         try:
-            from prostor_cli.config import check_config_version, migrate_config
+            from hermes_cli.config import check_config_version, migrate_config
             current_ver, latest_ver = check_config_version()
             if current_ver < latest_ver:
                 check_warn(
@@ -983,7 +977,7 @@ def run_doctor(args):
         # which the startup bridge may already have overridden.
         try:
             import yaml
-            from prostor_cli.config import load_env, remove_env_value
+            from hermes_cli.config import load_env, remove_env_value
             with open(config_path, encoding="utf-8") as f:
                 raw_config = yaml.safe_load(f) or {}
             agent_cfg = raw_config.get("agent")
@@ -1030,7 +1024,7 @@ def run_doctor(args):
 
         # Validate config structure (catches malformed custom_providers, etc.)
         try:
-            from prostor_cli.config import validate_config_structure
+            from hermes_cli.config import validate_config_structure
             config_issues = validate_config_structure()
             if config_issues:
                 _section("Config Structure")
@@ -1049,8 +1043,8 @@ def run_doctor(args):
     _section("xAI Model Retirement (May 15, 2026)")
 
     try:
-        from prostor_cli.config import load_config
-        from prostor_cli.xai_retirement import (
+        from hermes_cli.config import load_config
+        from hermes_cli.xai_retirement import (
             MIGRATION_GUIDE_URL,
             find_retired_xai_refs,
             format_issue,
@@ -1074,10 +1068,9 @@ def run_doctor(args):
     _section("Auth Providers")
 
     try:
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             get_nous_auth_status,
             get_codex_auth_status,
-            get_gemini_oauth_auth_status,
             get_minimax_oauth_auth_status,
         )
 
@@ -1105,20 +1098,6 @@ def run_doctor(args):
                     "from an existing Codex CLI login)"
                 )
 
-        gemini_status = get_gemini_oauth_auth_status()
-        if gemini_status.get("logged_in"):
-            email = gemini_status.get("email") or ""
-            project = gemini_status.get("project_id") or ""
-            pieces = []
-            if email:
-                pieces.append(email)
-            if project:
-                pieces.append(f"project={project}")
-            suffix = f" ({', '.join(pieces)})" if pieces else ""
-            check_ok("Google Gemini OAuth", f"(logged in{suffix})")
-        else:
-            check_warn("Google Gemini OAuth", "(not logged in)")
-
         minimax_status = get_minimax_oauth_auth_status()
         if minimax_status.get("logged_in"):
             region = minimax_status.get("region", "global")
@@ -1131,7 +1110,7 @@ def run_doctor(args):
     # xAI OAuth — separate try/except so an import failure here cannot
     # disrupt the already-printed Nous/Codex/Gemini/MiniMax rows above.
     try:
-        from prostor_cli.auth import get_xai_oauth_auth_status
+        from hermes_cli.auth import get_xai_oauth_auth_status
         xai_oauth_status = get_xai_oauth_auth_status() or {}
         if xai_oauth_status.get("logged_in"):
             check_ok("xAI OAuth", "(logged in)")
@@ -1143,11 +1122,11 @@ def run_doctor(args):
         pass
 
     _section("Directory Structure")
-    prostor_home = PROSTOR_HOME
-    if prostor_home.exists():
+    hermes_home = PROSTOR_HOME
+    if hermes_home.exists():
         check_ok(f"{_DHH} directory exists")
     elif should_fix:
-        prostor_home.mkdir(parents=True, exist_ok=True)
+        hermes_home.mkdir(parents=True, exist_ok=True)
         check_ok(f"Created {_DHH} directory")
         fixed_count += 1
     else:
@@ -1156,7 +1135,7 @@ def run_doctor(args):
     # Check expected subdirectories
     expected_subdirs = ["cron", "sessions", "logs", "skills", "memories"]
     for subdir_name in expected_subdirs:
-        subdir_path = prostor_home / subdir_name
+        subdir_path = hermes_home / subdir_name
         if subdir_path.exists():
             check_ok(f"{_DHH}/{subdir_name}/ exists")
         elif should_fix:
@@ -1167,7 +1146,7 @@ def run_doctor(args):
             check_warn(f"{_DHH}/{subdir_name}/ not found", "(will be created on first use)")
     
     # Check for SOUL.md persona file
-    soul_path = prostor_home / "SOUL.md"
+    soul_path = hermes_home / "SOUL.md"
     if soul_path.exists():
         content = soul_path.read_text(encoding="utf-8").strip()
         # Check if it's just the template comments (no real content)
@@ -1190,7 +1169,7 @@ def run_doctor(args):
             fixed_count += 1
     
     # Check memory directory
-    memories_dir = prostor_home / "memories"
+    memories_dir = hermes_home / "memories"
     if memories_dir.exists():
         check_ok(f"{_DHH}/memories/ directory exists")
         memory_file = memories_dir / "MEMORY.md"
@@ -1213,7 +1192,7 @@ def run_doctor(args):
             fixed_count += 1
     
     # Check SQLite session store
-    state_db_path = prostor_home / "state.db"
+    state_db_path = hermes_home / "state.db"
     if state_db_path.exists():
         try:
             import sqlite3
@@ -1223,7 +1202,7 @@ def run_doctor(args):
             conn.close()
             check_ok(f"{_DHH}/state.db exists ({count} sessions)")
         except Exception as e:
-            from prostor_state import is_malformed_db_error, repair_state_db_schema
+            from hermes_state import is_malformed_db_error, repair_state_db_schema
 
             if is_malformed_db_error(e):
                 # sqlite_master itself is malformed (e.g. duplicate
@@ -1274,7 +1253,7 @@ def run_doctor(args):
         check_info(f"{_DHH}/state.db not created yet (will be created on first session)")
 
     # Check WAL file size (unbounded growth indicates missed checkpoints)
-    wal_path = prostor_home / "state.db-wal"
+    wal_path = hermes_home / "state.db-wal"
     if wal_path.exists():
         try:
             wal_size = wal_path.stat().st_size
@@ -1393,7 +1372,7 @@ def run_doctor(args):
     # Docker (optional)
     terminal_env = os.getenv("TERMINAL_ENV", "local")
     try:
-        from prostor_constants import is_container as _is_container
+        from hermes_constants import is_container as _is_container
         running_in_container = _is_container()
     except Exception:
         running_in_container = False
@@ -1585,11 +1564,20 @@ def run_doctor(args):
         # glob (which pulls in Electron, node-pty, etc.) is never resolved
         # for a routine security check. The web and ui-tui workspaces are
         # audited separately via --workspace flags. See #38772.
+        # The WhatsApp bridge may live under a writable PROSTOR_HOME mirror
+        # instead of the (possibly read-only) install tree in Docker — resolve
+        # it through the shared helper so we audit the dir that actually holds
+        # node_modules. See #49561.
+        try:
+            from gateway.platforms.whatsapp_common import resolve_whatsapp_bridge_dir
+            _whatsapp_bridge_dir = resolve_whatsapp_bridge_dir()
+        except Exception:
+            _whatsapp_bridge_dir = PROJECT_ROOT / "scripts" / "whatsapp-bridge"
         npm_audit_targets = [
             (PROJECT_ROOT, "Browser tools (agent-browser)", ["--workspaces=false"]),
             (PROJECT_ROOT, "web workspace", ["--workspace", "web"]),
             (PROJECT_ROOT, "ui-tui workspace", ["--workspace", "ui-tui"]),
-            (PROJECT_ROOT / "scripts" / "whatsapp-bridge", "WhatsApp bridge", []),
+            (_whatsapp_bridge_dir, "WhatsApp bridge", []),
         ]
         for npm_dir, label, audit_extra in npm_audit_targets:
             # For workspace-scoped audits run from PROJECT_ROOT the
@@ -1754,7 +1742,7 @@ def run_doctor(args):
             )
 
     def _probe_anthropic() -> _ConnectivityResult:
-        from prostor_cli.auth import get_anthropic_key
+        from hermes_cli.auth import get_anthropic_key
         key = get_anthropic_key()
         if not key:
             return _ConnectivityResult("Anthropic API", [], [])
@@ -1857,7 +1845,7 @@ def run_doctor(args):
             url = (base.rstrip("/") + "/models") if base else default_url
             headers = {
                 "Authorization": f"Bearer {key}",
-                "User-Agent": _PROSTOR_USER_AGENT,
+                "User-Agent": _HERMES_USER_AGENT,
             }
             if base_url_host_matches(base, "api.kimi.com"):
                 headers["User-Agent"] = "claude-code/0.1.0"
@@ -1971,7 +1959,7 @@ def run_doctor(args):
         """
         label = "Azure Foundry (Entra ID)".ljust(28)
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             cfg = load_config()
             model_cfg = cfg.get("model") if isinstance(cfg, dict) else {}
             if not isinstance(model_cfg, dict):
@@ -2150,7 +2138,7 @@ def run_doctor(args):
     else:
         check_warn("Skills Hub directory not initialized", "(run: prostor skills list)")
 
-    from prostor_cli.config import get_env_value
+    from hermes_cli.config import get_env_value
 
     def _gh_authenticated() -> bool:
         """Check if gh CLI is authenticated via token file or device flow."""
@@ -2180,7 +2168,7 @@ def run_doctor(args):
             with open(_mem_cfg_path, encoding="utf-8") as _f:
                 _raw_cfg = _yaml.safe_load(_f) or {}
             try:
-                from prostor_cli import managed_scope
+                from hermes_cli import managed_scope
                 _raw_cfg = managed_scope.apply_managed_overlay(_raw_cfg)
             except Exception:
                 pass
@@ -2274,7 +2262,7 @@ def run_doctor(args):
             check_warn(f"{_active_memory_provider} check failed", str(_e))
 
     try:
-        from prostor_cli.profiles import list_profiles, _get_wrapper_dir, profile_exists
+        from hermes_cli.profiles import list_profiles, _get_wrapper_dir, profile_exists
         import re as _re
 
         named_profiles = [p for p in list_profiles() if not p.is_default]

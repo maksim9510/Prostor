@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 
 def _run_apply_profile_override(
-    tmp_path, monkeypatch, *, prostor_home: str | None, active_profile: str | None,
+    tmp_path, monkeypatch, *, hermes_home: str | None, active_profile: str | None,
     argv: list[str] | None = None,
 ):
     """Run _apply_profile_override in isolation.
@@ -27,30 +27,30 @@ def _run_apply_profile_override(
     Returns the value of os.environ["PROSTOR_HOME"] after the call,
     or None if unset.
     """
-    prostor_root = tmp_path / ".prostor"
-    prostor_root.mkdir(parents=True, exist_ok=True)
+    hermes_root = tmp_path / ".prostor"
+    hermes_root.mkdir(parents=True, exist_ok=True)
 
     if active_profile is not None:
-        (prostor_root / "active_profile").write_text(active_profile)
+        (hermes_root / "active_profile").write_text(active_profile)
 
     if active_profile and active_profile != "default":
-        (prostor_root / "profiles" / active_profile).mkdir(parents=True, exist_ok=True)
+        (hermes_root / "profiles" / active_profile).mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    if prostor_home is not None:
-        monkeypatch.setenv("PROSTOR_HOME", prostor_home)
+    if hermes_home is not None:
+        monkeypatch.setenv("PROSTOR_HOME", hermes_home)
     else:
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
 
     monkeypatch.setattr(sys, "argv", argv or ["prostor", "gateway", "start"])
 
-    from prostor_cli.main import _apply_profile_override
+    from hermes_cli.main import _apply_profile_override
     _apply_profile_override()
 
     return os.environ.get("PROSTOR_HOME")
 
 
-class TestApplyProfileOverrideProstorHomeGuard:
+class TestApplyProfileOverrideHermesHomeGuard:
     """Regression guard for issue #22502.
 
     Verifies that PROSTOR_HOME pointing to the prostor root does NOT suppress
@@ -58,7 +58,7 @@ class TestApplyProfileOverrideProstorHomeGuard:
     profile directory IS trusted as-is.
     """
 
-    def test_prostor_home_at_root_with_active_profile_is_redirected(
+    def test_hermes_home_at_root_with_active_profile_is_redirected(
         self, tmp_path, monkeypatch
     ):
         """PROSTOR_HOME=/root/.prostor + active_profile=coder must redirect
@@ -68,13 +68,13 @@ class TestApplyProfileOverrideProstorHomeGuard:
         and the user switches to a profile via `prostor profile use`.
         Before the fix, the guard returned early and active_profile was ignored.
         """
-        prostor_root = tmp_path / ".prostor"
-        prostor_root.mkdir(parents=True, exist_ok=True)
+        hermes_root = tmp_path / ".prostor"
+        hermes_root.mkdir(parents=True, exist_ok=True)
 
         result = _run_apply_profile_override(
             tmp_path,
             monkeypatch,
-            prostor_home=str(prostor_root),
+            hermes_home=str(hermes_root),
             active_profile="coder",
         )
 
@@ -86,7 +86,7 @@ class TestApplyProfileOverrideProstorHomeGuard:
             f"Expected PROSTOR_HOME to end with 'coder', got: {result!r}"
         )
 
-    def test_prostor_home_already_profile_dir_is_trusted(self, tmp_path, monkeypatch):
+    def test_hermes_home_already_profile_dir_is_trusted(self, tmp_path, monkeypatch):
         """PROSTOR_HOME=.../profiles/coder must not be overridden even when
         active_profile says something different.
 
@@ -94,31 +94,31 @@ class TestApplyProfileOverrideProstorHomeGuard:
         with PROSTOR_HOME already set to a specific profile must stay in that
         profile.
         """
-        prostor_root = tmp_path / ".prostor"
-        profile_dir = prostor_root / "profiles" / "coder"
+        hermes_root = tmp_path / ".prostor"
+        profile_dir = hermes_root / "profiles" / "coder"
         profile_dir.mkdir(parents=True, exist_ok=True)
 
-        (prostor_root / "active_profile").write_text("other")
+        (hermes_root / "active_profile").write_text("other")
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.setenv("PROSTOR_HOME", str(profile_dir))
         monkeypatch.setattr(sys, "argv", ["prostor", "gateway", "start"])
 
-        from prostor_cli.main import _apply_profile_override
+        from hermes_cli.main import _apply_profile_override
         _apply_profile_override()
 
         assert os.environ.get("PROSTOR_HOME") == str(profile_dir), (
             "PROSTOR_HOME must remain unchanged when already pointing to a profile dir"
         )
 
-    def test_prostor_home_unset_reads_active_profile(self, tmp_path, monkeypatch):
+    def test_hermes_home_unset_reads_active_profile(self, tmp_path, monkeypatch):
         """Classic case: PROSTOR_HOME unset + active_profile=coder must set
         PROSTOR_HOME to the profile directory (existing behaviour must not regress).
         """
         result = _run_apply_profile_override(
             tmp_path,
             monkeypatch,
-            prostor_home=None,
+            hermes_home=None,
             active_profile="coder",
         )
 
@@ -143,23 +143,23 @@ class TestApplyProfileOverrideProstorHomeGuard:
 
         monkeypatch.setattr(pwd, "getpwnam", lambda name: SimpleNamespace(pw_dir=str(user_home)))
 
-        from prostor_cli.main import _apply_profile_override
+        from hermes_cli.main import _apply_profile_override
         _apply_profile_override()
 
         assert os.environ.get("PROSTOR_HOME") == str(profile_dir)
         assert sys.argv == ["prostor", "gateway", "install", "--system"]
 
-    def test_prostor_home_unset_default_profile_no_redirect(self, tmp_path, monkeypatch):
+    def test_hermes_home_unset_default_profile_no_redirect(self, tmp_path, monkeypatch):
         """active_profile=default must not redirect PROSTOR_HOME."""
-        prostor_root = tmp_path / ".prostor"
-        prostor_root.mkdir(parents=True, exist_ok=True)
+        hermes_root = tmp_path / ".prostor"
+        hermes_root.mkdir(parents=True, exist_ok=True)
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
         monkeypatch.setattr(sys, "argv", ["prostor", "gateway", "start"])
-        (prostor_root / "active_profile").write_text("default")
+        (hermes_root / "active_profile").write_text("default")
 
-        from prostor_cli.main import _apply_profile_override
+        from hermes_cli.main import _apply_profile_override
         _apply_profile_override()
 
         assert os.environ.get("PROSTOR_HOME") is None
@@ -172,8 +172,8 @@ class TestApplyProfileOverrideProstorHomeGuard:
         profile pre-parser must not interpret the Docker profile as a Prostor
         profile.
         """
-        prostor_root = tmp_path / ".prostor"
-        prostor_root.mkdir(parents=True, exist_ok=True)
+        hermes_root = tmp_path / ".prostor"
+        hermes_root.mkdir(parents=True, exist_ok=True)
         argv = [
             "prostor",
             "mcp",
@@ -193,7 +193,7 @@ class TestApplyProfileOverrideProstorHomeGuard:
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
         monkeypatch.setattr(sys, "argv", list(argv))
 
-        from prostor_cli.main import _apply_profile_override
+        from hermes_cli.main import _apply_profile_override
         _apply_profile_override()
 
         assert os.environ.get("PROSTOR_HOME") is None
@@ -204,7 +204,7 @@ class TestApplyProfileOverrideProstorHomeGuard:
         result = _run_apply_profile_override(
             tmp_path,
             monkeypatch,
-            prostor_home=None,
+            hermes_home=None,
             active_profile="coder",
             argv=["prostor", "chat", "-p", "coder", "-q", "hello"],
         )
@@ -218,7 +218,7 @@ class TestApplyProfileOverrideProstorHomeGuard:
         result = _run_apply_profile_override(
             tmp_path,
             monkeypatch,
-            prostor_home=None,
+            hermes_home=None,
             active_profile="coder",
             argv=["prostor", "-m", "gpt-5", "--profile", "coder", "chat"],
         )
@@ -232,7 +232,7 @@ class TestApplyProfileOverrideProstorHomeGuard:
         result = _run_apply_profile_override(
             tmp_path,
             monkeypatch,
-            prostor_home=None,
+            hermes_home=None,
             active_profile="coder",
             argv=["prostor", "--continue", "--profile", "coder"],
         )
@@ -265,22 +265,22 @@ class TestSupervisedChildIgnoresStickyProfile:
         ``profiles``), and a sticky ``active_profile`` of another profile.
         The reserved default slot must stay on the root profile.
         """
-        prostor_root = tmp_path / ".prostor"
-        prostor_root.mkdir(parents=True, exist_ok=True)
-        (prostor_root / "active_profile").write_text("briefer")
-        (prostor_root / "profiles" / "briefer").mkdir(parents=True, exist_ok=True)
+        hermes_root = tmp_path / ".prostor"
+        hermes_root.mkdir(parents=True, exist_ok=True)
+        (hermes_root / "active_profile").write_text("briefer")
+        (hermes_root / "profiles" / "briefer").mkdir(parents=True, exist_ok=True)
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         # Container root PROSTOR_HOME: parent dir is NOT "profiles", so the
         # #22502 guard does not short-circuit — step 2 (active_profile) runs.
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_root))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_root))
         monkeypatch.setenv("PROSTOR_S6_SUPERVISED_CHILD", "1")
         monkeypatch.setattr(sys, "argv", ["prostor", "gateway", "run"])
 
-        from prostor_cli.main import _apply_profile_override
+        from hermes_cli.main import _apply_profile_override
         _apply_profile_override()
 
-        assert os.environ.get("PROSTOR_HOME") == str(prostor_root), (
+        assert os.environ.get("PROSTOR_HOME") == str(hermes_root), (
             "Supervised default gateway must stay on the root profile, not be "
             f"hijacked by active_profile; got {os.environ.get('PROSTOR_HOME')!r}"
         )
@@ -293,7 +293,7 @@ class TestSupervisedChildIgnoresStickyProfile:
         result = _run_apply_profile_override(
             tmp_path,
             monkeypatch,
-            prostor_home=None,
+            hermes_home=None,
             active_profile="briefer",
             argv=["prostor", "gateway", "run"],
         )
@@ -305,18 +305,18 @@ class TestSupervisedChildIgnoresStickyProfile:
         """A supervised named-profile slot passes ``-p <name>`` explicitly;
         that must still resolve (the sentinel guard only skips the sticky
         active_profile fallback, never an explicit flag)."""
-        prostor_root = tmp_path / ".prostor"
-        prostor_root.mkdir(parents=True, exist_ok=True)
-        (prostor_root / "active_profile").write_text("briefer")
-        (prostor_root / "profiles" / "briefer").mkdir(parents=True, exist_ok=True)
-        (prostor_root / "profiles" / "coder").mkdir(parents=True, exist_ok=True)
+        hermes_root = tmp_path / ".prostor"
+        hermes_root.mkdir(parents=True, exist_ok=True)
+        (hermes_root / "active_profile").write_text("briefer")
+        (hermes_root / "profiles" / "briefer").mkdir(parents=True, exist_ok=True)
+        (hermes_root / "profiles" / "coder").mkdir(parents=True, exist_ok=True)
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
         monkeypatch.setenv("PROSTOR_S6_SUPERVISED_CHILD", "1")
         monkeypatch.setattr(sys, "argv", ["prostor", "-p", "coder", "gateway", "run"])
 
-        from prostor_cli.main import _apply_profile_override
+        from hermes_cli.main import _apply_profile_override
         _apply_profile_override()
 
         result = os.environ.get("PROSTOR_HOME")

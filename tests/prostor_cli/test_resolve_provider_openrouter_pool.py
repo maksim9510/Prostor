@@ -60,7 +60,7 @@ def test_auto_detects_openrouter_from_pool(tmp_path, monkeypatch):
     (tmp_path / "prostor").mkdir(parents=True, exist_ok=True)
     _seed_openrouter_pool()
 
-    from prostor_cli.auth import resolve_provider
+    from hermes_cli.auth import resolve_provider
 
     assert resolve_provider("auto") == "openrouter"
 
@@ -70,7 +70,7 @@ def test_no_credentials_still_raises(tmp_path, monkeypatch):
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
     (tmp_path / "prostor").mkdir(parents=True, exist_ok=True)
 
-    from prostor_cli.auth import AuthError, resolve_provider
+    from hermes_cli.auth import AuthError, resolve_provider
 
     with pytest.raises(AuthError):
         resolve_provider("auto")

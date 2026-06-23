@@ -32,7 +32,7 @@ def _build_full_manifest(bot_name: str, bot_description: str) -> dict:
     for a Prostor deployment — users can tweak them in the Slack UI after
     pasting.
     """
-    from prostor_cli.commands import slack_app_manifest
+    from hermes_cli.commands import slack_app_manifest
 
     partial = slack_app_manifest()
     slashes = partial["features"]["slash_commands"]
@@ -106,7 +106,7 @@ def _build_full_manifest(bot_name: str, bot_description: str) -> dict:
 def slack_manifest_command(args) -> int:
     """Print or write a Slack app manifest JSON.
 
-    Flags (all parsed in ``prostor_cli/main.py``):
+    Flags (all parsed in ``hermes_cli/main.py``):
       --write [PATH]  Write to file instead of stdout (default path:
                       ``$PROSTOR_HOME/slack-manifest.json``)
       --name NAME     Override the bot display name (default: "Prostor")
@@ -118,7 +118,7 @@ def slack_manifest_command(args) -> int:
     description = getattr(args, "description", None) or "Your Prostor agent on Slack"
 
     if getattr(args, "slashes_only", False):
-        from prostor_cli.commands import slack_app_manifest
+        from hermes_cli.commands import slack_app_manifest
 
         manifest = slack_app_manifest()["features"]["slash_commands"]
     else:
@@ -131,9 +131,9 @@ def slack_manifest_command(args) -> int:
         if isinstance(write_target, bool) and write_target:
             # --write with no value → default location
             try:
-                from prostor_constants import get_prostor_home
+                from hermes_constants import get_hermes_home
 
-                target = Path(get_prostor_home()) / "slack-manifest.json"
+                target = Path(get_hermes_home()) / "slack-manifest.json"
             except Exception:
                 target = Path(os.environ.get("PROSTOR_HOME") or str(Path.home() / ".prostor")) / "slack-manifest.json"
         else:

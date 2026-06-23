@@ -10,7 +10,7 @@ import pytest
 pwd = pytest.importorskip("pwd")
 grp = pytest.importorskip("grp")
 
-import prostor_cli.gateway as gateway_cli
+import hermes_cli.gateway as gateway_cli
 from gateway import status
 from gateway.restart import (
     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT,
@@ -245,7 +245,7 @@ class TestSystemdServiceRefresh:
         ``Environment=`` line. Without this guard, any test that drives
         ``run_gateway()`` end-to-end on a real Linux dev box silently
         rewrites the developer's installed gateway unit with a
-        ``/tmp/pytest-of-.../prostor_test`` PROSTOR_HOME — silently breaking
+        ``/tmp/pytest-of-.../hermes_test`` PROSTOR_HOME — silently breaking
         their gateway on the next boot. The guard sniffs the generated
         unit body for tmpdir markers and refuses the write. Tests that
         legitimately exercise the refresh flow patch
@@ -262,7 +262,7 @@ class TestSystemdServiceRefresh:
         polluted_unit = (
             "[Service]\n"
             'Environment="PROSTOR_HOME=/tmp/pytest-of-alice/pytest-42/'
-            'popen-gw0/test_x/prostor_test"\n'
+            'popen-gw0/test_x/hermes_test"\n'
         )
         monkeypatch.setattr(
             gateway_cli,
@@ -378,8 +378,8 @@ class TestTempHomeServiceDefinitionGuard:
         )
         assert gateway_cli._temp_home_in_service_definition(plist) is None
 
-    def test_accepts_unit_without_prostor_home(self):
-        unit = "[Service]\nExecStart=/usr/bin/python -m prostor_cli.main gateway run\n"
+    def test_accepts_unit_without_hermes_home(self):
+        unit = "[Service]\nExecStart=/usr/bin/python -m hermes_cli.main gateway run\n"
         assert gateway_cli._temp_home_in_service_definition(unit) is None
 
     def test_tmp_prefixed_non_temp_path_is_accepted(self):
@@ -468,7 +468,7 @@ class TestGeneratedSystemdUnits:
             "_system_service_identity",
             lambda run_as_user=None: ("alice", "alice", "/home/alice"),
         )
-        monkeypatch.setattr(gateway_cli, "_prostor_home_for_target_user", lambda home: "/home/alice/.prostor")
+        monkeypatch.setattr(gateway_cli, "_hermes_home_for_target_user", lambda home: "/home/alice/.prostor")
         monkeypatch.setenv("PATH", "/usr/local/bin:/mnt/c/WINDOWS/system32")
         monkeypatch.setattr(gateway_cli.shutil, "which", lambda cmd: None)
 
@@ -1441,7 +1441,7 @@ class TestGatewaySystemServiceRouting:
         monkeypatch.setattr(gateway_cli, "_select_systemd_scope", lambda system=False: False)
         monkeypatch.setattr(gateway_cli, "get_systemd_unit_path", lambda system=False: unit)
         monkeypatch.setattr(gateway_cli, "has_conflicting_systemd_units", lambda: False)
-        monkeypatch.setattr(gateway_cli, "has_legacy_prostor_units", lambda: False)
+        monkeypatch.setattr(gateway_cli, "has_legacy_hermes_units", lambda: False)
         monkeypatch.setattr(gateway_cli, "systemd_unit_is_current", lambda system=False: True)
         monkeypatch.setattr(gateway_cli, "_runtime_health_lines", lambda: ["⚠ Last shutdown reason: Gateway restart requested"])
         monkeypatch.setattr(gateway_cli, "get_systemd_linger_status", lambda: (True, ""))
@@ -1686,7 +1686,7 @@ class TestDetectVenvDir:
         assert result is None
 
 
-class TestSystemUnitProstorHome:
+class TestSystemUnitHermesHome:
     """PROSTOR_HOME in system units must reference the target user, not root."""
 
     def test_system_unit_uses_target_user_home_not_calling_user(self, monkeypatch):
@@ -1725,7 +1725,7 @@ class TestSystemUnitProstorHome:
         assert 'PROSTOR_HOME=/home/alice/.prostor/profiles/coder' in unit
         assert '/root/' not in unit
 
-    def test_system_unit_preserves_custom_prostor_home(self, monkeypatch):
+    def test_system_unit_preserves_custom_hermes_home(self, monkeypatch):
         # Custom PROSTOR_HOME not under any user's home — keep as-is
         monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/root")))
         monkeypatch.setenv("PROSTOR_HOME", "/opt/prostor-shared")
@@ -1746,39 +1746,39 @@ class TestSystemUnitProstorHome:
         # User-scope units should still use the calling user's PROSTOR_HOME
         unit = gateway_cli.generate_systemd_unit(system=False)
 
-        prostor_home = str(gateway_cli.get_prostor_home().resolve())
-        assert f'PROSTOR_HOME={prostor_home}' in unit
+        hermes_home = str(gateway_cli.get_hermes_home().resolve())
+        assert f'PROSTOR_HOME={hermes_home}' in unit
 
 
-class TestProstorHomeForTargetUser:
-    """Unit tests for _prostor_home_for_target_user()."""
+class TestHermesHomeForTargetUser:
+    """Unit tests for _hermes_home_for_target_user()."""
 
     def test_remaps_default_home(self, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/root")))
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
 
-        result = gateway_cli._prostor_home_for_target_user("/home/alice")
+        result = gateway_cli._hermes_home_for_target_user("/home/alice")
         assert result == "/home/alice/.prostor"
 
     def test_remaps_profile_path(self, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/root")))
         monkeypatch.setenv("PROSTOR_HOME", "/root/.prostor/profiles/coder")
 
-        result = gateway_cli._prostor_home_for_target_user("/home/alice")
+        result = gateway_cli._hermes_home_for_target_user("/home/alice")
         assert result == "/home/alice/.prostor/profiles/coder"
 
     def test_keeps_custom_path(self, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/root")))
         monkeypatch.setenv("PROSTOR_HOME", "/opt/prostor")
 
-        result = gateway_cli._prostor_home_for_target_user("/home/alice")
+        result = gateway_cli._hermes_home_for_target_user("/home/alice")
         assert result == "/opt/prostor"
 
     def test_noop_when_same_user(self, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/home/alice")))
         monkeypatch.delenv("PROSTOR_HOME", raising=False)
 
-        result = gateway_cli._prostor_home_for_target_user("/home/alice")
+        result = gateway_cli._hermes_home_for_target_user("/home/alice")
         assert result == "/home/alice/.prostor"
 
 
@@ -2068,13 +2068,13 @@ class TestPreflightUserSystemd:
 class TestProfileArg:
     """Tests for _profile_arg — returns '--profile <name>' for named profiles."""
 
-    def test_default_prostor_home_returns_empty(self, tmp_path, monkeypatch):
+    def test_default_hermes_home_returns_empty(self, tmp_path, monkeypatch):
         """Default ~/.prostor should not produce a --profile flag."""
-        prostor_home = tmp_path / ".prostor"
-        prostor_home.mkdir()
+        hermes_home = tmp_path / ".prostor"
+        hermes_home.mkdir()
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
-        result = gateway_cli._profile_arg(str(prostor_home))
+        monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
+        result = gateway_cli._profile_arg(str(hermes_home))
         assert result == ""
 
     def test_named_profile_returns_flag(self, tmp_path, monkeypatch):
@@ -2129,7 +2129,7 @@ class TestProfileArg:
         profile_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.setenv("PROSTOR_HOME", str(profile_dir))
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: profile_dir)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: profile_dir)
         unit = gateway_cli.generate_systemd_unit(system=False)
         assert "--profile mybot" in unit
         assert "gateway run" in unit
@@ -2148,7 +2148,7 @@ class TestProfileArg:
 
         monkeypatch.setattr(Path, "home", lambda: root_home)
         monkeypatch.setenv("PROSTOR_HOME", str(root_profile))
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: root_profile)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: root_profile)
         monkeypatch.setattr(
             gateway_cli,
             "_system_service_identity",
@@ -2167,7 +2167,7 @@ class TestProfileArg:
         profile_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.setenv("PROSTOR_HOME", str(profile_dir))
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: profile_dir)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: profile_dir)
         plist = gateway_cli.generate_launchd_plist()
         assert "<string>--profile</string>" in plist
         assert "<string>mybot</string>" in plist
@@ -2190,7 +2190,7 @@ class TestProfileArg:
 
         monkeypatch.setattr(Path, "home", lambda: profile_home)
         monkeypatch.setenv("PROSTOR_HOME", str(profile_dir))
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: profile_dir)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: profile_dir)
         monkeypatch.setattr(pwd, "getpwuid", lambda uid: SimpleNamespace(pw_dir=str(machine_home)))
 
         plist_path = gateway_cli.get_launchd_plist_path()
@@ -2240,7 +2240,7 @@ class TestSystemUnitPathRemapping:
 
         monkeypatch.setattr(Path, "home", lambda: root_home)
         monkeypatch.setenv("PROSTOR_HOME", str(root_home / ".prostor"))
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: root_home / ".prostor")
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: root_home / ".prostor")
         monkeypatch.setattr(gateway_cli, "PROJECT_ROOT", project)
         monkeypatch.setattr(gateway_cli, "_detect_venv_dir", lambda: project / "venv")
         monkeypatch.setattr(gateway_cli, "get_python_path", lambda: str(venv_bin / "python"))
@@ -2351,8 +2351,8 @@ class TestDockerAwareGateway:
         assert "prostor gateway run" in out
 
 
-class TestLegacyProstorUnitDetection:
-    """Tests for _find_legacy_prostor_units / has_legacy_prostor_units.
+class TestLegacyHermesUnitDetection:
+    """Tests for _find_legacy_hermes_units / has_legacy_hermes_units.
 
     These guard against the scenario that tripped Luis in April 2026: an
     older install left a ``prostor.service`` unit behind when the service was
@@ -2368,7 +2368,7 @@ class TestLegacyProstorUnitDetection:
     # Minimal ExecStart that looks like our gateway
     _OUR_UNIT_TEXT = (
         "[Unit]\nDescription=Prostor Gateway\n[Service]\n"
-        "ExecStart=/usr/bin/python -m prostor_cli.main gateway run --replace\n"
+        "ExecStart=/usr/bin/python -m hermes_cli.main gateway run --replace\n"
     )
 
     @staticmethod
@@ -2385,26 +2385,26 @@ class TestLegacyProstorUnitDetection:
         )
         return user_dir, system_dir
 
-    def test_detects_legacy_prostor_service_in_user_scope(self, tmp_path, monkeypatch):
+    def test_detects_legacy_hermes_service_in_user_scope(self, tmp_path, monkeypatch):
         user_dir, _ = self._setup_search_paths(tmp_path, monkeypatch)
         legacy = user_dir / "prostor.service"
         legacy.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        results = gateway_cli._find_legacy_prostor_units()
+        results = gateway_cli._find_legacy_hermes_units()
 
         assert len(results) == 1
         name, path, is_system = results[0]
         assert name == "prostor.service"
         assert path == legacy
         assert is_system is False
-        assert gateway_cli.has_legacy_prostor_units() is True
+        assert gateway_cli.has_legacy_hermes_units() is True
 
-    def test_detects_legacy_prostor_service_in_system_scope(self, tmp_path, monkeypatch):
+    def test_detects_legacy_hermes_service_in_system_scope(self, tmp_path, monkeypatch):
         _, system_dir = self._setup_search_paths(tmp_path, monkeypatch)
         legacy = system_dir / "prostor.service"
         legacy.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        results = gateway_cli._find_legacy_prostor_units()
+        results = gateway_cli._find_legacy_hermes_units()
 
         assert len(results) == 1
         name, path, is_system = results[0]
@@ -2412,7 +2412,7 @@ class TestLegacyProstorUnitDetection:
         assert path == legacy
         assert is_system is True
 
-    def test_ignores_profile_unit_prostor_gateway_coder(self, tmp_path, monkeypatch):
+    def test_ignores_profile_unit_hermes_gateway_coder(self, tmp_path, monkeypatch):
         """CRITICAL: profile units must NOT be flagged as legacy.
 
         Teknium's concern — ``prostor-gateway-coder.service`` is our standard
@@ -2432,12 +2432,12 @@ class TestLegacyProstorUnitDetection:
                 self._OUR_UNIT_TEXT, encoding="utf-8"
             )
 
-        results = gateway_cli._find_legacy_prostor_units()
+        results = gateway_cli._find_legacy_hermes_units()
 
         assert results == []
-        assert gateway_cli.has_legacy_prostor_units() is False
+        assert gateway_cli.has_legacy_hermes_units() is False
 
-    def test_ignores_unrelated_prostor_service(self, tmp_path, monkeypatch):
+    def test_ignores_unrelated_hermes_service(self, tmp_path, monkeypatch):
         """Third-party ``prostor.service`` that isn't ours stays untouched.
 
         If a user has some other package named ``prostor`` installed as a
@@ -2450,16 +2450,16 @@ class TestLegacyProstorUnitDetection:
             encoding="utf-8",
         )
 
-        results = gateway_cli._find_legacy_prostor_units()
+        results = gateway_cli._find_legacy_hermes_units()
 
         assert results == []
-        assert gateway_cli.has_legacy_prostor_units() is False
+        assert gateway_cli.has_legacy_hermes_units() is False
 
     def test_returns_empty_when_no_legacy_files_exist(self, tmp_path, monkeypatch):
         self._setup_search_paths(tmp_path, monkeypatch)
 
-        assert gateway_cli._find_legacy_prostor_units() == []
-        assert gateway_cli.has_legacy_prostor_units() is False
+        assert gateway_cli._find_legacy_hermes_units() == []
+        assert gateway_cli.has_legacy_hermes_units() is False
 
     def test_detects_both_scopes_simultaneously(self, tmp_path, monkeypatch):
         """When a user has BOTH user-scope and system-scope legacy units,
@@ -2468,7 +2468,7 @@ class TestLegacyProstorUnitDetection:
         (user_dir / "prostor.service").write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
         (system_dir / "prostor.service").write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        results = gateway_cli._find_legacy_prostor_units()
+        results = gateway_cli._find_legacy_hermes_units()
 
         scopes = sorted(is_system for _, _, is_system in results)
         assert scopes == [False, True]
@@ -2477,15 +2477,15 @@ class TestLegacyProstorUnitDetection:
         """Older installs may have used different python invocations.
 
         ExecStart variants we've seen in the wild:
-          - python -m prostor_cli.main gateway run
-          - python path/to/prostor_cli/main.py gateway run
+          - python -m hermes_cli.main gateway run
+          - python path/to/hermes_cli/main.py gateway run
           - prostor gateway run   (direct binary)
           - python path/to/gateway/run.py
         """
         user_dir, _ = self._setup_search_paths(tmp_path, monkeypatch)
         variants = [
-            "ExecStart=/venv/bin/python -m prostor_cli.main gateway run --replace",
-            "ExecStart=/venv/bin/python /opt/prostor/prostor_cli/main.py gateway run",
+            "ExecStart=/venv/bin/python -m hermes_cli.main gateway run --replace",
+            "ExecStart=/venv/bin/python /opt/prostor/hermes_cli/main.py gateway run",
             "ExecStart=/usr/local/bin/prostor gateway run --replace",
             "ExecStart=/venv/bin/python /opt/prostor/gateway/run.py",
         ]
@@ -2496,7 +2496,7 @@ class TestLegacyProstorUnitDetection:
                 f"[Unit]\nDescription=Old Prostor\n[Service]\n{execstart}\n",
                 encoding="utf-8",
             )
-            results = gateway_cli._find_legacy_prostor_units()
+            results = gateway_cli._find_legacy_hermes_units()
             assert len(results) == 1, f"Variant {i} not detected: {execstart!r}"
 
     def test_print_legacy_unit_warning_is_noop_when_empty(self, tmp_path, monkeypatch, capsys):
@@ -2534,16 +2534,16 @@ class TestLegacyProstorUnitDetection:
         monkeypatch.setattr(gateway_cli.Path, "read_text", raising_read_text)
 
         # Should not raise
-        results = gateway_cli._find_legacy_prostor_units()
+        results = gateway_cli._find_legacy_hermes_units()
         assert results == []
 
 
-class TestRemoveLegacyProstorUnits:
-    """Tests for remove_legacy_prostor_units (the migration action)."""
+class TestRemoveLegacyHermesUnits:
+    """Tests for remove_legacy_hermes_units (the migration action)."""
 
     _OUR_UNIT_TEXT = (
         "[Unit]\nDescription=Prostor Gateway\n[Service]\n"
-        "ExecStart=/usr/bin/python -m prostor_cli.main gateway run --replace\n"
+        "ExecStart=/usr/bin/python -m hermes_cli.main gateway run --replace\n"
     )
 
     @staticmethod
@@ -2571,7 +2571,7 @@ class TestRemoveLegacyProstorUnits:
     def test_returns_zero_when_no_legacy_units(self, tmp_path, monkeypatch, capsys):
         self._setup(tmp_path, monkeypatch)
 
-        removed, remaining = gateway_cli.remove_legacy_prostor_units(interactive=False)
+        removed, remaining = gateway_cli.remove_legacy_hermes_units(interactive=False)
 
         assert removed == 0
         assert remaining == []
@@ -2582,7 +2582,7 @@ class TestRemoveLegacyProstorUnits:
         legacy = user_dir / "prostor.service"
         legacy.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        removed, remaining = gateway_cli.remove_legacy_prostor_units(
+        removed, remaining = gateway_cli.remove_legacy_hermes_units(
             interactive=False, dry_run=True
         )
 
@@ -2598,7 +2598,7 @@ class TestRemoveLegacyProstorUnits:
         legacy = user_dir / "prostor.service"
         legacy.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        removed, remaining = gateway_cli.remove_legacy_prostor_units(interactive=False)
+        removed, remaining = gateway_cli.remove_legacy_hermes_units(interactive=False)
 
         assert removed == 1
         assert remaining == []
@@ -2614,7 +2614,7 @@ class TestRemoveLegacyProstorUnits:
         legacy = system_dir / "prostor.service"
         legacy.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        removed, remaining = gateway_cli.remove_legacy_prostor_units(interactive=False)
+        removed, remaining = gateway_cli.remove_legacy_hermes_units(interactive=False)
 
         assert removed == 0
         assert remaining == [legacy]
@@ -2627,7 +2627,7 @@ class TestRemoveLegacyProstorUnits:
         legacy = system_dir / "prostor.service"
         legacy.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        removed, remaining = gateway_cli.remove_legacy_prostor_units(interactive=False)
+        removed, remaining = gateway_cli.remove_legacy_hermes_units(interactive=False)
 
         assert removed == 1
         assert remaining == []
@@ -2648,7 +2648,7 @@ class TestRemoveLegacyProstorUnits:
         user_legacy.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
         system_legacy.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        removed, remaining = gateway_cli.remove_legacy_prostor_units(interactive=False)
+        removed, remaining = gateway_cli.remove_legacy_hermes_units(interactive=False)
 
         assert removed == 2
         assert remaining == []
@@ -2667,7 +2667,7 @@ class TestRemoveLegacyProstorUnits:
         default_unit = user_dir / "prostor-gateway.service"
         default_unit.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
-        removed, remaining = gateway_cli.remove_legacy_prostor_units(interactive=False)
+        removed, remaining = gateway_cli.remove_legacy_hermes_units(interactive=False)
 
         assert removed == 0
         assert remaining == []
@@ -2683,7 +2683,7 @@ class TestRemoveLegacyProstorUnits:
 
         monkeypatch.setattr(gateway_cli, "prompt_yes_no", lambda *a, **k: False)
 
-        removed, remaining = gateway_cli.remove_legacy_prostor_units(interactive=True)
+        removed, remaining = gateway_cli.remove_legacy_hermes_units(interactive=True)
 
         assert removed == 0
         assert remaining == [legacy]
@@ -2695,7 +2695,7 @@ class TestMigrateLegacyCommand:
 
     def test_migrate_legacy_subparser_accepts_dry_run_and_yes(self):
         """Verify the argparse subparser is registered and parses flags."""
-        import prostor_cli.main as cli_main
+        import hermes_cli.main as cli_main
 
         parser = cli_main.build_parser() if hasattr(cli_main, "build_parser") else None
         # Fall back to calling main's setup helper if direct access isn't exposed
@@ -2707,11 +2707,11 @@ class TestMigrateLegacyCommand:
 
         project_root = cli_main.PROJECT_ROOT if hasattr(cli_main, "PROJECT_ROOT") else None
         if project_root is None:
-            import prostor_cli.gateway as gw
+            import hermes_cli.gateway as gw
             project_root = gw.PROJECT_ROOT
 
         result = subprocess.run(
-            [sys.executable, "-m", "prostor_cli.main", "gateway", "--help"],
+            [sys.executable, "-m", "hermes_cli.main", "gateway", "--help"],
             cwd=str(project_root),
             capture_output=True,
             text=True,
@@ -2731,7 +2731,7 @@ class TestMigrateLegacyCommand:
             called["dry_run"] = dry_run
             return 0, []
 
-        monkeypatch.setattr(gateway_cli, "remove_legacy_prostor_units", fake_remove)
+        monkeypatch.setattr(gateway_cli, "remove_legacy_hermes_units", fake_remove)
         monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: True)
         monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
 
@@ -2749,7 +2749,7 @@ class TestGatewayStatusParser:
         import sys
 
         result = subprocess.run(
-            [sys.executable, "-m", "prostor_cli.main", "gateway", "status", "-l", "--help"],
+            [sys.executable, "-m", "hermes_cli.main", "gateway", "status", "-l", "--help"],
             cwd=str(gateway_cli.PROJECT_ROOT),
             capture_output=True,
             text=True,
@@ -2769,7 +2769,7 @@ class TestGatewayStatusParser:
             called["dry_run"] = dry_run
             return 0, []
 
-        monkeypatch.setattr(gateway_cli, "remove_legacy_prostor_units", fake_remove)
+        monkeypatch.setattr(gateway_cli, "remove_legacy_hermes_units", fake_remove)
         monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: True)
         monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
 
@@ -2810,9 +2810,9 @@ class TestSystemdInstallOffersLegacyRemoval:
             remove_called["interactive"] = interactive
             return 1, []
 
-        # has_legacy_prostor_units must return True
-        monkeypatch.setattr(gateway_cli, "has_legacy_prostor_units", lambda: True)
-        monkeypatch.setattr(gateway_cli, "remove_legacy_prostor_units", fake_remove)
+        # has_legacy_hermes_units must return True
+        monkeypatch.setattr(gateway_cli, "has_legacy_hermes_units", lambda: True)
+        monkeypatch.setattr(gateway_cli, "remove_legacy_hermes_units", fake_remove)
         monkeypatch.setattr(gateway_cli, "print_legacy_unit_warning", lambda: None)
         # Answer "yes" to the legacy-removal prompt
         monkeypatch.setattr(gateway_cli, "prompt_yes_no", lambda *a, **k: True)
@@ -2850,8 +2850,8 @@ class TestSystemdInstallOffersLegacyRemoval:
             remove_called["invoked"] = True
             return 0, []
 
-        monkeypatch.setattr(gateway_cli, "has_legacy_prostor_units", lambda: True)
-        monkeypatch.setattr(gateway_cli, "remove_legacy_prostor_units", fake_remove)
+        monkeypatch.setattr(gateway_cli, "has_legacy_hermes_units", lambda: True)
+        monkeypatch.setattr(gateway_cli, "remove_legacy_hermes_units", fake_remove)
         monkeypatch.setattr(gateway_cli, "print_legacy_unit_warning", lambda: None)
         monkeypatch.setattr(gateway_cli, "prompt_yes_no", lambda *a, **k: False)
 
@@ -2895,8 +2895,8 @@ class TestSystemdInstallOffersLegacyRemoval:
             remove_called["invoked"] = True
             return 0, []
 
-        monkeypatch.setattr(gateway_cli, "has_legacy_prostor_units", lambda: False)
-        monkeypatch.setattr(gateway_cli, "remove_legacy_prostor_units", fake_remove)
+        monkeypatch.setattr(gateway_cli, "has_legacy_hermes_units", lambda: False)
+        monkeypatch.setattr(gateway_cli, "remove_legacy_hermes_units", fake_remove)
         monkeypatch.setattr(gateway_cli, "prompt_yes_no", counting_prompt)
 
         unit_path = tmp_path / "prostor-gateway.service"
@@ -3095,22 +3095,22 @@ class TestServiceWorkingDirIsStable:
     deleted checkout can't crash-loop the unit on CHDIR (status=200).
     """
 
-    def test_stable_working_dir_uses_prostor_home(self, tmp_path, monkeypatch):
+    def test_stable_working_dir_uses_hermes_home(self, tmp_path, monkeypatch):
         home = tmp_path / ".prostor"
         home.mkdir()
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: home)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: home)
         assert Path(gateway_cli._stable_service_working_dir()) == home.resolve()
 
     def test_stable_working_dir_falls_back_to_project_root(self, tmp_path, monkeypatch):
         # PROSTOR_HOME points somewhere that does not exist -> fall back.
         missing = tmp_path / "does-not-exist" / ".prostor"
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: missing)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: missing)
         assert gateway_cli._stable_service_working_dir() == str(gateway_cli.PROJECT_ROOT)
 
-    def test_user_unit_workingdirectory_is_prostor_home_not_checkout(self, tmp_path, monkeypatch):
+    def test_user_unit_workingdirectory_is_hermes_home_not_checkout(self, tmp_path, monkeypatch):
         home = tmp_path / ".prostor"
         home.mkdir()
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: home)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: home)
         unit = gateway_cli.generate_systemd_unit(system=False)
         wd = [l for l in unit.splitlines() if l.startswith("WorkingDirectory=")]
         assert wd, "unit has no WorkingDirectory line"
@@ -3119,12 +3119,12 @@ class TestServiceWorkingDirIsStable:
         # The bug class: never pin cwd inside a transient worktree checkout.
         assert "/.worktrees/" not in value
 
-    def test_launchd_workingdirectory_is_prostor_home(self, tmp_path, monkeypatch):
+    def test_launchd_workingdirectory_is_hermes_home(self, tmp_path, monkeypatch):
         import re
 
         home = tmp_path / ".prostor"
         home.mkdir()
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: home)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: home)
         plist = gateway_cli.generate_launchd_plist()
         m = re.search(r"<key>WorkingDirectory</key>\s*<string>(.*?)</string>", plist)
         assert m, "plist has no WorkingDirectory entry"
@@ -3141,7 +3141,7 @@ class TestServiceWorkingDirIsStable:
         """
         home = tmp_path / ".prostor"
         home.mkdir()
-        monkeypatch.setattr(gateway_cli, "get_prostor_home", lambda: home)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: home)
         plist = gateway_cli.generate_launchd_plist()
 
         # Scalar <true/> must be present immediately after the KeepAlive key

@@ -11,12 +11,12 @@ import yaml
 
 
 @pytest.fixture
-def isolated_profiles(tmp_path, monkeypatch, _isolate_prostor_home):
+def isolated_profiles(tmp_path, monkeypatch, _isolate_hermes_home):
     """Isolated default home + one named profile, each with config + .env."""
-    from prostor_constants import get_prostor_home
-    from prostor_cli import profiles
+    from hermes_constants import get_hermes_home
+    from hermes_cli import profiles
 
-    default_home = get_prostor_home()
+    default_home = get_hermes_home()
     profiles_root = default_home / "profiles"
     worker_home = profiles_root / "worker_beta"
     for home in (default_home, worker_home):
@@ -24,7 +24,7 @@ def isolated_profiles(tmp_path, monkeypatch, _isolate_prostor_home):
         (home / "config.yaml").write_text("{}\n", encoding="utf-8")
     (worker_home / ".env").write_text("", encoding="utf-8")
 
-    monkeypatch.setattr(profiles, "_get_default_prostor_home", lambda: default_home)
+    monkeypatch.setattr(profiles, "_get_default_hermes_home", lambda: default_home)
     monkeypatch.setattr(profiles, "_get_profiles_root", lambda: profiles_root)
     return {"default": default_home, "worker_beta": worker_home}
 
@@ -36,11 +36,11 @@ def client(monkeypatch, isolated_profiles):
     except ImportError:
         pytest.skip("fastapi/starlette not installed")
 
-    import prostor_state
-    from prostor_constants import get_prostor_home
-    from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
+    import hermes_state
+    from hermes_constants import get_hermes_home
+    from hermes_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
-    monkeypatch.setattr(prostor_state, "DEFAULT_DB_PATH", get_prostor_home() / "state.db")
+    monkeypatch.setattr(hermes_state, "DEFAULT_DB_PATH", get_hermes_home() / "state.db")
     c = TestClient(app)
     c.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
     return c
@@ -179,8 +179,8 @@ class TestProfileScopedMcp:
         """The test-server probe must execute with the selected profile's
         scope active so env-placeholder expansion reads the profile's .env,
         matching the config the server was saved into."""
-        import prostor_cli.mcp_config as mcp_config
-        from prostor_constants import get_prostor_home
+        import hermes_cli.mcp_config as mcp_config
+        from hermes_constants import get_hermes_home
 
         (isolated_profiles["worker_beta"] / "config.yaml").write_text(
             "mcp_servers:\n  probe-srv:\n    url: http://x/sse\n",
@@ -189,7 +189,7 @@ class TestProfileScopedMcp:
         seen = {}
 
         def fake_probe(name, config, connect_timeout=30):
-            seen["home"] = str(get_prostor_home())
+            seen["home"] = str(get_hermes_home())
             return [("tool-a", "desc")]
 
         monkeypatch.setattr(mcp_config, "_probe_single_server", fake_probe)
@@ -301,7 +301,7 @@ class TestProfileScopedPostSetup:
         """Post-setup runs in a -p scoped subprocess so hooks that read
         config / write per-profile state see the same PROSTOR_HOME the rest
         of the drawer's writes targeted."""
-        import prostor_cli.web_server as web_server
+        import hermes_cli.web_server as web_server
 
         calls = []
 
@@ -310,11 +310,11 @@ class TestProfileScopedPostSetup:
 
         monkeypatch.setattr(
             web_server,
-            "_spawn_prostor_action",
+            "_spawn_hermes_action",
             lambda subcommand, name: calls.append(list(subcommand)) or _FakeProc(),
         )
         monkeypatch.setattr(
-            "prostor_cli.tools_config.valid_post_setup_keys",
+            "hermes_cli.tools_config.valid_post_setup_keys",
             lambda: {"agent_browser"},
         )
         resp = client.post(
@@ -329,7 +329,7 @@ class TestProfileScopedPostSetup:
     def test_post_setup_without_profile_keeps_legacy_argv(
         self, client, isolated_profiles, monkeypatch
     ):
-        import prostor_cli.web_server as web_server
+        import hermes_cli.web_server as web_server
 
         calls = []
 
@@ -338,11 +338,11 @@ class TestProfileScopedPostSetup:
 
         monkeypatch.setattr(
             web_server,
-            "_spawn_prostor_action",
+            "_spawn_hermes_action",
             lambda subcommand, name: calls.append(list(subcommand)) or _FakeProc(),
         )
         monkeypatch.setattr(
-            "prostor_cli.tools_config.valid_post_setup_keys",
+            "hermes_cli.tools_config.valid_post_setup_keys",
             lambda: {"agent_browser"},
         )
         resp = client.post(
@@ -357,7 +357,7 @@ class TestProfileScopedGateway:
     def test_lifecycle_spawns_with_profile_flag(
         self, client, isolated_profiles, monkeypatch
     ):
-        import prostor_cli.web_server as web_server
+        import hermes_cli.web_server as web_server
 
         calls = []
 
@@ -366,7 +366,7 @@ class TestProfileScopedGateway:
 
         monkeypatch.setattr(
             web_server,
-            "_spawn_prostor_action",
+            "_spawn_hermes_action",
             lambda subcommand, name: calls.append((list(subcommand), name)) or _FakeProc(),
         )
         web_server._ACTION_PROCS.pop("gateway-restart", None)
@@ -385,13 +385,13 @@ class TestProfileScopedGateway:
     def test_status_reads_requested_profile_home(
         self, client, isolated_profiles, monkeypatch
     ):
-        import prostor_cli.web_server as web_server
-        from prostor_constants import get_prostor_home
+        import hermes_cli.web_server as web_server
+        from hermes_constants import get_hermes_home
 
         seen_homes = []
 
         def fake_get_running_pid():
-            seen_homes.append(str(get_prostor_home()))
+            seen_homes.append(str(get_hermes_home()))
             return None
 
         monkeypatch.setattr(web_server, "check_config_version", lambda: (1, 1))
@@ -407,12 +407,12 @@ class TestProfileScopedGateway:
 
         assert resp.status_code == 200
         assert seen_homes[0] == str(isolated_profiles["worker_beta"])
-        assert resp.json()["prostor_home"] == str(isolated_profiles["worker_beta"])
+        assert resp.json()["hermes_home"] == str(isolated_profiles["worker_beta"])
 
     def test_status_uses_runtime_pid_when_profile_pid_file_is_missing(
         self, client, isolated_profiles, monkeypatch
     ):
-        import prostor_cli.web_server as web_server
+        import hermes_cli.web_server as web_server
 
         worker_home = isolated_profiles["worker_beta"]
         (worker_home / ".env").write_text(
@@ -461,7 +461,7 @@ class TestProfileScopedTelegramOnboarding:
         self, client, isolated_profiles, monkeypatch
     ):
         import time
-        import prostor_cli.web_server as web_server
+        import hermes_cli.web_server as web_server
 
         with web_server._telegram_onboarding_lock:
             web_server._telegram_onboarding_pairings.clear()
@@ -483,7 +483,7 @@ class TestProfileScopedTelegramOnboarding:
 
         monkeypatch.setattr(
             web_server,
-            "_spawn_prostor_action",
+            "_spawn_hermes_action",
             lambda subcommand, name: calls.append((list(subcommand), name)) or _FakeProc(),
         )
         web_server._ACTION_PROCS.pop("gateway-restart", None)
@@ -515,11 +515,11 @@ class TestProfileScopedTelegramOnboarding:
 
 
 class TestProfileScopedChatPty:
-    def test_chat_argv_scopes_prostor_home(self, isolated_profiles, monkeypatch):
-        import prostor_cli.web_server as web_server
+    def test_chat_argv_scopes_hermes_home(self, isolated_profiles, monkeypatch):
+        import hermes_cli.web_server as web_server
 
         monkeypatch.setattr(
-            "prostor_cli.main._make_tui_argv",
+            "hermes_cli.main._make_tui_argv",
             lambda root, tui_dev=False: (["cat"], None),
             raising=False,
         )
@@ -530,10 +530,10 @@ class TestProfileScopedChatPty:
         assert "PROSTOR_TUI_GATEWAY_URL" not in env
 
     def test_chat_argv_unscoped_keeps_legacy_env(self, isolated_profiles, monkeypatch):
-        import prostor_cli.web_server as web_server
+        import hermes_cli.web_server as web_server
 
         monkeypatch.setattr(
-            "prostor_cli.main._make_tui_argv",
+            "hermes_cli.main._make_tui_argv",
             lambda root, tui_dev=False: (["cat"], None),
             raising=False,
         )
@@ -542,10 +542,10 @@ class TestProfileScopedChatPty:
         assert env.get("PROSTOR_HOME") != str(isolated_profiles["worker_beta"])
 
     def test_chat_argv_unknown_profile_raises(self, isolated_profiles, monkeypatch):
-        import prostor_cli.web_server as web_server
+        import hermes_cli.web_server as web_server
 
         monkeypatch.setattr(
-            "prostor_cli.main._make_tui_argv",
+            "hermes_cli.main._make_tui_argv",
             lambda root, tui_dev=False: (["cat"], None),
             raising=False,
         )

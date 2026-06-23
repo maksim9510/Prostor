@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 from utils import atomic_replace
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ def _pending_file() -> Path:
     runs an opportunistic sweep on entry as a fallback for CLI-only users
     who never start the gateway.
     """
-    return get_prostor_home() / "pastes" / "pending.json"
+    return get_hermes_home() / "pastes" / "pending.json"
 
 
 def _load_pending() -> list[dict]:
@@ -283,7 +283,7 @@ def _upload_dpaste_com(content: str, expiry_days: int = 7) -> str:
 
     dpaste.com uses multipart form data.
     """
-    boundary = "----ProstorDebugBoundary9f3c"
+    boundary = "----HermesDebugBoundary9f3c"
 
     def _field(name: str, value: str) -> str:
         return (
@@ -354,10 +354,10 @@ class LogSnapshot:
 
 def _primary_log_path(log_name: str) -> Optional[Path]:
     """Where *log_name* would live if present. Doesn't check existence."""
-    from prostor_cli.logs import LOG_FILES
+    from hermes_cli.logs import LOG_FILES
 
     filename = LOG_FILES.get(log_name)
-    return (get_prostor_home() / "logs" / filename) if filename else None
+    return (get_hermes_home() / "logs" / filename) if filename else None
 
 
 def _resolve_log_path(log_name: str) -> Optional[Path]:
@@ -518,7 +518,7 @@ def _capture_default_log_snapshots(
 
 def _capture_dump() -> str:
     """Run ``prostor dump`` and return its stdout as a string."""
-    from prostor_cli.dump import run_dump
+    from hermes_cli.dump import run_dump
 
     class _FakeArgs:
         show_keys = False

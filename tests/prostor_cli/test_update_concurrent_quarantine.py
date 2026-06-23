@@ -17,18 +17,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prostor_cli import main as cli_main
+from hermes_cli import main as cli_main
 
 
-# Tests in this module either exercise the REAL _detect_concurrent_prostor_instances
-# helper (and need the autouse stub in tests/prostor_cli/conftest.py disabled),
+# Tests in this module either exercise the REAL _detect_concurrent_hermes_instances
+# helper (and need the autouse stub in tests/hermes_cli/conftest.py disabled),
 # or supply their own explicit return value via patch.object. Mark the whole
 # module so the conftest fixture skips its default stub.
 pytestmark = pytest.mark.real_concurrent_gate
 
 
 # ---------------------------------------------------------------------------
-# _detect_concurrent_prostor_instances
+# _detect_concurrent_hermes_instances
 # ---------------------------------------------------------------------------
 
 
@@ -47,7 +47,7 @@ def test_detect_concurrent_returns_empty_when_no_other_processes(_winp, tmp_path
 
     fake_psutil = types.SimpleNamespace(process_iter=lambda attrs: iter([]))
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     assert result == []
 
@@ -62,13 +62,13 @@ def test_detect_concurrent_excludes_self_pid(_winp, tmp_path):
     procs = [_make_proc(my_pid, str(shim), "prostor.exe")]
     fake_psutil = types.SimpleNamespace(process_iter=lambda attrs: iter(procs))
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     assert result == []
 
 
 @patch.object(cli_main, "_is_windows", return_value=True)
-def test_detect_concurrent_finds_other_prostor_process(_winp, tmp_path):
+def test_detect_concurrent_finds_other_hermes_process(_winp, tmp_path):
     scripts_dir = tmp_path
     shim = scripts_dir / "prostor.exe"
     shim.write_bytes(b"")
@@ -80,7 +80,7 @@ def test_detect_concurrent_finds_other_prostor_process(_winp, tmp_path):
     ]
     fake_psutil = types.SimpleNamespace(process_iter=lambda attrs: iter(procs))
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     assert result == [(other_pid, "prostor.exe")]
 
@@ -96,7 +96,7 @@ def test_detect_concurrent_matches_case_insensitively(_winp, tmp_path):
     procs = [_make_proc(9999, upper, "PROSTOR.EXE")]
     fake_psutil = types.SimpleNamespace(process_iter=lambda attrs: iter(procs))
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     assert result == [(9999, "PROSTOR.EXE")]
 
@@ -108,7 +108,7 @@ def test_detect_concurrent_no_psutil_returns_empty(_winp, tmp_path):
 
     # Block psutil import — simulate environment without it.
     with patch.dict(sys.modules, {"psutil": None}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     assert result == []
 
@@ -116,7 +116,7 @@ def test_detect_concurrent_no_psutil_returns_empty(_winp, tmp_path):
 @patch.object(cli_main, "_is_windows", return_value=False)
 def test_detect_concurrent_is_noop_off_windows(_winp, tmp_path):
     """No process enumeration off-Windows; the file-lock issue is Windows-only."""
-    assert cli_main._detect_concurrent_prostor_instances(tmp_path) == []
+    assert cli_main._detect_concurrent_hermes_instances(tmp_path) == []
 
 
 # ---------------------------------------------------------------------------
@@ -196,14 +196,14 @@ def test_detect_concurrent_excludes_parent_chain(_winp, tmp_path):
         ancestor_exe=str(shim),
     )
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     # Both self AND the launcher are excluded; no false positive.
     assert result == []
 
 
 @patch.object(cli_main, "_is_windows", return_value=True)
-def test_detect_concurrent_still_finds_unrelated_other_prostor(_winp, tmp_path):
+def test_detect_concurrent_still_finds_unrelated_other_hermes(_winp, tmp_path):
     """A sibling prostor.exe outside our ancestor chain must still be reported."""
     scripts_dir = tmp_path
     shim = scripts_dir / "prostor.exe"
@@ -223,7 +223,7 @@ def test_detect_concurrent_still_finds_unrelated_other_prostor(_winp, tmp_path):
         ancestor_exe=str(shim),
     )
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     assert result == [(sibling_pid, "prostor.exe")]
 
@@ -251,7 +251,7 @@ def test_detect_concurrent_parent_chain_walks_deep(_winp, tmp_path):
         ancestor_exe=str(shim),
     )
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     assert result == []
 
@@ -285,7 +285,7 @@ def test_detect_concurrent_parents_call_robust_to_one_bad_hop(_winp, tmp_path):
         ancestor_exe=None,
     )
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     # No crash; helper completes. (Degenerate stub: launcher exe unreadable.)
     assert result == [(launcher_pid, "prostor.exe")]
@@ -312,7 +312,7 @@ def test_detect_concurrent_parent_walk_handles_stub_without_process(_winp, tmp_p
     # SimpleNamespace with ONLY process_iter — no Process / NoSuchProcess.
     fake_psutil = types.SimpleNamespace(process_iter=lambda attrs: iter(rows))
     with patch.dict(sys.modules, {"psutil": fake_psutil}):
-        result = cli_main._detect_concurrent_prostor_instances(scripts_dir)
+        result = cli_main._detect_concurrent_hermes_instances(scripts_dir)
 
     # Parent-walk silently failed; self still excluded; other still reported.
     assert result == [(other_pid, "prostor.exe")]
@@ -342,7 +342,7 @@ def test_format_message_mentions_pids_and_remediation(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _quarantine_running_prostor_exe — retry + reboot-deferred fallback
+# _quarantine_running_hermes_exe — retry + reboot-deferred fallback
 # ---------------------------------------------------------------------------
 
 
@@ -352,7 +352,7 @@ def test_quarantine_succeeds_first_attempt(_winp, tmp_path):
     shim = tmp_path / "prostor.exe"
     shim.write_bytes(b"old")
 
-    pairs = cli_main._quarantine_running_prostor_exe(tmp_path)
+    pairs = cli_main._quarantine_running_hermes_exe(tmp_path)
 
     assert len(pairs) == 1
     orig, quarantine = pairs[0]
@@ -378,11 +378,11 @@ def test_quarantine_retries_then_succeeds(_winp, tmp_path, monkeypatch):
         return original_rename(self, target)
 
     # Speed up the test: avoid actual sleeps in the backoff schedule.
-    monkeypatch.setattr(cli_main, "_prostor_exe_shims", lambda d: [shim])
+    monkeypatch.setattr(cli_main, "_hermes_exe_shims", lambda d: [shim])
     with patch.object(Path, "rename", flaky_rename), patch(
         "time.sleep", lambda *_a, **_k: None
     ):
-        pairs = cli_main._quarantine_running_prostor_exe(tmp_path)
+        pairs = cli_main._quarantine_running_hermes_exe(tmp_path)
 
     assert call_count["n"] >= 2
     assert len(pairs) == 1
@@ -404,11 +404,11 @@ def test_quarantine_falls_back_to_reboot_schedule(_winp, tmp_path, capsys, monke
         scheduled_calls.append((s, q))
         return True
 
-    monkeypatch.setattr(cli_main, "_prostor_exe_shims", lambda d: [shim])
+    monkeypatch.setattr(cli_main, "_hermes_exe_shims", lambda d: [shim])
     with patch.object(Path, "rename", always_fails), patch.object(
         cli_main, "_schedule_replace_on_reboot", fake_schedule
     ), patch("time.sleep", lambda *_a, **_k: None):
-        pairs = cli_main._quarantine_running_prostor_exe(tmp_path)
+        pairs = cli_main._quarantine_running_hermes_exe(tmp_path)
 
     captured = capsys.readouterr().out
 
@@ -433,11 +433,11 @@ def test_quarantine_actionable_warning_when_everything_fails(
     def always_fails(self, target):
         raise OSError(32, "share violation")
 
-    monkeypatch.setattr(cli_main, "_prostor_exe_shims", lambda d: [shim])
+    monkeypatch.setattr(cli_main, "_hermes_exe_shims", lambda d: [shim])
     with patch.object(Path, "rename", always_fails), patch.object(
         cli_main, "_schedule_replace_on_reboot", lambda *_a, **_k: False
     ), patch("time.sleep", lambda *_a, **_k: None):
-        pairs = cli_main._quarantine_running_prostor_exe(tmp_path)
+        pairs = cli_main._quarantine_running_hermes_exe(tmp_path)
 
     captured = capsys.readouterr().out
     assert pairs == []
@@ -460,7 +460,7 @@ def test_pause_windows_gateways_for_update_stops_profile_and_unmapped_pids(
     capsys,
 ):
     import gateway.status as status_mod
-    import prostor_cli.gateway as gateway_mod
+    import hermes_cli.gateway as gateway_mod
 
     profile_home = tmp_path / "profiles" / "work"
     profile_home.mkdir(parents=True)
@@ -480,6 +480,13 @@ def test_pause_windows_gateways_for_update_stops_profile_and_unmapped_pids(
         return set()
 
     monkeypatch.setattr(cli_main, "_wait_for_windows_update_gateway_exit", fake_wait)
+    monkeypatch.setattr(
+        gateway_mod,
+        "_capture_gateway_argv",
+        lambda pid: ["pythonw.exe", "-m", "hermes_cli.main", "gateway", "run"]
+        if pid == 202
+        else None,
+    )
 
     terminated = []
     monkeypatch.setattr(
@@ -494,6 +501,12 @@ def test_pause_windows_gateways_for_update_stops_profile_and_unmapped_pids(
         "resume_needed": True,
         "profiles": {"work": 101},
         "unmapped_pids": [202],
+        "unmapped": [
+            {
+                "pid": 202,
+                "argv": ["pythonw.exe", "-m", "hermes_cli.main", "gateway", "run"],
+            }
+        ],
     }
     assert waited_for == [101]
     assert terminated == [(202, True)]
@@ -505,6 +518,9 @@ def test_pause_windows_gateways_for_update_stops_profile_and_unmapped_pids(
     captured = capsys.readouterr().out
     assert "Paused gateway profile(s): work" in captured
     assert "without profile mapping" in captured
+    # An unmapped PID whose argv we captured is respawnable, so we must NOT
+    # tell the user to restart it manually.
+    assert "Restart manually after update" not in captured
 
 
 @patch.object(cli_main, "_is_windows", return_value=True)
@@ -513,7 +529,7 @@ def test_resume_windows_gateways_after_update_relaunches_paused_profiles(
     monkeypatch,
     capsys,
 ):
-    import prostor_cli.gateway as gateway_mod
+    import hermes_cli.gateway as gateway_mod
 
     relaunched = []
     monkeypatch.setattr(
@@ -536,6 +552,163 @@ def test_resume_windows_gateways_after_update_relaunches_paused_profiles(
         "Restarting Windows gateway profile(s): default, work"
         in capsys.readouterr().out
     )
+
+
+@patch.object(cli_main, "_is_windows", return_value=True)
+def test_resume_windows_gateways_after_update_respawns_unmapped_by_cmdline(
+    _winp,
+    monkeypatch,
+    capsys,
+):
+    """Unmapped gateways (no profile→PID-file mapping, e.g. a Scheduled Task)
+    are respawned by replaying the argv snapshotted before the force-kill."""
+    import hermes_cli.gateway as gateway_mod
+
+    by_cmdline = []
+    monkeypatch.setattr(
+        gateway_mod,
+        "launch_detached_gateway_restart_by_cmdline",
+        lambda old_pid, argv: by_cmdline.append((old_pid, argv)) or True,
+    )
+    monkeypatch.setattr(
+        gateway_mod,
+        "launch_detached_profile_gateway_restart",
+        lambda profile, old_pid: True,
+    )
+
+    scheduled_argv = ["pythonw.exe", "-m", "hermes_cli.main", "gateway", "run"]
+    token = {
+        "resume_needed": True,
+        "profiles": {},
+        "unmapped_pids": [7560],
+        "unmapped": [
+            # Respawnable — argv captured.
+            {"pid": 7560, "argv": scheduled_argv},
+            # Not respawnable — no argv (psutil missing / access denied).
+            {"pid": 9999, "argv": None},
+        ],
+    }
+
+    cli_main._resume_windows_gateways_after_update(token)
+
+    assert token["resume_needed"] is False
+    assert by_cmdline == [(7560, scheduled_argv)]
+    out = capsys.readouterr().out
+    assert "Restarting 1 unmapped Windows gateway process(es)" in out
+
+
+@patch.object(cli_main, "_is_windows", return_value=True)
+def test_pause_returns_cold_start_token_when_installed_but_none_running(
+    _winp,
+    monkeypatch,
+):
+    """No gateway running + autostart entry installed → cold-start token.
+
+    A gateway that died between updates (spawning terminal/TUI closed) leaves
+    nothing for the resume path to relaunch, but the installed autostart entry
+    is an explicit "I want a gateway" signal. The pause step must return a
+    token that tells resume to cold-start one.
+    """
+    import hermes_cli.gateway as gateway_mod
+    from hermes_cli import gateway_windows
+
+    monkeypatch.setattr(gateway_mod, "find_gateway_pids", lambda **_k: [])
+    monkeypatch.setattr(gateway_windows, "is_installed", lambda: True)
+
+    token = cli_main._pause_windows_gateways_for_update()
+
+    assert token == {
+        "resume_needed": True,
+        "profiles": {},
+        "unmapped_pids": [],
+        "unmapped": [],
+        "cold_start_if_installed": True,
+    }
+
+
+@patch.object(cli_main, "_is_windows", return_value=True)
+def test_pause_returns_none_when_nothing_running_and_not_installed(
+    _winp,
+    monkeypatch,
+):
+    """No gateway running + no autostart entry → no token (gateway-less user).
+
+    Users who deliberately run without a gateway must not get one forced on
+    them by an update.
+    """
+    import hermes_cli.gateway as gateway_mod
+    from hermes_cli import gateway_windows
+
+    monkeypatch.setattr(gateway_mod, "find_gateway_pids", lambda **_k: [])
+    monkeypatch.setattr(gateway_windows, "is_installed", lambda: False)
+
+    assert cli_main._pause_windows_gateways_for_update() is None
+
+
+@patch.object(cli_main, "_is_windows", return_value=True)
+def test_resume_cold_starts_gateway_when_token_requests_it(
+    _winp,
+    monkeypatch,
+    capsys,
+):
+    """cold_start_if_installed token + nothing running → fresh detached spawn."""
+    import hermes_cli.gateway as gateway_mod
+    from hermes_cli import gateway_windows
+
+    monkeypatch.setattr(gateway_mod, "find_gateway_pids", lambda **_k: [])
+    spawned = []
+    monkeypatch.setattr(
+        gateway_windows,
+        "_spawn_detached",
+        lambda: spawned.append(True) or 4242,
+    )
+
+    token = {
+        "resume_needed": True,
+        "profiles": {},
+        "unmapped_pids": [],
+        "unmapped": [],
+        "cold_start_if_installed": True,
+    }
+
+    cli_main._resume_windows_gateways_after_update(token)
+
+    assert token["resume_needed"] is False
+    assert spawned == [True]
+    assert "Starting Windows gateway after update (PID 4242)" in capsys.readouterr().out
+
+
+@patch.object(cli_main, "_is_windows", return_value=True)
+def test_resume_cold_start_skips_when_gateway_already_running(
+    _winp,
+    monkeypatch,
+    capsys,
+):
+    """Don't double-start: if a gateway came up between pause and resume
+    (e.g. the autostart entry fired), the cold-start must no-op."""
+    import hermes_cli.gateway as gateway_mod
+    from hermes_cli import gateway_windows
+
+    monkeypatch.setattr(gateway_mod, "find_gateway_pids", lambda **_k: [9001])
+    spawned = []
+    monkeypatch.setattr(
+        gateway_windows,
+        "_spawn_detached",
+        lambda: spawned.append(True) or 4242,
+    )
+
+    token = {
+        "resume_needed": True,
+        "profiles": {},
+        "unmapped_pids": [],
+        "unmapped": [],
+        "cold_start_if_installed": True,
+    }
+
+    cli_main._resume_windows_gateways_after_update(token)
+
+    assert spawned == []
+    assert "Starting Windows gateway after update" not in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------
@@ -563,7 +736,7 @@ def test_cmd_update_aborts_on_concurrent_instance(_winp, tmp_path, capsys):
         cli_main, "_venv_scripts_dir", return_value=scripts_dir
     ), patch.object(
         cli_main,
-        "_detect_concurrent_prostor_instances",
+        "_detect_concurrent_hermes_instances",
         return_value=[(4242, "prostor.exe")],
     ), patch.object(
         cli_main, "_run_pre_update_backup"
@@ -609,7 +782,7 @@ def test_cmd_update_force_bypasses_concurrent_check(_winp, tmp_path):
     with patch.object(
         cli_main, "_venv_scripts_dir", return_value=scripts_dir
     ), patch.object(
-        cli_main, "_detect_concurrent_prostor_instances", detect
+        cli_main, "_detect_concurrent_hermes_instances", detect
     ), patch.object(
         cli_main, "_run_pre_update_backup", side_effect=sentinel
     ), patch.object(

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from prostor_cli.psutil_android import (
+from hermes_cli.psutil_android import (
     MARKER,
     REPLACEMENT,
     PSUTIL_URL,
@@ -68,7 +68,7 @@ def test_install_psutil_android_compat_uses_patched_tree(tmp_path):
     archive = tmp_path / "psutil.tar.gz"
     _build_psutil_archive(archive, malicious_symlink=False)
 
-    from prostor_cli import main as prostor_main
+    from hermes_cli import main as hermes_main
 
     captured: dict[str, object] = {}
 
@@ -86,8 +86,8 @@ def test_install_psutil_android_compat_uses_patched_tree(tmp_path):
         )
 
     with patch("urllib.request.urlretrieve", side_effect=fake_urlretrieve), \
-         patch.object(prostor_main, "_run_install_with_heartbeat", side_effect=fake_run_install):
-        prostor_main._install_psutil_android_compat(
+         patch.object(hermes_main, "_run_install_with_heartbeat", side_effect=fake_run_install):
+        hermes_main._install_psutil_android_compat(
             ["uv", "pip"],
             env={"PROSTOR_TEST": "1"},
         )

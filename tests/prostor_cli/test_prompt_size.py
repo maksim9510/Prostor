@@ -4,15 +4,15 @@ import json
 
 import pytest
 
-from prostor_cli.prompt_size import (
+from hermes_cli.prompt_size import (
     _SKILLS_BLOCK_RE,
     compute_prompt_breakdown,
     render_breakdown,
 )
 
 
-def _seed_memory(prostor_home, memory_text="", user_text=""):
-    mem_dir = prostor_home / "memories"
+def _seed_memory(hermes_home, memory_text="", user_text=""):
+    mem_dir = hermes_home / "memories"
     mem_dir.mkdir(parents=True, exist_ok=True)
     if memory_text:
         (mem_dir / "MEMORY.md").write_text(memory_text, encoding="utf-8")
@@ -20,8 +20,8 @@ def _seed_memory(prostor_home, memory_text="", user_text=""):
         (mem_dir / "USER.md").write_text(user_text, encoding="utf-8")
 
 
-def _seed_skill(prostor_home, name, description):
-    skill_dir = prostor_home / "skills" / "demo" / name
+def _seed_skill(hermes_home, name, description):
+    skill_dir = hermes_home / "skills" / "demo" / name
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "SKILL.md").write_text(
         f"---\nname: {name}\ndescription: {description}\n---\n# {name}\nbody\n",
@@ -31,11 +31,11 @@ def _seed_skill(prostor_home, name, description):
 
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
-    prostor_home = tmp_path / ".prostor"
-    prostor_home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / ".prostor"
+    hermes_home.mkdir()
+    monkeypatch.setenv("PROSTOR_HOME", str(hermes_home))
     monkeypatch.chdir(tmp_path)  # avoid picking up the repo's AGENTS.md
-    return prostor_home
+    return hermes_home
 
 
 def test_breakdown_keys_and_shape(isolated_home):

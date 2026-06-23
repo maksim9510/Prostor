@@ -1,6 +1,6 @@
 """Implementation of the ``prostor bundles`` CLI subcommand.
 
-Mirrors the structure of ``prostor_cli/skills_hub.py`` but for skill
+Mirrors the structure of ``hermes_cli/skills_hub.py`` but for skill
 bundles. Bundles are tiny YAML files that name a set of skills to load
 together via a single ``/<bundle>`` slash command.
 
@@ -166,7 +166,7 @@ def _cmd_reload(args) -> None:
 def register_cli(subparser) -> None:
     """Build the ``prostor bundles`` argparse tree.
 
-    Called from ``prostor_cli/main.py`` where it owns the top-level
+    Called from ``hermes_cli/main.py`` where it owns the top-level
     ``bundles`` subparser. Keeping registration here means the bundles
     subcommand's argparse tree lives next to its handlers.
     """

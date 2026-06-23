@@ -1,6 +1,6 @@
 """``prostor dashboard`` subcommand parser.
 
-Extracted verbatim from ``prostor_cli/main.py:main()`` (god-file Phase 2).
+Extracted verbatim from ``hermes_cli/main.py:main()`` (god-file Phase 2).
 Handler injected to avoid importing ``main``.
 """
 
@@ -34,7 +34,13 @@ def build_dashboard_parser(
     dashboard_parser.add_argument(
         "--insecure",
         action="store_true",
-        help="Allow binding to non-localhost (DANGEROUS: exposes API keys on the network)",
+        help=(
+            "DEPRECATED / NO-OP. Formerly bypassed dashboard auth on a "
+            "non-loopback bind. As of the June 2026 hardening it no longer "
+            "disables authentication — a public bind always requires an auth "
+            "provider (password or OAuth). Bind 127.0.0.1 + tunnel to keep it "
+            "local."
+        ),
     )
     dashboard_parser.add_argument(
         "--skip-build",

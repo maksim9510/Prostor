@@ -24,18 +24,19 @@ from gateway.restart import (
     GATEWAY_SERVICE_RESTART_EXIT_CODE,
     parse_restart_drain_timeout,
 )
-from prostor_cli.config import (
+from hermes_cli.config import (
     get_env_value,
-    get_prostor_home,
+    get_hermes_home,
     is_managed,
     managed_error,
     read_raw_config,
     save_env_value,
+    write_platform_config_field,
 )
 
-# display_prostor_home is imported lazily at call sites to avoid ImportError
-# when prostor_constants is cached from a pre-update version during `prostor update`.
-from prostor_cli.setup import (
+# display_hermes_home is imported lazily at call sites to avoid ImportError
+# when hermes_constants is cached from a pre-update version during `prostor update`.
+from hermes_cli.setup import (
     print_header,
     print_info,
     print_success,
@@ -45,7 +46,7 @@ from prostor_cli.setup import (
     prompt_choice,
     prompt_yes_no,
 )
-from prostor_cli.colors import Colors, color
+from hermes_cli.colors import Colors, color
 
 logger = logging.getLogger(__name__)
 
@@ -325,7 +326,7 @@ def _scan_gateway_pids(exclude_pids: set[int], all_profiles: bool = False) -> li
     # unrelated processes like ``python -m tui_gateway``. Lazy import mirrors the
     # circular-import avoidance used elsewhere in this module.
     from gateway.status import looks_like_gateway_command_line
-    current_home = str(get_prostor_home().resolve())
+    current_home = str(get_hermes_home().resolve())
     current_home_lc = current_home.lower()
     current_profile_arg = _profile_arg(current_home)
     current_profile_name = (
@@ -339,7 +340,7 @@ def _scan_gateway_pids(exclude_pids: set[int], all_profiles: bool = False) -> li
             return (
                 f"--profile {current_profile_name_lc}" in command_lc
                 or f"-p {current_profile_name_lc}" in command_lc
-                or f"prostor_home={current_home_lc}" in command_lc
+                or f"hermes_home={current_home_lc}" in command_lc
             )
 
         # Default-profile case: no profile flag in argv. Accept as long as
@@ -350,8 +351,8 @@ def _scan_gateway_pids(exclude_pids: set[int], all_profiles: bool = False) -> li
         if "--profile " in command_lc or " -p " in command_lc:
             return False
         if (
-            "prostor_home=" in command_lc
-            and f"prostor_home={current_home_lc}" not in command_lc
+            "hermes_home=" in command_lc
+            and f"hermes_home={current_home_lc}" not in command_lc
         ):
             return False
         return True
@@ -579,7 +580,7 @@ def find_profile_gateway_processes(
     processes: list[ProfileGatewayProcess] = []
     try:
         from gateway.status import get_running_pid
-        from prostor_cli.profiles import list_profiles
+        from hermes_cli.profiles import list_profiles
     except Exception:
         return processes
 
@@ -599,16 +600,78 @@ def find_profile_gateway_processes(
 
 
 def _gateway_run_args_for_profile(profile: str) -> list[str]:
-    args = [get_python_path(), "-m", "prostor_cli.main"]
+    args = [get_python_path(), "-m", "hermes_cli.main"]
     if profile != "default":
         args.extend(["--profile", profile])
     args.extend(["gateway", "run", "--replace"])
     return args
 
 
+def _capture_gateway_argv(pid: int) -> list[str] | None:
+    """Return the live argv of a running gateway process, or ``None``.
+
+    Used to respawn gateways that have no profile→PID-file mapping (e.g. a
+    Windows Scheduled Task running ``pythonw.exe -m hermes_cli.main gateway
+    run``). ``_pause_windows_gateways_for_update`` force-kills such gateways
+    before mutating the venv; without their original command line we cannot
+    bring them back, so we snapshot it here before the kill.
+
+    Best-effort: returns ``None`` if psutil is unavailable, the process is
+    gone, access is denied, or the argv doesn't look like a gateway command.
+    """
+    if pid <= 1:
+        return None
+    try:
+        import psutil  # type: ignore
+    except ImportError:
+        return None
+    try:
+        argv = list(psutil.Process(pid).cmdline() or [])
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return None
+    except Exception:
+        return None
+    if not argv:
+        return None
+    # Guard against snapshotting an unrelated process whose PID happened to be
+    # reported by the scan: only respawn things that actually look like a
+    # gateway run command line.
+    try:
+        from gateway.status import looks_like_gateway_command_line
+
+        if not looks_like_gateway_command_line(" ".join(argv)):
+            return None
+    except Exception:
+        pass
+    return argv
+
+
+def launch_detached_gateway_restart_by_cmdline(
+    old_pid: int, run_argv: list[str]
+) -> bool:
+    """Relaunch a gateway by replaying its captured command line after exit.
+
+    Companion to ``launch_detached_profile_gateway_restart`` for gateways that
+    have no profile→PID-file mapping (Scheduled-Task / manually-launched
+    ``gateway run`` whose PROSTOR_HOME or argv doesn't match a known profile).
+    Uses the identical detached-watcher mechanism; only the respawn argv
+    differs (the process's own argv instead of a profile-derived one).
+    """
+    if old_pid <= 0 or not run_argv:
+        return False
+    return _spawn_gateway_restart_watcher(old_pid, list(run_argv))
+
+
 def launch_detached_profile_gateway_restart(profile: str, old_pid: int) -> bool:
     """Relaunch a manually-run profile gateway after its current PID exits."""
     if old_pid <= 0:
+        return False
+    return _spawn_gateway_restart_watcher(old_pid, _gateway_run_args_for_profile(profile))
+
+
+def _spawn_gateway_restart_watcher(old_pid: int, run_argv: list[str]) -> bool:
+    """Spawn the detached watcher that respawns ``run_argv`` once ``old_pid`` exits."""
+    if old_pid <= 0 or not run_argv:
         return False
 
     # The watcher is a tiny Python subprocess that polls the old PID and
@@ -628,7 +691,7 @@ def launch_detached_profile_gateway_restart(profile: str, old_pid: int) -> bool:
     #
     # ``windows_detach_popen_kwargs()`` returns the right kwargs for the
     # host platform and is a no-op on POSIX (just ``start_new_session=True``).
-    from prostor_cli._subprocess_compat import (
+    from hermes_cli._subprocess_compat import (
         windows_detach_flags_without_breakaway,
         windows_detach_popen_kwargs,
     )
@@ -695,7 +758,7 @@ def launch_detached_profile_gateway_restart(profile: str, old_pid: int) -> bool:
         "-c",
         watcher,
         str(old_pid),
-        *_gateway_run_args_for_profile(profile),
+        *run_argv,
     ]
 
     # Same platform-aware detach for the watcher process itself — so
@@ -787,11 +850,11 @@ def _read_systemd_unit_environment(system: bool = False) -> dict[str, str]:
     return parsed
 
 
-def _sync_prostor_home_from_systemd_unit(system: bool) -> None:
+def _sync_hermes_home_from_systemd_unit(system: bool) -> None:
     """When acting on a system-scope unit, adopt its ``PROSTOR_HOME``.
 
     Under ``sudo``, ``PROSTOR_HOME`` is stripped and ``HOME=/root``, so
-    :func:`get_prostor_home` falls back to ``/root/.prostor`` — the wrong
+    :func:`get_hermes_home` falls back to ``/root/.prostor`` — the wrong
     profile. The unit file pins ``PROSTOR_HOME`` for the actual gateway
     process, so we mirror that into our own environment to make
     ``read_runtime_status`` / ``get_running_pid`` read the correct files.
@@ -1075,14 +1138,14 @@ def get_gateway_runtime_snapshot(system: bool = False) -> GatewayRuntimeSnapshot
             gateway_pids=gateway_pids,
         )
 
-    from prostor_constants import is_container
+    from hermes_constants import is_container
 
     if is_linux() and is_container():
         # Phase 4: report s6 supervision when running under our /init.
         # Other container runtimes (or containers built before Phase 2)
         # still get the original "docker (foreground)" label.
         try:
-            from prostor_cli.service_manager import detect_service_manager, get_service_manager
+            from hermes_cli.service_manager import detect_service_manager, get_service_manager
             if detect_service_manager() == "s6":
                 profile = _profile_suffix() or "default"
                 service_name = f"gateway-{profile}"
@@ -1173,7 +1236,7 @@ def _print_other_profiles_gateway_status() -> None:
     avoid confusing another profile's process with the current one.
     """
     try:
-        from prostor_cli.profiles import get_active_profile_name
+        from hermes_cli.profiles import get_active_profile_name
 
         current = get_active_profile_name()
         other_processes = [
@@ -1198,7 +1261,7 @@ def _gateway_list() -> None:
     check each profile individually.
     """
     try:
-        from prostor_cli.profiles import list_profiles, get_active_profile_name
+        from hermes_cli.profiles import list_profiles, get_active_profile_name
     except Exception:
         print("Unable to list profiles.")
         return
@@ -1311,7 +1374,7 @@ def is_linux() -> bool:
     return sys.platform.startswith("linux")
 
 
-from prostor_constants import is_container, is_termux, is_wsl
+from hermes_constants import is_container, is_termux, is_wsl
 
 
 def _wsl_systemd_operational() -> bool:
@@ -1417,10 +1480,10 @@ def _profile_suffix() -> str:
     """
     import hashlib
     import re
-    from prostor_constants import get_default_prostor_root
+    from hermes_constants import get_default_hermes_root
 
-    home = get_prostor_home().resolve()
-    default = get_default_prostor_root().resolve()
+    home = get_hermes_home().resolve()
+    default = get_default_hermes_root().resolve()
     if home == default:
         return ""
     # Detect <root>/profiles/<name> pattern → use the profile name
@@ -1436,26 +1499,26 @@ def _profile_suffix() -> str:
     return hashlib.sha256(str(home).encode()).hexdigest()[:8]
 
 
-def _profile_arg(prostor_home: str | None = None, default_root: str | Path | None = None) -> str:
+def _profile_arg(hermes_home: str | None = None, default_root: str | Path | None = None) -> str:
     """Return ``--profile <name>`` only when PROSTOR_HOME is a named profile.
 
     For ``~/.prostor/profiles/<name>``, returns ``"--profile <name>"``.
     For the default profile or hash-based custom paths, returns the empty string.
 
     Args:
-        prostor_home: Optional explicit PROSTOR_HOME path. Defaults to the current
-            ``get_prostor_home()`` value. Should be passed when generating a
+        hermes_home: Optional explicit PROSTOR_HOME path. Defaults to the current
+            ``get_hermes_home()`` value. Should be passed when generating a
             service definition for a different user (e.g. system service).
         default_root: Optional Prostor root to compare against. Used when
             generating a system service for another user from a sudo/root
-            process, where ``Path.home()`` and ``get_default_prostor_root()``
+            process, where ``Path.home()`` and ``get_default_hermes_root()``
             refer to root but the target profile lives under the service user.
     """
     import re
-    from prostor_constants import get_default_prostor_root
+    from hermes_constants import get_default_hermes_root
 
-    home = Path(prostor_home or str(get_prostor_home())).resolve()
-    default = Path(default_root).resolve() if default_root else get_default_prostor_root().resolve()
+    home = Path(hermes_home or str(get_hermes_home())).resolve()
+    default = Path(default_root).resolve() if default_root else get_default_hermes_root().resolve()
     if home == default:
         return ""
     profiles_root = (default / "profiles").resolve()
@@ -1469,14 +1532,14 @@ def _profile_arg(prostor_home: str | None = None, default_root: str | Path | Non
     return ""
 
 
-def _profile_arg_for_target_user(prostor_home: str, target_home_dir: str) -> str:
+def _profile_arg_for_target_user(hermes_home: str, target_home_dir: str) -> str:
     """Return the profile arg for a system service running as another user."""
     target_root = Path(target_home_dir) / ".prostor"
     try:
-        Path(prostor_home).resolve().relative_to(target_root.resolve())
-        return _profile_arg(prostor_home, default_root=target_root)
+        Path(hermes_home).resolve().relative_to(target_root.resolve())
+        return _profile_arg(hermes_home, default_root=target_root)
     except ValueError:
-        return _profile_arg(prostor_home)
+        return _profile_arg(hermes_home)
 
 
 def get_service_name() -> str:
@@ -1755,8 +1818,8 @@ _LEGACY_SERVICE_NAMES: tuple[str, ...] = ("prostor.service",)
 # ExecStart content markers that identify a unit as running our gateway.
 # A legacy unit is only flagged when its file contains one of these.
 _LEGACY_UNIT_EXECSTART_MARKERS: tuple[str, ...] = (
-    "prostor_cli.main gateway",
-    "prostor_cli/main.py gateway",
+    "hermes_cli.main gateway",
+    "hermes_cli/main.py gateway",
     "gateway/run.py",
     " prostor gateway ",
     "/prostor gateway ",
@@ -1775,7 +1838,7 @@ def _legacy_unit_search_paths() -> list[tuple[bool, Path]]:
     ]
 
 
-def _find_legacy_prostor_units() -> list[tuple[str, Path, bool]]:
+def _find_legacy_hermes_units() -> list[tuple[str, Path, bool]]:
     """Return ``[(unit_name, unit_path, is_system)]`` for legacy Prostor gateway units.
 
     Detects unit files installed by older Prostor versions that used a
@@ -1813,9 +1876,9 @@ def _find_legacy_prostor_units() -> list[tuple[str, Path, bool]]:
     return results
 
 
-def has_legacy_prostor_units() -> bool:
+def has_legacy_hermes_units() -> bool:
     """Return True when any legacy Prostor gateway unit files exist."""
-    return bool(_find_legacy_prostor_units())
+    return bool(_find_legacy_hermes_units())
 
 
 def print_legacy_unit_warning() -> None:
@@ -1824,7 +1887,7 @@ def print_legacy_unit_warning() -> None:
     Idempotent: prints nothing when no legacy units are detected. Safe to
     call from any status/install/setup path.
     """
-    legacy = _find_legacy_prostor_units()
+    legacy = _find_legacy_hermes_units()
     if not legacy:
         return
     print_warning("Legacy Prostor gateway unit(s) detected from an older install:")
@@ -1837,13 +1900,13 @@ def print_legacy_unit_warning() -> None:
     print_info("    prostor gateway migrate-legacy")
 
 
-def remove_legacy_prostor_units(
+def remove_legacy_hermes_units(
     interactive: bool = True,
     dry_run: bool = False,
 ) -> tuple[int, list[Path]]:
     """Stop, disable, and remove legacy Prostor gateway unit files.
 
-    Iterates over whatever ``_find_legacy_prostor_units()`` returns — which is
+    Iterates over whatever ``_find_legacy_hermes_units()`` returns — which is
     an explicit allowlist of legacy names (not a glob). Profile units and
     unrelated third-party services are never touched.
 
@@ -1857,7 +1920,7 @@ def remove_legacy_prostor_units(
         ``(removed_count, remaining_paths)`` — remaining includes units we
         couldn't remove (typically system-scope when not running as root).
     """
-    legacy = _find_legacy_prostor_units()
+    legacy = _find_legacy_hermes_units()
     if not legacy:
         print("No legacy Prostor gateway units found.")
         return 0, []
@@ -2283,30 +2346,30 @@ def _remap_path_for_user(path: str, target_home_dir: str) -> str:
         return str(p)
 
 
-def _prostor_home_for_target_user(target_home_dir: str) -> str:
+def _hermes_home_for_target_user(target_home_dir: str) -> str:
     """Remap the current PROSTOR_HOME to the equivalent under a target user's home.
 
-    When installing a system service via sudo, get_prostor_home() resolves to
+    When installing a system service via sudo, get_hermes_home() resolves to
     root's home.  This translates it to the target user's equivalent path:
       /root/.prostor                    → /home/alice/.prostor
       /root/.prostor/profiles/coder     → /home/alice/.prostor/profiles/coder
       /opt/custom-prostor               → /opt/custom-prostor  (kept as-is)
     """
-    current_prostor = get_prostor_home().resolve()
+    current_hermes = get_hermes_home().resolve()
     current_default = (Path.home() / ".prostor").resolve()
     target_default = Path(target_home_dir) / ".prostor"
 
     # Default ~/.prostor → remap to target user's default
-    if current_prostor == current_default:
+    if current_hermes == current_default:
         return str(target_default)
 
     # Profile or subdir of ~/.prostor → preserve the relative structure
     try:
-        relative = current_prostor.relative_to(current_default)
+        relative = current_hermes.relative_to(current_default)
         return str(target_default / relative)
     except ValueError:
         # Completely custom path (not under ~/.prostor) — keep as-is
-        return str(current_prostor)
+        return str(current_hermes)
 
 
 def _build_service_path_dirs(project_root: Path | None = None) -> list[str]:
@@ -2332,13 +2395,13 @@ def _build_service_path_dirs(project_root: Path | None = None) -> list[str]:
     if _is_dir(node_bin):
         candidates.append(str(node_bin))
 
-    prostor_home = get_prostor_home()
-    prostor_node = prostor_home / "node" / "bin"
-    if _is_dir(prostor_node):
-        candidates.append(str(prostor_node))
-    prostor_nm = prostor_home / "node_modules" / ".bin"
-    if _is_dir(prostor_nm):
-        candidates.append(str(prostor_nm))
+    hermes_home = get_hermes_home()
+    hermes_node = hermes_home / "node" / "bin"
+    if _is_dir(hermes_node):
+        candidates.append(str(hermes_node))
+    hermes_nm = hermes_home / "node_modules" / ".bin"
+    if _is_dir(hermes_nm):
+        candidates.append(str(hermes_nm))
 
     return candidates
 
@@ -2347,7 +2410,7 @@ def _stable_service_working_dir() -> str:
     """Return a WorkingDirectory that will not disappear out from under systemd.
 
     The gateway does NOT need its cwd to be the source checkout — ``ExecStart``
-    uses an absolute python interpreter and ``-m prostor_cli.main``, so module
+    uses an absolute python interpreter and ``-m hermes_cli.main``, so module
     resolution does not depend on cwd. Pinning ``WorkingDirectory`` to
     ``PROJECT_ROOT`` (``Path(__file__).parent.parent``) is actively harmful:
     when the unit is generated from a transient checkout — a ``.worktrees/``
@@ -2363,7 +2426,7 @@ def _stable_service_working_dir() -> str:
     cannot be resolved (it always can in practice).
     """
     try:
-        home = get_prostor_home()
+        home = get_hermes_home()
         if home and Path(home).is_dir():
             return str(Path(home).resolve())
     except Exception:
@@ -2403,8 +2466,8 @@ def generate_systemd_unit(system: bool = False, run_as_user: str | None = None) 
 
     if system:
         username, group_name, home_dir = _system_service_identity(run_as_user)
-        prostor_home = _prostor_home_for_target_user(home_dir)
-        profile_arg = _profile_arg_for_target_user(prostor_home, home_dir)
+        hermes_home = _hermes_home_for_target_user(home_dir)
+        profile_arg = _profile_arg_for_target_user(hermes_home, home_dir)
         # Remap all paths that may resolve under the calling user's home
         # (e.g. /root/) to the target user's home so the service can
         # actually access them.
@@ -2412,7 +2475,7 @@ def generate_systemd_unit(system: bool = False, run_as_user: str | None = None) 
         # Anchor cwd to the target user's PROSTOR_HOME (stable, always exists)
         # rather than a remapped source-checkout path that can rot. See
         # _stable_service_working_dir() for the full rationale.
-        working_dir = str(prostor_home) if prostor_home else _remap_path_for_user(working_dir, home_dir)
+        working_dir = str(hermes_home) if hermes_home else _remap_path_for_user(working_dir, home_dir)
         venv_dir = _remap_path_for_user(venv_dir, home_dir)
         path_entries = [_remap_path_for_user(p, home_dir) for p in path_entries]
         path_entries.extend(_build_user_local_paths(Path(home_dir), path_entries))
@@ -2429,14 +2492,14 @@ StartLimitIntervalSec=0
 Type=simple
 User={username}
 Group={group_name}
-ExecStart={python_path} -m prostor_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run
+ExecStart={python_path} -m hermes_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run
 WorkingDirectory={working_dir}
 Environment="HOME={home_dir}"
 Environment="USER={username}"
 Environment="LOGNAME={username}"
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
-Environment="PROSTOR_HOME={prostor_home}"
+Environment="PROSTOR_HOME={hermes_home}"
 Restart=always
 RestartSec=5
 RestartForceExitStatus={GATEWAY_SERVICE_RESTART_EXIT_CODE}
@@ -2451,8 +2514,8 @@ StandardError=journal
 WantedBy=multi-user.target
 """
 
-    prostor_home = str(get_prostor_home().resolve())
-    profile_arg = _profile_arg(prostor_home)
+    hermes_home = str(get_hermes_home().resolve())
+    profile_arg = _profile_arg(hermes_home)
     path_entries.extend(_build_user_local_paths(Path.home(), path_entries))
     path_entries.extend(_build_wsl_interop_paths(path_entries))
     path_entries.extend(common_bin_paths)
@@ -2465,11 +2528,11 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart={python_path} -m prostor_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run
+ExecStart={python_path} -m hermes_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run
 WorkingDirectory={working_dir}
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
-Environment="PROSTOR_HOME={prostor_home}"
+Environment="PROSTOR_HOME={hermes_home}"
 Restart=always
 RestartSec=5
 RestartForceExitStatus={GATEWAY_SERVICE_RESTART_EXIT_CODE}
@@ -2525,7 +2588,7 @@ def _normalize_launchd_plist_for_comparison(text: str) -> str:
     normalized = _normalize_service_definition(text)
     return re.sub(
         r"(<key>PATH</key>\s*<string>)(.*?)(</string>)",
-        r"\1__PROSTOR_PATH__\3",
+        r"\1__HERMES_PATH__\3",
         normalized,
         flags=re.S,
     )
@@ -2623,7 +2686,7 @@ def refresh_systemd_unit_if_needed(system: bool = False) -> bool:
     # The user-scope unit path resolves under ``Path.home()``, which is NOT
     # sandboxed by the test conftest (only PROSTOR_HOME is). If a test
     # exercises ``run_gateway()`` with a pytest-tmp PROSTOR_HOME, the freshly
-    # generated unit bakes that ``/tmp/pytest-of-.../prostor_test`` path into
+    # generated unit bakes that ``/tmp/pytest-of-.../hermes_test`` path into
     # ``Environment="PROSTOR_HOME=..."``. Writing that to the developer's
     # real user systemd unit file silently breaks their gateway on the next
     # reboot (systemd loads the polluted env, the gateway looks at an empty
@@ -2635,8 +2698,8 @@ def refresh_systemd_unit_if_needed(system: bool = False) -> bool:
     # still works.
     if not system and (
         "/pytest-of-" in new_unit
-        or '/prostor_test"' in new_unit
-        or "/prostor_test/" in new_unit
+        or '/hermes_test"' in new_unit
+        or "/hermes_test/" in new_unit
     ):
         return False
 
@@ -2788,12 +2851,12 @@ def systemd_install(
     # flap-fight for the Telegram bot token on every gateway startup.
     # Only removes units matching _LEGACY_SERVICE_NAMES + our ExecStart
     # signature — profile units are never touched.
-    if has_legacy_prostor_units():
+    if has_legacy_hermes_units():
         print()
         print_legacy_unit_warning()
         print()
         if prompt_yes_no("Remove the legacy unit(s) before installing?", True):
-            remove_legacy_prostor_units(interactive=False)
+            remove_legacy_hermes_units(interactive=False)
             print()
 
     unit_path = get_systemd_unit_path(system=system)
@@ -2899,7 +2962,7 @@ def systemd_stop(system: bool = False):
     if system:
         _require_root_for_system_service("stop")
     _require_service_installed("stop", system=system)
-    _sync_prostor_home_from_systemd_unit(system=system)
+    _sync_hermes_home_from_systemd_unit(system=system)
     try:
         from gateway.status import get_running_pid, write_planned_stop_marker
 
@@ -2930,7 +2993,7 @@ def systemd_restart(system: bool = False):
         _preflight_user_systemd()
     _require_service_installed("restart", system=system)
     refresh_systemd_unit_if_needed(system=system)
-    _sync_prostor_home_from_systemd_unit(system=system)
+    _sync_hermes_home_from_systemd_unit(system=system)
     from gateway.status import get_running_pid
 
     pid = get_running_pid() or _systemd_main_pid(system=system)
@@ -3031,13 +3094,13 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
         print(f"  Run: {'sudo ' if system else ''}prostor gateway install{scope_flag}")
         return
 
-    _sync_prostor_home_from_systemd_unit(system=system)
+    _sync_hermes_home_from_systemd_unit(system=system)
 
     if has_conflicting_systemd_units():
         print_systemd_scope_conflict_warning()
         print()
 
-    if has_legacy_prostor_units():
+    if has_legacy_hermes_units():
         print_legacy_unit_warning()
         print()
 
@@ -3254,12 +3317,12 @@ def _launchctl_domain_unsupported(returncode: int) -> bool:
 
 
 def _gateway_run_command() -> list[str]:
-    """Build the `python -m prostor_cli.main [--profile X] gateway run --replace` argv.
+    """Build the `python -m hermes_cli.main [--profile X] gateway run --replace` argv.
 
     Profile-aware: honors the active PROSTOR_HOME via `_profile_arg()` so the
     detached fallback launches into the same profile as the CLI invocation.
     """
-    cmd = [get_python_path(), "-m", "prostor_cli.main"]
+    cmd = [get_python_path(), "-m", "hermes_cli.main"]
     profile_arg = _profile_arg()
     if profile_arg:
         cmd.extend(profile_arg.split())
@@ -3276,9 +3339,9 @@ def _spawn_detached_gateway() -> bool:
     gateway logs and the PID is tracked via the gateway.pid file that
     `run_gateway` writes, so stop/status/restart keep working.
     """
-    from prostor_cli._subprocess_compat import windows_detach_popen_kwargs
+    from hermes_cli._subprocess_compat import windows_detach_popen_kwargs
 
-    log_dir = get_prostor_home() / "logs"
+    log_dir = get_hermes_home() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     out_path = log_dir / "gateway.log"
     err_path = log_dir / "gateway.error.log"
@@ -3308,7 +3371,7 @@ def _launchd_fallback_to_detached(reason: str, *, exit_on_failure: bool = True) 
     launched, prints the manual workaround and (by default) exits non-zero so
     the failure surfaces instead of silently doing nothing.
     """
-    from prostor_constants import display_prostor_home as _dhh
+    from hermes_constants import display_hermes_home as _dhh
 
     print(f"⚠ launchd cannot manage the gateway on this macOS version ({reason}).")
     if _spawn_detached_gateway():
@@ -3333,11 +3396,11 @@ def generate_launchd_plist() -> str:
     # _stable_service_working_dir() for the rationale (same rot risk applies
     # to launchd's WorkingDirectory as to systemd's).
     working_dir = _stable_service_working_dir()
-    prostor_home = str(get_prostor_home().resolve())
-    log_dir = get_prostor_home() / "logs"
+    hermes_home = str(get_hermes_home().resolve())
+    log_dir = get_hermes_home() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     label = get_launchd_label()
-    profile_arg = _profile_arg(prostor_home)
+    profile_arg = _profile_arg(hermes_home)
     # Build a sane PATH for the launchd plist.  launchd provides only a
     # minimal default (/usr/bin:/bin:/usr/sbin:/sbin) which misses Homebrew,
     # nvm, cargo, etc.  We prepend venv/bin and node_modules/.bin (matching
@@ -3363,7 +3426,7 @@ def generate_launchd_plist() -> str:
     prog_args = [
         f"<string>{python_path}</string>",
         "<string>-m</string>",
-        "<string>prostor_cli.main</string>",
+        "<string>hermes_cli.main</string>",
     ]
     if profile_arg:
         for part in profile_arg.split():
@@ -3399,7 +3462,7 @@ def generate_launchd_plist() -> str:
         <key>VIRTUAL_ENV</key>
         <string>{venv_dir}</string>
         <key>PROSTOR_HOME</key>
-        <string>{prostor_home}</string>
+        <string>{hermes_home}</string>
     </dict>
 
     <key>LimitLoadToSessionType</key>
@@ -3554,7 +3617,7 @@ def launchd_install(force: bool = False):
     print()
     print("Next steps:")
     print("  prostor gateway status             # Check status")
-    from prostor_constants import display_prostor_home as _dhh
+    from hermes_constants import display_hermes_home as _dhh
 
     print(f"  tail -f {_dhh()}/logs/gateway.log  # View logs")
 
@@ -3805,7 +3868,7 @@ def launchd_status(deep: bool = False):
         print("  Run: prostor gateway start")
 
     if deep:
-        log_file = get_prostor_home() / "logs" / "gateway.log"
+        log_file = get_hermes_home() / "logs" / "gateway.log"
         if log_file.exists():
             print()
             print("Recent logs:")
@@ -3875,8 +3938,8 @@ def _guard_named_profile_under_multiplexer(force: bool = False) -> None:
         return  # default profile (or unrecognized) — this guard doesn't apply
 
     try:
-        from prostor_constants import get_default_prostor_root
-        default_root = get_default_prostor_root()
+        from hermes_constants import get_default_hermes_root
+        default_root = get_default_hermes_root()
         # (b) Is the default-profile gateway running?
         from gateway.status import get_running_pid as _default_running_pid  # noqa
     except Exception:
@@ -4134,7 +4197,7 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
         if os.environ.get("PROSTOR_GATEWAY_EXIT_DIAG", "1") != "1":
             return
         try:
-            from prostor_constants import get_prostor_home as _ghh
+            from hermes_constants import get_hermes_home as _ghh
 
             log_dir = _ghh() / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -4426,7 +4489,7 @@ def _all_platforms() -> list[dict]:
     # User-installed platform plugins under ~/.prostor/plugins/ still require
     # opt-in via ``plugins.enabled`` (untrusted code).
     try:
-        from prostor_cli.plugins import discover_plugins
+        from hermes_cli.plugins import discover_plugins
 
         discover_plugins()
     except Exception as e:
@@ -4503,7 +4566,7 @@ def _platform_status(platform: dict) -> str:
     val = get_env_value(token_var)
     if token_var == "WHATSAPP_ENABLED":
         if val and val.lower() == "true":
-            session_file = get_prostor_home() / "whatsapp" / "session" / "creds.json"
+            session_file = get_hermes_home() / "whatsapp" / "session" / "creds.json"
             if session_file.exists():
                 return "configured + paired"
             return "enabled, not paired"
@@ -4573,12 +4636,19 @@ def _runtime_health_lines() -> list[str]:
         lines.append(f"⚠ Last startup issue: {exit_reason}")
     elif gateway_state == "draining":
         action = "restart" if restart_requested else "shutdown"
-        count = int(active_agents or 0)
+        from gateway.status import parse_active_agents
+
+        count = parse_active_agents(active_agents)
         lines.append(f"⏳ Gateway draining for {action} ({count} active agent(s))")
     elif gateway_state == "stopped" and exit_reason:
         lines.append(f"⚠ Last shutdown reason: {exit_reason}")
 
     return lines
+
+
+def _set_platform_unauthorized_dm_behavior(platform_key: str, behavior: str) -> None:
+    """Persist a platform-specific unauthorized-DM policy in config.yaml."""
+    write_platform_config_field(platform_key, "unauthorized_dm_behavior", behavior, raw=True)
 
 
 def _setup_standard_platform(platform: dict):
@@ -4614,7 +4684,7 @@ def _setup_standard_platform(platform: dict):
         choice = prompt("  Choice [1/2]", default="1")
         if choice.strip() == "1":
             try:
-                from prostor_cli.telegram_managed_bot import (
+                from hermes_cli.telegram_managed_bot import (
                     auto_setup_telegram_bot_result,
                     is_valid_telegram_bot_token,
                 )
@@ -4690,24 +4760,43 @@ def _setup_standard_platform(platform: dict):
             else:
                 # No allowlist — ask about open access vs DM pairing
                 print()
-                access_choices = [
-                    "Enable open access (anyone can message the bot)",
-                    "Use DM pairing (unknown users request access, you approve with 'prostor pairing approve')",
-                    "Skip for now (bot will deny all users until configured)",
-                ]
+                is_email = platform.get("key") == "email"
+                if is_email:
+                    access_choices = [
+                        "Enable open access (any email sender can message the bot)",
+                        "Use DM pairing (unknown email senders receive a pairing code)",
+                        "Keep unknown senders silent",
+                    ]
+                    default_access_idx = 2
+                else:
+                    access_choices = [
+                        "Enable open access (anyone can message the bot)",
+                        "Use DM pairing (unknown users request access, you approve with 'prostor pairing approve')",
+                        "Skip for now (bot will deny all users until configured)",
+                    ]
+                    default_access_idx = 1
                 access_idx = prompt_choice(
-                    "  How should unauthorized users be handled?", access_choices, 1
+                    "  How should unauthorized users be handled?",
+                    access_choices,
+                    default_access_idx,
                 )
                 if access_idx == 0:
-                    save_env_value("GATEWAY_ALLOW_ALL_USERS", "true")
+                    if is_email:
+                        save_env_value("EMAIL_ALLOW_ALL_USERS", "true")
+                    else:
+                        save_env_value("GATEWAY_ALLOW_ALL_USERS", "true")
                     print_warning("  Open access enabled — anyone can use your bot!")
                 elif access_idx == 1:
+                    if is_email:
+                        _set_platform_unauthorized_dm_behavior("email", "pair")
                     print_success(
                         "  DM pairing mode — users will receive a code to request access."
                     )
                     print_info(
                         "  Approve with: prostor pairing approve <platform> <code>"
                     )
+                elif is_email:
+                    print_success("  Unknown email senders will be ignored.")
                 else:
                     print_info(
                         "  Skipped — configure later with 'prostor gateway setup'"
@@ -4759,7 +4848,7 @@ def _is_service_installed() -> bool:
     elif is_macos():
         return get_launchd_plist_path().exists()
     elif is_windows():
-        from prostor_cli import gateway_windows
+        from hermes_cli import gateway_windows
 
         return gateway_windows.is_installed()
     return False
@@ -4812,7 +4901,7 @@ def _is_service_running() -> bool:
         except subprocess.TimeoutExpired:
             return False
     elif is_windows():
-        from prostor_cli import gateway_windows
+        from hermes_cli import gateway_windows
 
         if gateway_windows.is_installed():
             # "installed" doesn't necessarily mean "running" on Windows. The
@@ -4864,7 +4953,7 @@ def _setup_weixin():
     import asyncio
 
     try:
-        credentials = asyncio.run(qr_login(str(get_prostor_home())))
+        credentials = asyncio.run(qr_login(str(get_hermes_home())))
     except KeyboardInterrupt:
         print()
         print_warning("  Weixin setup cancelled.")
@@ -5253,10 +5342,10 @@ def _setup_signal():
 def _builtin_setup_fn(key: str):
     """Resolve the interactive setup function for a built-in platform key.
 
-    Late-bound to avoid a circular import with ``prostor_cli.setup`` (which
+    Late-bound to avoid a circular import with ``hermes_cli.setup`` (which
     imports from this module for the remaining bespoke flows).
     """
-    from prostor_cli import setup as _s
+    from hermes_cli import setup as _s
 
     return {
         # telegram moved into the plugin: setup_fn registered by
@@ -5383,7 +5472,7 @@ def gateway_setup():
         print_systemd_scope_conflict_warning()
         print()
 
-    if supports_systemd_services() and has_legacy_prostor_units():
+    if supports_systemd_services() and has_legacy_hermes_units():
         print_legacy_unit_warning()
         print()
 
@@ -5466,7 +5555,7 @@ def gateway_setup():
                     elif is_macos():
                         launchd_restart()
                     elif is_windows():
-                        from prostor_cli import gateway_windows
+                        from hermes_cli import gateway_windows
 
                         gateway_windows.restart()
                     else:
@@ -5491,7 +5580,7 @@ def gateway_setup():
                     elif is_macos():
                         launchd_start()
                     elif is_windows():
-                        from prostor_cli import gateway_windows
+                        from hermes_cli import gateway_windows
 
                         gateway_windows.start()
                 except UserSystemdUnavailableError as e:
@@ -5531,7 +5620,7 @@ def gateway_setup():
                             launchd_install(force=False)
                             did_install = True
                         else:
-                            from prostor_cli import gateway_windows
+                            from hermes_cli import gateway_windows
 
                             gateway_windows.install(force=False)
                             did_install = True
@@ -5543,7 +5632,7 @@ def gateway_setup():
                                 elif is_macos():
                                     launchd_start()
                                 elif is_windows():
-                                    from prostor_cli import gateway_windows
+                                    from hermes_cli import gateway_windows
                                     gateway_windows.start()
                             except UserSystemdUnavailableError as e:
                                 print_error(
@@ -5574,7 +5663,7 @@ def gateway_setup():
                     "  To enable systemd: add systemd=true to /etc/wsl.conf, then 'wsl --shutdown'"
                 )
             elif is_termux():
-                from prostor_constants import display_prostor_home as _dhh
+                from hermes_constants import display_hermes_home as _dhh
 
                 print_info("  Termux does not use systemd/launchd services.")
                 print_info("  Run in foreground: prostor gateway run")
@@ -5608,10 +5697,10 @@ def _dispatch_via_service_manager_if_s6(
     The s6 service slot was created either by the Phase 4 profile-create
     hook or by the container-boot reconciler (cont-init.d/02-…). If it
     doesn't exist or s6 returns an error, the named errors from
-    :mod:`prostor_cli.service_manager` are caught and surfaced as
+    :mod:`hermes_cli.service_manager` are caught and surfaced as
     actionable CLI messages (no raw ``CalledProcessError`` traceback).
     """
-    from prostor_cli.service_manager import (
+    from hermes_cli.service_manager import (
         GatewayNotRegisteredError,
         S6CommandError,
         detect_service_manager,
@@ -5666,7 +5755,7 @@ def _dispatch_all_via_service_manager_if_s6(action: str) -> bool:
     ``action`` is one of ``stop`` / ``restart`` (``start --all`` isn't
     a supported CLI surface).
     """
-    from prostor_cli.service_manager import (
+    from hermes_cli.service_manager import (
         detect_service_manager,
         get_service_manager,
     )
@@ -5889,7 +5978,7 @@ def _gateway_command_inner(args):
         elif is_macos():
             launchd_install(force)
         elif is_windows():
-            from prostor_cli import gateway_windows
+            from hermes_cli import gateway_windows
 
             gateway_windows.install(
                 force=force,
@@ -5918,7 +6007,7 @@ def _gateway_command_inner(args):
             # Phase 4: inside a container with s6 the gateway service is
             # auto-registered when the profile is created (and reconciled
             # at every container boot). `install` is therefore informational.
-            from prostor_cli.service_manager import detect_service_manager
+            from hermes_cli.service_manager import detect_service_manager
             if detect_service_manager() == "s6":
                 print("Per-profile gateways are auto-registered when you create a profile.")
                 print()
@@ -5963,11 +6052,11 @@ def _gateway_command_inner(args):
         elif is_macos():
             launchd_uninstall()
         elif is_windows():
-            from prostor_cli import gateway_windows
+            from hermes_cli import gateway_windows
 
             gateway_windows.uninstall()
         elif is_container():
-            from prostor_cli.service_manager import detect_service_manager
+            from hermes_cli.service_manager import detect_service_manager
             if detect_service_manager() == "s6":
                 print("Per-profile gateways are auto-unregistered when you delete the profile.")
                 print()
@@ -6016,7 +6105,7 @@ def _gateway_command_inner(args):
         elif is_macos():
             launchd_start()
         elif is_windows():
-            from prostor_cli import gateway_windows
+            from hermes_cli import gateway_windows
 
             gateway_windows.start()
         elif is_wsl():
@@ -6058,7 +6147,7 @@ def _gateway_command_inner(args):
     elif subcmd == "stop":
         # Defense: refuse self-targeting gateway stop from inside the gateway.
         # Prevents agent-initiated kill loops when combined with supervisor KeepAlive.
-        if os.getenv("_PROSTOR_GATEWAY") == "1":
+        if os.getenv("_HERMES_GATEWAY") == "1":
             print_error(
                 "Refusing to stop the gateway from inside the gateway process.\n"
                 "This command was blocked to prevent restart loops.\n"
@@ -6097,7 +6186,7 @@ def _gateway_command_inner(args):
                 except subprocess.CalledProcessError:
                     pass
             elif is_windows():
-                from prostor_cli import gateway_windows
+                from hermes_cli import gateway_windows
 
                 if gateway_windows.is_installed():
                     try:
@@ -6130,7 +6219,7 @@ def _gateway_command_inner(args):
                 except subprocess.CalledProcessError:
                     pass
             elif is_windows():
-                from prostor_cli import gateway_windows
+                from hermes_cli import gateway_windows
 
                 if gateway_windows.is_installed():
                     try:
@@ -6151,7 +6240,7 @@ def _gateway_command_inner(args):
     elif subcmd == "restart":
         # Defense: refuse self-targeting gateway restart from inside the gateway.
         # Prevents agent-initiated kill loops when combined with supervisor KeepAlive.
-        if os.getenv("_PROSTOR_GATEWAY") == "1":
+        if os.getenv("_HERMES_GATEWAY") == "1":
             print_error(
                 "Refusing to restart the gateway from inside the gateway process.\n"
                 "This command was blocked to prevent restart loops.\n"
@@ -6194,7 +6283,7 @@ def _gateway_command_inner(args):
                 except subprocess.CalledProcessError:
                     pass
             elif is_windows():
-                from prostor_cli import gateway_windows
+                from hermes_cli import gateway_windows
 
                 if gateway_windows.is_installed():
                     try:
@@ -6218,7 +6307,7 @@ def _gateway_command_inner(args):
             elif is_macos() and get_launchd_plist_path().exists():
                 launchd_start()
             elif is_windows():
-                from prostor_cli import gateway_windows
+                from hermes_cli import gateway_windows
 
                 # On Windows, even without a registered Scheduled Task / Startup
                 # entry, gateway_windows.start() uses the safe detached
@@ -6249,7 +6338,7 @@ def _gateway_command_inner(args):
             except subprocess.CalledProcessError:
                 pass
         elif is_windows():
-            from prostor_cli import gateway_windows
+            from hermes_cli import gateway_windows
 
             # Prefer the Windows-specific restart path: it supports both
             # registered Scheduled Task / Startup installs and no-service
@@ -6315,7 +6404,7 @@ def _gateway_command_inner(args):
         # Check for service first
         _windows_service_installed = False
         if is_windows():
-            from prostor_cli import gateway_windows
+            from hermes_cli import gateway_windows
 
             _windows_service_installed = gateway_windows.is_installed()
         if supports_systemd_services() and (
@@ -6328,7 +6417,7 @@ def _gateway_command_inner(args):
             launchd_status(deep)
             _print_gateway_process_mismatch(snapshot)
         elif _windows_service_installed:
-            from prostor_cli import gateway_windows
+            from hermes_cli import gateway_windows
 
             gateway_windows.status(deep=deep)
             _print_gateway_process_mismatch(snapshot)
@@ -6412,4 +6501,4 @@ def _gateway_command_inner(args):
         if not supports_systemd_services() and not is_macos():
             print("Legacy unit migration only applies to systemd-based Linux hosts.")
             return
-        remove_legacy_prostor_units(interactive=not yes, dry_run=dry_run)
+        remove_legacy_hermes_units(interactive=not yes, dry_run=dry_run)

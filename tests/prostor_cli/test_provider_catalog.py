@@ -1,4 +1,4 @@
-"""Tests for the unified provider catalog (prostor_cli.provider_catalog).
+"""Tests for the unified provider catalog (hermes_cli.provider_catalog).
 
 These are invariant tests, not snapshots: they assert the parity *contract*
 between what ``prostor model`` shows (``CANONICAL_PROVIDERS``) and what the
@@ -6,8 +6,8 @@ catalog exposes, plus how each provider's ``auth_type`` maps to a desktop tab �
 never a specific provider count or a frozen vendor list (both change over time).
 """
 
-from prostor_cli.models import CANONICAL_PROVIDERS
-from prostor_cli.provider_catalog import (
+from hermes_cli.models import CANONICAL_PROVIDERS
+from hermes_cli.provider_catalog import (
     ProviderDescriptor,
     provider_catalog,
     provider_catalog_by_slug,
@@ -15,7 +15,7 @@ from prostor_cli.provider_catalog import (
 )
 
 
-def test_catalog_covers_every_prostor_model_provider():
+def test_catalog_covers_every_hermes_model_provider():
     """PARITY CONTRACT: the catalog == the `prostor model` universe."""
     slugs = {d.slug for d in provider_catalog()}
     for entry in CANONICAL_PROVIDERS:
@@ -24,7 +24,7 @@ def test_catalog_covers_every_prostor_model_provider():
         )
 
 
-def test_catalog_has_no_providers_outside_prostor_model():
+def test_catalog_has_no_providers_outside_hermes_model():
     """The catalog must not invent providers `prostor model` doesn't show."""
     canonical = {e.slug for e in CANONICAL_PROVIDERS}
     for d in provider_catalog():
@@ -62,8 +62,6 @@ def test_api_key_providers_route_to_keys_oauth_to_accounts():
     # api_key → keys
     assert by["kilocode"].tab == "keys"
     assert by["openai-api"].tab == "keys"
-    # account / sign-in flows → accounts
-    assert by["google-gemini-cli"].tab == "accounts"
     assert by["copilot-acp"].tab == "accounts"
 
 

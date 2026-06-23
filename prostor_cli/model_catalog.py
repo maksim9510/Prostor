@@ -52,7 +52,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from prostor_cli import __version__ as _PROSTOR_VERSION
+from hermes_cli import __version__ as _HERMES_VERSION
 from utils import atomic_replace
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULT_CATALOG_URL = (
-    "https://github.com/maksim9510/Prostor/docs/api/model-catalog.json"
+    "https://prostor-agent.nousresearch.com/docs/api/model-catalog.json"
 )
 # Fallback fetch chain. The Docusaurus site is served through Vercel, which
 # occasionally returns HTTP 403 + x-vercel-mitigated: challenge for non-
@@ -71,13 +71,13 @@ DEFAULT_CATALOG_URL = (
 # is the same manifest published from the same repo and is not bot-gated,
 # so we fall through to it whenever the primary URL fails.
 DEFAULT_CATALOG_FALLBACK_URLS: tuple[str, ...] = (
-    "https://raw.githubusercontent.com/maksim9510/Prostor/main/website/static/api/model-catalog.json",
+    "https://raw.githubusercontent.com/NousResearch/prostor-agent/main/website/static/api/model-catalog.json",
 )
 DEFAULT_TTL_HOURS = 1
 DEFAULT_FETCH_TIMEOUT = 8.0
 SUPPORTED_SCHEMA_VERSION = 1
 
-_PROSTOR_USER_AGENT = f"prostor-cli/{_PROSTOR_VERSION}"
+_HERMES_USER_AGENT = f"prostor-cli/{_HERMES_VERSION}"
 
 # In-process cache to avoid repeated disk + parse work across multiple
 # calls within the same session. Invalidated by TTL against the disk file's
@@ -94,7 +94,7 @@ _catalog_cache_source_mtime: float = 0.0
 def _load_catalog_config() -> dict[str, Any]:
     """Load the ``model_catalog`` config block with defaults filled in."""
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config() or {}
     except Exception:
         cfg = {}
@@ -113,8 +113,8 @@ def _load_catalog_config() -> dict[str, Any]:
 
 def _cache_path() -> Path:
     """Return the disk cache path. Import lazily so tests can monkeypatch home."""
-    from prostor_constants import get_prostor_home
-    return get_prostor_home() / "cache" / "model_catalog.json"
+    from hermes_constants import get_hermes_home
+    return get_hermes_home() / "cache" / "model_catalog.json"
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ def _fetch_manifest(url: str, timeout: float) -> dict[str, Any] | None:
             url,
             headers={
                 "Accept": "application/json",
-                "User-Agent": _PROSTOR_USER_AGENT,
+                "User-Agent": _HERMES_USER_AGENT,
             },
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:

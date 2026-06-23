@@ -247,7 +247,7 @@ def _debug(msg: str) -> None:
 def _beeps_enabled() -> bool:
     """CLI parity: voice.beep_enabled in config.yaml (default True)."""
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         voice_cfg = load_config().get("voice", {})
         if isinstance(voice_cfg, dict):
@@ -799,10 +799,10 @@ def speak_text(text: str) -> None:
         # MP3 output path, pre-chosen so we can play the MP3 directly even
         # when text_to_speech_tool auto-converts to OGG for messaging
         # platforms.  afplay's OGG support is flaky, MP3 always works.
-        os.makedirs(os.path.join(tempfile.gettempdir(), "prostor_voice"), exist_ok=True)
+        os.makedirs(os.path.join(tempfile.gettempdir(), "hermes_voice"), exist_ok=True)
         mp3_path = os.path.join(
             tempfile.gettempdir(),
-            "prostor_voice",
+            "hermes_voice",
             f"tts_{time.strftime('%Y%m%d_%H%M%S')}.mp3",
         )
 

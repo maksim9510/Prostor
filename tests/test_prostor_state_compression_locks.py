@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from prostor_state import SessionDB
+from hermes_state import SessionDB
 
 
 @pytest.fixture

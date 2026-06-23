@@ -1,6 +1,6 @@
 """Tests for the OAuth manual-paste fallback for browser-only remotes.
 
-Regression coverage for [#26923](https://github.com/maksim9510/Prostor/issues/26923):
+Regression coverage for [#26923](https://github.com/NousResearch/prostor-agent/issues/26923):
 GCP Cloud Shell, GitHub Codespaces, AWS EC2 Instance Connect and
 other browser-only remote consoles can't reach the
 ``http://127.0.0.1:56121/callback`` loopback listener bound on the
@@ -29,7 +29,7 @@ import contextlib
 
 import pytest
 
-from prostor_cli import auth as auth_mod
+from hermes_cli import auth as auth_mod
 
 
 # ---------------------------------------------------------------------------

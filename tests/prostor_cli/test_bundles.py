@@ -1,10 +1,10 @@
-"""Tests for prostor_cli/bundles.py — the `prostor bundles` CLI subcommand."""
+"""Tests for hermes_cli/bundles.py — the `prostor bundles` CLI subcommand."""
 
 import argparse
 
 import pytest
 
-from prostor_cli.bundles import (
+from hermes_cli.bundles import (
     bundles_command,
     register_cli,
 )

@@ -21,7 +21,7 @@ import json
 import sqlite3
 from typing import Any, Iterable, Optional
 
-from prostor_cli import kanban_db as kb
+from hermes_cli import kanban_db as kb
 
 BLACKBOARD_PREFIX = "[swarm:blackboard] "
 
@@ -124,7 +124,6 @@ def create_swarm(
         idempotency_key=idempotency_key,
         workspace_kind=workspace_kind,
         workspace_path=workspace_path,
-        skills=["kanban-orchestrator"],
     )
 
     # If idempotency returned an existing non-archived root, do not duplicate the

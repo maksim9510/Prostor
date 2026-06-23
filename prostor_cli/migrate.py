@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from prostor_cli.colors import Colors, color
-from prostor_cli.config import load_config
+from hermes_cli.colors import Colors, color
+from hermes_cli.config import load_config
 
 
 def cmd_migrate(args: Any) -> int:
@@ -25,7 +25,7 @@ def cmd_migrate(args: Any) -> int:
 
 def cmd_migrate_xai(args: Any) -> int:
     """Run xAI May-15 model migration in dry-run or apply mode."""
-    from prostor_cli.xai_retirement import (
+    from hermes_cli.xai_retirement import (
         MIGRATION_GUIDE_URL,
         RETIREMENT_DATE,
         apply_migration,
@@ -110,6 +110,6 @@ def cmd_migrate_xai(args: Any) -> int:
 
 def _resolve_config_path() -> Path:
     """Best-effort: locate the active config.yaml on disk."""
-    from prostor_cli.config import get_prostor_home
+    from hermes_cli.config import get_hermes_home
 
-    return get_prostor_home() / "config.yaml"
+    return get_hermes_home() / "config.yaml"

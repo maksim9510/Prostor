@@ -7,4 +7,4 @@ def test_windows_native_install_path_docs_match_installer() -> None:
 
     assert "%LOCALAPPDATA%\\prostor\\prostor-agent\\venv\\Scripts" in doc
     assert "Get-Command prostor        # should print C:\\Users\\<you>\\AppData\\Local\\prostor\\prostor-agent\\venv\\Scripts\\prostor.exe" in doc
-    assert '$prostorBin = "$InstallDir\\venv\\Scripts"' in install
+    assert '$hermesBin = "$InstallDir\\venv\\Scripts"' in install

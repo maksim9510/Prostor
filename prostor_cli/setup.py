@@ -21,16 +21,16 @@ import copy
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from prostor_cli.nous_subscription import get_nous_subscription_features
+from hermes_cli.nous_subscription import get_nous_subscription_features
 from tools.tool_backend_helpers import managed_nous_tools_enabled
 from utils import base_url_hostname
-from prostor_constants import get_optional_skills_dir
+from hermes_constants import get_optional_skills_dir
 
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
-_DOCS_BASE = "https://github.com/maksim9510/Prostor/docs"
+_DOCS_BASE = "https://prostor-agent.nousresearch.com/docs"
 
 
 def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -60,7 +60,7 @@ def _supports_same_provider_pool_setup(provider: str) -> bool:
         return False
     if provider == "openrouter":
         return True
-    from prostor_cli.auth import PROVIDER_REGISTRY
+    from hermes_cli.auth import PROVIDER_REGISTRY
 
     pconfig = PROVIDER_REGISTRY.get(provider)
     if not pconfig:
@@ -129,10 +129,10 @@ def _set_reasoning_effort(config: Dict[str, Any], effort: str) -> None:
 
 
 # Import config helpers
-from prostor_cli.config import (
+from hermes_cli.config import (
     cfg_get,
     DEFAULT_CONFIG,
-    get_prostor_home,
+    get_hermes_home,
     get_config_path,
     get_env_path,
     load_config,
@@ -140,11 +140,11 @@ from prostor_cli.config import (
     save_env_value,
     remove_env_value,
     get_env_value,
-    ensure_prostor_home,
+    ensure_hermes_home,
 )
-# display_prostor_home imported lazily at call sites (stale-module safety during prostor update)
+# display_hermes_home imported lazily at call sites (stale-module safety during prostor update)
 
-from prostor_cli.colors import Colors, color
+from hermes_cli.colors import Colors, color
 
 
 def print_header(title: str):
@@ -153,13 +153,13 @@ def print_header(title: str):
     print(color(f"◆ {title}", Colors.CYAN, Colors.BOLD))
 
 
-from prostor_cli.cli_output import (  # noqa: E402
+from hermes_cli.cli_output import (  # noqa: E402
     print_error,
     print_info,
     print_success,
     print_warning,
 )
-from prostor_cli.secret_prompt import masked_secret_prompt  # noqa: E402
+from hermes_cli.secret_prompt import masked_secret_prompt  # noqa: E402
 
 
 def is_interactive_stdin() -> bool:
@@ -224,7 +224,7 @@ def _sanitize_pasted_input(value: str) -> str:
 
 def _curses_prompt_choice(question: str, choices: list, default: int = 0, description: str | None = None) -> int:
     """Single-select menu using curses. Delegates to curses_radiolist."""
-    from prostor_cli.curses_ui import curses_radiolist
+    from hermes_cli.curses_ui import curses_radiolist
     return curses_radiolist(question, choices, selected=default, cancel_returns=-1, description=description)
 
 
@@ -314,7 +314,7 @@ def prompt_checklist(title: str, items: list, pre_selected: list = None) -> list
     if pre_selected is None:
         pre_selected = []
 
-    from prostor_cli.curses_ui import curses_checklist
+    from hermes_cli.curses_ui import curses_checklist
 
     chosen = curses_checklist(
         title,
@@ -353,7 +353,7 @@ def _prompt_api_key(var: dict):
         print_warning("  Skipped (configure later with 'prostor setup')")
 
 
-def _print_setup_summary(config: dict, prostor_home):
+def _print_setup_summary(config: dict, hermes_home):
     """Print the setup completion summary."""
     # Tool availability summary
     print()
@@ -434,7 +434,7 @@ def _print_setup_summary(config: dict, prostor_home):
         _img_backend = None
         try:
             from agent.image_gen_registry import list_providers
-            from prostor_cli.plugins import _ensure_plugins_discovered
+            from hermes_cli.plugins import _ensure_plugins_discovered
 
             _ensure_plugins_discovered()
             for _p in list_providers():
@@ -461,7 +461,7 @@ def _print_setup_summary(config: dict, prostor_home):
     else:
         try:
             from agent.video_gen_registry import list_providers as _list_video_providers
-            from prostor_cli.plugins import _ensure_plugins_discovered as _ensure_plugins
+            from hermes_cli.plugins import _ensure_plugins_discovered as _ensure_plugins
             _ensure_plugins()
             _video_backend = None
             for _vp in _list_video_providers():
@@ -529,7 +529,7 @@ def _print_setup_summary(config: dict, prostor_home):
 
     # Spotify (OAuth via prostor auth spotify — check auth.json, not env vars)
     try:
-        from prostor_cli.auth import get_provider_auth_state
+        from hermes_cli.auth import get_provider_auth_state
         _spotify_state = get_provider_auth_state("spotify") or {}
         if _spotify_state.get("access_token") or _spotify_state.get("refresh_token"):
             tool_status.append(("Spotify (PKCE OAuth)", True, None))
@@ -573,7 +573,7 @@ def _print_setup_summary(config: dict, prostor_home):
         print_warning(
             "Some tools are disabled. Run 'prostor setup tools' to configure them,"
         )
-        from prostor_constants import display_prostor_home as _dhh
+        from hermes_constants import display_hermes_home as _dhh
         print_warning(f"or edit {_dhh()}/.env directly to add the missing API keys.")
         print()
 
@@ -597,13 +597,13 @@ def _print_setup_summary(config: dict, prostor_home):
     print()
 
     # Show file locations prominently
-    from prostor_constants import display_prostor_home as _dhh
+    from hermes_constants import display_hermes_home as _dhh
     print(color(f"📁 All your files are in {_dhh()}/:", Colors.CYAN, Colors.BOLD))
     print()
     print(f"   {color('Settings:', Colors.YELLOW)}  {get_config_path()}")
     print(f"   {color('API Keys:', Colors.YELLOW)}  {get_env_path()}")
     print(
-        f"   {color('Data:', Colors.YELLOW)}      {prostor_home}/cron/, sessions/, logs/"
+        f"   {color('Data:', Colors.YELLOW)}      {hermes_home}/cron/, sessions/, logs/"
     )
     print()
 
@@ -702,7 +702,7 @@ def setup_model_provider(config: dict, *, quick: bool = False):
     When *quick* is True, skips credential rotation, vision, and TTS
     configuration — used by the streamlined first-time quick setup.
     """
-    from prostor_cli.config import load_config, save_config
+    from hermes_cli.config import load_config, save_config
 
     print_header("Inference Provider")
     print_info("Choose how to connect to your main chat model.")
@@ -711,7 +711,7 @@ def setup_model_provider(config: dict, *, quick: bool = False):
 
     # Delegate to the shared prostor model flow — handles provider picker,
     # credential prompting, model selection, and config persistence.
-    from prostor_cli.main import select_provider_and_model
+    from hermes_cli.main import select_provider_and_model
     try:
         select_provider_and_model()
     except (SystemExit, KeyboardInterrupt):
@@ -840,7 +840,7 @@ def _xai_oauth_logged_in_for_setup() -> bool:
     through ``prostor model`` -> xAI Grok OAuth (SuperGrok / Premium+).
     """
     try:
-        from prostor_cli.auth import get_xai_oauth_auth_status
+        from hermes_cli.auth import get_xai_oauth_auth_status
 
         return bool(get_xai_oauth_auth_status().get("logged_in"))
     except Exception:
@@ -854,7 +854,7 @@ def _run_xai_oauth_login_from_setup() -> bool:
     to whatever the user picked next, e.g. Edge TTS).
     """
     try:
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             DEFAULT_XAI_OAUTH_BASE_URL,
             _is_remote_session,
             _save_xai_oauth_tokens,
@@ -1035,7 +1035,7 @@ def _setup_tts_provider(config: dict):
                     save_env_value("XAI_API_KEY", api_key)
                     print_success("xAI TTS API key saved")
                 else:
-                    from prostor_constants import display_prostor_home as _dhh
+                    from hermes_constants import display_hermes_home as _dhh
                     print_warning(
                         "No xAI API key provided for TTS. Configure XAI_API_KEY "
                         f"via prostor setup model or {_dhh()}/.env to use xAI TTS. "
@@ -1137,7 +1137,7 @@ def setup_terminal_backend(config: dict):
     print_header("Terminal Backend")
     print_info("Choose where Prostor runs shell commands and code.")
     print_info("This affects tool execution, file access, and isolation.")
-    print_info(f"   Guide: {_DOCS_BASE}/developer-guide/environments")
+    print_info(f"   Guide: {_DOCS_BASE}/user-guide/configuration#terminal-backend-configuration")
     print()
 
     current_backend = cfg_get(config, "terminal", "backend", default="local")
@@ -1649,23 +1649,23 @@ def _is_valid_telegram_bot_token(token: str) -> bool:
 def _setup_telegram_auto_result():
     """Attempt automatic Telegram bot creation via managed QR onboarding."""
     try:
-        from prostor_cli.telegram_managed_bot import auto_setup_telegram_bot_result
+        from hermes_cli.telegram_managed_bot import auto_setup_telegram_bot_result
     except ImportError:
         return None
 
     profile_name: str | None = None
     try:
-        profile_name = _profile_name_from_prostor_home(Path(get_prostor_home()))
+        profile_name = _profile_name_from_hermes_home(Path(get_hermes_home()))
     except Exception:
         pass
 
     return auto_setup_telegram_bot_result(profile_name=profile_name)
 
 
-def _profile_name_from_prostor_home(prostor_home) -> str | None:
+def _profile_name_from_hermes_home(hermes_home) -> str | None:
     """Return the active profile name when PROSTOR_HOME is a profile dir."""
-    if prostor_home.parent.name == "profiles":
-        return prostor_home.name
+    if hermes_home.parent.name == "profiles":
+        return hermes_home.name
     return None
 
 
@@ -1876,7 +1876,7 @@ def _setup_bluebubbles():
 
 def _setup_qqbot():
     """Configure QQ Bot (Official API v2) via gateway setup."""
-    from prostor_cli.gateway import _setup_qqbot as _gateway_setup_qqbot
+    from hermes_cli.gateway import _setup_qqbot as _gateway_setup_qqbot
     _gateway_setup_qqbot()
 
 
@@ -1894,7 +1894,7 @@ def _setup_webhooks():
     print_warning("   internet. For security, run the gateway in a sandboxed environment")
     print_warning("   (Docker, VM, etc.) to limit blast radius from prompt injection.")
     print()
-    print_info("   Full guide: https://github.com/maksim9510/Prostor/docs/user-guide/messaging/webhooks/")
+    print_info("   Full guide: https://prostor-agent.nousresearch.com/docs/user-guide/messaging/webhooks/")
     print()
 
     port = prompt("Webhook port (default 8644)")
@@ -1915,13 +1915,13 @@ def _setup_webhooks():
     save_env_value("WEBHOOK_ENABLED", "true")
     print()
     print_success("Webhooks enabled! Next steps:")
-    from prostor_constants import display_prostor_home as _dhh
+    from hermes_constants import display_hermes_home as _dhh
     print_info(f"   1. Define webhook routes in {_dhh()}/config.yaml")
     print_info("   2. Point your service (GitHub, GitLab, etc.) at:")
     print_info("      http://your-server:8644/webhooks/<route-name>")
     print()
     print_info("   Route configuration guide:")
-    print_info("   https://github.com/maksim9510/Prostor/docs/user-guide/messaging/webhooks/#configuring-routes")
+    print_info("   https://prostor-agent.nousresearch.com/docs/user-guide/messaging/webhooks/#configuring-routes")
     print()
     print_info("   Open config in your editor:  prostor config edit")
     print_info("   Open config in your editor:  prostor config edit")
@@ -1929,7 +1929,7 @@ def _setup_webhooks():
 
 def setup_gateway(config: dict):
     """Configure messaging platform integrations."""
-    from prostor_cli.gateway import _all_platforms, _platform_status, _configure_platform
+    from hermes_cli.gateway import _all_platforms, _platform_status, _configure_platform
 
     print_header("Messaging Platforms")
     print_info("Connect to messaging platforms to chat with Prostor from anywhere.")
@@ -2013,12 +2013,12 @@ def setup_gateway(config: dict):
         _is_macos = _platform.system() == "Darwin"
         _is_windows = _platform.system() == "Windows"
 
-        from prostor_cli.gateway import (
+        from hermes_cli.gateway import (
             _is_service_installed,
             _is_service_running,
             supports_systemd_services,
             has_conflicting_systemd_units,
-            has_legacy_prostor_units,
+            has_legacy_hermes_units,
             install_linux_gateway_from_setup,
             print_systemd_scope_conflict_warning,
             print_legacy_unit_warning,
@@ -2043,7 +2043,7 @@ def setup_gateway(config: dict):
             print_systemd_scope_conflict_warning()
             print()
 
-        if supports_systemd and has_legacy_prostor_units():
+        if supports_systemd and has_legacy_hermes_units():
             print_legacy_unit_warning()
             print()
 
@@ -2057,7 +2057,7 @@ def setup_gateway(config: dict):
                     elif _is_macos:
                         launchd_restart()
                     elif _is_windows:
-                        from prostor_cli import gateway_windows
+                        from hermes_cli import gateway_windows
                         gateway_windows.restart()
                 except UserSystemdUnavailableError as e:
                     print_error("  Restart failed — user systemd not reachable:")
@@ -2082,7 +2082,7 @@ def setup_gateway(config: dict):
                     elif _is_macos:
                         launchd_start()
                     elif _is_windows:
-                        from prostor_cli import gateway_windows
+                        from hermes_cli import gateway_windows
                         gateway_windows.start()
                 except UserSystemdUnavailableError as e:
                     print_error("  Start failed — user systemd not reachable:")
@@ -2118,7 +2118,7 @@ def setup_gateway(config: dict):
                         # Task AND starts it immediately (via schtasks /Run
                         # or a direct spawn fallback), so no separate start
                         # prompt is needed here.
-                        from prostor_cli import gateway_windows
+                        from hermes_cli import gateway_windows
                         gateway_windows.install(force=False)
                         did_install = True
                         started_inline = True
@@ -2147,7 +2147,7 @@ def setup_gateway(config: dict):
                     print_info("  Or as a boot-time service: sudo prostor gateway install --system")
                 print_info("  Or run in foreground:  prostor gateway")
         else:
-            from prostor_constants import is_container
+            from hermes_constants import is_container
             if is_container():
                 print_info("Start the gateway to bring your bots online:")
                 print_info("   prostor gateway run          # Run as container main process")
@@ -2177,7 +2177,7 @@ def setup_tools(config: dict, first_install: bool = False):
         first_install: When True, uses the simplified first-install flow
             (no platform menu, prompts for all unconfigured API keys).
     """
-    from prostor_cli.tools_config import tools_command
+    from hermes_cli.tools_config import tools_command
 
     tools_command(first_install=first_install, config=config)
 
@@ -2191,7 +2191,7 @@ def _model_section_has_credentials(config: dict) -> bool:
     """Return True when any known inference provider has usable credentials.
 
     Sources of truth:
-      * ``PROVIDER_REGISTRY`` in ``prostor_cli.auth`` — lists every supported
+      * ``PROVIDER_REGISTRY`` in ``hermes_cli.auth`` — lists every supported
         provider along with its ``api_key_env_vars``.
       * ``active_provider`` in the auth store — covers OAuth device-code /
         external-OAuth providers (Nous, Codex, Qwen, Gemini CLI, ...).
@@ -2199,14 +2199,14 @@ def _model_section_has_credentials(config: dict) -> bool:
         ``OPENAI_API_KEY`` / ``OPENROUTER_API_KEY`` values through OpenRouter.
     """
     try:
-        from prostor_cli.auth import get_active_provider
+        from hermes_cli.auth import get_active_provider
         if get_active_provider():
             return True
     except Exception:
         pass
 
     try:
-        from prostor_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.auth import PROVIDER_REGISTRY
     except Exception:
         PROVIDER_REGISTRY = {}  # type: ignore[assignment]
 
@@ -2259,7 +2259,7 @@ def _get_section_config_summary(config: dict, section_key: str) -> Optional[str]
     """Return a short summary if a setup section is already configured, else None.
 
     Used after OpenClaw migration to detect which sections can be skipped.
-    ``get_env_value`` is the module-level import from prostor_cli.config
+    ``get_env_value`` is the module-level import from hermes_cli.config
     so that test patches on ``setup_mod.get_env_value`` take effect.
     """
     if section_key == "model":
@@ -2281,7 +2281,7 @@ def _get_section_config_summary(config: dict, section_key: str) -> Optional[str]
         return f"max turns: {max_turns}"
 
     elif section_key == "gateway":
-        from prostor_cli.gateway import _all_platforms, _platform_status
+        from hermes_cli.gateway import _all_platforms, _platform_status
         # Count any non-empty status other than the "not configured" sentinel —
         # platforms like WhatsApp ("enabled, not paired"), Matrix ("configured
         # + E2EE"), and Signal ("partially configured") all indicate the user
@@ -2335,12 +2335,12 @@ _OPENCLAW_SCRIPT = (
     / "migration"
     / "openclaw-migration"
     / "scripts"
-    / "openclaw_to_prostor.py"
+    / "openclaw_to_hermes.py"
 )
 
 
 def _load_openclaw_migration_module():
-    """Load the openclaw_to_prostor migration script as a module.
+    """Load the openclaw_to_hermes migration script as a module.
 
     Returns the loaded module, or None if the script can't be loaded.
     """
@@ -2348,7 +2348,7 @@ def _load_openclaw_migration_module():
         return None
 
     spec = importlib.util.spec_from_file_location(
-        "openclaw_to_prostor", _OPENCLAW_SCRIPT
+        "openclaw_to_hermes", _OPENCLAW_SCRIPT
     )
     if spec is None or spec.loader is None:
         return None
@@ -2447,7 +2447,7 @@ def _print_migration_preview(report: dict):
         print()
 
 
-def _offer_openclaw_migration(prostor_home: Path) -> bool:
+def _offer_openclaw_migration(hermes_home: Path) -> bool:
     """Detect ~/.openclaw and offer to migrate during first-time setup.
 
     Runs a dry-run first to show the user exactly what would be imported,
@@ -2495,7 +2495,7 @@ def _offer_openclaw_migration(prostor_home: Path) -> bool:
         selected = mod.resolve_selected_options(None, None, preset="full")
         dry_migrator = mod.Migrator(
             source_root=openclaw_dir.resolve(),
-            target_root=prostor_home.resolve(),
+            target_root=hermes_home.resolve(),
             execute=False,  # dry-run — no files modified
             workspace_target=None,
             overwrite=True,  # show everything including conflicts
@@ -2540,7 +2540,7 @@ def _offer_openclaw_migration(prostor_home: Path) -> bool:
     try:
         migrator = mod.Migrator(
             source_root=openclaw_dir.resolve(),
-            target_root=prostor_home.resolve(),
+            target_root=hermes_home.resolve(),
             execute=True,
             workspace_target=None,
             overwrite=False,  # preserve existing Prostor config
@@ -2611,7 +2611,7 @@ def _run_portal_one_shot(config: dict) -> None:
     provider write here) means ``prostor portal`` always offers a model picker,
     and there is a single source of truth for the Nous onboarding steps.
     """
-    from prostor_cli.config import load_config
+    from hermes_cli.config import load_config
 
     print()
     print(
@@ -2641,7 +2641,7 @@ def _run_portal_one_shot(config: dict) -> None:
     # provider=nous via the login/model save. This is the same routine quick
     # setup calls, so `prostor portal` == quick setup's Nous step.
     try:
-        from prostor_cli.main import _model_flow_nous
+        from hermes_cli.main import _model_flow_nous
 
         _model_flow_nous(config)
     except (KeyboardInterrupt, EOFError, SystemExit):
@@ -2690,11 +2690,11 @@ def run_setup_wizard(args):
       prostor setup tools     — just tool configuration
       prostor setup agent     — just agent settings
     """
-    from prostor_cli.config import is_managed, managed_error
+    from hermes_cli.config import is_managed, managed_error
     if is_managed():
         managed_error("run setup wizard")
         return
-    ensure_prostor_home()
+    ensure_hermes_home()
 
     reset_requested = bool(getattr(args, "reset", False))
     if reset_requested:
@@ -2705,7 +2705,7 @@ def run_setup_wizard(args):
     quick_requested = bool(getattr(args, "quick", False))
 
     config = load_config()
-    prostor_home = get_prostor_home()
+    hermes_home = get_hermes_home()
 
     # Back up existing config before setup modifies it (#3522)
     config_path = get_config_path()
@@ -2768,7 +2768,7 @@ def run_setup_wizard(args):
         return
 
     # Check if this is an existing installation with a provider configured
-    from prostor_cli.auth import get_active_provider
+    from hermes_cli.auth import get_active_provider
 
     active_provider = get_active_provider()
     is_existing = (
@@ -2821,7 +2821,7 @@ def run_setup_wizard(args):
         # missing items" flow (useful after a partial OpenClaw migration
         # or when a required API key got cleared).
         if quick_requested:
-            _run_quick_setup(config, prostor_home)
+            _run_quick_setup(config, hermes_home)
             return
 
         print()
@@ -2846,7 +2846,7 @@ def run_setup_wizard(args):
             print()
 
         # Offer OpenClaw migration before configuration begins
-        migration_ran = _offer_openclaw_migration(prostor_home)
+        migration_ran = _offer_openclaw_migration(hermes_home)
         if migration_ran:
             config = load_config()
 
@@ -2861,17 +2861,17 @@ def run_setup_wizard(args):
         )
 
         if setup_mode == 0:
-            _run_first_time_quick_setup(config, prostor_home, is_existing)
+            _run_first_time_quick_setup(config, hermes_home, is_existing)
             return
         if setup_mode == 2:
-            _run_blank_slate_setup(config, prostor_home, is_existing)
+            _run_blank_slate_setup(config, hermes_home, is_existing)
             return
 
     # ── Full Setup — run all sections ──
     print_header("Configuration Location")
     print_info(f"Config file:  {get_config_path()}")
     print_info(f"Secrets file: {get_env_path()}")
-    print_info(f"Data folder:  {prostor_home}")
+    print_info(f"Data folder:  {hermes_home}")
     print_info(f"Install dir:  {PROJECT_ROOT}")
     print()
     print_info("You can edit these files directly or use 'prostor config edit'")
@@ -2910,10 +2910,10 @@ def run_setup_wizard(args):
         print_info(f"Previous config backed up to: {_backup_path}")
         print_info("If setup changed a value you customized, restore it with:")
         print_info(f"  cp {_backup_path} {config_path}")
-    _print_setup_summary(config, prostor_home)
+    _print_setup_summary(config, hermes_home)
 
 
-def _run_first_time_quick_setup(config: dict, prostor_home, is_existing: bool):
+def _run_first_time_quick_setup(config: dict, hermes_home, is_existing: bool):
     """Streamlined first-time setup via Nous Portal: OAuth, model, terminal & messaging.
 
     Routes straight to the Nous Portal provider — runs the device-code OAuth
@@ -2922,7 +2922,7 @@ def _run_first_time_quick_setup(config: dict, prostor_home, is_existing: bool):
     settings, tools); the user can customize later via ``prostor setup <section>``
     or switch providers with ``prostor model``.
     """
-    from prostor_cli.config import load_config
+    from hermes_cli.config import load_config
 
     # Step 1: Nous Portal — OAuth login + model selection.
     # _model_flow_nous() handles both the logged-out path (device-code OAuth,
@@ -2935,7 +2935,7 @@ def _run_first_time_quick_setup(config: dict, prostor_home, is_existing: bool):
     print_info("Sign up: https://portal.nousresearch.com/manage-subscription")
     print()
     try:
-        from prostor_cli.main import _model_flow_nous
+        from hermes_cli.main import _model_flow_nous
         _model_flow_nous(config)
     except (KeyboardInterrupt, EOFError):
         print()
@@ -2983,7 +2983,7 @@ def _run_first_time_quick_setup(config: dict, prostor_home, is_existing: bool):
         print_info("  Connect Telegram/Discord:  prostor setup gateway")
     print()
 
-    _print_setup_summary(config, prostor_home)
+    _print_setup_summary(config, hermes_home)
 
 
 def _blank_slate_minimal_toolsets(config: dict):
@@ -3007,7 +3007,7 @@ def _blank_slate_minimal_toolsets(config: dict):
 
     try:
         from toolsets import TOOLSETS
-        from prostor_cli.tools_config import CONFIGURABLE_TOOLSETS, _get_plugin_toolset_keys
+        from hermes_cli.tools_config import CONFIGURABLE_TOOLSETS, _get_plugin_toolset_keys
 
         all_keys = set()
         all_keys.update(k for k, _, _ in CONFIGURABLE_TOOLSETS)
@@ -3053,7 +3053,7 @@ def _blank_slate_minimize_config(config: dict):
     config.setdefault("display", {})["tool_progress"] = "all"
 
 
-def _run_blank_slate_setup(config: dict, prostor_home, is_existing: bool):
+def _run_blank_slate_setup(config: dict, hermes_home, is_existing: bool):
     """Blank Slate setup — start with everything off except the bare minimum.
 
     Forces only the essentials to run an agent (provider + model, the file and
@@ -3066,7 +3066,7 @@ def _run_blank_slate_setup(config: dict, prostor_home, is_existing: bool):
 
     Either way nothing is enabled that the user did not explicitly choose.
     """
-    from prostor_cli.config import load_config
+    from hermes_cli.config import load_config
 
     print()
     print_header("Blank Slate Setup")
@@ -3127,16 +3127,16 @@ def _run_blank_slate_setup(config: dict, prostor_home, is_existing: bool):
         print_info("  Enable plugins:      prostor plugins")
         print_info("  Tune agent settings: prostor setup agent")
         print()
-        _print_setup_summary(config, prostor_home)
+        _print_setup_summary(config, hermes_home)
         return
 
     # ── Walkthrough path — opt in to each capability ──
-    _blank_slate_walkthrough(config, prostor_home)
+    _blank_slate_walkthrough(config, hermes_home)
 
 
-def _blank_slate_walkthrough(config: dict, prostor_home):
+def _blank_slate_walkthrough(config: dict, hermes_home):
     """Opt-in walkthrough for Blank Slate: skills, tools, plugins, MCP, gateway."""
-    from prostor_cli.config import load_config
+    from hermes_cli.config import load_config
 
     # ── Bundled skills — default to NONE, offer to seed all ──
     print()
@@ -3171,7 +3171,7 @@ def _blank_slate_walkthrough(config: dict, prostor_home):
     print_info(" the most minimal agent.)")
     if prompt_yes_no("Open the tool selector to enable more tools?", default=False):
         try:
-            from prostor_cli.tools_config import tools_command
+            from hermes_cli.tools_config import tools_command
             tools_command(first_install=False, config=config)
             # tools_command saves via its own load/save cycle — re-sync.
             _refreshed = load_config()
@@ -3214,12 +3214,12 @@ def _blank_slate_walkthrough(config: dict, prostor_home):
     print_info("  Tune agent settings: prostor setup agent")
     print()
 
-    _print_setup_summary(config, prostor_home)
+    _print_setup_summary(config, hermes_home)
 
 
-def _run_quick_setup(config: dict, prostor_home):
+def _run_quick_setup(config: dict, hermes_home):
     """Quick setup — only configure items that are missing."""
-    from prostor_cli.config import (
+    from hermes_cli.config import (
         get_missing_env_vars,
         get_missing_config_fields,
         check_config_version,
@@ -3380,4 +3380,4 @@ def _run_quick_setup(config: dict, prostor_home):
         save_config(config)
 
     # Jump to summary
-    _print_setup_summary(config, prostor_home)
+    _print_setup_summary(config, hermes_home)

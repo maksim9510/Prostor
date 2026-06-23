@@ -13,7 +13,7 @@ import pytest
 pytestmark = pytest.mark.xdist_group("dashboard_auth_app_state")
 from fastapi.testclient import TestClient
 
-from prostor_cli import web_server
+from hermes_cli import web_server
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def test_loopback_index_injects_session_token(client_loopback):
     r = client_loopback.get("/")
     if r.status_code == 404:
         pytest.skip("WEB_DIST not built in this env")
-    assert "__PROSTOR_SESSION_TOKEN__" in r.text
+    assert "__HERMES_SESSION_TOKEN__" in r.text
 
 
 def test_loopback_host_header_validation_still_enforced(client_loopback):
@@ -88,15 +88,17 @@ def test_loopback_host_header_validation_still_enforced(client_loopback):
     ("127.0.0.1", True,  False),
     ("localhost", False, False),
     ("::1",       False, False),
-    ("0.0.0.0",   True,  False),    # --insecure escape hatch
+    # --insecure (allow_public=True) NO LONGER bypasses the gate on a public
+    # bind (June 2026 prostor-0day hardening). Non-loopback always requires auth.
+    ("0.0.0.0",   True,  True),
     ("0.0.0.0",   False, True),
     ("192.168.1.5", False, True),
-    ("10.0.0.1",  True,  False),
+    ("10.0.0.1",  True,  True),     # allow_public ignored — LAN IP is public
     ("100.64.0.1", False, True),    # Tailscale CGNAT — treated as public
     ("prostor-agent-prod-abc.fly.dev", False, True),
 ])
 def test_should_require_auth_truth_table(host, allow_public, expected):
-    from prostor_cli.web_server import should_require_auth
+    from hermes_cli.web_server import should_require_auth
     assert should_require_auth(host, allow_public) is expected
 
 
@@ -175,15 +177,22 @@ def test_start_server_loopback_sets_auth_required_false(monkeypatch):
     assert web_server.app.state.auth_required is False
 
 
-def test_start_server_insecure_public_sets_auth_required_false(monkeypatch):
-    """``--insecure`` (allow_public=True) on a public host: gate stays OFF."""
+def test_start_server_insecure_public_no_longer_bypasses_gate(monkeypatch):
+    """``--insecure`` (allow_public=True) on a public host: gate now ENGAGES.
+
+    June 2026 hardening: --insecure no longer disables auth. With no providers
+    registered, the bind fails closed (SystemExit) and auth_required is True.
+    """
+    from hermes_cli.dashboard_auth import clear_providers
+    clear_providers()
     _stub_uvicorn_run(monkeypatch)
     web_server.app.state.auth_required = None
-    web_server.start_server(
-        host="0.0.0.0", port=9119,
-        open_browser=False, allow_public=True,
-    )
-    assert web_server.app.state.auth_required is False
+    with pytest.raises(SystemExit):
+        web_server.start_server(
+            host="0.0.0.0", port=9119,
+            open_browser=False, allow_public=True,
+        )
+    assert web_server.app.state.auth_required is True
 
 
 def test_start_server_public_without_insecure_records_auth_required(monkeypatch):
@@ -193,7 +202,7 @@ def test_start_server_public_without_insecure_records_auth_required(monkeypatch)
     flag-stashing happens BEFORE the exit so the rest of the system can
     branch on it. (See task 3.5 tests below for the with-provider path.)
     """
-    from prostor_cli.dashboard_auth import clear_providers
+    from hermes_cli.dashboard_auth import clear_providers
     clear_providers()
     _stub_uvicorn_run(monkeypatch)
     web_server.app.state.auth_required = None
@@ -218,8 +227,8 @@ def test_start_server_gate_with_provider_proceeds_and_sets_proxy_headers(monkeyp
     succeeds.  uvicorn is called with proxy_headers=True so X-Forwarded-Proto
     from Fly's TLS terminator is honoured for cookie Secure-flag decisions.
     """
-    from prostor_cli.dashboard_auth import clear_providers, register_provider
-    from tests.prostor_cli.conftest_dashboard_auth import StubAuthProvider
+    from hermes_cli.dashboard_auth import clear_providers, register_provider
+    from tests.hermes_cli.conftest_dashboard_auth import StubAuthProvider
 
     clear_providers()
     register_provider(StubAuthProvider())
@@ -239,7 +248,7 @@ def test_start_server_gate_with_provider_proceeds_and_sets_proxy_headers(monkeyp
 
 def test_start_server_gate_without_provider_fails_closed(monkeypatch):
     """No providers + gate would activate → SystemExit with a clear message."""
-    from prostor_cli.dashboard_auth import clear_providers
+    from hermes_cli.dashboard_auth import clear_providers
 
     clear_providers()
     _stub_uvicorn_run(monkeypatch)
@@ -256,7 +265,7 @@ def test_start_server_surfaces_nous_skip_reason_when_unconfigured(monkeypatch):
     env vars set), the gate's fail-closed message should surface the
     plugin's LAST_SKIP_REASON so the operator knows the config fix is
     'set PROSTOR_DASHBOARD_OAUTH_CLIENT_ID', not 'install a plugin'."""
-    from prostor_cli.dashboard_auth import clear_providers
+    from hermes_cli.dashboard_auth import clear_providers
     from plugins.dashboard_auth import nous as nous_plugin
 
     # Simulate the plugin running and skipping for "no client_id".
@@ -291,12 +300,21 @@ def test_start_server_loopback_keeps_proxy_headers_off(monkeypatch):
     assert captured["kwargs"].get("proxy_headers") is False
 
 
-def test_start_server_insecure_keeps_proxy_headers_off(monkeypatch):
-    """--insecure: gate stays off, proxy_headers stays off."""
-    captured = _stub_uvicorn_run(monkeypatch)
-    web_server.start_server(
-        host="0.0.0.0", port=9119,
-        open_browser=False, allow_public=True,
-    )
-    assert web_server.app.state.auth_required is False
-    assert captured["kwargs"].get("proxy_headers") is False
+def test_start_server_insecure_public_engages_gate_and_fails_closed(monkeypatch):
+    """--insecure on a public host: gate engages now; no provider → fail closed.
+
+    Replaces the old "insecure keeps gate off" test. --insecure is a no-op for
+    auth as of the June 2026 hardening, so a public bind with no provider
+    refuses to start.
+    """
+    from hermes_cli.dashboard_auth import clear_providers
+
+    clear_providers()
+    _stub_uvicorn_run(monkeypatch)
+    web_server.app.state.auth_required = None
+    with pytest.raises(SystemExit):
+        web_server.start_server(
+            host="0.0.0.0", port=9119,
+            open_browser=False, allow_public=True,
+        )
+    assert web_server.app.state.auth_required is True

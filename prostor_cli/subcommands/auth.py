@@ -1,6 +1,6 @@
 """``prostor auth`` subcommand parser.
 
-Extracted verbatim from ``prostor_cli/main.py:main()`` (god-file Phase 2).
+Extracted verbatim from ``hermes_cli/main.py:main()`` (god-file Phase 2).
 Handler injected to avoid importing ``main``.
 """
 

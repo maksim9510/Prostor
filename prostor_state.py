@@ -1,10 +1,3 @@
-from prostor_state_schema_mixin import SessionSchemaMixin
-from prostor_state_fts_mixin import SessionFtsMixin
-from prostor_state_crud_mixin import SessionCrudMixin
-from prostor_state_compression_mixin import SessionCompressionMixin
-from prostor_state_messages_mixin import SessionMessagesMixin
-from prostor_state_prune_mixin import SessionPruneMixin
-
 #!/usr/bin/env python3
 """
 SQLite State Store for Prostor Agent.
@@ -30,7 +23,8 @@ import threading
 import time
 from pathlib import Path
 
-from prostor_constants import get_prostor_home
+from agent.memory_manager import sanitize_context
+from hermes_constants import get_hermes_home
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -81,8 +75,16 @@ def _collect_delegate_child_ids(conn, parent_ids: List[str]) -> List[str]:
     orchestrator subagent's own delegate children go too (FK safety).
     """
     df = _delegate_from_json()
-    found: set[str] = set()
-    frontier = [sid for sid in parent_ids if sid]
+    seeds = {sid for sid in parent_ids if sid}
+    # Seed the visited set with the parents themselves. A delegation marker
+    # chain can loop back onto a parent — a cycle, or a parent that is also
+    # another parent's delegate child when several ids are deleted at once —
+    # and without this guard that parent would be collected as one of its own
+    # descendants and cascade-deleted along with all of its messages. Callers
+    # delete the parents separately, so parents must never appear in the
+    # returned child set. (#49148)
+    found: set[str] = set(seeds)
+    frontier = list(seeds)
     while frontier:
         ph = ",".join("?" * len(frontier))
         cursor = conn.execute(
@@ -92,7 +94,8 @@ def _collect_delegate_child_ids(conn, parent_ids: List[str]) -> List[str]:
         )
         frontier = [row["id"] for row in cursor.fetchall() if row["id"] not in found]
         found.update(frontier)
-    return list(found)
+    # Return only the discovered children — never the parents themselves.
+    return [sid for sid in found if sid not in seeds]
 
 
 def _delete_delegate_children(conn, parent_ids: List[str]) -> List[str]:
@@ -111,7 +114,7 @@ def _delete_delegate_children(conn, parent_ids: List[str]) -> List[str]:
 
 T = TypeVar("T")
 
-DEFAULT_DB_PATH = get_prostor_home() / "state.db"
+DEFAULT_DB_PATH = get_hermes_home() / "state.db"
 
 SCHEMA_VERSION = 16
 
@@ -147,7 +150,7 @@ _last_init_error_lock = threading.Lock()
 
 # Paths for which we've already logged a WAL-fallback WARNING.  Without
 # this, kanban_db.connect() (called on every kanban operation — see
-# prostor_cli/kanban_db.py for ~30 call sites) would re-log the same
+# hermes_cli/kanban_db.py for ~30 call sites) would re-log the same
 # filesystem-incompat warning on every connection, filling errors.log.
 _wal_fallback_warned_paths: set[str] = set()
 _wal_fallback_warned_lock = threading.Lock()
@@ -254,7 +257,7 @@ def apply_wal_with_fallback(
     Different db_labels log independently, so state.db and kanban.db
     each get one warning on the same NFS mount.
 
-    Shared by :class:`SessionDB` and ``prostor_cli.kanban_db.connect`` so
+    Shared by :class:`SessionDB` and ``hermes_cli.kanban_db.connect`` so
     both databases get identical fallback behavior.
 
     Never downgrades to DELETE if the on-disk DB header reports WAL — see _on_disk_journal_mode.
@@ -289,7 +292,7 @@ def _log_wal_fallback_once(db_label: str, exc: Exception) -> None:
     """Log a single WARNING per (process, db_label) about WAL fallback.
 
     Without this dedup, NFS users running kanban (which opens a fresh
-    connection on every operation — see prostor_cli/kanban_db.py) would
+    connection on every operation — see hermes_cli/kanban_db.py) would
     fill errors.log with hundreds of identical warnings per hour.
     """
     with _wal_fallback_warned_lock:
@@ -661,7 +664,7 @@ END;
 """
 
 
-class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCompressionMixin, SessionMessagesMixin, SessionPruneMixin):
+class SessionDB:
     """
     SQLite-backed session storage with FTS5 search.
 
@@ -771,7 +774,7 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
             # successful open racing past this failure would erase the
             # cause that another thread's /resume is about to format.
             # Tests that need to reset the state can call
-            # ``prostor_state._set_last_init_error(None)`` explicitly.
+            # ``hermes_state._set_last_init_error(None)`` explicitly.
             _set_last_init_error(f"{type(exc).__name__}: {exc}")
             raise
 
@@ -824,8 +827,8 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
 
     def _sqlite_supports_fts5(self, cursor: sqlite3.Cursor) -> bool:
         try:
-            cursor.execute("CREATE VIRTUAL TABLE temp._prostor_fts5_probe USING fts5(x)")
-            cursor.execute("DROP TABLE temp._prostor_fts5_probe")
+            cursor.execute("CREATE VIRTUAL TABLE temp._hermes_fts5_probe USING fts5(x)")
+            cursor.execute("DROP TABLE temp._hermes_fts5_probe")
             return True
         except sqlite3.OperationalError as exc:
             if not self._is_fts5_unavailable_error(exc):
@@ -3106,7 +3109,6 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
         for row in rows:
             content = self._decode_content(row["content"])
             if row["role"] in {"user", "assistant"} and isinstance(content, str):
-                from agent.memory_manager import sanitize_context
                 content = sanitize_context(content).strip()
             msg = {"role": row["role"], "content": content}
             if row["timestamp"]:
@@ -4595,6 +4597,83 @@ class SessionDB(SessionSchemaMixin, SessionFtsMixin, SessionCrudMixin, SessionCo
             except sqlite3.OperationalError:
                 return None
         return dict(row) if row else None
+
+    def delete_telegram_topic_binding(
+        self,
+        *,
+        chat_id: str,
+        thread_id: str,
+    ) -> int:
+        """Remove the binding row for a single (chat, thread) pair.
+
+        Called when the Telegram Bot API confirms a topic was deleted
+        externally (``Thread not found`` after the same-thread retry
+        already failed).  Without this prune, the stale row keeps
+        living in ``telegram_dm_topic_bindings`` and the
+        recovery logic in ``gateway.run._recover_telegram_topic_thread_id``
+        cheerfully redirects future inbound messages to the deleted
+        topic, causing tool progress, approvals, and replies to land
+        in the wrong place.  Issue #31501.
+
+        When this prune removes the chat's *last* remaining binding,
+        the chat's row in ``telegram_dm_topic_mode`` is also flipped to
+        ``enabled = 0`` in the same transaction.  Otherwise the chat
+        would be left in topic mode with zero lanes — and
+        ``gateway.run._recover_telegram_topic_thread_id`` keeps treating
+        the chat as topic-enabled, lobby messages keep hunting for a
+        binding that no longer exists, and a user who disabled topics in
+        the Telegram client (rather than via ``/topic off``) stays stuck
+        until the next send happens to fail. Clearing the flag makes
+        recovery fully stand down once the dead topics are gone.
+
+        Returns the number of binding rows deleted (0 when the binding
+        was already absent or the topic-mode tables haven't been
+        migrated yet — both are silent no-ops; we never raise from
+        a cleanup hot path).
+        """
+        chat_id = str(chat_id)
+        thread_id = str(thread_id)
+        deleted = {"count": 0}
+
+        def _do(conn):
+            try:
+                cursor = conn.execute(
+                    """
+                    DELETE FROM telegram_dm_topic_bindings
+                    WHERE chat_id = ? AND thread_id = ?
+                    """,
+                    (chat_id, thread_id),
+                )
+                deleted["count"] = cursor.rowcount or 0
+            except sqlite3.OperationalError:
+                # Tables don't exist yet — nothing to prune.
+                deleted["count"] = 0
+                return
+            if not deleted["count"]:
+                return
+            # If that was the chat's last binding, disable topic mode for
+            # the chat so recovery stops steering lobby messages at a now
+            # empty lane set. Same transaction → no read-after-prune race.
+            try:
+                remaining = conn.execute(
+                    """
+                    SELECT 1 FROM telegram_dm_topic_bindings
+                    WHERE chat_id = ? LIMIT 1
+                    """,
+                    (chat_id,),
+                ).fetchone()
+                if remaining is None:
+                    conn.execute(
+                        "UPDATE telegram_dm_topic_mode "
+                        "SET enabled = 0, updated_at = ? WHERE chat_id = ?",
+                        (time.time(), chat_id),
+                    )
+            except sqlite3.OperationalError:
+                # telegram_dm_topic_mode absent — binding prune still stands.
+                pass
+
+        self._execute_write(_do)
+        return deleted["count"]
 
     def bind_telegram_topic(
         self,
