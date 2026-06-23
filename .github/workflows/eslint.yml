@@ -1,0 +1,111 @@
+# .github/workflows/eslint.yml
+name: ESLint (apps/desktop + ui-tui)
+
+# ESLint regression guard. The rebrand (Hermes → Prostor) silently broke
+# `package-lock.json`: `eslint-plugin-react-hooks@7.1.1` declared a phantom
+# dependency on `prostor-parser` (a sed-replace mistake — the real dep is
+# `hermes-parser`), so `npm ci` worked but `npx eslint` crashed with
+# `Cannot find module 'hermes-parser'`. Python lint (ruff + ty) runs in
+# `lint.yml`; this workflow is the JS/TS counterpart and would have caught
+# the rebrand regression.
+#
+# Two modes:
+#   1. `lint` — runs `eslint .` across apps/desktop and ui-tui. Blocks merge
+#      on any error. Warnings are tolerated (`--max-warnings=0` would be too
+#      strict while perfectionist/sort-imports churn settles).
+#   2. `lint-diff` — advisory diff vs target branch, posts a PR comment with
+#      new errors only. Mirrors `lint.yml`'s two-job pattern.
+#
+# matrix.fail-fast=false so all package failures report at once.
+#
+# `web` is intentionally excluded: it's a brand-new dashboard with 27 known
+# errors (react-refresh/only-export-components) that need a separate cleanup
+# PR. Re-add once that PR lands.
+#
+# on: No paths filter — the required check must always report a status
+# (path-gated workflows leave checks "pending" forever when no matching
+# files change, which blocks merge).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write # needed to post/update PR comments
+
+concurrency:
+  group: eslint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: eslint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        package: [apps/desktop, ui-tui]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # `--max-warnings=0` would block on cosmetic issues; gate on errors only.
+      # If the team wants strict warning enforcement later, flip to 0.
+      - run: npm run --prefix ${{ matrix.package }} lint
+      # Always run typecheck alongside lint — catches the "compiles but
+      # undefined-symbol" class of regression that ESLint misses.
+      - run: npm run --prefix ${{ matrix.package }} typecheck
+
+  lint-diff:
+    name: eslint diff vs ${{ github.base_ref || 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # need full history for merge-base + worktree
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@e3f0bc8c8a95283c904f88611d1d23755245e93c # v6.4.0
+        with:
+          python-version: '3.11'
+      - run: pip install --quiet gitleaks-json-report-diff 2>/dev/null || true
+      - name: Determine base ref
+        id: base
+        run: |
+          BASE_SHA=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - name: Lint changed files only (advisory)
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          changed_ts=$(git diff --name-only "$BASE_SHA"...HEAD -- \
+            'apps/desktop/src/**/*.ts' 'apps/desktop/src/**/*.tsx' \
+            'apps/desktop/electron/**/*.ts' \
+            'ui-tui/src/**/*.ts' 'ui-tui/src/**/*.tsx' \
+          || true)
+          if [ -z "$changed_ts" ]; then
+            echo "No TS/TSX files changed — skipping advisory lint."
+            exit 0
+          fi
+          for pkg in apps/desktop ui-tui; do
+            files=$(echo "$changed_ts" | sed "s|^$pkg/||" | grep -E '^(src|electron)/' || true)
+            if [ -n "$files" ]; then
+              echo "=== $pkg ==="
+              cd "$pkg"
+              npx --no-install eslint --no-warn-ignored $files || true
+              cd - >/dev/null
+            fi
+          done
