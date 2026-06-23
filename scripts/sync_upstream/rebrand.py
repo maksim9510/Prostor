@@ -10,8 +10,32 @@ import hashlib
 import json
 import re
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def safe_rglob(root: Path) -> "Iterator[Path]":
+    """Recursive glob that survives Windows unicode / broken symlink paths.
+
+    Python's Path.rglob calls os.scandir, which raises FileNotFoundError
+    on Windows when it hits a path the host filesystem can't represent
+    (non-ASCII directory names in upstream's node_modules, stale junction
+    points pointing at deleted targets, etc.). DRY_RUN on a Windows
+    workstation crashes there; Linux CI never sees this.
+
+    We catch OSError per-entry and per-parent scandir call, silently
+    skipping paths the host filesystem can't traverse. Files under
+    such broken paths are skipped; everything else proceeds normally.
+    """
+    try:
+        for p in root.rglob("*"):
+            try:
+                yield p
+            except OSError:
+                continue
+    except OSError:
+        return
 
 # Allow running this script directly via `python scripts/sync_upstream/rebrand.py`
 # without requiring `pip install -e .` — adds the scripts/ dir to sys.path so
