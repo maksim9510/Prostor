@@ -17,7 +17,7 @@ const setModelAssignment = vi.fn()
 const getRecommendedDefaultModel = vi.fn()
 const setEnvVar = vi.fn()
 const getProstorConfigRecord = vi.fn()
-const saveHermesConfig = vi.fn()
+const saveProstorConfig = vi.fn()
 const startManualProviderOAuth = vi.fn()
 
 vi.mock('@/prostor', () => ({
@@ -28,7 +28,7 @@ vi.mock('@/prostor', () => ({
   getRecommendedDefaultModel: (slug: string) => getRecommendedDefaultModel(slug),
   setEnvVar: (key: string, value: string) => setEnvVar(key, value),
   getProstorConfigRecord: () => getProstorConfigRecord(),
-  saveHermesConfig: (config: unknown) => saveHermesConfig(config)
+  saveProstorConfig: (config: unknown) => saveProstorConfig(config)
 }))
 
 vi.mock('@/store/onboarding', () => ({
@@ -58,7 +58,7 @@ beforeEach(() => {
   getRecommendedDefaultModel.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-chat', free_tier: null })
   setEnvVar.mockResolvedValue({ ok: true })
   getProstorConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
-  saveHermesConfig.mockResolvedValue({ ok: true })
+  saveProstorConfig.mockResolvedValue({ ok: true })
 })
 
 afterEach(() => {
@@ -120,7 +120,7 @@ describe('ModelSettings', () => {
     fireEvent.click(fastSwitch)
 
     await waitFor(() =>
-      expect(saveHermesConfig).toHaveBeenCalledWith(
+      expect(saveProstorConfig).toHaveBeenCalledWith(
         expect.objectContaining({ agent: expect.objectContaining({ service_tier: 'fast' }) })
       )
     )

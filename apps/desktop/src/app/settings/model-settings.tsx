@@ -10,7 +10,7 @@ import {
   getGlobalModelOptions,
   getProstorConfigRecord,
   getRecommendedDefaultModel,
-  saveHermesConfig,
+  saveProstorConfig,
   setEnvVar,
   setModelAssignment
 } from '@/prostor'
@@ -231,7 +231,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       setConfig(next)
 
       try {
-        await saveHermesConfig(next)
+        await saveProstorConfig(next)
       } catch (err) {
         setConfig(prev)
         notifyError(err, m.defaultsFailed)

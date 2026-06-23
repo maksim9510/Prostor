@@ -64,6 +64,10 @@ REBRAND_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bupdateHermes(?=[A-Z])"), "updateProstor"),
     (re.compile(r"\bsetHermes(?=[A-Z])"), "setProstor"),
     (re.compile(r"\brefreshHermes(?=[A-Z])"), "refreshProstor"),
+    (re.compile(r"\bsaveHermes(?=[A-Z])"), "saveProstor"),
+    (re.compile(r"\bcheckHermes(?=[A-Z])"), "checkProstor"),
+    (re.compile(r"\bhermesDesktop\b"), "prostorDesktop"),
+    (re.compile(r"\bHermesDesktop\b"), "ProstorDesktop"),
     # PascalCase: `Hermes` not followed by identifier char (so HermesAgent
     # is consumed by the rule above; bare `Hermes` falls through here)
     (re.compile(r"\bHermes(?![A-Za-z0-9_])"), "Prostor"),

@@ -18,12 +18,12 @@ function ok(entries: { name: string; path: string; isDirectory: boolean }[]): He
 function installBridge() {
   ;(
     window as unknown as {
-      hermesDesktop: {
+      prostorDesktop: {
         readDir: typeof readDir
         selectPaths: typeof selectPaths
       }
     }
-  ).hermesDesktop = { readDir, selectPaths }
+  ).prostorDesktop = { readDir, selectPaths }
 }
 
 describe('RightSidebarPane', () => {
@@ -43,7 +43,7 @@ describe('RightSidebarPane', () => {
     $connection.set(null)
     setCurrentCwd('')
     resetProjectTreeState()
-    delete (window as unknown as { hermesDesktop?: unknown }).hermesDesktop
+    delete (window as unknown as { prostorDesktop?: unknown }).prostorDesktop
   })
 
   it('refreshes the current tree without opening the folder picker', async () => {

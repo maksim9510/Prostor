@@ -37,7 +37,7 @@ function fsPath(endpoint: string, filePath: string) {
 }
 
 function bridge() {
-  const desktop = window.hermesDesktop
+  const desktop = window.prostorDesktop
   if (!desktop) {
     throw new Error('Prostor Desktop bridge is unavailable')
   }

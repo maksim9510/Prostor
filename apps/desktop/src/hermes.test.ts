@@ -14,7 +14,7 @@ describe('Prostor REST session helpers', () => {
 
   beforeEach(() => {
     api = vi.fn().mockResolvedValue(emptySessionsResponse)
-    Object.defineProperty(window, 'hermesDesktop', {
+    Object.defineProperty(window, 'prostorDesktop', {
       configurable: true,
       value: { api }
     })
@@ -22,7 +22,7 @@ describe('Prostor REST session helpers', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
-    Reflect.deleteProperty(window, 'hermesDesktop')
+    Reflect.deleteProperty(window, 'prostorDesktop')
   })
 
   it('uses a longer timeout for the single-profile session list', async () => {

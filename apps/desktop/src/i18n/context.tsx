@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
-import { getProstorConfigRecord, type ProstorConfigRecord, saveHermesConfig } from '@/prostor'
+import { getProstorConfigRecord, type ProstorConfigRecord, saveProstorConfig } from '@/prostor'
 
 import { TRANSLATIONS } from './catalog'
 import { DEFAULT_LOCALE, localeConfigValue, normalizeLocale } from './languages'
@@ -16,18 +16,18 @@ export interface I18nConfigClient {
 
 const defaultConfigClient: I18nConfigClient = {
   getConfig: () => {
-    if (typeof window === 'undefined' || !window.hermesDesktop?.api) {
+    if (typeof window === 'undefined' || !window.prostorDesktop?.api) {
       return Promise.resolve({})
     }
 
     return getProstorConfigRecord()
   },
   saveConfig: config => {
-    if (typeof window === 'undefined' || !window.hermesDesktop?.api) {
+    if (typeof window === 'undefined' || !window.prostorDesktop?.api) {
       return Promise.resolve({ ok: true })
     }
 
-    return saveHermesConfig(config)
+    return saveProstorConfig(config)
   }
 }
 

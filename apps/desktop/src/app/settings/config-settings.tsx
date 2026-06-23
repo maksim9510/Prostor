@@ -11,7 +11,7 @@ import {
   getProstorConfigDefaults,
   getProstorConfigRecord,
   getProstorConfigSchema,
-  saveHermesConfig
+  saveProstorConfig
 } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
@@ -262,7 +262,7 @@ export function ConfigSettings({
     const t = window.setTimeout(() => {
       void (async () => {
         try {
-          await saveHermesConfig(config)
+          await saveProstorConfig(config)
 
           if (saveVersionRef.current === v) {
             onConfigSaved?.()

@@ -43,7 +43,7 @@ import type { RpcEvent } from '@/types/prostor'
 interface GatewayBootOptions {
   handleGatewayEvent: (event: RpcEvent) => void
   onConnectionReady: (
-    connection: Awaited<ReturnType<NonNullable<typeof window.hermesDesktop>['getConnection']>> | null
+    connection: Awaited<ReturnType<NonNullable<typeof window.prostorDesktop>['getConnection']>> | null
   ) => void
   onGatewayReady: (gateway: ProstorGateway | null) => void
   refreshProstorConfig: () => Promise<void>
@@ -75,7 +75,7 @@ export function useGatewayBoot({
 
   useEffect(() => {
     let cancelled = false
-    const desktop = window.hermesDesktop
+    const desktop = window.prostorDesktop
 
     const publish = (next: HermesConnection | null) => {
       callbacksRef.current.onConnectionReady(next)

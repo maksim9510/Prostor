@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
-contextBridge.exposeInMainWorld('hermesDesktop', {
+contextBridge.exposeInMainWorld('prostorDesktop', {
   getConnection: profile => ipcRenderer.invoke('prostor:connection', profile),
   revalidateConnection: () => ipcRenderer.invoke('prostor:connection:revalidate'),
   touchBackend: profile => ipcRenderer.invoke('prostor:backend:touch', profile),

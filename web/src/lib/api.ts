@@ -845,7 +845,7 @@ export const api = {
     fetchJSON<ActionResponse>("/api/gateway/restart", { method: "POST" }),
   updateHermes: () =>
     fetchJSON<ActionResponse>("/api/prostor/update", { method: "POST" }),
-  checkHermesUpdate: (force = false) =>
+  checkProstorUpdate: (force = false) =>
     fetchJSON<UpdateCheckResponse>(
       `/api/prostor/update/check${force ? "?force=true" : ""}`,
     ),

@@ -534,9 +534,9 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
 // the flow never silently stalls in a waiting state. Mirrors the pattern in
 // apps/desktop/src/app/artifacts/index.tsx.
 async function openSignInUrl(url: string) {
-  if (window.hermesDesktop?.openExternal) {
+  if (window.prostorDesktop?.openExternal) {
     try {
-      await window.hermesDesktop.openExternal(url)
+      await window.prostorDesktop.openExternal(url)
 
       return
     } catch {

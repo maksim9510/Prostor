@@ -479,8 +479,8 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
 
   const openArtifact = useCallback(async (href: string) => {
     try {
-      if (window.hermesDesktop?.openExternal) {
-        await window.hermesDesktop.openExternal(href)
+      if (window.prostorDesktop?.openExternal) {
+        await window.prostorDesktop.openExternal(href)
       } else {
         window.open(href, '_blank', 'noopener,noreferrer')
       }
