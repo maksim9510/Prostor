@@ -142,3 +142,4 @@ node_modules/
 apps/desktop/release/
 apps/desktop/dist/
 _test_*.py
+dist/
