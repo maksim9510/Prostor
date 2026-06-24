@@ -2,7 +2,7 @@
   "name": "prostor",
   "productName": "Prostor",
   "private": true,
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Native desktop shell for Prostor Agent.",
   "author": "Nous Research",
   "type": "module",
