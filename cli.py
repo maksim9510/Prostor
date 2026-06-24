@@ -53,7 +53,13 @@ import yaml
 
 from prostor_cli.fallback_config import get_fallback_chain
 from prostor_cli.cli_agent_setup_mixin import CLIAgentSetupMixin
+from prostor_cli.cli_approval_mixin import CLIApprovalMixin
+from prostor_cli.cli_billing_mixin import CLIBillingMixin
 from prostor_cli.cli_commands_mixin import CLICommandsMixin
+from prostor_cli.cli_status_bar_mixin import CLIStatusBarMixin
+from prostor_cli.cli_streaming_mixin import CLIStreamingMixin
+from prostor_cli.cli_ui_mixin import CLIUiMixin
+from prostor_cli.cli_voice_mixin import CLIVoiceMixin
 
 # prompt_toolkit for fixed input area TUI
 from prompt_toolkit.history import FileHistory
@@ -3355,7 +3361,7 @@ def save_config_value(key_path: str, value: any) -> bool:
 # ProstorCLI Class
 # ============================================================================
 
-class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
+class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLICommandsMixin, CLIStatusBarMixin, CLIStreamingMixin, CLIUiMixin, CLIVoiceMixin):
     """
     Interactive CLI for the Prostor Agent.
     
