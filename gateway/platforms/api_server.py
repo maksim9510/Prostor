@@ -37,13 +37,13 @@ import hmac
 import json
 import logging
 import os
-import re
 import socket as _socket
+import re
 import sqlite3
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     from aiohttp import web
@@ -155,7 +155,7 @@ def _normalize_chat_content(
         return content[:MAX_NORMALIZED_TEXT_LENGTH] if len(content) > MAX_NORMALIZED_TEXT_LENGTH else content
 
     if isinstance(content, list):
-        parts: list[str] = []
+        parts: List[str] = []
         total_len = 0
         items = content[:MAX_CONTENT_LIST_SIZE] if len(content) > MAX_CONTENT_LIST_SIZE else content
         for item in items:
@@ -232,7 +232,7 @@ def _normalize_multimodal_content(content: Any) -> Any:
         return _normalize_chat_content(content)
 
     items = content[:MAX_CONTENT_LIST_SIZE] if len(content) > MAX_CONTENT_LIST_SIZE else content
-    normalized_parts: list[dict[str, Any]] = []
+    normalized_parts: List[Dict[str, Any]] = []
     text_accum_len = 0
 
     for part in items:
@@ -289,7 +289,7 @@ def _normalize_multimodal_content(content: Any) -> Any:
                 raise ValueError(
                     "invalid_image_url:Image inputs must use http(s) URLs or data:image/... URLs."
                 )
-            image_part: dict[str, Any] = {"type": "image_url", "image_url": {"url": url_value}}
+            image_part: Dict[str, Any] = {"type": "image_url", "image_url": {"url": url_value}}
             if detail is not None:
                 if not isinstance(detail, str) or not detail.strip():
                     raise ValueError("invalid_content_part:Image detail must be a non-empty string when provided.")
@@ -349,7 +349,7 @@ def _multimodal_validation_error(exc: ValueError, *, param: str) -> "web.Respons
     )
 
 
-def _session_chat_user_message(body: dict[str, Any], *, param: str = "message") -> tuple[Any, Optional["web.Response"]]:
+def _session_chat_user_message(body: Dict[str, Any], *, param: str = "message") -> tuple[Any, Optional["web.Response"]]:
     """Parse and normalize session chat ``message`` / ``input`` like chat completions."""
     user_message = body.get("message") or body.get("input")
     if not _content_has_visible_payload(user_message):
@@ -384,11 +384,11 @@ class ResponseStore:
         self._max_size = max_size
         if db_path is None:
             try:
-                from prostor_core import get_prostor_home
+                from prostor_cli.config import get_prostor_home
                 db_path = str(get_prostor_home() / "response_store.db")
             except Exception:
                 db_path = ":memory:"
-        self._db_path: str | None = db_path if db_path != ":memory:" else None
+        self._db_path: Optional[str] = db_path if db_path != ":memory:" else None
         try:
             self._conn = sqlite3.connect(db_path, check_same_thread=False)
         except Exception:
@@ -440,7 +440,7 @@ class ResponseStore:
                     exc_info=True,
                 )
 
-    def get(self, response_id: str) -> dict[str, Any] | None:
+    def get(self, response_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a stored response by ID (updates access time for LRU)."""
         row = self._conn.execute(
             "SELECT data FROM responses WHERE response_id = ?", (response_id,)
@@ -466,7 +466,7 @@ class ResponseStore:
             self._conn.commit()
             return None
 
-    def put(self, response_id: str, data: dict[str, Any]) -> None:
+    def put(self, response_id: str, data: Dict[str, Any]) -> None:
         """Store a response, evicting the oldest if at capacity."""
         self._conn.execute(
             "INSERT OR REPLACE INTO responses (response_id, data, accessed_at) VALUES (?, ?, ?)",
@@ -509,7 +509,7 @@ class ResponseStore:
         self._conn.commit()
         return cursor.rowcount > 0
 
-    def get_conversation(self, name: str) -> str | None:
+    def get_conversation(self, name: str) -> Optional[str]:
         """Get the latest response_id for a conversation name."""
         row = self._conn.execute(
             "SELECT response_id FROM conversations WHERE name = ?", (name,)
@@ -571,7 +571,7 @@ else:
     cors_middleware = None  # type: ignore[assignment]
 
 
-def _openai_error(message: str, err_type: str = "invalid_request_error", param: str = None, code: str = None) -> dict[str, Any]:
+def _openai_error(message: str, err_type: str = "invalid_request_error", param: str = None, code: str = None) -> Dict[str, Any]:
     """OpenAI-style error envelope."""
     return {
         "error": {
@@ -627,7 +627,7 @@ class _IdempotencyCache:
     def __init__(self, max_items: int = 1000, ttl_seconds: int = 300):
         from collections import OrderedDict
         self._store = OrderedDict()
-        self._inflight: dict[tuple[str, str], asyncio.Task[Any]] = {}
+        self._inflight: Dict[tuple[str, str], "asyncio.Task[Any]"] = {}
         self._ttl = ttl_seconds
         self._max = max_items
 
@@ -670,14 +670,14 @@ class _IdempotencyCache:
 _idem_cache = _IdempotencyCache()
 
 
-def _make_request_fingerprint(body: dict[str, Any], keys: list[str]) -> str:
+def _make_request_fingerprint(body: Dict[str, Any], keys: List[str]) -> str:
     from hashlib import sha256
     subset = {k: body.get(k) for k in keys}
     return sha256(repr(subset).encode("utf-8")).hexdigest()
 
 
 def _derive_chat_session_id(
-    system_prompt: str | None,
+    system_prompt: Optional[str],
     first_user_message: str,
 ) -> str:
     """Derive a stable session ID from the conversation's first user message.
@@ -697,28 +697,14 @@ def _derive_chat_session_id(
 _CRON_AVAILABLE = False
 try:
     from cron.jobs import (
-        create_job as _cron_create,
-    )
-    from cron.jobs import (
-        get_job as _cron_get,
-    )
-    from cron.jobs import (
         list_jobs as _cron_list,
-    )
-    from cron.jobs import (
-        pause_job as _cron_pause,
-    )
-    from cron.jobs import (
-        remove_job as _cron_remove,
-    )
-    from cron.jobs import (
-        resume_job as _cron_resume,
-    )
-    from cron.jobs import (
-        trigger_job as _cron_trigger,
-    )
-    from cron.jobs import (
+        get_job as _cron_get,
+        create_job as _cron_create,
         update_job as _cron_update,
+        remove_job as _cron_remove,
+        pause_job as _cron_pause,
+        resume_job as _cron_resume,
+        trigger_job as _cron_trigger,
     )
     _CRON_AVAILABLE = True
 except ImportError:
@@ -740,7 +726,6 @@ def _notify_cron_provider_jobs_changed() -> None:
         _notify_provider_jobs_changed()
     except Exception:
         pass
-
 
 # Defense-in-depth: mirror the agent-facing cronjob tool, which scans the
 # user-supplied prompt for exfiltration/injection payloads at create/update
@@ -764,6 +749,16 @@ class APIServerAdapter(BasePlatformAdapter):
     and routes them through prostor-agent's AIAgent.
     """
 
+    # Stateless request/response: every route (the OpenAI-spec
+    # /v1/chat/completions and /v1/responses, and the proprietary /v1/runs SSE
+    # stream) tears down its channel when the turn ends. There is no persistent
+    # outbound channel to push a background completion to a client that already
+    # received its response, and ``send()`` is a no-op stub. So async-delivery
+    # tools (terminal notify_on_complete / watch_patterns, delegate_task
+    # background=True) must NOT promise delivery on this path — see
+    # ``async_delivery_supported()``.
+    supports_async_delivery: bool = False
+
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.API_SERVER)
         extra = config.extra or {}
@@ -779,24 +774,33 @@ class APIServerAdapter(BasePlatformAdapter):
         self._model_name: str = self._resolve_model_name(
             extra.get("model_name", os.getenv("API_SERVER_MODEL_NAME", "")),
         )
-        self._app: web.Application | None = None
-        self._runner: web.AppRunner | None = None
-        self._site: web.TCPSite | None = None
+        self._app: Optional["web.Application"] = None
+        self._runner: Optional["web.AppRunner"] = None
+        self._site: Optional["web.TCPSite"] = None
         self._response_store = ResponseStore()
         # Active run streams: run_id -> asyncio.Queue of SSE event dicts
-        self._run_streams: dict[str, asyncio.Queue[dict | None]] = {}
+        self._run_streams: Dict[str, "asyncio.Queue[Optional[Dict]]"] = {}
         # Creation timestamps for orphaned-run TTL sweep
-        self._run_streams_created: dict[str, float] = {}
+        self._run_streams_created: Dict[str, float] = {}
         # Active run agent/task references for stop support
-        self._active_run_agents: dict[str, Any] = {}
-        self._active_run_tasks: dict[str, asyncio.Task] = {}
+        self._active_run_agents: Dict[str, Any] = {}
+        self._active_run_tasks: Dict[str, "asyncio.Task"] = {}
         # Pollable run status for dashboards and external control-plane UIs.
-        self._run_statuses: dict[str, dict[str, Any]] = {}
+        self._run_statuses: Dict[str, Dict[str, Any]] = {}
         # Active approval session key for each run_id.  The approval core
         # resolves requests by session key, while API clients address the
         # in-flight run by run_id.
-        self._run_approval_sessions: dict[str, str] = {}
-        self._session_db: Any | None = None  # Lazy-init SessionDB for session continuity
+        self._run_approval_sessions: Dict[str, str] = {}
+        self._session_db: Optional[Any] = None  # Lazy-init SessionDB for session continuity
+        # Concurrency cap shared across all agent-serving endpoints
+        # (/v1/chat/completions, /v1/responses, /v1/runs). Read from
+        # config.yaml gateway.api_server.max_concurrent_runs; 0 disables
+        # the cap. Bounds CPU / memory / upstream-LLM-quota exhaustion
+        # from a request flood (#7483).
+        self._max_concurrent_runs: int = self._resolve_max_concurrent_runs()
+        # Number of in-flight runs on the non-streaming chat/responses paths
+        # (the /v1/runs path tracks its own in-flight set via _run_streams).
+        self._inflight_agent_runs: int = 0
 
     @staticmethod
     def _parse_cors_origins(value: Any) -> tuple[str, ...]:
@@ -812,6 +816,30 @@ class APIServerAdapter(BasePlatformAdapter):
             items = [str(value)]
 
         return tuple(str(item).strip() for item in items if str(item).strip())
+
+    @staticmethod
+    def _resolve_max_concurrent_runs() -> int:
+        """Read the concurrent-run cap from config.yaml (0 disables).
+
+        gateway.api_server.max_concurrent_runs. Falls back to the historical
+        default of 10 when unset or malformed. Negative values are clamped
+        to 0 (disabled).
+        """
+        default = 10
+        try:
+            from prostor_cli.config import cfg_get, load_config
+
+            raw = cfg_get(
+                load_config(),
+                "gateway",
+                "api_server",
+                "max_concurrent_runs",
+                default=default,
+            )
+            value = int(raw)
+        except Exception:
+            return default
+        return max(0, value)
 
     @staticmethod
     def _resolve_model_name(explicit: str) -> str:
@@ -833,7 +861,7 @@ class APIServerAdapter(BasePlatformAdapter):
             pass
         return "prostor-agent"
 
-    def _cors_headers_for_origin(self, origin: str) -> dict[str, str] | None:
+    def _cors_headers_for_origin(self, origin: str) -> Optional[Dict[str, str]]:
         """Return CORS headers for an allowed browser origin."""
         if not origin or not self._cors_origins:
             return None
@@ -871,7 +899,7 @@ class APIServerAdapter(BasePlatformAdapter):
         text = str(value).replace("\r", " ").replace("\n", " ").strip()
         return text[:max_len]
 
-    def _request_audit_context(self, request: "web.Request") -> dict[str, str]:
+    def _request_audit_context(self, request: "web.Request") -> Dict[str, str]:
         """Return non-secret source metadata for security/audit warnings."""
         peer_ip = ""
         try:
@@ -896,7 +924,7 @@ class APIServerAdapter(BasePlatformAdapter):
         fields = [f"{key}={value!r}" for key, value in ctx.items() if value]
         return " ".join(fields) if fields else "source='unknown'"
 
-    def _cron_origin_from_request(self, request: "web.Request") -> dict[str, str]:
+    def _cron_origin_from_request(self, request: "web.Request") -> Dict[str, str]:
         """Persist safe API source metadata on cron jobs created over HTTP."""
         ctx = self._request_audit_context(request)
         origin = {
@@ -960,7 +988,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
     def _parse_session_key_header(
         self, request: "web.Request"
-    ) -> tuple[str | None, Optional["web.Response"]]:
+    ) -> tuple[Optional[str], Optional["web.Response"]]:
         """Extract and validate the ``X-Prostor-Session-Key`` header.
 
         The session key is a stable per-channel identifier that scopes
@@ -1034,13 +1062,13 @@ class APIServerAdapter(BasePlatformAdapter):
 
     def _create_agent(
         self,
-        ephemeral_system_prompt: str | None = None,
-        session_id: str | None = None,
+        ephemeral_system_prompt: Optional[str] = None,
+        session_id: Optional[str] = None,
         stream_delta_callback=None,
         tool_progress_callback=None,
         tool_start_callback=None,
         tool_complete_callback=None,
-        gateway_session_key: str | None = None,
+        gateway_session_key: Optional[str] = None,
     ) -> Any:
         """
         Create an AIAgent instance using the gateway's runtime config.
@@ -1057,15 +1085,15 @@ class APIServerAdapter(BasePlatformAdapter):
         providers (e.g. Honcho) can scope their per-chat state correctly
         — matching the semantics of the native gateway's ``session_key``.
         """
+        from run_agent import AIAgent
         from gateway.run import (
-            GatewayRunner,
             _current_max_iterations,
-            _load_gateway_config,
-            _resolve_gateway_model,
             _resolve_runtime_agent_kwargs,
+            _resolve_gateway_model,
+            _load_gateway_config,
+            GatewayRunner,
         )
         from prostor_cli.tools_config import _get_platform_tools
-        from run_agent import AIAgent
 
         runtime_kwargs = _resolve_runtime_agent_kwargs()
         reasoning_config = GatewayRunner._load_reasoning_config()
@@ -1118,16 +1146,35 @@ class APIServerAdapter(BasePlatformAdapter):
         dashboard can display full status without needing a shared PID file or
         /proc access.  No authentication required.
         """
-        from gateway.status import read_runtime_status
+        from gateway.status import (
+            derive_gateway_busy,
+            derive_gateway_drainable,
+            parse_active_agents,
+            read_runtime_status,
+        )
 
         runtime = read_runtime_status() or {}
+        gw_state = runtime.get("gateway_state")
+        gw_active = parse_active_agents(runtime.get("active_agents", 0))
+        # This endpoint is served BY the gateway process, so it is by definition
+        # alive — gateway_running is True. Derive busy/drainable from the same
+        # shared contract /api/status uses so the two surfaces never disagree.
         return web.json_response({
             "status": "ok",
             "platform": "prostor-agent",
             "version": _prostor_version(),
-            "gateway_state": runtime.get("gateway_state"),
+            "gateway_state": gw_state,
             "platforms": runtime.get("platforms", {}),
-            "active_agents": runtime.get("active_agents", 0),
+            "active_agents": gw_active,
+            "gateway_busy": derive_gateway_busy(
+                gateway_running=True,
+                gateway_state=gw_state,
+                active_agents=gw_active,
+            ),
+            "gateway_drainable": derive_gateway_drainable(
+                gateway_running=True,
+                gateway_state=gw_state,
+            ),
             "exit_reason": runtime.get("exit_reason"),
             "updated_at": runtime.get("updated_at"),
             "pid": os.getpid(),
@@ -1293,7 +1340,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 "api_server",
                 include_default_mcp_servers=False,
             )
-            data: list[dict[str, Any]] = []
+            data: List[Dict[str, Any]] = []
             for name, label, desc in _get_effective_configurable_toolsets():
                 try:
                     tools = sorted(set(resolve_toolset(name)))
@@ -1336,7 +1383,7 @@ class APIServerAdapter(BasePlatformAdapter):
         return min(parsed, maximum)
 
     @staticmethod
-    def _session_response(session: dict[str, Any]) -> dict[str, Any]:
+    def _session_response(session: Dict[str, Any]) -> Dict[str, Any]:
         """Return a stable, client-safe session representation."""
         safe_keys = (
             "id", "source", "user_id", "model", "title", "started_at", "ended_at",
@@ -1354,7 +1401,7 @@ class APIServerAdapter(BasePlatformAdapter):
         return payload
 
     @staticmethod
-    def _message_response(message: dict[str, Any]) -> dict[str, Any]:
+    def _message_response(message: Dict[str, Any]) -> Dict[str, Any]:
         safe_keys = (
             "id", "session_id", "role", "content", "tool_call_id", "tool_calls",
             "tool_name", "timestamp", "token_count", "finish_reason", "reasoning",
@@ -1362,7 +1409,7 @@ class APIServerAdapter(BasePlatformAdapter):
         )
         return {key: message.get(key) for key in safe_keys if key in message}
 
-    async def _read_json_body(self, request: "web.Request") -> tuple[dict[str, Any], Optional["web.Response"]]:
+    async def _read_json_body(self, request: "web.Request") -> tuple[Dict[str, Any], Optional["web.Response"]]:
         try:
             body = await request.json()
         except Exception:
@@ -1371,7 +1418,7 @@ class APIServerAdapter(BasePlatformAdapter):
             return {}, web.json_response(_openai_error("Request body must be a JSON object"), status=400)
         return body, None
 
-    def _get_existing_session_or_404(self, session_id: str) -> tuple[dict[str, Any] | None, Optional["web.Response"]]:
+    def _get_existing_session_or_404(self, session_id: str) -> tuple[Optional[Dict[str, Any]], Optional["web.Response"]]:
         db = self._ensure_session_db()
         if db is None:
             return None, web.json_response(_openai_error("Session database unavailable", code="session_db_unavailable"), status=503)
@@ -1380,7 +1427,7 @@ class APIServerAdapter(BasePlatformAdapter):
             return None, web.json_response(_openai_error(f"Session not found: {session_id}", code="session_not_found"), status=404)
         return session, None
 
-    def _conversation_history_for_session(self, session_id: str) -> list[dict[str, Any]]:
+    def _conversation_history_for_session(self, session_id: str) -> List[Dict[str, Any]]:
         db = self._ensure_session_db()
         if db is None:
             return []
@@ -1639,12 +1686,12 @@ class APIServerAdapter(BasePlatformAdapter):
             return web.json_response(_openai_error("system_message must be a string", code="invalid_system_message"), status=400)
 
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
+        queue: "asyncio.Queue[Optional[tuple[str, Dict[str, Any]]]]" = asyncio.Queue()
         message_id = f"msg_{uuid.uuid4().hex}"
         run_id = f"run_{uuid.uuid4().hex}"
         seq = 0
 
-        def _event_payload(name: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        def _event_payload(name: str, payload: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
             nonlocal seq
             seq += 1
             payload.setdefault("session_id", session_id)
@@ -1653,7 +1700,7 @@ class APIServerAdapter(BasePlatformAdapter):
             payload.setdefault("ts", time.time())
             return name, payload
 
-        def _enqueue(name: str, payload: dict[str, Any]) -> None:
+        def _enqueue(name: str, payload: Dict[str, Any]) -> None:
             event = _event_payload(name, payload)
             try:
                 running_loop = asyncio.get_running_loop()
@@ -1735,21 +1782,21 @@ class APIServerAdapter(BasePlatformAdapter):
             headers["X-Prostor-Session-Key"] = gateway_session_key
         response = web.StreamResponse(status=200, headers=headers)
         await response.prepare(request)
-        time.monotonic()
+        last_write = time.monotonic()
         try:
             while True:
                 try:
                     item = await asyncio.wait_for(queue.get(), timeout=CHAT_COMPLETIONS_SSE_KEEPALIVE_SECONDS)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     await response.write(b": keepalive\n\n")
-                    time.monotonic()
+                    last_write = time.monotonic()
                     continue
                 if item is None:
                     break
                 name, payload = item
                 data = json.dumps(payload, ensure_ascii=False)
-                await response.write(f"event: {name}\ndata: {data}\n\n".encode())
-                time.monotonic()
+                await response.write(f"event: {name}\ndata: {data}\n\n".encode("utf-8"))
+                last_write = time.monotonic()
         except (asyncio.CancelledError, ConnectionResetError):
             task.cancel()
             raise
@@ -1762,6 +1809,11 @@ class APIServerAdapter(BasePlatformAdapter):
         auth_err = self._check_auth(request)
         if auth_err:
             return auth_err
+
+        # Bound total in-flight agent runs (configurable; #7483).
+        limited = self._concurrency_limited_response()
+        if limited is not None:
+            return limited
 
         # Parse request body
         try:
@@ -1780,7 +1832,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
         # Extract system message (becomes ephemeral system prompt layered ON TOP of core)
         system_prompt = None
-        conversation_messages: list[dict[str, str]] = []
+        conversation_messages: List[Dict[str, str]] = []
 
         for idx, msg in enumerate(messages):
             role = msg.get("role", "")
@@ -2239,13 +2291,13 @@ class APIServerAdapter(BasePlatformAdapter):
         stream_q,
         agent_task,
         agent_ref,
-        conversation_history: list[dict[str, str]],
+        conversation_history: List[Dict[str, str]],
         user_message: str,
-        instructions: str | None,
-        conversation: str | None,
+        instructions: Optional[str],
+        conversation: Optional[str],
         store: bool,
         session_id: str,
-        gateway_session_key: str | None = None,
+        gateway_session_key: Optional[str] = None,
     ) -> "web.StreamResponse":
         """Write an SSE stream for POST /v1/responses (OpenAI Responses API).
 
@@ -2294,13 +2346,13 @@ class APIServerAdapter(BasePlatformAdapter):
         await response.prepare(request)
 
         # State accumulated during the stream
-        final_text_parts: list[str] = []
+        final_text_parts: List[str] = []
         # Track open function_call items by name so we can emit a matching
         # ``done`` event when the tool completes.  Order preserved.
-        pending_tool_calls: list[dict[str, Any]] = []
+        pending_tool_calls: List[Dict[str, Any]] = []
         # Output items we've emitted so far (used to build the terminal
         # response.completed payload).  Kept in the order they appeared.
-        emitted_items: list[dict[str, Any]] = []
+        emitted_items: List[Dict[str, Any]] = []
         # Monotonic counter for output_index (spec requires it).
         output_index = 0
         # Monotonic counter for call_id generation if the agent doesn't
@@ -2313,10 +2365,10 @@ class APIServerAdapter(BasePlatformAdapter):
         # Track the assistant message item id + content index for text
         # delta events — the spec ties deltas to a specific item.
         message_item_id = f"msg_{uuid.uuid4().hex[:24]}"
-        message_output_index: int | None = None
+        message_output_index: Optional[int] = None
         message_opened = False
 
-        async def _write_event(event_type: str, data: dict[str, Any]) -> None:
+        async def _write_event(event_type: str, data: Dict[str, Any]) -> None:
             nonlocal sequence_number
             if "sequence_number" not in data:
                 data["sequence_number"] = sequence_number
@@ -2324,8 +2376,8 @@ class APIServerAdapter(BasePlatformAdapter):
             payload = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
             await response.write(payload.encode())
 
-        def _envelope(status: str) -> dict[str, Any]:
-            env: dict[str, Any] = {
+        def _envelope(status: str) -> Dict[str, Any]:
+            env: Dict[str, Any] = {
                 "id": response_id,
                 "object": "response",
                 "status": status,
@@ -2335,14 +2387,14 @@ class APIServerAdapter(BasePlatformAdapter):
             return env
 
         final_response_text = ""
-        agent_error: str | None = None
-        usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        agent_error: Optional[str] = None
+        usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         terminal_snapshot_persisted = False
 
         def _persist_response_snapshot(
-            response_env: dict[str, Any],
+            response_env: Dict[str, Any],
             *,
-            conversation_history_snapshot: list[dict[str, Any]] | None = None,
+            conversation_history_snapshot: Optional[List[Dict[str, Any]]] = None,
         ) -> None:
             if not store:
                 return
@@ -2369,7 +2421,7 @@ class APIServerAdapter(BasePlatformAdapter):
             if not store or terminal_snapshot_persisted:
                 return
             incomplete_text = "".join(final_text_parts) or final_response_text
-            incomplete_items: list[dict[str, Any]] = list(emitted_items)
+            incomplete_items: List[Dict[str, Any]] = list(emitted_items)
             if incomplete_text:
                 incomplete_items.append({
                     "type": "message",
@@ -2437,7 +2489,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     "logprobs": [],
                 })
 
-            async def _emit_tool_started(payload: dict[str, Any]) -> str:
+            async def _emit_tool_started(payload: Dict[str, Any]) -> str:
                 """Emit response.output_item.added for a function_call.
 
                 Returns the call_id so the matching completion event can
@@ -2483,7 +2535,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 })
                 return call_id
 
-            async def _emit_tool_completed(payload: dict[str, Any]) -> None:
+            async def _emit_tool_completed(payload: Dict[str, Any]) -> None:
                 """Emit response.output_item.done (function_call) followed
                 by response.output_item.added (function_call_output)."""
                 nonlocal output_index
@@ -2571,8 +2623,8 @@ class APIServerAdapter(BasePlatformAdapter):
                 # Other types are silently dropped.
 
             # ── Batching state ──
-            _batch_buf: list[str] = []
-            _batch_timer: asyncio.Task | None = None
+            _batch_buf: List[str] = []
+            _batch_timer: Optional[asyncio.Task] = None
             _batch_lock = asyncio.Lock()
 
             async def _batch_flush_after(delay: float) -> None:
@@ -2683,7 +2735,7 @@ class APIServerAdapter(BasePlatformAdapter):
             # response envelope so clients that only parse the terminal
             # payload still see the assistant text.  This mirrors the
             # shape produced by _extract_output_items in the batch path.
-            final_items: list[dict[str, Any]] = list(emitted_items)
+            final_items: List[Dict[str, Any]] = list(emitted_items)
 
             # Trim large content from tool call arguments to keep the
             # response.completed event under ~100KB.  Clients already
@@ -2832,6 +2884,11 @@ class APIServerAdapter(BasePlatformAdapter):
         if auth_err:
             return auth_err
 
+        # Bound total in-flight agent runs (configurable; #7483).
+        limited = self._concurrency_limited_response()
+        if limited is not None:
+            return limited
+
         # Long-term memory scope header (see chat_completions for details).
         gateway_session_key, key_err = self._parse_session_key_header(request)
         if key_err is not None:
@@ -2865,7 +2922,7 @@ class APIServerAdapter(BasePlatformAdapter):
             # No error if conversation doesn't exist yet — it's a new conversation
 
         # Normalize input to message list
-        input_messages: list[dict[str, Any]] = []
+        input_messages: List[Dict[str, Any]] = []
         if isinstance(raw_input, str):
             input_messages = [{"role": "user", "content": raw_input}]
         elif isinstance(raw_input, list):
@@ -2886,7 +2943,7 @@ class APIServerAdapter(BasePlatformAdapter):
         # This lets stateless clients supply their own history instead of
         # relying on server-side response chaining via previous_response_id.
         # Precedence: explicit conversation_history > previous_response_id.
-        conversation_history: list[dict[str, Any]] = []
+        conversation_history: List[Dict[str, Any]] = []
         raw_history = body.get("conversation_history")
         if raw_history:
             if not isinstance(raw_history, list):
@@ -3390,8 +3447,8 @@ class APIServerAdapter(BasePlatformAdapter):
         trips NAS's HTTP timeout. The store CAS claim inside fire_due guards
         against double-fire on a NAS/scheduler retry.
         """
-        from plugins.cron.chronos.verify import get_fire_verifier
         from prostor_cli.config import cfg_get, load_config
+        from plugins.cron.chronos.verify import get_fire_verifier
 
         auth = request.headers.get("Authorization", "")
         token = auth[7:].strip() if auth.startswith("Bearer ") else ""
@@ -3435,17 +3492,18 @@ class APIServerAdapter(BasePlatformAdapter):
 
         return web.json_response({"status": "accepted", "job_id": job_id}, status=202)
 
+
     # ------------------------------------------------------------------
     # Output extraction helper
     # ------------------------------------------------------------------
 
     @staticmethod
     def _build_response_conversation_history(
-        conversation_history: list[dict[str, Any]],
+        conversation_history: List[Dict[str, Any]],
         user_message: Any,
-        result: dict[str, Any],
+        result: Dict[str, Any],
         final_response: Any,
-    ) -> list[dict[str, Any]]:
+    ) -> List[Dict[str, Any]]:
         """Build the stored Responses transcript without duplicating history."""
         prior = list(conversation_history)
         current_user = {"role": "user", "content": user_message}
@@ -3472,9 +3530,9 @@ class APIServerAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _response_messages_turn_start_index(
-        conversation_history: list[dict[str, Any]],
+        conversation_history: List[Dict[str, Any]],
         user_message: Any,
-        result: dict[str, Any],
+        result: Dict[str, Any],
     ) -> int:
         """Detect transcript-shaped result["messages"] and return turn start."""
         agent_messages = result.get("messages") if isinstance(result, dict) else None
@@ -3493,10 +3551,10 @@ class APIServerAdapter(BasePlatformAdapter):
     @classmethod
     def _turn_transcript_messages(
         cls,
-        conversation_history: list[dict[str, Any]],
+        conversation_history: List[Dict[str, Any]],
         user_message: Any,
-        result: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+        result: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
         """Return this turn's assistant/tool messages in client-safe shape.
 
         The streaming SSE contract delivers all assistant text as
@@ -3519,7 +3577,7 @@ class APIServerAdapter(BasePlatformAdapter):
             conversation_history, user_message, result
         )
         turn = agent_messages[start:]
-        out: list[dict[str, Any]] = []
+        out: List[Dict[str, Any]] = []
         for msg in turn:
             if not isinstance(msg, dict):
                 continue
@@ -3529,7 +3587,7 @@ class APIServerAdapter(BasePlatformAdapter):
         return out
 
     @staticmethod
-    def _extract_output_items(result: dict[str, Any], start_index: int = 0) -> list[dict[str, Any]]:
+    def _extract_output_items(result: Dict[str, Any], start_index: int = 0) -> List[Dict[str, Any]]:
         """
         Build the output item array from the agent's messages.
 
@@ -3538,7 +3596,7 @@ class APIServerAdapter(BasePlatformAdapter):
         - ``function_call_output`` items for each tool-role message
         - a final ``message`` item with the assistant's text reply
         """
-        items: list[dict[str, Any]] = []
+        items: List[Dict[str, Any]] = []
         messages = result.get("messages", [])
         if start_index > 0:
             messages = messages[start_index:]
@@ -3582,18 +3640,75 @@ class APIServerAdapter(BasePlatformAdapter):
     # Agent execution
     # ------------------------------------------------------------------
 
+    def _concurrency_limited_response(self) -> Optional["web.Response"]:
+        """Return a 429 response if the concurrent-run cap is reached, else None.
+
+        The cap bounds total in-flight agent activity across every
+        agent-serving endpoint: the non-streaming chat/responses paths
+        (tracked by ``_inflight_agent_runs``) plus the ``/v1/runs`` streaming
+        path (tracked by ``_run_streams``). A configured value of 0 disables
+        the cap entirely.
+        """
+        limit = self._max_concurrent_runs
+        if limit <= 0:
+            return None
+        inflight = self._inflight_agent_runs + len(self._run_streams)
+        if inflight >= limit:
+            return web.json_response(
+                _openai_error(
+                    f"Too many concurrent runs (max {limit})",
+                    err_type="rate_limit_error",
+                    code="rate_limit_exceeded",
+                ),
+                status=429,
+                headers={"Retry-After": "1"},
+            )
+        return None
+
+    @staticmethod
+    def _bind_api_server_session(
+        *,
+        chat_id: str = "",
+        session_key: str = "",
+        session_id: str = "",
+    ) -> list:
+        """Bind session contextvars for an API-server agent run.
+
+        This is the SINGLE structural chokepoint every API-server agent-entry
+        path must use to seed session context — it hardwires
+        ``platform="api_server"`` and ``async_delivery=False`` so a new route
+        physically cannot reintroduce the silent-no-op bug (#10760) by
+        forgetting to mark the channel as non-delivering. There is no
+        ``async_delivery`` parameter to get wrong; the stateless HTTP path can
+        never wake the agent after the turn ends, on ANY route.
+
+        Returns reset tokens; pass them to ``clear_session_vars`` in a
+        ``finally`` block (the binding is request-scoped and must not outlive
+        the turn — a session resumed later on a delivering interface, e.g. the
+        CLI or a gateway platform, re-binds fresh and is NOT blocked).
+        """
+        from gateway.session_context import set_session_vars
+
+        return set_session_vars(
+            platform="api_server",
+            chat_id=chat_id,
+            session_key=session_key,
+            session_id=session_id,
+            async_delivery=False,
+        )
+
     async def _run_agent(
         self,
         user_message: str,
-        conversation_history: list[dict[str, str]],
-        ephemeral_system_prompt: str | None = None,
-        session_id: str | None = None,
+        conversation_history: List[Dict[str, str]],
+        ephemeral_system_prompt: Optional[str] = None,
+        session_id: Optional[str] = None,
         stream_delta_callback=None,
         tool_progress_callback=None,
         tool_start_callback=None,
         tool_complete_callback=None,
-        agent_ref: list | None = None,
-        gateway_session_key: str | None = None,
+        agent_ref: Optional[list] = None,
+        gateway_session_key: Optional[str] = None,
     ) -> tuple:
         """
         Create an agent and run a conversation in a thread executor.
@@ -3609,10 +3724,9 @@ class APIServerAdapter(BasePlatformAdapter):
         loop = asyncio.get_running_loop()
 
         def _run():
-            from gateway.session_context import clear_session_vars, set_session_vars
+            from gateway.session_context import clear_session_vars
 
-            tokens = set_session_vars(
-                platform="api_server",
+            tokens = self._bind_api_server_session(
                 chat_id=session_id or "",
                 session_key=gateway_session_key or session_id or "",
                 session_id=session_id or "",
@@ -3650,17 +3764,20 @@ class APIServerAdapter(BasePlatformAdapter):
             finally:
                 clear_session_vars(tokens)
 
-        return await loop.run_in_executor(None, _run)
+        self._inflight_agent_runs += 1
+        try:
+            return await loop.run_in_executor(None, _run)
+        finally:
+            self._inflight_agent_runs -= 1
 
     # ------------------------------------------------------------------
     # /v1/runs — structured event streaming
     # ------------------------------------------------------------------
 
-    _MAX_CONCURRENT_RUNS = 10  # Prevent unbounded resource allocation
     _RUN_STREAM_TTL = 300  # seconds before orphaned runs are swept
     _RUN_STATUS_TTL = 3600  # seconds to retain terminal run status for polling
 
-    def _set_run_status(self, run_id: str, status: str, **fields: Any) -> dict[str, Any]:
+    def _set_run_status(self, run_id: str, status: str, **fields: Any) -> Dict[str, Any]:
         """Update pollable run status without exposing private agent objects."""
         now = time.time()
         current = self._run_statuses.get(run_id, {})
@@ -3677,7 +3794,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
     def _make_run_event_callback(self, run_id: str, loop: "asyncio.AbstractEventLoop"):
         """Return a tool_progress_callback that pushes structured events to the run's SSE queue."""
-        def _push(event: dict[str, Any]) -> None:
+        def _push(event: Dict[str, Any]) -> None:
             self._set_run_status(
                 run_id,
                 self._run_statuses.get(run_id, {}).get("status", "running"),
@@ -3732,12 +3849,11 @@ class APIServerAdapter(BasePlatformAdapter):
         if key_err is not None:
             return key_err
 
-        # Enforce concurrency limit
-        if len(self._run_streams) >= self._MAX_CONCURRENT_RUNS:
-            return web.json_response(
-                _openai_error(f"Too many concurrent runs (max {self._MAX_CONCURRENT_RUNS})", code="rate_limit_exceeded"),
-                status=429,
-            )
+        # Enforce concurrency limit (shared across all agent-serving
+        # endpoints; configurable via gateway.api_server.max_concurrent_runs).
+        limited = self._concurrency_limited_response()
+        if limited is not None:
+            return limited
 
         try:
             body = await request.json()
@@ -3757,7 +3873,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
         # Accept explicit conversation_history from the request body.
         # Precedence: explicit conversation_history > previous_response_id.
-        conversation_history: list[dict[str, str]] = []
+        conversation_history: List[Dict[str, str]] = []
         raw_history = body.get("conversation_history")
         if raw_history:
             if not isinstance(raw_history, list):
@@ -3804,7 +3920,7 @@ class APIServerAdapter(BasePlatformAdapter):
         approval_session_key = gateway_session_key or session_id or run_id
         ephemeral_system_prompt = instructions
         loop = asyncio.get_running_loop()
-        q: asyncio.Queue[dict | None] = asyncio.Queue()
+        q: "asyncio.Queue[Optional[Dict]]" = asyncio.Queue()
         created_at = time.time()
         self._run_streams[run_id] = q
         self._run_streams_created[run_id] = created_at
@@ -3813,7 +3929,7 @@ class APIServerAdapter(BasePlatformAdapter):
         event_cb = self._make_run_event_callback(run_id, loop)
 
         # Also wire stream_delta_callback so message.delta events flow through.
-        def _text_cb(delta: str | None) -> None:
+        def _text_cb(delta: Optional[str]) -> None:
             if delta is None:
                 return
             try:
@@ -3846,7 +3962,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 )
                 self._active_run_agents[run_id] = agent
 
-                def _approval_notify(approval_data: dict[str, Any]) -> None:
+                def _approval_notify(approval_data: Dict[str, Any]) -> None:
                     event = dict(approval_data or {})
                     event.update({
                         "event": "approval.request",
@@ -3865,7 +3981,7 @@ class APIServerAdapter(BasePlatformAdapter):
                         pass
 
                 def _run_sync():
-                    from gateway.session_context import clear_session_vars, set_session_vars
+                    from gateway.session_context import clear_session_vars
                     from tools.approval import (
                         register_gateway_notify,
                         reset_current_session_key,
@@ -3881,8 +3997,7 @@ class APIServerAdapter(BasePlatformAdapter):
                         # contextvars so concurrent runs do not share process
                         # environment state.
                         approval_token = set_current_session_key(approval_session_key)
-                        session_tokens = set_session_vars(
-                            platform="api_server",
+                        session_tokens = self._bind_api_server_session(
                             session_key=approval_session_key,
                         )
                         register_gateway_notify(approval_session_key, _approval_notify)
@@ -4064,7 +4179,7 @@ class APIServerAdapter(BasePlatformAdapter):
             while True:
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=30.0)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     await response.write(b": keepalive\n\n")
                     continue
                 if event is None:
@@ -4080,6 +4195,7 @@ class APIServerAdapter(BasePlatformAdapter):
             self._run_streams_created.pop(run_id, None)
 
         return response
+
 
     async def _handle_run_approval(self, request: "web.Request") -> "web.Response":
         """POST /v1/runs/{run_id}/approval — resolve a pending run approval."""
@@ -4198,7 +4314,7 @@ class APIServerAdapter(BasePlatformAdapter):
             # slow/unresponsive interrupt can't hang this handler.
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 logger.warning(
                     "[api_server] stop for run %s timed out after 5s; "
                     "agent may still be finishing the current step",
@@ -4325,22 +4441,55 @@ class APIServerAdapter(BasePlatformAdapter):
                 )
                 return False
 
-            # Refuse to start network-accessible with a placeholder key.
-            # Ported from openclaw/openclaw#64586.
+            # Refuse to start network-accessible with a placeholder or weak key.
+            # Ported from openclaw/openclaw#64586; entropy floor raised to 16 in
+            # the June 2026 prostor-0day hardening (an 8-char key dispatching
+            # terminal-capable agent work on a public bind is brute-forceable).
             if is_network_accessible(self._host) and self._api_key:
                 try:
                     from prostor_cli.auth import has_usable_secret
-                    if not has_usable_secret(self._api_key, min_length=8):
+                    if not has_usable_secret(self._api_key, min_length=16):
                         logger.error(
-                            "[%s] Refusing to start: API_SERVER_KEY is set to a "
-                            "placeholder value. Generate a real secret "
-                            "(e.g. `openssl rand -hex 32`) and set API_SERVER_KEY "
-                            "before exposing the API server on %s.",
+                            "[%s] Refusing to start: API_SERVER_KEY is a "
+                            "placeholder or too short (<16 chars) for a "
+                            "network-accessible bind. This endpoint dispatches "
+                            "terminal-capable agent work — a guessable key is "
+                            "remote code execution. Generate a strong secret "
+                            "(e.g. `openssl rand -hex 32`) and set "
+                            "API_SERVER_KEY before exposing it on %s.",
                             self.name, self._host,
                         )
                         return False
                 except ImportError:
                     pass
+
+            # Loud warning when a network-accessible API server runs against an
+            # unsandboxed local terminal backend. The API server can drive the
+            # agent's terminal/file tools as the host user; on a public bind
+            # that is the exact surface the prostor-0day campaign abused to write
+            # ~/.prostor/config.yaml and plant persistence. Sandboxing (Docker /
+            # remote backend) contains the blast radius. Warn, don't refuse —
+            # the operator may have an external firewall / strong key.
+            if is_network_accessible(self._host):
+                try:
+                    from prostor_cli.config import load_config as _load_cfg
+                    _backend = (
+                        ((_load_cfg() or {}).get("terminal") or {}).get(
+                            "backend", "local"
+                        )
+                    )
+                except Exception:
+                    _backend = "local"
+                if str(_backend).lower() == "local":
+                    logger.warning(
+                        "[%s] API server is network-accessible (%s) AND the "
+                        "terminal backend is 'local' (unsandboxed). Agent work "
+                        "dispatched through this endpoint runs as the host user "
+                        "with full terminal/file access. Strongly consider a "
+                        "sandboxed backend (terminal.backend: docker) and "
+                        "firewalling this port to trusted networks only.",
+                        self.name, self._host,
+                    )
 
             # Port conflict detection — fail fast if port is already in use
             try:
@@ -4401,15 +4550,15 @@ class APIServerAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """
         Not used — HTTP request/response cycle handles delivery directly.
         """
         return SendResult(success=False, error="API server uses HTTP request/response, not send()")
 
-    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Return basic info about the API server."""
         return {
             "name": "API Server",
