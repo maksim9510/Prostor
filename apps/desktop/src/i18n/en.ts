@@ -50,7 +50,7 @@ export const en: Translations = {
       loadingSettings: 'Loading Hermes settings',
       loadingSessions: 'Loading recent sessions',
       startingDesktopConnection: 'Starting desktop connection',
-      startingHermesDesktop: 'Starting Hermes Desktop…'
+      startingProstorDesktop: 'Starting Hermes Desktop…'
     },
     errors: {
       backgroundExited: 'Hermes background process exited.',
@@ -99,7 +99,7 @@ export const en: Translations = {
     backendOutOfDateTitle: 'Backend out of date',
     backendOutOfDateMessage:
       'Your Hermes backend is older than this desktop build and may not work correctly. Update to align them.',
-    updateHermes: 'Update Hermes',
+    updateProstor: 'Update Hermes',
     updateReadyTitle: 'Update ready',
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
     seeWhatsNew: "See what's new",
@@ -808,10 +808,10 @@ export const en: Translations = {
     noSessions: 'No sessions yet.',
     gatewayRunning: 'Messaging gateway running',
     gatewayStopped: 'Messaging gateway stopped',
-    hermesActiveSessions: (version, count) => `Hermes ${version} · Active sessions ${count}`,
+    prostorActiveSessions: (version, count) => `Hermes ${version} · Active sessions ${count}`,
     restartGateway: 'Restart gateway',
     gatewayRestartFailed: 'Gateway restart failed.',
-    updateHermes: 'Update Hermes',
+    updateProstor: 'Update Hermes',
     actionRunning: 'running',
     actionDone: 'done',
     actionFailed: 'failed',

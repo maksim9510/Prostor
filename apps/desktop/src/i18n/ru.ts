@@ -1311,6 +1311,7 @@ export const ru: Translations = {
     pasteImage: 'Вставить изображение',
     url: 'URL…',
     promptSnippets: 'Сниппеты промптов…',
+
     tipPre: 'Подсказка: введите ',
     tipPost: ' для ссылки на файлы внутри строки.',
     snippetsTitle: 'Сниппеты промптов',
