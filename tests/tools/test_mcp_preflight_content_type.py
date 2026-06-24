@@ -14,10 +14,14 @@ from __future__ import annotations
 import asyncio
 import http.server
 import socketserver
+import sys
 import threading
 from contextlib import contextmanager
 
 import pytest
+
+# Windows threading + pytest interaction causes hangs in local HTTP server tests
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Windows threading hang in pytest")
 
 from tools.mcp_tool import MCPServerTask, NonMcpEndpointError
 

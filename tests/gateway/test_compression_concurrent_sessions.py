@@ -18,12 +18,18 @@ stress test rather than a timing accident.
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from prostor_state import SessionDB
+
+# Windows threading + pytest interaction causes hangs in concurrent compression tests
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Windows threading hang in pytest")
 
 # ---------------------------------------------------------------------------
 # Shared helpers

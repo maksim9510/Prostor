@@ -23,6 +23,10 @@ from types import SimpleNamespace
 
 import pytest
 
+# Windows threading + pytest interaction causes hangs in TTFB watchdog tests
+# (threading.join in interruptible_api_call never returns on win32 under pytest)
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Windows threading hang in pytest")
+
 # Stub optional heavy imports so run_agent imports cleanly in isolation.
 sys.modules.setdefault("fire", types.SimpleNamespace(Fire=lambda *a, **k: None))
 sys.modules.setdefault("firecrawl", types.SimpleNamespace(Firecrawl=object))

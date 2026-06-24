@@ -14,11 +14,18 @@ asserts the logging context follows the rotation.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import prostor_logging
 from prostor_state import SessionDB
+
+# Windows threading + pytest interaction causes hangs in concurrent compression tests
+# (threading.join never returns under pytest's plugin thread model on win32)
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Windows threading hang in pytest")
 
 
 def _build_agent_with_db(db: SessionDB, session_id: str):

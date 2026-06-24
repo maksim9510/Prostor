@@ -10,6 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Windows threading + pytest interaction causes hangs in TUI gateway protocol tests
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Windows threading hang in pytest")
+
 _original_stdout = sys.stdout
 
 

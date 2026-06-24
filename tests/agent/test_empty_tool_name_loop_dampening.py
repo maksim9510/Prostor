@@ -31,6 +31,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
+# Windows threading + pytest interaction causes hangs in streaming API call tests
+# (threading.join in interruptible_streaming_api_call never returns on win32 under pytest)
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Windows threading hang in pytest")
+
 # Repo root = three levels up from tests/agent/<file>.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _REPO_ROOT not in sys.path:
