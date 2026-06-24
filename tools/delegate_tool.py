@@ -2855,61 +2855,20 @@ def _build_top_level_description() -> str:
         )
 
     return (
-        "Spawn one or more subagents to work on tasks in isolated contexts. "
-        "Each subagent gets its own conversation, terminal session, and toolset. "
-        "Only the final summary is returned -- intermediate tool results "
-        "never enter your context window.\n\n"
-        "TWO MODES (one of 'goal' or 'tasks' is required):\n"
-        "1. Single task: provide 'goal' (+ optional context, toolsets).\n"
-        f"2. Batch (parallel): provide 'tasks' array with up to {max_children} "
-        f"items concurrently for this user (configured via "
-        f"delegation.max_concurrent_children in config.yaml). {nesting_clause}\n\n"
-        "BOTH MODES RUN IN THE BACKGROUND. delegate_task returns immediately — "
-        "you and the user keep working, and each subagent's full result "
-        "re-enters the conversation as its own new message when it finishes. A "
-        "batch is just N independent background subagents (N handles, each "
-        "completes on its own). Do NOT wait or poll; just continue with other "
-        "work after dispatching.\n\n"
-        "WHEN TO USE delegate_task:\n"
-        "- Reasoning-heavy subtasks (debugging, code review, research synthesis)\n"
-        "- Tasks that would flood your context with intermediate data\n"
-        "- Parallel independent workstreams (research A and B simultaneously)\n\n"
-        "WHEN NOT TO USE (use these instead):\n"
-        "- Mechanical multi-step work with no reasoning needed -> use execute_code\n"
-        "- Single tool call -> just call the tool directly\n"
-        "- Tasks needing user interaction -> subagents cannot use clarify\n"
-        "- Durable long-running work that must outlive the current turn -> "
-        "use cronjob (action='create') or terminal(background=True, "
-        "notify_on_complete=True) instead. Background delegations are NOT "
-        "durable: if the parent session is closed (/new) or the process exits "
-        "before a subagent finishes, that subagent's work is discarded, and "
-        "/stop cancels every running background subagent.\n\n"
-        "IMPORTANT:\n"
-        "- Subagents have NO memory of your conversation. Pass all relevant "
-        "info (file paths, error messages, constraints) via the 'context' field.\n"
-        "- If the user is writing in a non-English language, or asked for "
-        "output in a specific language / tone / style, say so in 'context' "
-        "(e.g. \"respond in Chinese\", \"return output in Japanese\"). "
-        "Otherwise subagents default to English and their summaries will "
-        "contaminate your final reply with the wrong language.\n"
-        "- Subagent summaries are SELF-REPORTS, not verified facts. A subagent "
-        "that claims \"uploaded successfully\" or \"file written\" may be wrong. "
-        "For operations with external side-effects (HTTP POST/PUT, remote "
-        "writes, file creation at shared paths, publishing), require the "
-        "subagent to return a verifiable handle (URL, ID, absolute path, HTTP "
-        "status) and verify it yourself — fetch the URL, stat the file, read "
-        "back the content — before telling the user the operation succeeded.\n"
-        "- Leaf subagents (role='leaf', the default) CANNOT call: "
-        "delegate_task, clarify, memory, send_message, execute_code.\n"
-        "- Orchestrator subagents (role='orchestrator') retain "
-        "delegate_task so they can spawn their own workers, but still "
-        "cannot use clarify, memory, send_message, or execute_code. "
-        f"Orchestrators are bounded by max_spawn_depth={max_depth} for this "
-        f"user and can be disabled globally via "
-        "delegation.orchestrator_enabled=false.\n"
-        "- Subagent model is NOT selectable per call: children inherit the parent model (plus its fallback chain) unless you pin all subagents to a model via delegation.provider / delegation.model in config.yaml.\n"
-        "- Each subagent gets its own terminal session (separate working directory and state).\n"
-        "- Results are always returned as an array, one entry per task."
+        f"Spawn subagents in isolated contexts. Batch: up to {max_children} "
+        f"parallel tasks. {nesting_clause}\n\n"
+        "Modes: 1) 'goal' = single task, 2) 'tasks' = parallel batch. "
+        "Returns immediately; results re-enter conversation as new messages.\n\n"
+        "Use for: reasoning-heavy subtasks, context-flood prevention, "
+        "parallel workstreams. Don't use for: mechanical steps (use "
+        "execute_code), single tool calls, user interaction (no clarify), "
+        "durable work (use cronjob/terminal background).\n\n"
+        "Key constraints:\n"
+        "- NO memory of parent conversation — pass context explicitly\n"
+        "- Subagent summaries are self-reports — verify side-effects\n"
+        "- Non-English output: specify language in 'context'\n"
+        "- Leaf: cannot delegate. Orchestrator: can spawn workers "
+        f"(depth={max_depth})"
     )
 
 
@@ -3024,12 +2983,8 @@ DELEGATE_TASK_SCHEMA = {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": (
-                    "Toolsets to enable for this subagent. "
-                    "Default: inherits your enabled toolsets. "
-                    f"Available toolsets: {_TOOLSET_LIST_STR}. "
-                    "Common patterns: ['terminal', 'file'] for code work, "
-                    "['web'] for research, ['browser'] for web interaction, "
-                    "['terminal', 'file', 'web'] for full-stack tasks."
+                    "Toolsets for subagent. Default: inherits parent. "
+                    f"Available: {_TOOLSET_LIST_STR}."
                 ),
             },
             "tasks": {
@@ -3093,14 +3048,8 @@ DELEGATE_TASK_SCHEMA = {
             "acp_command": {
                 "type": "string",
                 "description": (
-                    "Override ACP command for child agents (e.g. 'copilot'). "
-                    "When set, children use ACP subprocess transport instead of inheriting "
-                    "the parent's transport. Requires an ACP-compatible CLI "
-                    "(currently GitHub Copilot CLI via 'copilot --acp --stdio'). "
-                    "See agent/copilot_acp_client.py for the implementation. "
-                    "IMPORTANT: Do NOT set this unless the user has explicitly told you "
-                    "a specific ACP-compatible CLI is installed and configured. "
-                    "Leave empty to use the parent's default transport (Prostor subagents)."
+                    "ACP command override (e.g. 'copilot'). Only if user "
+                    "explicitly has ACP CLI installed."
                 ),
             },
             "acp_args": {

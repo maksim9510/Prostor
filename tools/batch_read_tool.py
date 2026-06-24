@@ -277,7 +277,7 @@ try:
         handler=_handle_batch_read,
         check_fn=check_batch_read_requirements,
         emoji="📚",
-        max_result_size_chars=200_000,
+        max_result_size_chars=100_000,
     )
 except Exception as e:
     logger.debug("Could not register batch_read: %s", e)

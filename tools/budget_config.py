@@ -13,8 +13,12 @@ PINNED_THRESHOLDS: dict[str, float] = {
 
 # Defaults matching the current hardcoded values in tool_result_storage.py.
 # Kept here as the single source of truth; tool_result_storage.py imports these.
-DEFAULT_RESULT_SIZE_CHARS: int = 100_000
-DEFAULT_TURN_BUDGET_CHARS: int = 200_000
+#
+# 2026-06: Reduced from 100K→50K to save context tokens. Large tool results
+# (>50K chars = ~12.5K tokens) get persisted to disk and replaced with a
+# 1.5K preview, saving ~11K tokens per large result.
+DEFAULT_RESULT_SIZE_CHARS: int = 50_000
+DEFAULT_TURN_BUDGET_CHARS: int = 150_000
 DEFAULT_PREVIEW_SIZE_CHARS: int = 1_500
 
 
