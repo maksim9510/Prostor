@@ -65,9 +65,9 @@ Prostor — единственный open-source агент с **полным н
 | 4 | **Persistent Index Cache** | **до 7x** на повторных patch | [`tools/hashline_persistent_cache.py`](tools/hashline_persistent_cache.py) |
 | 5 | **Tool result compression** | **99.6%** токенов | [`tools/result_compression.py`](tools/result_compression.py) |
 | 6 | **SSH Paramiko connector skill** | безопасный remote exec | [`skills/devops/ssh-paramiko-connector/`](skills/devops/ssh-paramiko-connector/) |
-| 7 | **Token Budget Manager** | warn at 75/90/95% бюджета | [`tools/token_budget.py`](tools/token_budget.py) |
-| 8 | **Context Window Optimizer** | **99.7%** сжатие cold turns | [`tools/context_optimizer.py`](tools/context_optimizer.py) |
-| 9 | **Smart Read Cache** | mtime+size invalidation | [`tools/smart_read_cache.py`](tools/smart_read_cache.py) |
+| 7 | **Token Budget Manager** | auto-warn 75/90/95% бюджета | [`tools/token_budget.py`](tools/token_budget.py) |
+| 8 | **Context Window Optimizer** | priority-aware warm compression | [`tools/context_optimizer.py`](tools/context_optimizer.py) |
+| 9 | **Tier System** | 22 vs 50 tools, −11.2K tokens/call | [`toolsets.py`](toolsets.py) |
 | 10 | **Adaptive Tool Router** | auto-suggest batch вместо N calls | [`tools/adaptive_router.py`](tools/adaptive_router.py) |
 
 ### 🏎 Реальные результаты бенчмарка HashLine
@@ -87,6 +87,32 @@ Prostor — единственный open-source агент с **полным н
 > **Сопоставление строк за 0.11 ms вместо 526 ms — ускорение в ~4700 раз.**
 >
 > HashLine — это многоуровневый хеш-индекс (`line hash` + `block hash` + `token hash` + `bloom filter`), который заменяет медленный `fuzzy_match` с 9 стратегиями последовательного перебора. Используется для точного и быстрого поиска в файлах, патч-операций и навигации по коду. Drop-in fast path: если HashLine нашёл — ответ мгновенный; если нет — fallback на fuzzy.
+
+---
+
+## 🔒 Безопасность
+
+Prostor включает **10 security fix'ов** из upstream v2026.6.19:
+
+- **MCP-persistence attack surface** — защита от атак через MCP серверы
+- **Shell injection** — квотирование переменных окружения в remote execution
+- **Approval guard hardening** — защита от prompt injection в approval
+- **Credential stores** — запрет root-level credential storage в media delivery
+- **Dashboard plugin import** — auto-import Python backend только для bundled plugins
+- **IPv6 scope ID bypass** — fail-closed для unparseable IP addresses
+- **WebSocket peer** — fail-closed для empty peer в loopback mode
+- **Kanban markdown HTML** — санитайзинг HTML в kanban контенте
+- **Path traversal** — защита от path traversal в restore_quick_snapshot
+- **Credential redact** — сокрытие credentials в TUI approval prompts
+
+---
+
+## 🚀 Быстрые победы (v0.17.0)
+
+- **Result sizes 100K→50K** — large results persisted to disk, −11K tokens/result
+- **pytest-xdist** — параллельное выполнение тестов (2-4x speedup)
+- **delegate_task schema −48%** — 7.8K→4.0K chars (−954 tokens/call)
+- **Tier System** — 22 core tools (~8K tokens) vs 50 full (~20K tokens)
 
 ---
 
