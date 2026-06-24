@@ -950,6 +950,40 @@ class ContextCompressor(ContextEngine):
             else:
                 content_hashes[h] = (i, msg.get("tool_call_id", "?"))
 
+        # Pass 1.5: Cheap compression for "warm" tool results (5-15 turns old).
+        # Instead of jumping straight to a 1-line summary, apply lightweight
+        # compress_result (dedup, whitespace, hex noise) first. This preserves
+        # more useful context for results that aren't ancient yet.
+        # Priority-aware: patch/write results stay "fresh" 2x longer than reads.
+        try:
+            from tools.result_compression import compress_result as _cr
+            _TOOL_PRIO = {"patch": 10, "batch_patch": 10, "write_file": 9,
+                          "terminal": 7, "search_files": 5, "read_file": 3, "batch_read": 3}
+            for i in range(prune_boundary):
+                msg = result[i]
+                if msg.get("role") != "tool":
+                    continue
+                content = msg.get("content", "")
+                if not isinstance(content, str) or len(content) < 500:
+                    continue
+                call_id = msg.get("tool_call_id", "")
+                tool_name, _ = call_id_to_tool.get(call_id, ("unknown", ""))
+                # Estimate turn age from position (earlier = older)
+                turn_age = len(result) - i  # rough: higher = more recent
+                prio = _TOOL_PRIO.get(tool_name, 5)
+                # High-priority tools get extra "fresh" turns
+                warm_threshold = 5 + (prio // 3)
+                if turn_age <= warm_threshold:
+                    continue  # still "fresh" — skip compression
+                # Compress warm results (keep content, reduce size)
+                max_chars = 8000 if prio >= 7 else 4000
+                compressed, _ = _cr(content, tool_name, max_chars=max_chars)
+                if compressed != content:
+                    result[i] = {**msg, "content": compressed}
+                    pruned += 1
+        except ImportError:
+            pass  # result_compression not available — skip warm pass
+
         # Pass 2: Replace old tool results with informative summaries
         for i in range(prune_boundary):
             msg = result[i]

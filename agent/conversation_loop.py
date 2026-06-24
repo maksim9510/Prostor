@@ -1832,6 +1832,43 @@ def run_conversation(
                     }
                     agent.context_compressor.update_from_response(usage_dict)
 
+                    # Track API-level token usage for budget warnings (75/90/95%).
+                    # Uses the same singleton as the token_budget tool, so LLM
+                    # queries via token_budget(stats) see real cumulative data.
+                    try:
+                        from tools.token_budget import get_token_tracker
+                        _tb = get_token_tracker()
+                        # Auto-scale budget to model's context length if available
+                        _ctx_len = getattr(agent.context_compressor, "context_length", 0)
+                        if _ctx_len > 0 and _tb.max_budget != _ctx_len:
+                            _tb.set_budget(_ctx_len)
+                        _tb.track_api_usage(
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            cache_read_tokens=canonical_usage.cache_read_tokens,
+                        )
+                        # Surface budget warnings to user
+                        _budget_pct = prompt_tokens / _tb.max_budget if _tb.max_budget > 0 else 0
+                        if _budget_pct >= 0.95:
+                            agent._safe_print(
+                                f"{agent.log_prefix}🔴 Token budget CRITICAL: "
+                                f"{prompt_tokens:,}/{_tb.max_budget:,} ({_budget_pct:.0%}) — "
+                                f"context compression will be aggressive"
+                            )
+                        elif _budget_pct >= 0.90:
+                            agent._safe_print(
+                                f"{agent.log_prefix}🟠 Token budget warning: "
+                                f"{prompt_tokens:,}/{_tb.max_budget:,} ({_budget_pct:.0%}) — "
+                                f"approaching context limit"
+                            )
+                        elif _budget_pct >= 0.75:
+                            agent._safe_print(
+                                f"{agent.log_prefix}🟡 Token budget notice: "
+                                f"{prompt_tokens:,}/{_tb.max_budget:,} ({_budget_pct:.0%})"
+                            )
+                    except Exception:
+                        pass  # token_budget is non-critical
+
                     # Cache discovered context length after successful call.
                     # Only persist limits confirmed by the provider (parsed
                     # from the error message), not guessed probe tiers.

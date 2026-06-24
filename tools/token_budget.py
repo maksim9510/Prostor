@@ -146,6 +146,39 @@ class TokenBudgetManager:
             self._warnings_issued.add(95)
             logger.warning("Token budget CRITICAL at %d%% — truncating", pct_int)
 
+    def track_api_usage(
+        self,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        cache_read_tokens: int = 0,
+    ):
+        """Track real API-level token usage for budget warnings.
+
+        Called from conversation_loop after each successful API response.
+        Unlike process_tool_result (which tracks tool output tokens),
+        this tracks what the model actually consumed — the accurate signal
+        for budget exhaustion warnings.
+        """
+        if prompt_tokens <= 0 and completion_tokens <= 0:
+            return
+
+        with self._lock:
+            # Use prompt_tokens as the primary budget signal — this is what
+            # the model sees and what triggers context-length errors.
+            self._used_tokens = prompt_tokens
+            self._history.append({
+                "tool": "__api__",
+                "ts": time.time(),
+                "input_tokens": prompt_tokens,
+                "output_tokens": completion_tokens,
+                "saved": 0,
+                "compressed": False,
+                "cache_read_tokens": cache_read_tokens,
+            })
+
+        budget_pct = prompt_tokens / self.max_budget if self.max_budget > 0 else 0
+        self._check_warnings(budget_pct)
+
     def get_stats(self) -> dict[str, Any]:
         with self._lock:
             total_saved = sum(s.input_tokens - s.output_tokens for s in self._tool_stats.values())

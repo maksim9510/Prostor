@@ -47,7 +47,7 @@ def reverse_rebrand(content: str) -> str:
     return content
 
 
-# 10 наших файлов + AGENTS.md (наш architectural bible, не upstream's)
+# 9 наших файлов + AGENTS.md (наш architectural bible, не upstream's)
 PROTECTED = {
     "tools/hashline.py",
     "tools/hashline_persistent_cache.py",
@@ -56,7 +56,6 @@ PROTECTED = {
     "tools/result_compression.py",
     "tools/token_budget.py",
     "tools/context_optimizer.py",
-    "tools/smart_read_cache.py",
     "tools/adaptive_router.py",
     "skills/devops/ssh-paramiko-connector/SKILL.md",
     "skills/devops/ssh-paramiko-connector/ssh_connector.py",

@@ -1395,6 +1395,24 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         # Unwrap _multimodal dicts to an OpenAI-style content list
         # (see parallel path for rationale). String results pass through.
         _tool_content = agent._tool_result_content_for_active_model(function_name, function_result)
+
+        # Adaptive router: record call and inject batch suggestion if detected.
+        # This nudges the LLM toward batch_patch/batch_read on subsequent turns
+        # without requiring a separate tool call overhead.
+        try:
+            from tools.adaptive_router import get_tool_router
+            _router = get_tool_router()
+            _args_dict = json.loads(function_args) if isinstance(function_args, str) and function_args.strip().startswith("{") else {}
+            _suggestion = _router.record_call(function_name, args=_args_dict)
+            if _suggestion and isinstance(_tool_content, str):
+                _hint = (
+                    f"\n💡 [Adaptive Router] {_suggestion.get('message', '')}"
+                    f" Potential savings: ~{_suggestion.get('tokens_saved', 0)} tokens"
+                )
+                _tool_content = _tool_content + _hint
+        except Exception:
+            pass  # adaptive_router is non-critical
+
         messages.append(make_tool_result_message(function_name, _tool_content, tool_call.id))
 
         # ── Per-tool /steer drain ───────────────────────────────────

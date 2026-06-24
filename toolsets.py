@@ -27,25 +27,24 @@ from typing import Any
 
 # Shared tool list for CLI and all messaging platform toolsets.
 # Edit this once to update all platforms simultaneously.
+#
+# Tier system (2026-06): reduce minimum context by excluding on-demand tools
+# from the default set.  Tier 0+1 = always sent (~22 tools, ~8K tokens).
+# Tier 2 = only when explicitly enabled (~28 extra tools, ~12K tokens).
+# Saves ~12K tokens per API call for sessions that don't use browser/kanban/HA.
+
+# Tier 0+1: core tools — always sent
 _PROSTOR_CORE_TOOLS = [
     # Web
     "web_search", "web_extract",
     # Terminal + process management
     "terminal", "process",
-    # Read the desktop GUI's embedded terminal pane (gated on PROSTOR_DESKTOP
-    # via check_fn in tools/read_terminal_tool.py — hidden outside the GUI).
-    "read_terminal",
-    # File manipulation
+    # File manipulation (includes batch variants — small schema, high value)
     "read_file", "batch_read", "write_file", "patch", "batch_patch", "search_files",
     # Vision + image generation
-    "vision_analyze", "image_generate",
+    "vision_analyze",
     # Skills
     "skills_list", "skill_view", "skill_manage",
-    # Browser automation
-    "browser_navigate", "browser_snapshot", "browser_click",
-    "browser_type", "browser_scroll", "browser_back",
-    "browser_press", "browser_get_images",
-    "browser_vision", "browser_console", "browser_cdp", "browser_dialog",
     # Text-to-speech
     "text_to_speech",
     # Planning & memory
@@ -58,12 +57,26 @@ _PROSTOR_CORE_TOOLS = [
     "execute_code", "delegate_task",
     # Cronjob management
     "cronjob",
+]
+
+# Tier 2: on-demand tools — only included when toolset explicitly enabled
+# or when PROSTOR_TOOLSET_TIER=full in config.yaml.
+# These add ~12K tokens of schema overhead per API call.
+_PROSTOR_TIER2_TOOLS = [
+    # Read the desktop GUI's embedded terminal pane (gated on PROSTOR_DESKTOP
+    # via check_fn in tools/read_terminal_tool.py — hidden outside the GUI).
+    "read_terminal",
+    # Browser automation (12 tools — large schema overhead)
+    "browser_navigate", "browser_snapshot", "browser_click",
+    "browser_type", "browser_scroll", "browser_back",
+    "browser_press", "browser_get_images",
+    "browser_vision", "browser_console", "browser_cdp", "browser_dialog",
+    # Image generation (gated on provider)
+    "image_generate",
     # Home Assistant smart home control (gated on HASS_TOKEN via check_fn)
     "ha_list_entities", "ha_get_state", "ha_list_services", "ha_call_service",
-    # Kanban multi-agent coordination — only in schema when the agent is
-    # spawned as a kanban worker (PROSTOR_KANBAN_TASK env set) or the current
-    # profile explicitly enables the kanban toolset. Gated via check_fn in
-    # tools/kanban_tools.py.
+    # Kanban multi-agent coordination — only when spawned as kanban worker
+    # (PROSTOR_KANBAN_TASK env set) or profile enables kanban toolset.
     "kanban_show", "kanban_list",
     "kanban_complete", "kanban_block", "kanban_heartbeat",
     "kanban_comment", "kanban_create", "kanban_link",
@@ -420,7 +433,15 @@ TOOLSETS = {
     },
 
     "prostor-cli": {
-        "description": "Full interactive CLI toolset - all default tools plus cronjob management",
+        "description": "Full interactive CLI toolset - core + on-demand tools (browser, kanban, HA)",
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
+        "includes": []
+    },
+
+    "prostor-cli-minimal": {
+        "description": "Minimal CLI toolset - core tools only (~22 tools, ~8K tokens). "
+                       "Excludes browser, kanban, HA, image gen. Use via enabled_toolsets "
+                       "or config.yaml toolset_tier=minimal to reduce context overhead.",
         "tools": _PROSTOR_CORE_TOOLS,
         "includes": []
     },
@@ -432,19 +453,19 @@ TOOLSETS = {
         # homeassistant) are excluded by _get_platform_tools() unless
         # the user explicitly enables them.
         "description": "Default cron toolset - same core tools as prostor-cli; gated by `prostor tools`",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-telegram": {
         "description": "Telegram bot toolset - full access for personal use (terminal has safety checks)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-discord": {
         "description": "Discord bot toolset - full access (terminal has safety checks via dangerous command approval)",
-        "tools": _PROSTOR_CORE_TOOLS + [
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS + [
             "discord",
             "discord_admin",
         ],
@@ -453,61 +474,61 @@ TOOLSETS = {
 
     "prostor-whatsapp": {
         "description": "WhatsApp bot toolset - similar to Telegram (personal messaging, more trusted)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-slack": {
         "description": "Slack bot toolset - full access for workspace use (terminal has safety checks)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-signal": {
         "description": "Signal bot toolset - encrypted messaging platform (full access)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-bluebubbles": {
         "description": "BlueBubbles iMessage bot toolset - Apple iMessage via local BlueBubbles server",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-homeassistant": {
         "description": "Home Assistant bot toolset - smart home event monitoring and control",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-email": {
         "description": "Email bot toolset - interact with Prostor via email (IMAP/SMTP)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-mattermost": {
         "description": "Mattermost bot toolset - self-hosted team messaging (full access)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-matrix": {
         "description": "Matrix bot toolset - decentralized encrypted messaging (full access)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-dingtalk": {
         "description": "DingTalk bot toolset - enterprise messaging platform (full access)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-feishu": {
         "description": "Feishu/Lark bot toolset - enterprise messaging via Feishu/Lark (full access)",
-        "tools": _PROSTOR_CORE_TOOLS + [
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS + [
             "feishu_doc_read",
             "feishu_drive_list_comments",
             "feishu_drive_list_comment_replies",
@@ -519,31 +540,31 @@ TOOLSETS = {
 
     "prostor-weixin": {
         "description": "Weixin bot toolset - personal WeChat messaging via iLink (full access)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-qqbot": {
         "description": "QQBot toolset - QQ messaging via Official Bot API v2 (full access)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-wecom": {
         "description": "WeCom bot toolset - enterprise WeChat messaging (full access)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-wecom-callback": {
         "description": "WeCom callback toolset - enterprise self-built app messaging (full access)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
     "prostor-yuanbao": {
         "description": "Yuanbao Bot 元宝消息平台工具集 - 群信息、成员查询、私聊、贴纸表情",
-        "tools": _PROSTOR_CORE_TOOLS + [
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS + [
             "yb_query_group_info",
             "yb_query_group_members",
             "yb_send_dm",
@@ -556,7 +577,7 @@ TOOLSETS = {
 
     "prostor-sms": {
         "description": "SMS bot toolset - interact with Prostor via SMS (Twilio)",
-        "tools": _PROSTOR_CORE_TOOLS,
+        "tools": _PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS,
         "includes": []
     },
 
@@ -671,7 +692,7 @@ def resolve_toolset(name: str, visited: set[str] = None) -> list[str]:
             try:
                 from gateway.platform_registry import platform_registry
                 if platform_registry.is_registered(platform_name):
-                    plugin_tools = set(_PROSTOR_CORE_TOOLS)
+                    plugin_tools = set(_PROSTOR_CORE_TOOLS + _PROSTOR_TIER2_TOOLS)
                     try:
                         from tools.registry import registry
                         plugin_tools.update(
