@@ -1,5 +1,5 @@
-import { useStore } from '@nanostores/react'
 import { Box, type ScrollBoxHandle, stringWidth, Text } from '@prostor/ink'
+import { useStore } from '@nanostores/react'
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import unicodeSpinners from 'unicode-animations'
 
@@ -250,6 +250,7 @@ export interface StatusBarSegments {
   compressions: boolean
   cost: boolean
   duration: boolean
+  subagents: boolean
   voice: boolean
 }
 
@@ -263,6 +264,7 @@ export function statusBarSegments(cols: number): StatusBarSegments {
     compressions: w >= 80,
     voice: w >= 84,
     bg: w >= 88,
+    subagents: w >= 92,
     cost: w >= 96
   }
 }
@@ -480,7 +482,6 @@ export function StatusRule({
   // mid-segment, so status/model/context are never crushed.
   const SEP = stringWidth(' │ ')
   let tailBudget = Math.max(0, leftWidth - essentialWidth)
-
   const fits = (w: number) => {
     if (tailBudget >= w) {
       tailBudget -= w
@@ -494,7 +495,6 @@ export function StatusRule({
   const sessionCountText = liveSessionCount > 0 ? statusSessionCountLabel(liveSessionCount) : ''
   const compressions = typeof usage.compressions === 'number' ? usage.compressions : 0
   const costText = typeof usage.cost_usd === 'number' ? `$${usage.cost_usd.toFixed(4)}` : ''
-
   // Dev-only readout (PROSTOR_DEV_CREDITS). The server omits the key entirely unless the
   // flag is on, so this segment self-hides for normal users. micros→cents is allowed money
   // math (display formatting) — never parseFloat a *_usd. Signed: a mid-session top-up that
@@ -514,6 +514,8 @@ export function StatusRule({
   const showVoice = segs.voice && !!voiceLabel && fits(SEP + stringWidth(voiceLabel))
   const showSessionCount = !!sessionCountText && fits(SEP + stringWidth(sessionCountText))
   const showBg = segs.bg && bgCount > 0 && fits(SEP + stringWidth(`${bgCount} bg`))
+  const subagentCount = typeof usage.active_subagents === 'number' ? usage.active_subagents : 0
+  const showSubagents = segs.subagents && subagentCount > 0 && fits(SEP + stringWidth(`⛓ ${subagentCount}`))
   const showCostSeg = segs.cost && showCost && !!costText && fits(SEP + stringWidth(costText))
   // No segs flag / no showCost coupling — it's a server-gated dev readout, lowest priority,
   // so it consumes tail budget LAST and drops first on a narrow terminal.
@@ -619,6 +621,12 @@ export function StatusRule({
           <Text color={t.color.muted} wrap="truncate-end">
             {' │ '}
             {bgCount} bg
+          </Text>
+        ) : null}
+        {showSubagents ? (
+          <Text color={t.color.muted} wrap="truncate-end">
+            {' │ '}
+            ⛓ {subagentCount}
           </Text>
         ) : null}
         {showCostSeg ? (

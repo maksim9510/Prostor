@@ -1,63 +1,63 @@
 #!/usr/bin/env python3
 """
-Prostor CLI - Main entry point.
+Hermes CLI - Main entry point.
 
 Usage:
-    prostor                     # Interactive chat (default)
-    prostor chat                # Interactive chat
-    prostor gateway             # Run gateway in foreground
-    prostor gateway start       # Start gateway as service
-    prostor gateway stop        # Stop gateway service
-    prostor gateway status      # Show gateway status
-    prostor gateway install     # Install gateway service
-    prostor gateway uninstall   # Uninstall gateway service
-    prostor setup               # Interactive setup wizard
-    prostor logout              # Clear stored authentication
-    prostor status              # Show status of all components
-    prostor cron                # Manage cron jobs
-    prostor cron list           # List cron jobs
-    prostor cron status         # Check if cron scheduler is running
-    prostor doctor              # Check configuration and dependencies
-    prostor honcho setup                    # Configure Honcho AI memory integration
-    prostor honcho status                   # Show Honcho config and connection status
-    prostor honcho sessions                 # List directory → session name mappings
-    prostor honcho map <name>               # Map current directory to a session name
-    prostor honcho peer                     # Show peer names and dialectic settings
-    prostor honcho peer --user NAME         # Set user peer name
-    prostor honcho peer --ai NAME           # Set AI peer name
-    prostor honcho peer --reasoning LEVEL   # Set dialectic reasoning level
-    prostor honcho mode                     # Show current memory mode
-    prostor honcho mode [hybrid|honcho|local]  # Set memory mode
-    prostor honcho tokens                   # Show token budget settings
-    prostor honcho tokens --context N       # Set session.context() token cap
-    prostor honcho tokens --dialectic N     # Set dialectic result char cap
-    prostor honcho identity                 # Show AI peer identity representation
-    prostor honcho identity <file>          # Seed AI peer identity from a file (SOUL.md etc.)
-    prostor honcho migrate                  # Step-by-step migration guide: OpenClaw native → Prostor + Honcho
-    prostor version             Show version
-    prostor update              Update to latest version
-    prostor uninstall           Uninstall Prostor Agent
-    prostor acp                 Run as an ACP server for editor integration
-    prostor sessions browse     Interactive session picker with search
+    hermes                     # Interactive chat (default)
+    hermes chat                # Interactive chat
+    hermes gateway             # Run gateway in foreground
+    hermes gateway start       # Start gateway as service
+    hermes gateway stop        # Stop gateway service
+    hermes gateway status      # Show gateway status
+    hermes gateway install     # Install gateway service
+    hermes gateway uninstall   # Uninstall gateway service
+    hermes setup               # Interactive setup wizard
+    hermes logout              # Clear stored authentication
+    hermes status              # Show status of all components
+    hermes cron                # Manage cron jobs
+    hermes cron list           # List cron jobs
+    hermes cron status         # Check if cron scheduler is running
+    hermes doctor              # Check configuration and dependencies
+    hermes honcho setup                    # Configure Honcho AI memory integration
+    hermes honcho status                   # Show Honcho config and connection status
+    hermes honcho sessions                 # List directory → session name mappings
+    hermes honcho map <name>               # Map current directory to a session name
+    hermes honcho peer                     # Show peer names and dialectic settings
+    hermes honcho peer --user NAME         # Set user peer name
+    hermes honcho peer --ai NAME           # Set AI peer name
+    hermes honcho peer --reasoning LEVEL   # Set dialectic reasoning level
+    hermes honcho mode                     # Show current memory mode
+    hermes honcho mode [hybrid|honcho|local]  # Set memory mode
+    hermes honcho tokens                   # Show token budget settings
+    hermes honcho tokens --context N       # Set session.context() token cap
+    hermes honcho tokens --dialectic N     # Set dialectic result char cap
+    hermes honcho identity                 # Show AI peer identity representation
+    hermes honcho identity <file>          # Seed AI peer identity from a file (SOUL.md etc.)
+    hermes honcho migrate                  # Step-by-step migration guide: OpenClaw native → Hermes + Honcho
+    hermes version             Show version
+    hermes update              Update to latest version
+    hermes uninstall           Uninstall Hermes Agent
+    hermes acp                 Run as an ACP server for editor integration
+    hermes sessions browse     Interactive session picker with search
 
-    prostor claw migrate --dry-run  # Preview migration without changes
+    hermes claw migrate --dry-run  # Preview migration without changes
 """
 
-# IMPORTANT: prostor_bootstrap must be the very first import — it sets up
+# IMPORTANT: hermes_bootstrap must be the very first import — it sets up
 # UTF-8 stdio on Windows so print()/subprocess children don't hit
 # UnicodeEncodeError with non-ASCII characters.  No-op on POSIX.
 #
-# Guarded against ModuleNotFoundError because ``prostor_bootstrap`` is a
+# Guarded against ModuleNotFoundError because ``hermes_bootstrap`` is a
 # top-level module registered via pyproject.toml's ``py-modules`` list.
-# When the user upgrades code via ``git pull`` (or ``prostor update``
+# When the user upgrades code via ``git pull`` (or ``hermes update``
 # crashes between ``git reset --hard`` and ``uv pip install -e .``), the
-# new code references ``prostor_bootstrap`` but the editable install's
+# new code references ``hermes_bootstrap`` but the editable install's
 # ``.pth`` file still points at the old set of top-level modules.  Without
-# this guard, prostor crashes on import and the user can't run
-# ``prostor update`` to recover.  Missing the bootstrap means UTF-8 stdio
+# this guard, hermes crashes on import and the user can't run
+# ``hermes update`` to recover.  Missing the bootstrap means UTF-8 stdio
 # setup is skipped on Windows — degraded, not broken.  POSIX is unaffected.
 try:
-    import prostor_bootstrap  # noqa: F401
+    import hermes_bootstrap  # noqa: F401
 except ModuleNotFoundError:
     pass
 
@@ -66,24 +66,24 @@ import sys
 
 
 def _set_process_title() -> None:
-    """Set the process title to 'prostor' so tools like 'ps', 'top', and
+    """Set the process title to 'hermes' so tools like 'ps', 'top', and
     'htop' show the app name instead of 'python3.xx'.
 
     Purely cosmetic — non-fatal on any platform.
 
     Strategy (try in order):
-      1. ``setproctitle`` (opt-in dep — installed via ``prostor tools`` or
+      1. ``setproctitle`` (opt-in dep — installed via ``hermes tools`` or
          ``pip install setproctitle``, or bundled in a future release).
       2. ctypes ``prctl(PR_SET_NAME)`` (Linux only, 15-char limit).
       3. ctypes ``pthread_setname_np`` (macOS only, kernel thread name —
          changes lldb/top but not ``ps aux``).
-      4. No-op on Windows (the .exe name is already ``prostor.exe``).
+      4. No-op on Windows (the .exe name is already ``hermes.exe``).
     """
     # Strategy 1: setproctitle (best — works on macOS, Linux, BSD)
     try:
         import setproctitle  # type: ignore[import-untyped]
 
-        setproctitle.setproctitle("prostor")
+        setproctitle.setproctitle("hermes")
         return
     except ImportError:
         pass
@@ -96,18 +96,18 @@ def _set_process_title() -> None:
         system = platform.system()
         if system == "Linux":
             libc = ctypes.CDLL("libc.so.6", use_errno=True)
-            libc.prctl(15, b"prostor", 0, 0, 0)  # PR_SET_NAME = 15
+            libc.prctl(15, b"hermes", 0, 0, 0)  # PR_SET_NAME = 15
         elif system == "Darwin":
             libc = ctypes.CDLL("libc.dylib", use_errno=True)
-            libc.pthread_setname_np(b"prostor")
-        # Windows: the .exe name is already ``prostor.exe`` — nothing to do.
+            libc.pthread_setname_np(b"hermes")
+        # Windows: the .exe name is already ``hermes.exe`` — nothing to do.
     except Exception:
         pass
 
 
 # Cheap, dependency-free read of `display.interface` from config.yaml for the
 # earliest hot-path decisions (mouse-residue suppression, Termux fast launch)
-# that run *before* prostor_cli.config is importable. Mirrors the explicit
+# that run *before* hermes_cli.config is importable. Mirrors the explicit
 # precedence used everywhere else: `--cli` always wins, then `--tui`/env, then
 # this config value. Cached so the multiple early callers don't re-parse YAML.
 _EARLY_INTERFACE_CACHE: "list | None" = None
@@ -121,11 +121,11 @@ def _config_default_interface_early() -> str:
         return _EARLY_INTERFACE_CACHE[0]
     value = "cli"
     try:
-        home = os.environ.get("PROSTOR_HOME")
+        home = os.environ.get("HERMES_HOME")
         if home:
             cfg_path = os.path.join(home, "config.yaml")
         else:
-            cfg_path = os.path.join(os.path.expanduser("~"), ".prostor", "config.yaml")
+            cfg_path = os.path.join(os.path.expanduser("~"), ".hermes", "config.yaml")
         if os.path.exists(cfg_path):
             import yaml as _yaml_iface
 
@@ -146,13 +146,13 @@ def _wants_tui_early(argv: "list[str] | None" = None) -> bool:
     """Earliest TUI decision, usable before argparse/config imports.
 
     Precedence: explicit ``--cli`` wins (forces classic REPL), then
-    ``--tui``/``PROSTOR_TUI=1``, then ``display.interface`` in config.
+    ``--tui``/``HERMES_TUI=1``, then ``display.interface`` in config.
     """
     if argv is None:
         argv = sys.argv[1:]
     if "--cli" in argv:
         return False
-    if os.environ.get("PROSTOR_TUI") == "1" or "--tui" in argv:
+    if os.environ.get("HERMES_TUI") == "1" or "--tui" in argv:
         return True
     return _config_default_interface_early() == "tui"
 
@@ -163,15 +163,15 @@ def _wants_tui_early(argv: "list[str] | None" = None) -> bool:
 # before the Node TUI takes stdin into raw mode). During that window any
 # incoming bytes are echoed straight back to the user's shell scrollback as
 # ``^[[<…M`` text. The TUI itself runs `resetTerminalModes()` again in
-# `entry.tsx`; this is just the earlier cousin. ``PROSTOR_TUI_NO_EARLY_DISABLE``
+# `entry.tsx`; this is just the earlier cousin. ``HERMES_TUI_NO_EARLY_DISABLE``
 # escapes the behaviour for diagnostics.
 def _suppress_mouse_residue_early() -> None:
-    if os.environ.get("PROSTOR_TUI_NO_EARLY_DISABLE") == "1":
+    if os.environ.get("HERMES_TUI_NO_EARLY_DISABLE") == "1":
         return
     if not _wants_tui_early():
         return
     try:
-        # Skip when stdout is redirected (`prostor --tui … >log`, CI capture):
+        # Skip when stdout is redirected (`hermes --tui … >log`, CI capture):
         # the bytes can't reach the terminal anyway and would just pollute
         # the log with raw CSI.
         if not os.isatty(1):
@@ -225,10 +225,10 @@ def _read_openai_version_fast() -> str | None:
 
 
 def _print_fast_version_info() -> None:
-    from prostor_cli import __release_date__, __version__
+    from hermes_cli import __release_date__, __version__
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-    print(f"Prostor Agent v{__version__} ({__release_date__})")
+    print(f"Hermes Agent v{__version__} ({__release_date__})")
     print(f"Project: {project_root}")
     print(f"Python: {sys.version.split()[0]}")
 
@@ -237,8 +237,8 @@ def _print_fast_version_info() -> None:
 
 
 def _try_termux_ultrafast_version() -> bool:
-    """Handle ``prostor --version`` before config/logging imports on Termux."""
-    if os.environ.get("PROSTOR_TERMUX_DISABLE_FAST_CLI") == "1":
+    """Handle ``hermes --version`` before config/logging imports on Termux."""
+    if os.environ.get("HERMES_TERMUX_DISABLE_FAST_CLI") == "1":
         return False
     if not _is_termux_startup_environment_fast():
         return False
@@ -259,56 +259,59 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
+from typing import Optional
 
-from prostor_cli.subcommands.acp import build_acp_parser
-from prostor_cli.subcommands.auth import build_auth_parser
-from prostor_cli.subcommands.backup import build_backup_parser
-from prostor_cli.subcommands.claw import build_claw_parser
-from prostor_cli.subcommands.config import build_config_parser
-from prostor_cli.subcommands.cron import build_cron_parser
-from prostor_cli.subcommands.dashboard import build_dashboard_parser
-from prostor_cli.subcommands.debug import build_debug_parser
-from prostor_cli.subcommands.doctor import build_doctor_parser
-from prostor_cli.subcommands.dump import build_dump_parser
-from prostor_cli.subcommands.gateway import build_gateway_parser
-from prostor_cli.subcommands.gui import build_gui_parser
-from prostor_cli.subcommands.hooks import build_hooks_parser
-from prostor_cli.subcommands.import_cmd import build_import_cmd_parser
-from prostor_cli.subcommands.insights import build_insights_parser
-from prostor_cli.subcommands.login import build_login_parser
-from prostor_cli.subcommands.logout import build_logout_parser
-from prostor_cli.subcommands.logs import build_logs_parser
-from prostor_cli.subcommands.mcp import build_mcp_parser
-from prostor_cli.subcommands.memory import build_memory_parser
-from prostor_cli.subcommands.model import build_model_parser
-from prostor_cli.subcommands.pairing import build_pairing_parser
-from prostor_cli.subcommands.plugins import build_plugins_parser
-from prostor_cli.subcommands.postinstall import build_postinstall_parser
-from prostor_cli.subcommands.profile import build_profile_parser
-from prostor_cli.subcommands.prompt_size import build_prompt_size_parser
-from prostor_cli.subcommands.security import build_security_parser
-from prostor_cli.subcommands.setup import build_setup_parser
-from prostor_cli.subcommands.skills import build_skills_parser
-from prostor_cli.subcommands.slack import build_slack_parser
-from prostor_cli.subcommands.status import build_status_parser
-from prostor_cli.subcommands.tools import build_tools_parser
-from prostor_cli.subcommands.uninstall import build_uninstall_parser
-from prostor_cli.subcommands.update import build_update_parser
-from prostor_cli.subcommands.version import build_version_parser
-from prostor_cli.subcommands.webhook import build_webhook_parser
-from prostor_cli.subcommands.whatsapp import build_whatsapp_parser
+
+from hermes_cli.subcommands._shared import add_accept_hooks_flag as _add_accept_hooks_flag
+from hermes_cli.subcommands.cron import build_cron_parser
+from hermes_cli.subcommands.gateway import build_gateway_parser
+from hermes_cli.subcommands.profile import build_profile_parser
+from hermes_cli.subcommands.model import build_model_parser
+from hermes_cli.subcommands.setup import build_setup_parser
+from hermes_cli.subcommands.postinstall import build_postinstall_parser
+from hermes_cli.subcommands.whatsapp import build_whatsapp_parser
+from hermes_cli.subcommands.slack import build_slack_parser
+from hermes_cli.subcommands.login import build_login_parser
+from hermes_cli.subcommands.logout import build_logout_parser
+from hermes_cli.subcommands.auth import build_auth_parser
+from hermes_cli.subcommands.status import build_status_parser
+from hermes_cli.subcommands.webhook import build_webhook_parser
+from hermes_cli.subcommands.hooks import build_hooks_parser
+from hermes_cli.subcommands.doctor import build_doctor_parser
+from hermes_cli.subcommands.security import build_security_parser
+from hermes_cli.subcommands.dump import build_dump_parser
+from hermes_cli.subcommands.debug import build_debug_parser
+from hermes_cli.subcommands.backup import build_backup_parser
+from hermes_cli.subcommands.import_cmd import build_import_cmd_parser
+from hermes_cli.subcommands.config import build_config_parser
+from hermes_cli.subcommands.version import build_version_parser
+from hermes_cli.subcommands.update import build_update_parser
+from hermes_cli.subcommands.uninstall import build_uninstall_parser
+from hermes_cli.subcommands.dashboard import build_dashboard_parser
+from hermes_cli.subcommands.gui import build_gui_parser
+from hermes_cli.subcommands.logs import build_logs_parser
+from hermes_cli.subcommands.prompt_size import build_prompt_size_parser
+from hermes_cli.subcommands.memory import build_memory_parser
+from hermes_cli.subcommands.acp import build_acp_parser
+from hermes_cli.subcommands.tools import build_tools_parser
+from hermes_cli.subcommands.insights import build_insights_parser
+from hermes_cli.subcommands.skills import build_skills_parser
+from hermes_cli.subcommands.pairing import build_pairing_parser
+from hermes_cli.subcommands.plugins import build_plugins_parser
+from hermes_cli.subcommands.mcp import build_mcp_parser
+from hermes_cli.subcommands.claw import build_claw_parser
 
 
 def _require_tty(command_name: str) -> None:
     """Exit with a clear error if stdin is not a terminal.
 
-    Interactive TUI commands (prostor tools, prostor setup, prostor model) use
+    Interactive TUI commands (hermes tools, hermes setup, hermes model) use
     curses or input() prompts that spin at 100% CPU when stdin is a pipe.
     This guard prevents accidental non-interactive invocation.
     """
     if not sys.stdin.isatty():
         print(
-            f"Error: 'prostor {command_name}' requires an interactive terminal.\n"
+            f"Error: 'hermes {command_name}' requires an interactive terminal.\n"
             f"It cannot be run through a pipe or non-interactive subprocess.\n"
             f"Run it directly in your terminal instead.",
             file=sys.stderr,
@@ -322,27 +325,27 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 
 # ---------------------------------------------------------------------------
-# Profile override — MUST happen before any prostor module import.
+# Profile override — MUST happen before any hermes module import.
 #
-# Many modules cache PROSTOR_HOME at import time (module-level constants).
+# Many modules cache HERMES_HOME at import time (module-level constants).
 # We intercept --profile/-p from sys.argv here and set the env var so that
-# every subsequent ``os.getenv("PROSTOR_HOME", ...)`` resolves correctly.
+# every subsequent ``os.getenv("HERMES_HOME", ...)`` resolves correctly.
 # The flag is stripped from sys.argv so argparse never sees it.
-# Falls back to ~/.prostor/active_profile for sticky default.
+# Falls back to ~/.hermes/active_profile for sticky default.
 # ---------------------------------------------------------------------------
 def _apply_profile_override() -> None:
-    """Pre-parse --profile/-p and set PROSTOR_HOME before imports."""
+    """Pre-parse --profile/-p and set HERMES_HOME before imports."""
     argv = sys.argv[1:]
     profile_name = None
     consume = 0
     profile_index = None
 
     def _inside_mcp_add_args(index: int) -> bool:
-        """True once argv reaches `prostor mcp add ... --args <command argv>`.
+        """True once argv reaches `hermes mcp add ... --args <command argv>`.
 
         ``mcp add --args`` is command-argv passthrough. Flags after that point
         belong to the child MCP command (for example Docker MCP Toolkit's
-        ``--profile``), not to Prostor' own profile selector.
+        ``--profile``), not to Hermes' own profile selector.
         """
         try:
             mcp_index = argv.index("mcp", 0, index)
@@ -352,7 +355,7 @@ def _apply_profile_override() -> None:
         return True
 
     def _resolve_sudo_user_profile_env(name: str) -> str | None:
-        """Resolve `sudo prostor -p <name>` against the invoking user's home.
+        """Resolve `sudo hermes -p <name>` against the invoking user's home.
 
         `_apply_profile_override()` runs before argparse, so `--run-as-user`
         is not available yet. For sudo invocations, the best available signal
@@ -374,7 +377,7 @@ def _apply_profile_override() -> None:
         except Exception:
             return None
 
-        candidate = home / ".prostor" / "profiles" / name
+        candidate = home / ".hermes" / "profiles" / name
         try:
             if candidate.is_dir():
                 return str(candidate)
@@ -383,7 +386,7 @@ def _apply_profile_override() -> None:
         return None
 
     # 1. Check for explicit -p / --profile flag. Historically this worked even
-    # after the subcommand (`prostor chat -p coder`), so keep scanning broadly.
+    # after the subcommand (`hermes chat -p coder`), so keep scanning broadly.
     # The exception is command-argv passthrough regions such as `mcp add --args`.
     value_flags = {
         "-z", "--oneshot",
@@ -425,7 +428,7 @@ def _apply_profile_override() -> None:
 
     # 1b. Reject values that can't be valid profile names (e.g. pytest's
     # "-p no:xdist" would be misread as profile "no:xdist" otherwise).
-    # Mirrors prostor_cli.profiles._PROFILE_ID_RE so we never call
+    # Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never call
     # resolve_profile_env() with a value it must reject + sys.exit on.
     if profile_name is not None and consume == 2:
         import re as _re
@@ -435,37 +438,37 @@ def _apply_profile_override() -> None:
             consume = 0
             profile_index = None
 
-    # 1.5 If PROSTOR_HOME is already set and no explicit flag was given, trust it
+    # 1.5 If HERMES_HOME is already set and no explicit flag was given, trust it
     # only when it already points to a specific profile directory.  The
     # distinguishing heuristic: a profile path has "profiles" as its immediate
-    # parent directory name (e.g. ~/.prostor/profiles/coder or
-    # /opt/data/profiles/coder).  If PROSTOR_HOME points to the prostor root
-    # instead (e.g. systemd hardcodes PROSTOR_HOME=/root/.prostor), we must
+    # parent directory name (e.g. ~/.hermes/profiles/coder or
+    # /opt/data/profiles/coder).  If HERMES_HOME points to the hermes root
+    # instead (e.g. systemd hardcodes HERMES_HOME=/root/.hermes), we must
     # still read active_profile — the user may have switched profiles via
-    # `prostor profile use` and the gateway should honour that choice.
+    # `hermes profile use` and the gateway should honour that choice.
     # See issue #22502.
-    prostor_home_env = os.environ.get("PROSTOR_HOME", "")
-    if profile_name is None and prostor_home_env:
-        if Path(prostor_home_env).parent.name == "profiles":
+    hermes_home_env = os.environ.get("HERMES_HOME", "")
+    if profile_name is None and hermes_home_env:
+        if Path(hermes_home_env).parent.name == "profiles":
             return
 
-    # 2. If no flag, check active_profile in the prostor root.
+    # 2. If no flag, check active_profile in the hermes root.
     #
     # EXCEPTION: a supervised s6 gateway child (exported by the container
-    # run-script as PROSTOR_S6_SUPERVISED_CHILD=1) must NOT follow the sticky
+    # run-script as HERMES_S6_SUPERVISED_CHILD=1) must NOT follow the sticky
     # active_profile. Each supervised slot has a fixed profile identity: named
     # slots pass ``-p <name>`` explicitly (handled in step 1 above), and the
-    # reserved ``gateway-default`` slot runs bare ``prostor gateway run`` to mean
-    # "the root PROSTOR_HOME profile". If the reserved default child read
+    # reserved ``gateway-default`` slot runs bare ``hermes gateway run`` to mean
+    # "the root HERMES_HOME profile". If the reserved default child read
     # active_profile here, switching the active profile (e.g. via the dashboard)
     # would silently redirect the default gateway into that profile — yielding a
     # duplicate gateway for the active profile and no real default gateway. See
     # the "Docker & Profiles & Dashboard" report.
-    if profile_name is None and not os.environ.get("PROSTOR_S6_SUPERVISED_CHILD"):
+    if profile_name is None and not os.environ.get("HERMES_S6_SUPERVISED_CHILD"):
         try:
-            from prostor_constants import get_default_prostor_root
+            from hermes_constants import get_default_hermes_root
 
-            active_path = get_default_prostor_root() / "active_profile"
+            active_path = get_default_hermes_root() / "active_profile"
             if active_path.exists():
                 name = active_path.read_text().strip()
                 if name and name != "default":
@@ -474,28 +477,28 @@ def _apply_profile_override() -> None:
         except (UnicodeDecodeError, OSError):
             pass  # corrupted file, skip
 
-    # 3. If we found a profile, resolve and set PROSTOR_HOME
+    # 3. If we found a profile, resolve and set HERMES_HOME
     if profile_name is not None:
         try:
-            from prostor_cli.profiles import resolve_profile_env
+            from hermes_cli.profiles import resolve_profile_env
 
-            prostor_home = resolve_profile_env(profile_name)
+            hermes_home = resolve_profile_env(profile_name)
         except FileNotFoundError as exc:
-            prostor_home = _resolve_sudo_user_profile_env(profile_name)
-            if not prostor_home:
+            hermes_home = _resolve_sudo_user_profile_env(profile_name)
+            if not hermes_home:
                 print(f"Error: {exc}", file=sys.stderr)
                 sys.exit(1)
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
         except Exception as exc:
-            # A bug in profiles.py must NEVER prevent prostor from starting
+            # A bug in profiles.py must NEVER prevent hermes from starting
             print(
                 f"Warning: profile override failed ({exc}), using default",
                 file=sys.stderr,
             )
             return
-        os.environ["PROSTOR_HOME"] = prostor_home
+        os.environ["HERMES_HOME"] = hermes_home
         # Strip the flag from argv so argparse doesn't choke
         if consume > 0 and profile_index is not None:
             start = profile_index + 1  # +1 because argv is sys.argv[1:]
@@ -504,15 +507,15 @@ def _apply_profile_override() -> None:
 
 _apply_profile_override()
 
-# Load .env from ~/.prostor/.env first, then project root as dev fallback.
+# Load .env from ~/.hermes/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
-from prostor_cli.config import get_prostor_home
-from prostor_cli.env_loader import load_prostor_dotenv
+from hermes_cli.config import get_hermes_home
+from hermes_cli.env_loader import load_hermes_dotenv
 
-load_prostor_dotenv(project_env=PROJECT_ROOT / ".env")
+load_hermes_dotenv(project_env=PROJECT_ROOT / ".env")
 
-# Bridge security.redact_secrets from config.yaml → PROSTOR_REDACT_SECRETS env
-# var BEFORE prostor_logging imports agent.redact (which snapshots the flag at
+# Bridge security.redact_secrets from config.yaml → HERMES_REDACT_SECRETS env
+# var BEFORE hermes_logging imports agent.redact (which snapshots the flag at
 # module-import time). Without this, config.yaml's toggle is ignored because
 # the setup_logging() call below imports agent.redact, which reads the env var
 # exactly once. Env var in .env still wins — this is config.yaml fallback only.
@@ -524,7 +527,7 @@ _FORCE_IPV4_EARLY = False
 try:
     import yaml as _yaml_early
 
-    _cfg_path = get_prostor_home() / "config.yaml"
+    _cfg_path = get_hermes_home() / "config.yaml"
     if _cfg_path.exists():
         with open(_cfg_path, encoding="utf-8") as _f:
             _early_cfg_raw = _yaml_early.safe_load(_f) or {}
@@ -534,16 +537,16 @@ try:
         # without the overlay a managed redact_secrets toggle would be ignored.
         # Fail-open via the shared helper.
         try:
-            from prostor_cli import managed_scope
+            from hermes_cli import managed_scope
             _early_cfg_raw = managed_scope.apply_managed_overlay(_early_cfg_raw)
         except Exception:
             pass
-        if "PROSTOR_REDACT_SECRETS" not in os.environ:
+        if "HERMES_REDACT_SECRETS" not in os.environ:
             _early_sec_cfg = _early_cfg_raw.get("security", {})
             if isinstance(_early_sec_cfg, dict):
                 _early_redact = _early_sec_cfg.get("redact_secrets")
                 if _early_redact is not None:
-                    os.environ["PROSTOR_REDACT_SECRETS"] = str(_early_redact).lower()
+                    os.environ["HERMES_REDACT_SECRETS"] = str(_early_redact).lower()
         _early_net_cfg = _early_cfg_raw.get("network", {})
         if isinstance(_early_net_cfg, dict) and _early_net_cfg.get("force_ipv4"):
             _FORCE_IPV4_EARLY = True
@@ -552,12 +555,12 @@ try:
 except Exception:
     pass  # best-effort — redaction stays at default (enabled) on config errors
 
-# Initialize centralized file logging early — all `prostor` subcommands
+# Initialize centralized file logging early — all `hermes` subcommands
 # (chat, setup, gateway, config, etc.) write to agent.log + errors.log.
 # Dashboard entrypoints bootstrap with GUI mode so gui.log is always present
 # during GUI testing, including pre-dispatch startup failures.
 try:
-    from prostor_logging import setup_logging as _setup_logging
+    from hermes_logging import setup_logging as _setup_logging
 
     _setup_logging(
         mode=(
@@ -575,42 +578,42 @@ except Exception:
 # this just calls the toggle without a redundant load_config() round trip.
 if _FORCE_IPV4_EARLY:
     try:
-        from prostor_constants import apply_ipv4_preference as _apply_ipv4
+        from hermes_constants import apply_ipv4_preference as _apply_ipv4
 
         _apply_ipv4(force=True)
     except Exception:
-        pass  # best-effort — don't crash if prostor_constants not importable yet
+        pass  # best-effort — don't crash if hermes_constants not importable yet
 
 import logging
 import threading
 import time as _time
-from datetime import UTC, datetime
+from datetime import datetime
 
-from prostor_cli import __release_date__, __version__
+from hermes_cli import __version__, __release_date__
 
-# Provider model-selection wizard flows extracted to prostor_cli/model_setup_flows.py
+# Provider model-selection wizard flows extracted to hermes_cli/model_setup_flows.py
 # (god-file decomposition Phase 2). Re-imported here so select_provider_and_model and
-# existing test monkeypatches (prostor_cli.main._model_flow_*) keep resolving unchanged.
-from prostor_cli.model_setup_flows import (
-    _model_flow_anthropic,
-    _model_flow_api_key_provider,
-    _model_flow_azure_foundry,
-    _model_flow_bedrock,
-    _model_flow_copilot,
-    _model_flow_copilot_acp,
-    _model_flow_custom,
-    _model_flow_google_gemini_cli,
-    _model_flow_kimi,
-    _model_flow_minimax_oauth,
-    _model_flow_named_custom,
+# existing test monkeypatches (hermes_cli.main._model_flow_*) keep resolving unchanged.
+from hermes_cli.model_setup_flows import (
+    _prompt_auth_credentials_choice,
+    _model_flow_openrouter,
     _model_flow_nous,
     _model_flow_openai_codex,
-    _model_flow_openrouter,
-    _model_flow_qwen_oauth,
-    _model_flow_stepfun,
     _model_flow_xai_oauth,
+    _model_flow_qwen_oauth,
+    _model_flow_minimax_oauth,
+    _model_flow_custom,
+    _model_flow_azure_foundry,
+    _model_flow_named_custom,
+    _model_flow_copilot,
+    _model_flow_copilot_acp,
+    _model_flow_kimi,
+    _model_flow_stepfun,
+    _model_flow_bedrock_api_key,
+    _model_flow_bedrock,
+    _model_flow_api_key_provider,
+    _model_flow_anthropic,
 )
-
 logger = logging.getLogger(__name__)
 
 
@@ -682,7 +685,7 @@ def _read_git_revision_fingerprint(repo_root: Path) -> str | None:
                 return f"git:{ref}:{packed_sha}"
             # Ref name is known but unresolved — still stable across launches,
             # and the version/release fallback in the caller will invalidate
-            # after `prostor update`.
+            # after `hermes update`.
             return f"git:{ref}:unresolved"
         return f"git:HEAD:{head}"
     except OSError:
@@ -703,13 +706,13 @@ def _termux_bundled_skills_fingerprint() -> str:
 
 
 def _termux_bundled_skills_stamp_path() -> Path:
-    return get_prostor_home() / "skills" / ".termux_bundled_sync_stamp"
+    return get_hermes_home() / "skills" / ".termux_bundled_sync_stamp"
 
 
 def _termux_bundled_skills_sync_needed() -> bool:
     if not _is_termux_startup_environment():
         return True
-    if os.environ.get("PROSTOR_TERMUX_FORCE_SKILLS_SYNC") == "1":
+    if os.environ.get("HERMES_TERMUX_FORCE_SKILLS_SYNC") == "1":
         return True
     try:
         stamp = _termux_bundled_skills_stamp_path()
@@ -749,7 +752,7 @@ def _sync_bundled_skills_for_startup() -> bool:
 def _termux_should_prefetch_update_check() -> bool:
     if not _is_termux_startup_environment():
         return True
-    return os.environ.get("PROSTOR_TERMUX_PREFETCH_UPDATES") == "1"
+    return os.environ.get("HERMES_TERMUX_PREFETCH_UPDATES") == "1"
 
 
 def _relative_time(ts) -> str:
@@ -772,13 +775,14 @@ def _relative_time(ts) -> str:
 
 def _has_any_provider_configured() -> bool:
     """Check if at least one inference provider is usable."""
-    from prostor_cli.auth import get_auth_status
+    from hermes_cli.config import get_env_path, get_hermes_home, load_config
+    from hermes_cli.auth import get_auth_status
 
-    # Determine whether Prostor itself has been explicitly configured (model
+    # Determine whether Hermes itself has been explicitly configured (model
     # in config that isn't the hardcoded default). Used below to gate external
     # tool credentials (Claude Code, Codex CLI) that shouldn't silently skip
     # the setup wizard on a fresh install.
-    from prostor_cli.config import DEFAULT_CONFIG, get_env_path, get_prostor_home, load_config
+    from hermes_cli.config import DEFAULT_CONFIG
 
     _DEFAULT_MODEL = DEFAULT_CONFIG.get("model", "")
     cfg = load_config()
@@ -789,12 +793,12 @@ def _has_any_provider_configured() -> bool:
         _model_name = model_cfg.strip()
     else:
         _model_name = ""
-    _has_prostor_config = _model_name and _model_name != _DEFAULT_MODEL
+    _has_hermes_config = _model_name and _model_name != _DEFAULT_MODEL
 
     # Check env vars (may be set by .env or shell).
     # OPENAI_BASE_URL alone counts — local models (vLLM, llama.cpp, etc.)
     # often don't require an API key.
-    from prostor_cli.auth import PROVIDER_REGISTRY
+    from hermes_cli.auth import PROVIDER_REGISTRY
 
     # Collect all provider env vars
     provider_env_vars = {
@@ -837,7 +841,7 @@ def _has_any_provider_configured() -> bool:
         pass
 
     # Check for Nous Portal OAuth credentials
-    auth_file = get_prostor_home() / "auth.json"
+    auth_file = get_hermes_home() / "auth.json"
     if auth_file.exists():
         try:
             import json
@@ -863,13 +867,13 @@ def _has_any_provider_configured() -> bool:
             return True
 
     # Check for Claude Code OAuth credentials (~/.claude/.credentials.json)
-    # Only count these if Prostor has been explicitly configured — Claude Code
-    # being installed doesn't mean the user wants Prostor to use their tokens.
-    if _has_prostor_config:
+    # Only count these if Hermes has been explicitly configured — Claude Code
+    # being installed doesn't mean the user wants Hermes to use their tokens.
+    if _has_hermes_config:
         try:
             from agent.anthropic_adapter import (
-                is_claude_code_token_valid,
                 read_claude_code_credentials,
+                is_claude_code_token_valid,
             )
 
             creds = read_claude_code_credentials()
@@ -883,7 +887,7 @@ def _has_any_provider_configured() -> bool:
     return False
 
 
-def _session_browse_picker(sessions: list) -> str | None:
+def _session_browse_picker(sessions: list) -> Optional[str]:
     """Interactive curses-based session browser with live search filtering.
 
     Returns the selected session ID, or None if cancelled.
@@ -1052,10 +1056,10 @@ def _session_browse_picker(sessions: list) -> str | None:
                 stdscr.refresh()
                 key = stdscr.getch()
 
-                if key in {curses.KEY_UP, }:
+                if key in {curses.KEY_UP,}:
                     if filtered:
                         cursor = (cursor - 1) % len(filtered)
-                elif key in {curses.KEY_DOWN, }:
+                elif key in {curses.KEY_DOWN,}:
                     if filtered:
                         cursor = (cursor + 1) % len(filtered)
                 elif key in {curses.KEY_ENTER, 10, 13}:
@@ -1124,11 +1128,11 @@ def _session_browse_picker(sessions: list) -> str | None:
             return None
 
 
-def _resolve_last_session(source: str = "cli") -> str | None:
+def _resolve_last_session(source: str = "cli") -> Optional[str]:
     """Look up the most recently-used session ID for a source."""
     db = None
     try:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         db = SessionDB()
         sessions = db.search_sessions(source=source, limit=1)
@@ -1171,14 +1175,14 @@ def _exec_in_container(container_info: dict, cli_args: list):
     On failure, OSError propagates naturally.
 
     Args:
-        container_info: dict with backend, container_name, exec_user, prostor_bin
-        cli_args: the original CLI arguments (everything after 'prostor')
+        container_info: dict with backend, container_name, exec_user, hermes_bin
+        cli_args: the original CLI arguments (everything after 'hermes')
     """
 
     backend = container_info["backend"]
     container_name = container_info["container_name"]
     exec_user = container_info["exec_user"]
-    prostor_bin = container_info["prostor_bin"]
+    hermes_bin = container_info["hermes_bin"]
 
     runtime = shutil.which(backend)
     if not runtime:
@@ -1220,14 +1224,14 @@ def _exec_in_container(container_info: dict, cli_args: list):
                     f'    commands = [{{ command = "{runtime}"; options = [ "NOPASSWD" ]; }}];\n'
                     f"  }}];\n"
                     f"\n"
-                    f"Or run: sudo prostor {' '.join(cli_args)}",
+                    f"Or run: sudo hermes {' '.join(cli_args)}",
                     file=sys.stderr,
                 )
                 sys.exit(1)
         else:
             print(
                 f"Error: container '{container_name}' not found via {backend}.\n"
-                f"The container may be running under root. Try: sudo prostor {' '.join(cli_args)}",
+                f"The container may be running under root. Try: sudo hermes {' '.join(cli_args)}",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -1248,14 +1252,14 @@ def _exec_in_container(container_info: dict, cli_args: list):
         + tty_flags
         + ["-u", exec_user]
         + env_flags
-        + [container_name, prostor_bin]
+        + [container_name, hermes_bin]
         + cli_args
     )
 
     os.execvp(exec_cmd[0], exec_cmd)
 
 
-def _resolve_session_by_name_or_id(name_or_id: str) -> str | None:
+def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
     """Resolve a session name (title) or ID to a session ID.
 
     - If it looks like a session ID (contains underscore + hex), try direct lookup first.
@@ -1267,13 +1271,13 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> str | None:
       resumed at the live tip instead of a stale parent with no messages.
     """
     try:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         db = SessionDB()
 
         # Try as exact session ID first
         session = db.get_session(name_or_id)
-        resolved_id: str | None = None
+        resolved_id: Optional[str] = None
         if session:
             resolved_id = session["id"]
         else:
@@ -1295,7 +1299,7 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> str | None:
     return None
 
 
-def _read_tui_active_session_file(path: str | None) -> str | None:
+def _read_tui_active_session_file(path: Optional[str]) -> Optional[str]:
     if not path:
         return None
     try:
@@ -1307,7 +1311,7 @@ def _read_tui_active_session_file(path: str | None) -> str | None:
 
 
 def _print_tui_exit_summary(
-    session_id: str | None, active_session_file: str | None = None
+    session_id: Optional[str], active_session_file: Optional[str] = None
 ) -> None:
     """Print a shell-visible epilogue after TUI exits."""
     target = (
@@ -1320,7 +1324,7 @@ def _print_tui_exit_summary(
 
     db = None
     try:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         db = SessionDB()
         session = db.get_session(target)
@@ -1351,9 +1355,9 @@ def _print_tui_exit_summary(
 
     print()
     print("Resume this session with:")
-    print(f"  prostor --tui --resume {target}")
+    print(f"  hermes --tui --resume {target}")
     if title:
-        print(f'  prostor --tui -c "{title}"')
+        print(f'  hermes --tui -c "{title}"')
     print()
     print(f"Session:        {target}")
     if title:
@@ -1433,7 +1437,7 @@ def _termux_workspace_install_context(
 
 
 def _tui_need_npm_install(root: Path) -> bool:
-    """True when @prostor/ink is missing or node_modules is behind package-lock.json.
+    """True when @hermes/ink is missing or node_modules is behind package-lock.json.
 
     Prebuilt bundle mode: when ``dist/entry.js`` exists and there is no
     ``package-lock.json`` (nix install layout only ships ``dist/`` +
@@ -1472,7 +1476,7 @@ def _tui_need_npm_install(root: Path) -> bool:
     if entry.is_file() and not lock.is_file():
         return False
 
-    ink = ws_root / "node_modules" / "@prostor" / "ink" / "package.json"
+    ink = ws_root / "node_modules" / "@hermes" / "ink" / "package.json"
     if not ink.is_file():
         return True
     if not lock.is_file():
@@ -1515,7 +1519,7 @@ def _tui_need_npm_install(root: Path) -> bool:
 
 _TUI_BUILD_INPUT_DIRS = (
     "src",
-    "packages/prostor-ink/src",
+    "packages/hermes-ink/src",
 )
 
 _TUI_BUILD_INPUT_FILES = (
@@ -1525,9 +1529,9 @@ _TUI_BUILD_INPUT_FILES = (
     "tsconfig.build.json",
     "babel.compiler.config.cjs",
     "scripts/build.mjs",
-    "packages/prostor-ink/package.json",
-    "packages/prostor-ink/index.js",
-    "packages/prostor-ink/text-input.js",
+    "packages/hermes-ink/package.json",
+    "packages/hermes-ink/index.js",
+    "packages/hermes-ink/text-input.js",
 )
 
 _TUI_BUILD_INPUT_SUFFIXES = frozenset(
@@ -1557,9 +1561,9 @@ def _tui_need_rebuild(root: Path) -> bool:
     The TUI bundle is self-contained. Rebuilding it on every launch adds a
     visible cold-start tax on slow Termux CPUs, while a simple mtime freshness
     check still rebuilds immediately after source updates, dependency updates,
-    or local edits. Set ``PROSTOR_TUI_FORCE_BUILD=1`` to force the old behaviour.
+    or local edits. Set ``HERMES_TUI_FORCE_BUILD=1`` to force the old behaviour.
     """
-    force = (os.environ.get("PROSTOR_TUI_FORCE_BUILD") or "").strip().lower()
+    force = (os.environ.get("HERMES_TUI_FORCE_BUILD") or "").strip().lower()
     if force in {"1", "true", "yes", "on"}:
         return True
 
@@ -1589,18 +1593,18 @@ def _ensure_tui_node() -> None:
     was used (nvm, fnm, proto, brew, or the bundled fallback).
 
     Idempotent no-op when node+npm are already discoverable. Set
-    ``PROSTOR_SKIP_NODE_BOOTSTRAP=1`` to disable auto-install.
+    ``HERMES_SKIP_NODE_BOOTSTRAP=1`` to disable auto-install.
     """
     if shutil.which("node") and shutil.which("npm"):
         return
-    if os.environ.get("PROSTOR_SKIP_NODE_BOOTSTRAP"):
+    if os.environ.get("HERMES_SKIP_NODE_BOOTSTRAP"):
         return
 
     helper = PROJECT_ROOT / "scripts" / "lib" / "node-bootstrap.sh"
     if not helper.is_file():
         return
 
-    prostor_home = os.environ.get("PROSTOR_HOME") or str(Path.home() / ".prostor")
+    hermes_home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
     try:
         # Helper writes logs to stderr; we ask bash to print `command -v node`
         # on stdout once ensure_node succeeds. Subshell PATH edits don't leak
@@ -1611,7 +1615,7 @@ def _ensure_tui_node() -> None:
                 "-c",
                 f'source "{helper}" >&2 && ensure_node >&2 && command -v node',
             ],
-            env={**os.environ, "PROSTOR_HOME": prostor_home},
+            env={**os.environ, "HERMES_HOME": hermes_home},
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -1628,7 +1632,7 @@ def _ensure_tui_node() -> None:
     if resolved:
         extras.append(Path(resolved).resolve().parent)
 
-    extras.extend([Path(prostor_home) / "node" / "bin", Path.home() / ".local" / "bin"])
+    extras.extend([Path(hermes_home) / "node" / "bin", Path.home() / ".local" / "bin"])
 
     for extra in extras:
         s = str(extra)
@@ -1637,27 +1641,85 @@ def _ensure_tui_node() -> None:
     os.environ["PATH"] = os.pathsep.join(parts)
 
 
-def _find_bundled_tui(prostor_cli_dir: Path | None = None) -> Path | None:
+def _find_bundled_tui(hermes_cli_dir: Path | None = None) -> Path | None:
     """Find a pre-built TUI entry.js bundled in the wheel."""
-    if prostor_cli_dir is None:
-        prostor_cli_dir = Path(__file__).parent
-    bundled = prostor_cli_dir / "tui_dist" / "entry.js"
+    if hermes_cli_dir is None:
+        hermes_cli_dir = Path(__file__).parent
+    bundled = hermes_cli_dir / "tui_dist" / "entry.js"
     return bundled if bundled.is_file() else None
 
 
+def _restore_tui_workspace(tui_dir: Path) -> bool:
+    """Try to restore a missing ``ui-tui/`` from git, returning True on success.
+
+    On Windows an antivirus / NTFS filter driver can leave tracked ``ui-tui/``
+    files deleted in the working tree after ``hermes update`` (HEAD stays
+    intact; the files just vanish — see issue #49145). Those files are tracked,
+    so ``git restore`` puts them back deterministically. Best-effort: returns
+    False (rather than raising) when git is unavailable, this isn't a checkout,
+    or the restore leaves the directory still missing — the caller then prints
+    the manual-recovery message.
+    """
+    git = shutil.which("git")
+    if not git or not (tui_dir.parent / ".git").exists():
+        return False
+    try:
+        subprocess.run(
+            [git, "restore", "--", tui_dir.name],
+            cwd=str(tui_dir.parent),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    return tui_dir.is_dir()
+
+
+def _ensure_tui_workspace(tui_dir: Path) -> None:
+    """Ensure ``ui-tui/`` exists before any npm/node subprocess uses it as cwd.
+
+    Without this, a missing workspace falls through to ``subprocess.run(...,
+    cwd=<missing ui-tui>)``, which crashes with ``NotADirectoryError``
+    (``WinError 267`` on Windows) instead of a usable message (#49145). We
+    first try to self-heal via ``git restore``; only if that can't recover the
+    directory do we abort with concrete manual-recovery steps.
+    """
+    if tui_dir.is_dir():
+        return
+
+    if _restore_tui_workspace(tui_dir):
+        if not os.environ.get("HERMES_QUIET"):
+            print(f"Restored missing TUI workspace: {tui_dir}")
+        return
+
+    print(
+        "Error: the TUI workspace is missing from this Hermes checkout.\n"
+        f"Expected directory: {tui_dir}\n"
+        "This usually means `hermes update` left tracked ui-tui files deleted.\n"
+        "Recovery:\n"
+        "  1. From the Hermes checkout, run `git restore -- ui-tui`\n"
+        "  2. Run `npm install --silent --no-fund --no-audit --progress=false`\n"
+        "  3. Retry `hermes --tui`\n"
+        "If the checkout is still inconsistent, run `hermes update --force`.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
 def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
-    """TUI: --dev → tsx src; else node dist (PROSTOR_TUI_DIR prebuilt or esbuild)."""
+    """TUI: --dev → tsx src; else node dist (HERMES_TUI_DIR prebuilt or esbuild)."""
     _ensure_tui_node()
 
     def _node_bin(bin: str) -> str:
         if bin == "node":
-            env_node = os.environ.get("PROSTOR_NODE")
+            env_node = os.environ.get("HERMES_NODE")
             if env_node and os.path.isfile(env_node) and os.access(env_node, os.X_OK):
                 return env_node
         path = shutil.which(bin)
         if not path and bin == "node":
             try:
-                from prostor_cli.dep_ensure import ensure_dependency
+                from hermes_cli.dep_ensure import ensure_dependency
                 if ensure_dependency("node"):
                     path = shutil.which("node")
             except Exception:
@@ -1668,15 +1730,18 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
         return path
 
     # Footgun: --dev against a prebuilt bundle that has no source/node_modules.
-    ext_dir = os.environ.get("PROSTOR_TUI_DIR")
+    ext_dir = os.environ.get("HERMES_TUI_DIR")
     if tui_dev and ext_dir:
         print(
-            f"Error: --dev is incompatible with PROSTOR_TUI_DIR={ext_dir}\n"
+            f"Error: --dev is incompatible with HERMES_TUI_DIR={ext_dir}\n"
             f"The prebuilt TUI has no source code to hot-reload.\n"
-            f"Unset PROSTOR_TUI_DIR (e.g. `unset PROSTOR_TUI_DIR`) to use --dev from a checkout.",
+            f"Unset HERMES_TUI_DIR (e.g. `unset HERMES_TUI_DIR`) to use --dev from a checkout.",
             file=sys.stderr,
         )
         sys.exit(1)
+
+    if not ext_dir:
+        _ensure_tui_workspace(tui_dir)
 
     # 1. Prebuilt bundle (nix / packaged release): just run it.
     if not tui_dev:
@@ -1711,7 +1776,7 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
         and _tui_need_npm_install(tui_dir)
     ):
         npm = _node_bin("npm")
-        if not os.environ.get("PROSTOR_QUIET"):
+        if not os.environ.get("HERMES_QUIET"):
             print("Installing TUI dependencies…")
         npm_cwd = _workspace_root(tui_dir)
         # --workspace ui-tui avoids resolving apps/desktop (Electron + node-pty).
@@ -1737,7 +1802,8 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
                 "--progress=false",
             ],
             cwd=str(npm_cwd),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -1753,13 +1819,13 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
         did_install = True
 
     if tui_dev:
-        # Keep the local @prostor/ink package exports in sync with source.
-        # --dev runs src/entry.tsx directly, but @prostor/ink resolves through
-        # packages/prostor-ink/dist/entry-exports.js. If that dist bundle is
+        # Keep the local @hermes/ink package exports in sync with source.
+        # --dev runs src/entry.tsx directly, but @hermes/ink resolves through
+        # packages/hermes-ink/dist/entry-exports.js. If that dist bundle is
         # stale after a pull, newer hooks/components can exist in src while
         # being missing at runtime (e.g. useCursorAdvance). Prebuild it here.
         npm = _node_bin("npm")
-        ink_dir = tui_dir / "packages" / "prostor-ink"
+        ink_dir = tui_dir / "packages" / "hermes-ink"
         result = subprocess.run(
             [npm, "run", "build"],
             cwd=str(ink_dir),
@@ -1813,7 +1879,7 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
 def _normalize_tui_toolsets(toolsets: object) -> list[str]:
     """Normalize argparse/Fire-style toolset input for the TUI subprocess."""
     try:
-        from prostor_cli.oneshot import _normalize_toolsets
+        from hermes_cli.oneshot import _normalize_toolsets
 
         return _normalize_toolsets(toolsets) or []
     except (AttributeError, ImportError):
@@ -1834,7 +1900,7 @@ def _normalize_tui_toolsets(toolsets: object) -> list[str]:
         return [item for item in normalized if item]
 
 
-def _read_cgroup_memory_limit() -> int | None:
+def _read_cgroup_memory_limit() -> Optional[int]:
     """Return the container memory limit in bytes, or None if unconstrained.
 
     Node's V8 heap is NOT cgroup-aware: with a flat ``--max-old-space-size=8192``
@@ -1856,7 +1922,7 @@ def _read_cgroup_memory_limit() -> int | None:
     )
     for path in candidates:
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 raw = f.read().strip()
         except (OSError, ValueError):
             continue
@@ -1906,20 +1972,20 @@ def _resolve_tui_heap_mb(default_mb: int = 8192) -> int:
 
 
 def _launch_tui(
-    resume_session_id: str | None = None,
+    resume_session_id: Optional[str] = None,
     tui_dev: bool = False,
-    model: str | None = None,
-    provider: str | None = None,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
     toolsets: object = None,
     skills: object = None,
-    verbose: bool | None = None,
+    verbose: Optional[bool] = None,
     quiet: bool = False,
-    query: str | None = None,
-    image: str | None = None,
+    query: Optional[str] = None,
+    image: Optional[str] = None,
     worktree: bool = False,
     checkpoints: bool = False,
     pass_session_id: bool = False,
-    max_turns: int | None = None,
+    max_turns: Optional[int] = None,
     accept_hooks: bool = False,
 ):
     """Replace current process with the TUI."""
@@ -1929,20 +1995,20 @@ def _launch_tui(
 
     env = os.environ.copy()
     try:
-        from prostor_cli.config import apply_terminal_config_to_env
+        from hermes_cli.config import apply_terminal_config_to_env
         apply_terminal_config_to_env(env=env)
     except Exception:
         logger.debug("Failed to apply terminal config bridge for TUI launch", exc_info=True)
     active_session_fd, active_session_file = tempfile.mkstemp(
-        prefix="prostor-tui-active-session-", suffix=".json"
+        prefix="hermes-tui-active-session-", suffix=".json"
     )
     os.close(active_session_fd)
-    env["PROSTOR_TUI_ACTIVE_SESSION_FILE"] = active_session_file
-    env["PROSTOR_PYTHON_SRC_ROOT"] = os.environ.get(
-        "PROSTOR_PYTHON_SRC_ROOT", str(PROJECT_ROOT)
+    env["HERMES_TUI_ACTIVE_SESSION_FILE"] = active_session_file
+    env["HERMES_PYTHON_SRC_ROOT"] = os.environ.get(
+        "HERMES_PYTHON_SRC_ROOT", str(PROJECT_ROOT)
     )
-    env.setdefault("PROSTOR_PYTHON", sys.executable)
-    env.setdefault("PROSTOR_CWD", os.getcwd())
+    env.setdefault("HERMES_PYTHON", sys.executable)
+    env.setdefault("HERMES_CWD", os.getcwd())
     env.setdefault("NODE_ENV", "development" if tui_dev else "production")
 
     wt_info = None
@@ -1964,18 +2030,18 @@ def _launch_tui(
             wt_info = None
         if not wt_info:
             sys.exit(1)
-        env["PROSTOR_CWD"] = wt_info["path"]
+        env["HERMES_CWD"] = wt_info["path"]
         env["TERMINAL_CWD"] = wt_info["path"]
 
     if model:
-        env["PROSTOR_MODEL"] = model
-        env["PROSTOR_INFERENCE_MODEL"] = model
+        env["HERMES_MODEL"] = model
+        env["HERMES_INFERENCE_MODEL"] = model
     if provider:
-        env["PROSTOR_TUI_PROVIDER"] = provider
-        env["PROSTOR_INFERENCE_PROVIDER"] = provider
+        env["HERMES_TUI_PROVIDER"] = provider
+        env["HERMES_INFERENCE_PROVIDER"] = provider
     tui_toolsets = _normalize_tui_toolsets(toolsets)
     if tui_toolsets:
-        env["PROSTOR_TUI_TOOLSETS"] = ",".join(tui_toolsets)
+        env["HERMES_TUI_TOOLSETS"] = ",".join(tui_toolsets)
     if skills:
         if isinstance(skills, (list, tuple)):
             flattened = []
@@ -1984,27 +2050,27 @@ def _launch_tui(
                     part.strip() for part in str(item).split(",") if part.strip()
                 )
             if flattened:
-                env["PROSTOR_TUI_SKILLS"] = ",".join(flattened)
+                env["HERMES_TUI_SKILLS"] = ",".join(flattened)
         else:
             value = str(skills).strip()
             if value:
-                env["PROSTOR_TUI_SKILLS"] = value
+                env["HERMES_TUI_SKILLS"] = value
     if query:
-        env["PROSTOR_TUI_QUERY"] = query
+        env["HERMES_TUI_QUERY"] = query
     if image:
-        env["PROSTOR_TUI_IMAGE"] = image
+        env["HERMES_TUI_IMAGE"] = image
     if checkpoints:
-        env["PROSTOR_TUI_CHECKPOINTS"] = "1"
+        env["HERMES_TUI_CHECKPOINTS"] = "1"
     if pass_session_id:
-        env["PROSTOR_TUI_PASS_SESSION_ID"] = "1"
+        env["HERMES_TUI_PASS_SESSION_ID"] = "1"
     if max_turns is not None:
-        env["PROSTOR_TUI_MAX_TURNS"] = str(max_turns)
+        env["HERMES_TUI_MAX_TURNS"] = str(max_turns)
     if verbose:
-        env["PROSTOR_TUI_TOOL_PROGRESS"] = "verbose"
+        env["HERMES_TUI_TOOL_PROGRESS"] = "verbose"
     elif quiet:
-        env["PROSTOR_TUI_TOOL_PROGRESS"] = "off"
+        env["HERMES_TUI_TOOL_PROGRESS"] = "off"
     if accept_hooks:
-        env["PROSTOR_ACCEPT_HOOKS"] = "1"
+        env["HERMES_ACCEPT_HOOKS"] = "1"
     # Guarantee a generous V8 heap for the TUI. Default node cap is ~1.5–4GB
     # depending on version and can fatal-OOM on long sessions with large
     # transcripts / reasoning blobs. We target 8GB on an unconstrained host,
@@ -2023,19 +2089,19 @@ def _launch_tui(
     if not any(t.startswith("--max-old-space-size=") for t in _tokens):
         _tokens.append(f"--max-old-space-size={_resolve_tui_heap_mb()}")
     env["NODE_OPTIONS"] = " ".join(_tokens)
-    # PROSTOR_TUI_RESUME is an internal hand-off from the Python wrapper to the
+    # HERMES_TUI_RESUME is an internal hand-off from the Python wrapper to the
     # Ink app.  Because we start from os.environ.copy(), an exported/stale value
-    # in the user's shell would otherwise make a plain `prostor --tui` try to
+    # in the user's shell would otherwise make a plain `hermes --tui` try to
     # resume a non-existent session and leave the UI at "error: session not
     # found" with no live session.  Only forward a resume id that argparse
     # resolved for this invocation; direct `node ui-tui/dist/entry.js` users can
-    # still set PROSTOR_TUI_RESUME themselves.
-    env.pop("PROSTOR_TUI_RESUME", None)
+    # still set HERMES_TUI_RESUME themselves.
+    env.pop("HERMES_TUI_RESUME", None)
     if resume_session_id:
-        env["PROSTOR_TUI_RESUME"] = resume_session_id
+        env["HERMES_TUI_RESUME"] = resume_session_id
 
     argv, cwd = _make_tui_argv(tui_dir, tui_dev)
-    code: int | None = None
+    code: Optional[int] = None
     try:
         try:
             code = subprocess.call(argv, cwd=str(cwd), env=env)
@@ -2055,12 +2121,12 @@ def _launch_tui(
             except Exception:
                 pass
 
-    # Exit code 42 = TUI requested an update. Relaunch as `prostor update` so
+    # Exit code 42 = TUI requested an update. Relaunch as `hermes update` so
     # the user sees update output directly and gets the new version.
     # preserve_inherited=False ensures --tui and other flags are NOT carried
     # into the update subcommand.
     if code == 42:
-        from prostor_cli.relaunch import relaunch
+        from hermes_cli.relaunch import relaunch
 
         print()
         print("⚕ Launching update...")
@@ -2071,36 +2137,36 @@ def _launch_tui(
 
 
 def _pin_kanban_board_env() -> None:
-    """Pin the active kanban board into ``PROSTOR_KANBAN_BOARD`` for the chat session.
+    """Pin the active kanban board into ``HERMES_KANBAN_BOARD`` for the chat session.
 
     Without this, in-process tools (``kanban_*``) and shelled-out CLI calls
-    (``prostor kanban …``) resolve the board on different paths: the env-pin if
+    (``hermes kanban …``) resolve the board on different paths: the env-pin if
     set, otherwise the global ``<root>/kanban/current`` file. A concurrent
-    ``prostor kanban boards switch`` from another session can flip the file
+    ``hermes kanban boards switch`` from another session can flip the file
     mid-turn, so the same chat sees its tool calls hit board A while its shell
     calls hit board B (#20074). Pinning at chat boot mirrors what the
     dispatcher already does for spawned workers.
     """
-    if os.environ.get("PROSTOR_KANBAN_BOARD"):
+    if os.environ.get("HERMES_KANBAN_BOARD"):
         return
     try:
-        from prostor_cli.kanban_db import get_current_board
+        from hermes_cli.kanban_db import get_current_board
 
-        os.environ["PROSTOR_KANBAN_BOARD"] = get_current_board()
+        os.environ["HERMES_KANBAN_BOARD"] = get_current_board()
     except Exception:
         pass
 
 
 def _sync_bundled_skills_quietly() -> None:
-    """Seed ``~/.prostor/skills/`` with the bundled skill library on first launch.
+    """Seed ``~/.hermes/skills/`` with the bundled skill library on first launch.
 
     Called from any CLI entrypoint that the user might use as their first
-    interaction with Prostor — chat, dashboard (the desktop GUI's backend),
+    interaction with Hermes — chat, dashboard (the desktop GUI's backend),
     and gateway. The skills_sync module is manifest-based and idempotent:
     skipped skills cost ~milliseconds, so calling this repeatedly is fine.
 
     Failures are swallowed because skills are an enhancement, not a hard
-    dependency. Prostor still functions without them; the user just sees an
+    dependency. Hermes still functions without them; the user just sees an
     empty skills library.
     """
     try:
@@ -2116,7 +2182,7 @@ def _resolve_use_tui(args) -> bool:
 
     Precedence (highest first):
       1. ``--cli`` flag         → always classic REPL
-      2. ``--tui`` flag / ``PROSTOR_TUI=1`` → always TUI
+      2. ``--tui`` flag / ``HERMES_TUI=1`` → always TUI
       3. ``display.interface`` config value ("cli" | "tui")
       4. default → classic REPL
 
@@ -2125,10 +2191,10 @@ def _resolve_use_tui(args) -> bool:
     """
     if getattr(args, "cli", False):
         return False
-    if getattr(args, "tui", False) or os.environ.get("PROSTOR_TUI") == "1":
+    if getattr(args, "tui", False) or os.environ.get("HERMES_TUI") == "1":
         return True
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         iface = (load_config().get("display", {}) or {}).get("interface", "cli")
         return isinstance(iface, str) and iface.strip().lower() == "tui"
@@ -2150,7 +2216,7 @@ def cmd_chat(args):
                 args.resume = resolved
             else:
                 print(f"No session found matching '{continue_val}'.")
-                print("Use 'prostor sessions list' to see available sessions.")
+                print("Use 'hermes sessions list' to see available sessions.")
                 sys.exit(1)
         else:
             # -c with no argument — continue the most recent session
@@ -2176,13 +2242,13 @@ def cmd_chat(args):
 
     # xAI retirement warning — one-shot, non-blocking, never fails startup
     try:
-        from prostor_cli.config import load_config as _load_config_for_xai_check
-        from prostor_cli.xai_retirement import (
+        from hermes_cli.xai_retirement import (
             MIGRATION_GUIDE_URL,
             RETIREMENT_DATE,
             find_retired_xai_refs,
             format_issue,
         )
+        from hermes_cli.config import load_config as _load_config_for_xai_check
 
         _retired_xai_refs = find_retired_xai_refs(_load_config_for_xai_check())
         if _retired_xai_refs:
@@ -2193,7 +2259,7 @@ def cmd_chat(args):
             for _ref in _retired_xai_refs:
                 sys.stderr.write(f"  \033[33m⚠\033[0m {format_issue(_ref)}\n")
             sys.stderr.write(f"  \033[2mMigration guide: {MIGRATION_GUIDE_URL}\033[0m\n")
-            sys.stderr.write("  \033[2mRun 'prostor doctor' for details.\033[0m\n\n")
+            sys.stderr.write("  \033[2mRun 'hermes doctor' for details.\033[0m\n\n")
     except Exception:
         pass
 
@@ -2201,13 +2267,13 @@ def cmd_chat(args):
     if not _has_any_provider_configured():
         print()
         print(
-            "It looks like Prostor isn't configured yet -- no API keys or providers found."
+            "It looks like Hermes isn't configured yet -- no API keys or providers found."
         )
         print()
-        print("  Run:  prostor setup")
+        print("  Run:  hermes setup")
         print()
 
-        from prostor_cli.setup import (
+        from hermes_cli.setup import (
             is_interactive_stdin,
             print_noninteractive_setup_guidance,
         )
@@ -2226,7 +2292,7 @@ def cmd_chat(args):
             cmd_setup(args)
             return
         print()
-        print("You can run 'prostor setup' at any time to configure.")
+        print("You can run 'hermes setup' at any time to configure.")
         sys.exit(1)
 
     # Start update check in background (runs while other init happens).
@@ -2234,7 +2300,7 @@ def cmd_chat(args):
     # competes for CPU on single-core devices, so keep it opt-in there.
     if _termux_should_prefetch_update_check():
         try:
-            from prostor_cli.banner import prefetch_update_check
+            from hermes_cli.banner import prefetch_update_check
 
             prefetch_update_check()
         except Exception:
@@ -2248,37 +2314,37 @@ def cmd_chat(args):
 
     # --yolo: bypass all dangerous command approvals
     if getattr(args, "yolo", False):
-        os.environ["PROSTOR_YOLO_MODE"] = "1"
+        os.environ["HERMES_YOLO_MODE"] = "1"
 
     # --safe-mode: troubleshooting mode that disables ALL customizations.
     # Inspired by Claude Code v2.1.169's --safe-mode (June 2026): run with a
     # pristine environment to isolate whether a problem comes from the user's
-    # setup (config, rules files, plugins, MCP servers) or from Prostor itself.
+    # setup (config, rules files, plugins, MCP servers) or from Hermes itself.
     # Implemented as a superset of --ignore-user-config + --ignore-rules plus
-    # plugin/MCP discovery suppression (PROSTOR_SAFE_MODE is checked by
-    # prostor_cli/plugins.py and tools/mcp_tool.py).
+    # plugin/MCP discovery suppression (HERMES_SAFE_MODE is checked by
+    # hermes_cli/plugins.py and tools/mcp_tool.py).
     if getattr(args, "safe_mode", False):
-        os.environ["PROSTOR_SAFE_MODE"] = "1"
-        os.environ["PROSTOR_IGNORE_USER_CONFIG"] = "1"
-        os.environ["PROSTOR_IGNORE_RULES"] = "1"
+        os.environ["HERMES_SAFE_MODE"] = "1"
+        os.environ["HERMES_IGNORE_USER_CONFIG"] = "1"
+        os.environ["HERMES_IGNORE_RULES"] = "1"
 
     # --ignore-user-config: make load_cli_config() / load_config() skip the
-    # user's ~/.prostor/config.yaml and return built-in defaults. Set BEFORE
+    # user's ~/.hermes/config.yaml and return built-in defaults. Set BEFORE
     # importing cli (which runs `CLI_CONFIG = load_cli_config()` at module
     # import time). Credentials in .env are still loaded — this flag only
     # ignores behavioral/config settings.
     if getattr(args, "ignore_user_config", False):
-        os.environ["PROSTOR_IGNORE_USER_CONFIG"] = "1"
+        os.environ["HERMES_IGNORE_USER_CONFIG"] = "1"
 
     # --ignore-rules: skip auto-injection of AGENTS.md/SOUL.md/.cursorrules
     # (rules), memory entries, and any preloaded skills coming from user config.
     # Maps to AIAgent(skip_context_files=True, skip_memory=True).
     if getattr(args, "ignore_rules", False):
-        os.environ["PROSTOR_IGNORE_RULES"] = "1"
+        os.environ["HERMES_IGNORE_RULES"] = "1"
 
     # --source: tag session source for filtering (e.g. 'tool' for third-party integrations)
     if getattr(args, "source", None):
-        os.environ["PROSTOR_SESSION_SOURCE"] = args.source
+        os.environ["HERMES_SESSION_SOURCE"] = args.source
 
     _pin_kanban_board_env()
 
@@ -2337,7 +2403,7 @@ def cmd_gateway(args):
     """Gateway management commands."""
     _sync_bundled_skills_quietly()
 
-    from prostor_cli.gateway import gateway_command
+    from hermes_cli.gateway import gateway_command
 
     gateway_command(args)
 
@@ -2346,7 +2412,7 @@ def cmd_proxy(args):
     """Local OpenAI-compatible proxy to OAuth providers."""
     # Lazy import — pulls in aiohttp, which is gated behind an extras install
     # for users who don't run the proxy or the messaging gateway.
-    from prostor_cli.proxy.cli import cmd_proxy as _cmd_proxy
+    from hermes_cli.proxy.cli import cmd_proxy as _cmd_proxy
 
     rc = _cmd_proxy(args)
     if isinstance(rc, int) and rc != 0:
@@ -2356,8 +2422,8 @@ def cmd_proxy(args):
 def cmd_whatsapp(args):
     """Set up WhatsApp: choose mode, configure, install bridge, pair via QR."""
     _require_tty("whatsapp")
-    from prostor_cli.config import get_env_value, save_env_value
-    from prostor_constants import find_node_executable, with_prostor_node_path
+    from hermes_cli.config import get_env_value, save_env_value
+    from hermes_constants import find_node_executable, with_hermes_node_path
 
     print()
     print("⚕ WhatsApp Setup")
@@ -2367,7 +2433,7 @@ def cmd_whatsapp(args):
     current_mode = get_env_value("WHATSAPP_MODE") or ""
     if not current_mode:
         print()
-        print("How will you use WhatsApp with Prostor?")
+        print("How will you use WhatsApp with Hermes?")
         print()
         print("  1. Separate bot number (recommended)")
         print("     People message the bot's number directly — cleanest experience.")
@@ -2417,7 +2483,7 @@ def cmd_whatsapp(args):
     # We intentionally don't write WHATSAPP_ENABLED=true here.  If the user
     # aborts the wizard later (Ctrl+C, failed npm install, missed QR scan),
     # we'd otherwise leave .env claiming WhatsApp is ready when the bridge
-    # has no creds.json.  Every subsequent `prostor gateway` then paid a 30s
+    # has no creds.json.  Every subsequent `hermes gateway` then paid a 30s
     # bridge-bootstrap timeout and queued WhatsApp for indefinite retries.
     # Now: aborted setup leaves WHATSAPP_ENABLED unset → gateway skips it.
     # Re-runs that already have WHATSAPP_ENABLED=true (from a prior
@@ -2485,7 +2551,7 @@ def cmd_whatsapp(args):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                env=with_prostor_node_path(),
+                env=with_hermes_node_path(),
             )
         except KeyboardInterrupt:
             print("\n  ✗ Install cancelled")
@@ -2501,7 +2567,7 @@ def cmd_whatsapp(args):
         print("✓ Bridge dependencies already installed")
 
     # ── Step 5: Check for existing session ───────────────────────────────
-    session_dir = get_prostor_home() / "whatsapp" / "session"
+    session_dir = get_hermes_home() / "whatsapp" / "session"
     session_dir.mkdir(parents=True, exist_ok=True)
 
     if (session_dir / "creds.json").exists():
@@ -2524,7 +2590,7 @@ def cmd_whatsapp(args):
             if (get_env_value("WHATSAPP_ENABLED") or "").lower() != "true":
                 save_env_value("WHATSAPP_ENABLED", "true")
             print("\n✓ WhatsApp is configured and paired!")
-            print("  Start the gateway with: prostor gateway")
+            print("  Start the gateway with: hermes gateway")
             return
 
     # ── Step 6: QR code pairing ──────────────────────────────────────────
@@ -2550,7 +2616,7 @@ def cmd_whatsapp(args):
                 str(session_dir),
             ],
             cwd=str(bridge_dir),
-            env=with_prostor_node_path(),
+            env=with_hermes_node_path(),
         )
     except KeyboardInterrupt:
         pass
@@ -2560,30 +2626,30 @@ def cmd_whatsapp(args):
     if (session_dir / "creds.json").exists():
         # Only enable WhatsApp now that pairing actually succeeded.  If the
         # user Ctrl+C'd at any earlier step, WHATSAPP_ENABLED stays unset
-        # and `prostor gateway` skips it cleanly instead of paying a 30s
+        # and `hermes gateway` skips it cleanly instead of paying a 30s
         # bridge timeout + queueing the platform for indefinite retries.
         save_env_value("WHATSAPP_ENABLED", "true")
         print("✓ WhatsApp paired successfully!")
         print()
         if wa_mode == "bot":
             print("  Next steps:")
-            print("    1. Start the gateway:  prostor gateway")
+            print("    1. Start the gateway:  hermes gateway")
             print("    2. Send a message to the bot's WhatsApp number")
             print("    3. The agent will reply automatically")
             print()
-            print("  Tip: Agent responses are prefixed with '⚕ Prostor Agent'")
+            print("  Tip: Agent responses are prefixed with '⚕ Hermes Agent'")
         else:
             print("  Next steps:")
-            print("    1. Start the gateway:  prostor gateway")
+            print("    1. Start the gateway:  hermes gateway")
             print("    2. Open WhatsApp → Message Yourself")
             print("    3. Type a message — the agent will reply")
             print()
-            print("  Tip: Agent responses are prefixed with '⚕ Prostor Agent'")
+            print("  Tip: Agent responses are prefixed with '⚕ Hermes Agent'")
             print("  so you can tell them apart from your own messages.")
         print()
-        print("  Or install as a service: prostor gateway install")
+        print("  Or install as a service: hermes gateway install")
     else:
-        print("⚠ Pairing may not have completed. Run 'prostor whatsapp' to try again.")
+        print("⚠ Pairing may not have completed. Run 'hermes whatsapp' to try again.")
 
 
 def cmd_whatsapp_cloud(args):
@@ -2595,31 +2661,31 @@ def cmd_whatsapp_cloud(args):
     common setup mistakes (e.g. pasting a phone number into the Phone
     Number ID field).
 
-    Distinct from ``prostor whatsapp`` (the Baileys bridge wizard) — the
+    Distinct from ``hermes whatsapp`` (the Baileys bridge wizard) — the
     two adapters are complementary, not alternatives. See
-    ``prostor_cli/setup_whatsapp_cloud.py``.
+    ``hermes_cli/setup_whatsapp_cloud.py``.
     """
     _require_tty("whatsapp-cloud")
-    from prostor_cli.setup_whatsapp_cloud import run_whatsapp_cloud_setup
+    from hermes_cli.setup_whatsapp_cloud import run_whatsapp_cloud_setup
 
     return run_whatsapp_cloud_setup()
 
 
 def cmd_setup(args):
     """Interactive setup wizard."""
-    from prostor_cli.setup import run_setup_wizard
+    from hermes_cli.setup import run_setup_wizard
 
     run_setup_wizard(args)
 
 
 def cmd_postinstall(args):
     """One-shot bootstrap for pip users: install non-Python deps + run setup."""
-    from prostor_cli.config import stamp_install_method
-    from prostor_cli.dep_ensure import ensure_dependency
+    from hermes_cli.config import stamp_install_method
+    from hermes_cli.dep_ensure import ensure_dependency
 
     stamp_install_method("pip")
 
-    print("⚕ Prostor post-install bootstrap")
+    print("⚕ Hermes post-install bootstrap")
     print()
 
     for dep in ("node", "browser", "ripgrep", "ffmpeg"):
@@ -2638,7 +2704,7 @@ def cmd_model(args):
     _require_tty("model")
     if getattr(args, "refresh", False):
         try:
-            from prostor_cli.models import clear_provider_models_cache
+            from hermes_cli.models import clear_provider_models_cache
             clear_provider_models_cache()
             print("  Cleared model picker cache.")
         except Exception:
@@ -2664,22 +2730,22 @@ def _is_profile_api_key_provider(provider_id: str) -> bool:
 def select_provider_and_model(args=None):
     """Core provider selection + model picking logic.
 
-    Shared by ``cmd_model`` (``prostor model``) and the setup wizard
+    Shared by ``cmd_model`` (``hermes model``) and the setup wizard
     (``setup_model_provider`` in setup.py).  Handles the full flow:
     provider picker, credential prompting, model selection, and config
     persistence.
     """
-    from prostor_cli.auth import (
+    from hermes_cli.auth import (
+        resolve_provider,
         AuthError,
         format_auth_error,
-        resolve_provider,
     )
-    from prostor_cli.config import (
+    from hermes_cli.config import (
         get_compatible_custom_providers,
-        get_env_value,
         load_config,
+        get_env_value,
     )
-    from prostor_cli.providers import resolve_provider_full
+    from hermes_cli.providers import resolve_provider_full
 
     config = load_config()
     current_model = config.get("model")
@@ -2695,12 +2761,11 @@ def select_provider_and_model(args=None):
         config_provider = model_cfg.get("provider")
 
     effective_provider = (
-        config_provider or os.getenv("PROSTOR_INFERENCE_PROVIDER") or "auto"
+        config_provider or os.getenv("HERMES_INFERENCE_PROVIDER") or "auto"
     )
     compatible_custom_providers = get_compatible_custom_providers(config)
-
     def _named_custom_provider_map(cfg) -> dict[str, dict[str, str]]:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
 
         # Build lookups of raw (un-expanded) templates keyed by a
         # stable identity. We intentionally bypass
@@ -2858,8 +2923,8 @@ def select_provider_and_model(args=None):
             active = active_def.id
         else:
             warning = (
-                f"Unknown provider '{effective_provider}'. Check 'prostor model' for "
-                "available providers, or run 'prostor doctor' to diagnose config "
+                f"Unknown provider '{effective_provider}'. Check 'hermes model' for "
+                "available providers, or run 'hermes doctor' to diagnose config "
                 "issues."
             )
             print(f"Warning: {warning} Falling back to auto provider detection.")
@@ -2876,9 +2941,9 @@ def select_provider_and_model(args=None):
     if active == "openrouter" and get_env_value("OPENAI_BASE_URL"):
         active = "custom"
 
-    from prostor_cli.models import (
-        _PROVIDER_LABELS,
+    from hermes_cli.models import (
         CANONICAL_PROVIDERS,
+        _PROVIDER_LABELS,
         group_providers,
         provider_group_for_slug,
     )
@@ -2897,7 +2962,7 @@ def select_provider_and_model(args=None):
     # Step 1: Provider selection.
     #
     # Canonical providers are folded into top-level groups (display only — see
-    # PROVIDER_GROUPS in prostor_cli/models.py). A multi-member group shows one
+    # PROVIDER_GROUPS in hermes_cli/models.py). A multi-member group shows one
     # row ("Kimi / Moonshot ▸"); picking it opens a member sub-picker that
     # resolves back to a concrete slug, so the dispatch chain below is
     # unchanged. Custom providers and the trailing actions stay flat.
@@ -3006,8 +3071,6 @@ def select_provider_and_model(args=None):
         _model_flow_qwen_oauth(config, current_model)
     elif selected_provider == "minimax-oauth":
         _model_flow_minimax_oauth(config, current_model, args=args)
-    elif selected_provider == "google-gemini-cli":
-        _model_flow_google_gemini_cli(config, current_model)
     elif selected_provider == "copilot-acp":
         _model_flow_copilot_acp(config, current_model)
     elif selected_provider == "copilot":
@@ -3064,7 +3127,7 @@ def select_provider_and_model(args=None):
 
     # ── Post-switch cleanup: clear stale OPENAI_BASE_URL ──────────────
     # When the user switches to a named provider (anything except "custom"),
-    # a leftover OPENAI_BASE_URL in ~/.prostor/.env can poison auxiliary
+    # a leftover OPENAI_BASE_URL in ~/.hermes/.env can poison auxiliary
     # clients that use provider:auto. Clear it proactively.  (#5161)
     if selected_provider not in {
         "custom",
@@ -3075,14 +3138,14 @@ def select_provider_and_model(args=None):
 
 
 def _clear_stale_openai_base_url():
-    """Remove OPENAI_BASE_URL from ~/.prostor/.env if the active provider is not 'custom'.
+    """Remove OPENAI_BASE_URL from ~/.hermes/.env if the active provider is not 'custom'.
 
     After a provider switch, a leftover OPENAI_BASE_URL causes auxiliary
     clients (compression, vision, delegation) with provider:auto to route
     requests to the old custom endpoint instead of the newly selected
     provider.  See issue #5161.
     """
-    from prostor_cli.config import get_env_value, load_config, save_env_value
+    from hermes_cli.config import get_env_value, save_env_value, load_config
 
     cfg = load_config()
     model_cfg = cfg.get("model", {})
@@ -3107,14 +3170,14 @@ def _clear_stale_openai_base_url():
 # ─────────────────────────────────────────────────────────────────────────────
 # Auxiliary model configuration
 #
-# Prostor uses lightweight "auxiliary" models for side tasks (vision analysis,
+# Hermes uses lightweight "auxiliary" models for side tasks (vision analysis,
 # context compression, web extraction, session search, etc.). Each task has
 # its own provider+model pair in config.yaml under `auxiliary.<task>`.
 #
 # The UI lives behind "Configure auxiliary models..." at the bottom of the
-# `prostor model` provider picker. It does NOT re-run credential setup — it
+# `hermes model` provider picker. It does NOT re-run credential setup — it
 # only routes already-authenticated providers to specific aux tasks. Users
-# configure new providers through the normal `prostor model` flow first.
+# configure new providers through the normal `hermes model` flow first.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # (task_key, display_name, short_description)
@@ -3140,12 +3203,12 @@ def _all_aux_tasks() -> list[tuple[str, str, str]]:
     Built-in tasks come first (preserving order), followed by plugin tasks
     sorted by key. Used by ``_aux_config_menu``, ``_reset_aux_to_auto``, and
     display-name lookups so plugin-registered tasks (registered via
-    :meth:`prostor_cli.plugins.PluginContext.register_auxiliary_task`) appear
+    :meth:`hermes_cli.plugins.PluginContext.register_auxiliary_task`) appear
     in the same surfaces as built-in ones without core knowing about them.
     """
     tasks = list(_AUX_TASKS)
     try:
-        from prostor_cli.plugins import get_plugin_auxiliary_tasks
+        from hermes_cli.plugins import get_plugin_auxiliary_tasks
         for entry in get_plugin_auxiliary_tasks():
             tasks.append((entry["key"], entry["display_name"], entry["description"]))
     except Exception:
@@ -3186,7 +3249,7 @@ def _save_aux_choice(
     other task-specific settings are preserved untouched. The main model
     config (``model.default``/``model.provider``) is never modified.
     """
-    from prostor_cli.config import load_config, save_config
+    from hermes_cli.config import load_config, save_config
 
     cfg = load_config()
     aux = cfg.setdefault("auxiliary", {})
@@ -3210,7 +3273,7 @@ def _reset_aux_to_auto() -> int:
     Includes plugin-registered tasks (via ``_all_aux_tasks``) so a plugin
     that contributed an auxiliary task gets reset alongside built-ins.
     """
-    from prostor_cli.config import load_config, save_config
+    from hermes_cli.config import load_config, save_config
 
     cfg = load_config()
     aux = cfg.setdefault("auxiliary", {})
@@ -3244,7 +3307,7 @@ def _aux_config_menu() -> None:
     Loops until the user picks "Back" so multiple tasks can be configured
     without returning to the main provider menu.
     """
-    from prostor_cli.config import load_config
+    from hermes_cli.config import load_config
 
     while True:
         cfg = load_config()
@@ -3255,7 +3318,7 @@ def _aux_config_menu() -> None:
         print()
         print("  Side tasks (vision, compression, web extraction, etc.) default")
         print('  to your main chat model.  "auto" means "use my main model" —')
-        print("  Prostor only falls back to a lightweight backend (OpenRouter,")
+        print("  Hermes only falls back to a lightweight backend (OpenRouter,")
         print("  Nous Portal) if the main model is unavailable.  Override a")
         print("  task below if you want it pinned to a specific provider/model.")
         print()
@@ -3304,10 +3367,10 @@ def _aux_select_for_task(task: str) -> None:
     Uses ``list_authenticated_providers()`` to only show providers the user
     has already configured. This avoids re-running OAuth/credential flows
     inside the aux picker — users set up new providers through the normal
-    ``prostor model`` flow, then route aux tasks to them here.
+    ``hermes model`` flow, then route aux tasks to them here.
     """
-    from prostor_cli.config import load_config
-    from prostor_cli.model_switch import list_authenticated_providers
+    from hermes_cli.config import load_config
+    from hermes_cli.model_switch import list_authenticated_providers
 
     cfg = load_config()
     aux = cfg.get("auxiliary", {}) if isinstance(cfg.get("auxiliary"), dict) else {}
@@ -3384,8 +3447,8 @@ def _aux_flow_provider_model(
     current_model: str = "",
 ) -> None:
     """Prompt for a model under an already-authenticated provider, save to aux."""
-    from prostor_cli.auth import _prompt_model_selection
-    from prostor_cli.models import get_pricing_for_provider
+    from hermes_cli.auth import _prompt_model_selection
+    from hermes_cli.models import get_pricing_for_provider
 
     display_name = next((name for key, name, _ in _all_aux_tasks() if key == task), task)
 
@@ -3432,7 +3495,7 @@ def _aux_flow_provider_model(
 
 def _aux_flow_custom_endpoint(task: str, task_cfg: dict) -> None:
     """Prompt for a direct OpenAI-compatible base_url + optional api_key/model."""
-    from prostor_cli.secret_prompt import masked_secret_prompt
+    from hermes_cli.secret_prompt import masked_secret_prompt
 
     display_name = next((name for key, name, _ in _all_aux_tasks() if key == task), task)
     current_base_url = str(task_cfg.get("base_url") or "").strip()
@@ -3492,7 +3555,7 @@ def _prompt_provider_choice(choices, *, default=0, title="Select provider:"):
     if the user cancels.
     """
     try:
-        from prostor_cli.setup import _curses_prompt_choice
+        from hermes_cli.setup import _curses_prompt_choice
 
         idx = _curses_prompt_choice(title, choices, default)
         if idx >= 0:
@@ -3523,18 +3586,26 @@ def _prompt_provider_choice(choices, *, default=0, title="Select provider:"):
             return None
 
 
+
+
+
+
+
+
+
+
 _DEFAULT_QWEN_PORTAL_MODELS = [
     "qwen3-coder-plus",
     "qwen3-coder",
 ]
 
 
-def _prompt_custom_api_mode_selection(base_url: str, current_api_mode: str = "") -> str | None:
+def _prompt_custom_api_mode_selection(base_url: str, current_api_mode: str = "") -> Optional[str]:
     """Prompt for a custom provider API mode.
 
     Returns an explicit mode string, or None to keep auto-detect behavior.
     """
-    from prostor_cli.runtime_provider import _detect_api_mode_for_url
+    from hermes_cli.runtime_provider import _detect_api_mode_for_url
 
     detected_mode = _detect_api_mode_for_url(base_url)
     normalized_current = str(current_api_mode or "").strip().lower()
@@ -3544,7 +3615,7 @@ def _prompt_custom_api_mode_selection(base_url: str, current_api_mode: str = "")
         (
             "",
             "Auto-detect",
-            "Use Prostor URL heuristics; best for standard OpenAI-compatible endpoints.",
+            "Use Hermes URL heuristics; best for standard OpenAI-compatible endpoints.",
         ),
         (
             "chat_completions",
@@ -3650,7 +3721,7 @@ def _save_custom_provider(
     model name, context_length, and api_mode but doesn't add a duplicate entry.
     Uses *name* when provided, otherwise auto-generates from the URL.
     """
-    from prostor_cli.config import load_config, save_config
+    from hermes_cli.config import load_config, save_config
 
     cfg = load_config()
     providers = cfg.get("custom_providers") or []
@@ -3705,9 +3776,11 @@ def _save_custom_provider(
     print(f'  💾 Saved to custom providers as "{name}" (edit in config.yaml)')
 
 
+
+
 def _remove_custom_provider(config):
     """Let the user remove a saved custom provider from config.yaml."""
-    from prostor_cli.config import load_config, save_config
+    from hermes_cli.config import load_config, save_config
 
     cfg = load_config()
     providers = cfg.get("custom_providers") or []
@@ -3729,7 +3802,7 @@ def _remove_custom_provider(config):
     choices.append("Cancel")
 
     try:
-        from prostor_cli.curses_ui import curses_radiolist
+        from hermes_cli.curses_ui import curses_radiolist
 
         idx = curses_radiolist(
             "Select provider to remove:",
@@ -3763,11 +3836,13 @@ def _remove_custom_provider(config):
     print(f'✅ Removed "{removed_name}" from custom providers.')
 
 
+
+
 # Lazy-export the model catalog at module level. Tests and a handful of
-# downstream call sites read `prostor_cli.main._PROVIDER_MODELS` directly,
+# downstream call sites read `hermes_cli.main._PROVIDER_MODELS` directly,
 # so the symbol needs to be reachable as a module attribute. But importing
-# the catalog eagerly costs ~55ms on every `prostor` invocation — including
-# fast paths like `prostor --version` and slash-command dispatch that never
+# the catalog eagerly costs ~55ms on every `hermes` invocation — including
+# fast paths like `hermes --version` and slash-command dispatch that never
 # touch the catalog. PEP 562 module-level __getattr__ defers the import
 # until first attribute access, so the cost is only paid by callers that
 # actually look up the catalog. Termux already defers via the same
@@ -3779,7 +3854,7 @@ _LAZY_MODEL_EXPORTS = ("_PROVIDER_MODELS",)
 def __getattr__(name):
     """Defer the model-catalog import until something actually reads it."""
     if name in _LAZY_MODEL_EXPORTS:
-        from prostor_cli.models import _PROVIDER_MODELS
+        from hermes_cli.models import _PROVIDER_MODELS
         # Cache on the module so subsequent accesses skip the import machinery.
         globals()[name] = _PROVIDER_MODELS
         return _PROVIDER_MODELS
@@ -3832,7 +3907,7 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
         default_idx = 0
 
     try:
-        from prostor_cli.curses_ui import curses_radiolist
+        from hermes_cli.curses_ui import curses_radiolist
 
         choices = [_label(effort) for effort in ordered]
         choices.append(disable_label)
@@ -3881,20 +3956,24 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
             return None
 
 
+
+
+
+
 def _prompt_api_key(pconfig, existing_key: str, provider_id: str = "") -> tuple:
-    """Shared API-key entry point for ``prostor setup`` / ``prostor model``.
+    """Shared API-key entry point for ``hermes setup`` / ``hermes model``.
 
     Handles both first-time entry and the already-configured case.  When a key
     is already present, offers [K]eep / [R]eplace / [C]lear so the user can
-    recover from a malformed paste without editing ``~/.prostor/.env`` by hand.
+    recover from a malformed paste without editing ``~/.hermes/.env`` by hand.
 
     Returns ``(resolved_key, abort)``.  ``abort=True`` means the caller should
     ``return`` immediately — the user cancelled entry, declined to replace, or
     cleared the key and is now unconfigured.
     """
-    from prostor_cli.auth import LMSTUDIO_NOAUTH_PLACEHOLDER
-    from prostor_cli.config import save_env_value
-    from prostor_cli.secret_prompt import masked_secret_prompt
+    from hermes_cli.auth import LMSTUDIO_NOAUTH_PLACEHOLDER
+    from hermes_cli.config import save_env_value
+    from hermes_cli.secret_prompt import masked_secret_prompt
 
     key_env = pconfig.api_key_env_vars[0] if pconfig.api_key_env_vars else ""
 
@@ -3927,7 +4006,7 @@ def _prompt_api_key(pconfig, existing_key: str, provider_id: str = "") -> tuple:
         return new_key, False
 
     # Already configured — offer K / R / C ────────────────────────────────
-    from prostor_cli.env_loader import format_secret_source_suffix
+    from hermes_cli.env_loader import format_secret_source_suffix
 
     source_suffix = format_secret_source_suffix(key_env) if key_env else ""
     print(f"  {pconfig.name} API key: {existing_key[:8]}... ✓{source_suffix}")
@@ -3955,13 +4034,15 @@ def _prompt_api_key(pconfig, existing_key: str, provider_id: str = "") -> tuple:
     if choice.startswith("c"):
         save_env_value(key_env, "")
         print(
-            f"  API key cleared.  Re-run `prostor setup` to configure {pconfig.name} again."
+            f"  API key cleared.  Re-run `hermes setup` to configure {pconfig.name} again."
         )
         return "", True
 
     # Keep (default, or any other input)
     print()
     return existing_key, False
+
+
 
 
 def _infer_stepfun_region(base_url: str) -> str:
@@ -3973,7 +4054,7 @@ def _infer_stepfun_region(base_url: str) -> str:
 
 
 def _stepfun_base_url_for_region(region: str) -> str:
-    from prostor_cli.auth import (
+    from hermes_cli.auth import (
         STEPFUN_STEP_PLAN_CN_BASE_URL,
         STEPFUN_STEP_PLAN_INTL_BASE_URL,
     )
@@ -3985,14 +4066,22 @@ def _stepfun_base_url_for_region(region: str) -> str:
     )
 
 
+
+
+
+
+
+
+
+
 def _run_anthropic_oauth_flow(save_env_value):
     """Run the Claude OAuth setup-token flow. Returns True if credentials were saved."""
     from agent.anthropic_adapter import (
-        is_claude_code_token_valid,
-        read_claude_code_credentials,
         run_oauth_setup_token,
+        read_claude_code_credentials,
+        is_claude_code_token_valid,
     )
-    from prostor_cli.config import (
+    from hermes_cli.config import (
         save_anthropic_oauth_token,
         use_anthropic_claude_code_credentials,
     )
@@ -4007,10 +4096,10 @@ def _run_anthropic_oauth_flow(save_env_value):
         ):
             use_anthropic_claude_code_credentials(save_fn=save_env_value)
             print("  ✓ Claude Code credentials linked.")
-            from prostor_constants import display_prostor_home as _dhh_fn
+            from hermes_constants import display_hermes_home as _dhh_fn
 
             print(
-                f"    Prostor will use Claude's credential store directly instead of copying a setup-token into {_dhh_fn()}/.env."
+                f"    Hermes will use Claude's credential store directly instead of copying a setup-token into {_dhh_fn()}/.env."
             )
             return True
         return False
@@ -4032,7 +4121,7 @@ def _run_anthropic_oauth_flow(save_env_value):
         print()
         print("  If the setup-token was displayed above, paste it here:")
         print()
-        from prostor_cli.secret_prompt import masked_secret_prompt
+        from hermes_cli.secret_prompt import masked_secret_prompt
 
         try:
             manual_token = masked_secret_prompt(
@@ -4059,11 +4148,11 @@ def _run_anthropic_oauth_flow(save_env_value):
         print("    1. Install Claude Code:  npm install -g @anthropic-ai/claude-code")
         print("    2. Run:                  claude setup-token")
         print("    3. Follow the browser prompts to authorize")
-        print("    4. Re-run:               prostor model")
+        print("    4. Re-run:               hermes model")
         print()
         print("  Or paste an existing setup-token now (sk-ant-oat-...):")
         print()
-        from prostor_cli.secret_prompt import masked_secret_prompt
+        from hermes_cli.secret_prompt import masked_secret_prompt
 
         try:
             token = masked_secret_prompt("  Setup-token (or Enter to cancel): ").strip()
@@ -4078,44 +4167,46 @@ def _run_anthropic_oauth_flow(save_env_value):
         return False
 
 
+
+
 def cmd_login(args):
-    """Authenticate Prostor CLI with a provider."""
-    from prostor_cli.auth import login_command
+    """Authenticate Hermes CLI with a provider."""
+    from hermes_cli.auth import login_command
 
     login_command(args)
 
 
 def cmd_logout(args):
     """Clear provider authentication."""
-    from prostor_cli.auth import logout_command
+    from hermes_cli.auth import logout_command
 
     logout_command(args)
 
 
 def cmd_auth(args):
     """Manage pooled credentials."""
-    from prostor_cli.auth_commands import auth_command
+    from hermes_cli.auth_commands import auth_command
 
     auth_command(args)
 
 
 def cmd_status(args):
     """Show status of all components."""
-    from prostor_cli.status import show_status
+    from hermes_cli.status import show_status
 
     show_status(args)
 
 
 def cmd_cron(args):
     """Cron job management."""
-    from prostor_cli.cron import cron_command
+    from hermes_cli.cron import cron_command
 
     cron_command(args)
 
 
 def cmd_webhook(args):
     """Webhook subscription management."""
-    from prostor_cli.webhook import webhook_command
+    from hermes_cli.webhook import webhook_command
 
     webhook_command(args)
 
@@ -4123,7 +4214,7 @@ def cmd_webhook(args):
 def cmd_slack(args):
     """Slack integration helpers.
 
-    Dispatches ``prostor slack <subcommand>``. Currently supports:
+    Dispatches ``hermes slack <subcommand>``. Currently supports:
       manifest — print or write a Slack app manifest with every gateway
                  command registered as a first-class slash.
     """
@@ -4131,19 +4222,19 @@ def cmd_slack(args):
     if sub in {None, ""}:
         # No subcommand — print usage hint.
         print(
-            "usage: prostor slack <subcommand>\n"
+            "usage: hermes slack <subcommand>\n"
             "\n"
             "subcommands:\n"
             "  manifest   Generate a Slack app manifest with every gateway\n"
             "             command registered as a native slash\n"
             "\n"
-            "Run `prostor slack manifest -h` for details.",
+            "Run `hermes slack manifest -h` for details.",
             file=sys.stderr,
         )
         return 1
 
     if sub == "manifest":
-        from prostor_cli.slack_cli import slack_manifest_command
+        from hermes_cli.slack_cli import slack_manifest_command
 
         return slack_manifest_command(args)
 
@@ -4153,30 +4244,30 @@ def cmd_slack(args):
 
 def cmd_kanban(args):
     """Multi-profile collaboration board."""
-    from prostor_cli.kanban import kanban_command
+    from hermes_cli.kanban import kanban_command
 
     return kanban_command(args)
 
 
 def cmd_hooks(args):
     """Shell-hook inspection and management."""
-    from prostor_cli.hooks import hooks_command
+    from hermes_cli.hooks import hooks_command
 
     hooks_command(args)
 
 
 def cmd_doctor(args):
     """Check configuration and dependencies."""
-    from prostor_cli.doctor import run_doctor
+    from hermes_cli.doctor import run_doctor
 
     run_doctor(args)
 
 
 def cmd_security(args):
-    """Dispatch `prostor security <subcmd>`."""
+    """Dispatch `hermes security <subcmd>`."""
     sub = getattr(args, "security_command", None)
     if sub in ("audit", None):
-        from prostor_cli.security_audit import cmd_security_audit
+        from hermes_cli.security_audit import cmd_security_audit
 
         # Default subcommand is `audit` when no subcmd is given.
         code = cmd_security_audit(args)
@@ -4187,46 +4278,46 @@ def cmd_security(args):
 
 def cmd_dump(args):
     """Dump setup summary for support/debugging."""
-    from prostor_cli.dump import run_dump
+    from hermes_cli.dump import run_dump
 
     run_dump(args)
 
 
 def cmd_debug(args):
     """Debug tools (share report, etc.)."""
-    from prostor_cli.debug import run_debug
+    from hermes_cli.debug import run_debug
 
     run_debug(args)
 
 
 def cmd_config(args):
     """Configuration management."""
-    from prostor_cli.config import config_command
+    from hermes_cli.config import config_command
 
     config_command(args)
 
 
 def cmd_backup(args):
-    """Back up Prostor home directory to a zip file."""
+    """Back up Hermes home directory to a zip file."""
     if getattr(args, "quick", False):
-        from prostor_cli.backup import run_quick_backup
+        from hermes_cli.backup import run_quick_backup
 
         run_quick_backup(args)
     else:
-        from prostor_cli.backup import run_backup
+        from hermes_cli.backup import run_backup
 
         run_backup(args)
 
 
 def cmd_import(args):
-    """Restore a Prostor backup from a zip file."""
-    from prostor_cli.backup import run_import
+    """Restore a Hermes backup from a zip file."""
+    from hermes_cli.backup import run_import
 
     run_import(args)
 
 
 def _print_version_info(*, check_updates: bool = True) -> None:
-    from prostor_cli.banner import format_banner_version_label
+    from hermes_cli.banner import format_banner_version_label
 
     print(format_banner_version_label())
     print(f"Project: {PROJECT_ROOT}")
@@ -4238,8 +4329,7 @@ def _print_version_info(*, check_updates: bool = True) -> None:
     # ``import openai`` — the SDK drags in ~800ms of pydantic-backed type
     # modules just to expose ``__version__``.  Metadata lookup is ~2ms.
     try:
-        from importlib.metadata import PackageNotFoundError
-        from importlib.metadata import version as _pkg_version
+        from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
         try:
             print(f"OpenAI SDK: {_pkg_version('openai')}")
@@ -4253,8 +4343,8 @@ def _print_version_info(*, check_updates: bool = True) -> None:
 
     # Show update status (synchronous — acceptable since user asked for version info)
     try:
-        from prostor_cli.banner import check_for_updates
-        from prostor_cli.config import recommended_update_command
+        from hermes_cli.banner import check_for_updates
+        from hermes_cli.config import recommended_update_command
 
         behind = check_for_updates()
         if behind and behind > 0:
@@ -4275,11 +4365,11 @@ def cmd_version(args):
 
 
 def cmd_uninstall(args):
-    """Uninstall Prostor Agent (or just the Chat GUI with --gui)."""
+    """Uninstall Hermes Agent (or just the Chat GUI with --gui)."""
     # Machine-readable install snapshot for the desktop app's uninstall UI.
     # Must run before any TTY gate — it's called from a non-interactive child.
     if getattr(args, "gui_summary", False):
-        from prostor_cli.gui_uninstall import gui_install_summary
+        from hermes_cli.gui_uninstall import gui_install_summary
 
         print(json.dumps(gui_install_summary()))
         return
@@ -4289,7 +4379,7 @@ def cmd_uninstall(args):
     if getattr(args, "gui", False):
         if not getattr(args, "yes", False):
             _require_tty("uninstall --gui")
-        from prostor_cli.uninstall import run_gui_uninstall
+        from hermes_cli.uninstall import run_gui_uninstall
 
         run_gui_uninstall(args)
         return
@@ -4299,7 +4389,7 @@ def cmd_uninstall(args):
     # gate on a TTY when we actually need to prompt for the option + confirm.
     if not getattr(args, "yes", False):
         _require_tty("uninstall")
-    from prostor_cli.uninstall import run_uninstall
+    from hermes_cli.uninstall import run_uninstall
 
     run_uninstall(args)
 
@@ -4332,19 +4422,19 @@ def _clear_bytecode_cache(root: Path) -> int:
     return removed
 
 
-# Critical files that every ``prostor`` invocation imports at startup. If any
+# Critical files that every ``hermes`` invocation imports at startup. If any
 # of these fail to parse after a pull, the CLI is bricked — the user can't
-# even run ``prostor update`` again to roll forward. The post-pull syntax
+# even run ``hermes update`` again to roll forward. The post-pull syntax
 # guard validates these and auto-rolls-back on failure.
 _UPDATE_CRITICAL_FILES = (
-    "prostor_cli/main.py",
-    "prostor_cli/config.py",
-    "prostor_cli/__init__.py",
+    "hermes_cli/main.py",
+    "hermes_cli/config.py",
+    "hermes_cli/__init__.py",
     "cli.py",
     "run_agent.py",
     "model_tools.py",
     "toolsets.py",
-    "prostor_constants.py",
+    "hermes_constants.py",
 )
 
 
@@ -4366,7 +4456,7 @@ def _capture_head_sha(git_cmd, cwd) -> str | None:
 def _validate_critical_files_syntax(root) -> tuple[bool, str | None, str | None]:
     """Compile each file in ``_UPDATE_CRITICAL_FILES`` to catch SyntaxErrors.
 
-    These are the files imported on every ``prostor`` startup; if any of them
+    These are the files imported on every ``hermes`` startup; if any of them
     has a syntax error (orphan merge-conflict markers, bad ref to a name
     that no longer exists, etc.) the CLI can't bootstrap at all. We validate
     them after a successful ``git pull`` so we can auto-roll-back instead of
@@ -4386,7 +4476,7 @@ def _validate_critical_files_syntax(root) -> tuple[bool, str | None, str | None]
     import tempfile
 
     root = Path(root)
-    with tempfile.TemporaryDirectory(prefix="prostor-syntax-check-") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="hermes-syntax-check-") as tmpdir:
         for relpath in _UPDATE_CRITICAL_FILES:
             path = root / relpath
             if not path.exists():
@@ -4411,16 +4501,15 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     Writes a prompt marker file so the gateway can forward the question to the
     user, then polls for a response file.  Falls back to *default* on timeout.
 
-    Used by ``prostor update --gateway`` so interactive prompts (stash restore,
+    Used by ``hermes update --gateway`` so interactive prompts (stash restore,
     config migration) are forwarded to the messenger instead of being silently
     skipped.
     """
     import json as _json
     import uuid as _uuid
+    from hermes_constants import get_hermes_home
 
-    from prostor_constants import get_prostor_home
-
-    home = get_prostor_home()
+    home = get_hermes_home()
     prompt_path = home / ".update_prompt.json"
     response_path = home / ".update_response"
 
@@ -4461,14 +4550,14 @@ def _web_ui_build_needed(web_dir: Path) -> bool:
 
     Mirrors the staleness logic used by ``_tui_build_needed()`` for the TUI.
     The dashboard source lives under ``web/``, but the Vite build
-    still outputs to ``prostor_cli/web_dist/`` (per vite.config.ts
-    outDir: "../prostor_cli/web_dist"), NOT to ``web/dist/``, so Python
+    still outputs to ``hermes_cli/web_dist/`` (per vite.config.ts
+    outDir: "../hermes_cli/web_dist"), NOT to ``web/dist/``, so Python
     packaging can continue serving the same static asset directory. Uses the
     Vite manifest as the sentinel because it is written last and therefore
     has the newest mtime of any build output.
     """
     project_root = web_dir.parent.parent if web_dir.parent.name == "apps" else web_dir.parent
-    dist_dir = project_root / "prostor_cli" / "web_dist"
+    dist_dir = project_root / "hermes_cli" / "web_dist"
     sentinel = dist_dir / ".vite" / "manifest.json"
     if not sentinel.exists():
         sentinel = dist_dir / "index.html"
@@ -4514,7 +4603,7 @@ def _run_with_idle_timeout(
     WSL2 with the default 4 GB cap) the build can stall or sit silent for
     minutes; users see a frozen terminal, assume the update is hung, and
     reboot — leaving the editable install in a half-state with the
-    ``prostor`` launcher present but ``prostor_cli`` not importable.
+    ``hermes`` launcher present but ``hermes_cli`` not importable.
 
     This helper fixes both halves: stdout is streamed (so the user sees
     progress), and if no bytes have appeared on stdout/stderr for
@@ -4609,7 +4698,7 @@ def _nixos_build_env() -> dict[str, str] | None:
     does a bare ``PATH`` lookup — which fails on NixOS.
 
     Two-tier resolution:
-    1. Fast path — the prostor venv's python3 (present in managed installs)
+    1. Fast path — the hermes venv's python3 (present in managed installs)
     2. Fallback — resolves the absolute python3 path via ``nix-shell``
 
     Returns an env dict suitable for ``subprocess.run(env=...)`` or
@@ -4628,7 +4717,7 @@ def _nixos_build_env() -> dict[str, str] | None:
     if shutil.which("python3"):
         return None
 
-    # Tier 1: fast path — prostor venv python3, no nix-shell overhead
+    # Tier 1: fast path — hermes venv python3, no nix-shell overhead
     for venv_name in ("venv", ".venv"):
         venv_python = PROJECT_ROOT / venv_name / "bin" / "python3"
         if venv_python.exists():
@@ -4636,7 +4725,7 @@ def _nixos_build_env() -> dict[str, str] | None:
 
     # Tier 2: nix-shell fallback — resolves the absolute python3 path once.
     # Slower (~2–5 s for the nix-shell eval) but always works, even without
-    # a prostor venv (pip / non-managed / bare-git installs).  The resolved
+    # a hermes venv (pip / non-managed / bare-git installs).  The resolved
     # path is a self-contained Nix store binary (all deps via RPATH) so it
     # stays valid even after the nix-shell exits.
     try:
@@ -4652,8 +4741,6 @@ def _nixos_build_env() -> dict[str, str] | None:
         pass  # nix-shell not available — caller will get None
 
     return None
-
-
 def _run_npm_install_deterministic(
     npm: str,
     cwd: Path,
@@ -4668,7 +4755,7 @@ def _run_npm_install_deterministic(
     falls back to ``npm install`` only if ``npm ci`` fails (e.g. lockfile out of
     sync on a WIP checkout).  Without this, ``npm install`` on npm ≥ 10 silently
     rewrites committed lockfiles (stripping ``"peer": true`` etc.), which leaves
-    the working tree dirty and causes the next ``prostor update`` to stash the
+    the working tree dirty and causes the next ``hermes update`` to stash the
     lockfile — repeatedly.
     """
     # unicode-animations' postinstall animates to /dev/tty (bypasses
@@ -4712,7 +4799,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     Args:
         web_dir: Path to the dashboard frontend source directory.
         fatal: If True, print error guidance and return False on failure
-               instead of a soft warning (used by ``prostor web``).
+               instead of a soft warning (used by ``hermes web``).
 
     Returns True if the build succeeded or was skipped (no package.json).
     """
@@ -4726,7 +4813,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     # (or similar) and will raise UnicodeEncodeError on arrow / check
     # glyphs unless PYTHONIOENCODING=utf-8 is set. Routing every print
     # in this function through _say() with errors="replace" keeps the
-    # build path usable on a stock `py -m prostor_cli.main web` invocation.
+    # build path usable on a stock `py -m hermes_cli.main web` invocation.
     def _say(text: str) -> None:
         try:
             print(text)
@@ -4734,7 +4821,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
             encoding = getattr(sys.stdout, "encoding", None) or "ascii"
             print(text.encode(encoding, errors="replace").decode(encoding, errors="replace"))
 
-    from prostor_constants import find_node_executable, with_prostor_node_path
+    from hermes_constants import find_node_executable, with_hermes_node_path
 
     npm = find_node_executable("npm")
     if not npm:
@@ -4742,7 +4829,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
             _say("Web UI frontend not built and npm is not available.")
             _say("Install Node.js, then run:  cd web && npm install && npm run build")
         return not fatal
-    build_env = with_prostor_node_path()
+    build_env = with_hermes_node_path()
     _say("→ Building web UI...")
 
     def _relay(result: "subprocess.CompletedProcess") -> None:
@@ -4779,7 +4866,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     if r1.returncode != 0:
         _say(
             f"  {'✗' if fatal else '⚠'} Web UI npm install failed"
-            + ("" if fatal else " (prostor web will not be available)")
+            + ("" if fatal else " (hermes web will not be available)")
         )
         _relay(r1)
         if fatal:
@@ -4807,7 +4894,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
         stderr_preview = build_output.strip()
         stderr_tail = "\n  ".join(stderr_preview.splitlines()[-10:]) if stderr_preview else ""
         project_root = web_dir.parent.parent if web_dir.parent.name == "apps" else web_dir.parent
-        dist_dir = project_root / "prostor_cli" / "web_dist"
+        dist_dir = project_root / "hermes_cli" / "web_dist"
         dist_index = dist_dir / "index.html"
 
         # If a stale dist exists, serve it as a fallback instead of failing.
@@ -4821,7 +4908,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
 
         _say(
             f"  {'✗' if fatal else '⚠'} Web UI build failed"
-            + ("" if fatal else " (prostor web will not be available)")
+            + ("" if fatal else " (hermes web will not be available)")
         )
         _relay(r2)
         if fatal:
@@ -4844,12 +4931,12 @@ def _desktop_dist_exists(desktop_dir: Path) -> bool:
 # SHA-256 content hash of the source tree so that:
 #   - ``git checkout`` / ``git pull`` that touch mtimes but not content
 #     don't trigger a rebuild
-#   - ``prostor update`` can unconditionally call ``prostor desktop --build-only``
+#   - ``hermes update`` can unconditionally call ``hermes desktop --build-only``
 #     and it will skip if nothing actually changed
-#   - ``prostor desktop`` (interactive launch) skips the build when the
+#   - ``hermes desktop`` (interactive launch) skips the build when the
 #     stamp matches, making repeated launches fast
 #
-# Stamp file: $PROSTOR_HOME/desktop-build-stamp.json
+# Stamp file: $HERMES_HOME/desktop-build-stamp.json
 # Schema:
 #   {
 #     "contentHash": "<sha256 hex of source files>",
@@ -4878,9 +4965,10 @@ def _compute_desktop_content_hash(project_root: Path) -> str:
             with open(path, "rb") as f:
                 for chunk in iter(lambda: f.read(65536), b""):
                     h.update(chunk)
-        except OSError:
+        except (OSError, IOError):
             pass
         h.update(b"\0")
+
 
     from pathspec import PathSpec
 
@@ -4917,9 +5005,9 @@ def _compute_desktop_content_hash(project_root: Path) -> str:
 
 
 def _desktop_stamp_path() -> Path:
-    """Return the path to the desktop build stamp file under $PROSTOR_HOME."""
-    from prostor_constants import get_prostor_home
-    return get_prostor_home() / "desktop-build-stamp.json"
+    """Return the path to the desktop build stamp file under $HERMES_HOME."""
+    from hermes_constants import get_hermes_home
+    return get_hermes_home() / "desktop-build-stamp.json"
 
 
 def _desktop_build_needed(desktop_dir: Path, project_root: Path, *, source_mode: bool) -> bool:
@@ -4927,7 +5015,7 @@ def _desktop_build_needed(desktop_dir: Path, project_root: Path, *, source_mode:
 
     Compares the current content hash against the saved stamp. Also returns
     True if the expected build artifact doesn't exist (e.g. first run after
-    ``prostor update`` that pulled new source but hasn't built yet).
+    ``hermes update`` that pulled new source but hasn't built yet).
     """
     # If there's no build output at all, we definitely need to build
     if source_mode:
@@ -4964,11 +5052,11 @@ def _write_desktop_build_stamp(project_root: Path, *, source_mode: bool) -> None
     try:
         stamp_file.parent.mkdir(parents=True, exist_ok=True)
         content_hash = _compute_desktop_content_hash(project_root)
-        from datetime import datetime
+        from datetime import datetime, timezone
         stamp_data = {
             "contentHash": content_hash,
             "sourceMode": source_mode,
-            "builtAt": datetime.now(UTC).isoformat(),
+            "builtAt": datetime.now(timezone.utc).isoformat(),
         }
         stamp_file.write_text(json.dumps(stamp_data, indent=2) + "\n", encoding="utf-8")
     except Exception as exc:
@@ -4976,23 +5064,23 @@ def _write_desktop_build_stamp(project_root: Path, *, source_mode: bool) -> None
         logger.debug("Failed to write desktop build stamp: %s", exc)
 
 
-def _desktop_packaged_executable(desktop_dir: Path) -> Path | None:
+def _desktop_packaged_executable(desktop_dir: Path) -> Optional[Path]:
     """Return the current platform's unpacked Electron app executable."""
     release_dir = desktop_dir / "release"
     if sys.platform == "darwin":
-        candidates = list(release_dir.glob("mac*/Prostor.app/Contents/MacOS/Prostor"))
+        candidates = list(release_dir.glob("mac*/Hermes.app/Contents/MacOS/Hermes"))
     elif sys.platform == "win32":
         candidates = [
-            release_dir / "win-unpacked" / "Prostor.exe",
-            release_dir / "win-ia32-unpacked" / "Prostor.exe",
-            release_dir / "win-arm64-unpacked" / "Prostor.exe",
+            release_dir / "win-unpacked" / "Hermes.exe",
+            release_dir / "win-ia32-unpacked" / "Hermes.exe",
+            release_dir / "win-arm64-unpacked" / "Hermes.exe",
         ]
     else:
         candidates = [
-            release_dir / "linux-unpacked" / "prostor",
-            release_dir / "linux-unpacked" / "Prostor",
-            release_dir / "linux-arm64-unpacked" / "prostor",
-            release_dir / "linux-arm64-unpacked" / "Prostor",
+            release_dir / "linux-unpacked" / "hermes",
+            release_dir / "linux-unpacked" / "Hermes",
+            release_dir / "linux-arm64-unpacked" / "hermes",
+            release_dir / "linux-arm64-unpacked" / "Hermes",
         ]
 
     existing = [p for p in candidates if p.exists()]
@@ -5043,7 +5131,7 @@ def _purge_electron_build_cache(desktop_dir: Path) -> list[Path]:
     next ``pack`` re-downloads and re-stages from scratch.
 
     Root cause of the ``ENOENT … rename '…/linux-unpacked/electron' ->
-    '…/linux-unpacked/Prostor'`` desktop build failure: a corrupt zip in the
+    '…/linux-unpacked/Hermes'`` desktop build failure: a corrupt zip in the
     per-user Electron download cache (a partial download resumed into the same
     file leaves prepended/concatenated junk, or an interrupted write truncates
     it). electron-builder's ``app-builder unpack-electron`` extracts the
@@ -5164,7 +5252,7 @@ def _redownload_electron_dist(
     project_root: Path,
     env: dict,
     *,
-    mirror: str | None = None,
+    mirror: Optional[str] = None,
 ) -> bool:
     """Best-effort: run electron's install.js to populate dist/ (optional mirror)."""
     if _electron_dist_ok(project_root):
@@ -5174,7 +5262,7 @@ def _redownload_electron_dist(
     installer = electron_dir / "install.js"
     if not installer.is_file():
         return False
-    from prostor_constants import find_node_executable, with_prostor_node_path
+    from hermes_constants import find_node_executable, with_hermes_node_path
 
     node = find_node_executable("node")
     if not node:
@@ -5187,7 +5275,7 @@ def _redownload_electron_dist(
     except OSError:
         pass
 
-    dl_env = with_prostor_node_path(env)
+    dl_env = with_hermes_node_path(env)
     if mirror:
         dl_env["ELECTRON_MIRROR"] = mirror
     try:
@@ -5210,9 +5298,9 @@ def _stop_desktop_processes_locking_build(desktop_dir: Path) -> list[int]:
     """Terminate any running desktop app executing from this build's ``release``
     dir so a rebuild can replace its (otherwise locked) executable.
 
-    On Windows a running ``Prostor.exe`` keeps an exclusive lock on
-    ``release/win-unpacked/Prostor.exe``. electron-builder's pack then can't
-    delete the stale binary and dies with ``remove …\\Prostor.exe: Access is
+    On Windows a running ``Hermes.exe`` keeps an exclusive lock on
+    ``release/win-unpacked/Hermes.exe``. electron-builder's pack then can't
+    delete the stale binary and dies with ``remove …\\Hermes.exe: Access is
     denied`` / ``ERR_ELECTRON_BUILDER_CANNOT_EXECUTE`` (before-pack hits the same
     EPERM cleaning the dir). The retry path repeats the failure because the lock
     is still held. POSIX lets you unlink a running binary, so this is a no-op
@@ -5220,7 +5308,7 @@ def _stop_desktop_processes_locking_build(desktop_dir: Path) -> list[int]:
 
     Scope is deliberately narrow: only processes whose executable lives *inside*
     this desktop's ``release`` tree are stopped — a packaged install elsewhere or
-    an unrelated "Prostor" process is never touched. Best-effort: never raises.
+    an unrelated "Hermes" process is never touched. Best-effort: never raises.
     Returns the PIDs we asked to stop.
     """
     if sys.platform != "win32":
@@ -5285,7 +5373,7 @@ def _desktop_macos_relaunchable_fixup(desktop_dir: Path) -> None:
     An ad-hoc-signed .app has no stable Designated Requirement (no Team ID), so
     when the self-updater rebuilds the bundle in place with a fresh build (a new,
     different cdhash) Gatekeeper/LaunchServices treats the changed code as
-    tampering and macOS reports "Prostor is damaged and can't be opened." The
+    tampering and macOS reports "Hermes is damaged and can't be opened." The
     bundle also inherits the com.apple.quarantine flag from the downloaded
     installer process chain. Both make the relaunch fail.
 
@@ -5302,7 +5390,7 @@ def _desktop_macos_relaunchable_fixup(desktop_dir: Path) -> None:
     exe = _desktop_packaged_executable(desktop_dir)
     if exe is None:
         return
-    # exe = .../Prostor.app/Contents/MacOS/Prostor  ->  app bundle = .../Prostor.app
+    # exe = .../Hermes.app/Contents/MacOS/Hermes  ->  app bundle = .../Hermes.app
     app = exe.parents[2]
     if not str(app).endswith(".app") or not app.is_dir():
         return
@@ -5323,7 +5411,7 @@ def _desktop_linux_sandbox_fixup(packaged_executable: Path) -> bool:
 
     sandbox = packaged_executable.parent / "chrome-sandbox"
     if not sandbox.exists():
-        print(f"✗ Prostor Desktop is missing Electron's Linux sandbox helper: {sandbox}")
+        print(f"✗ Hermes Desktop is missing Electron's Linux sandbox helper: {sandbox}")
         return False
 
     # Reject symlinks — chown/chmod must not follow an attacker-controlled
@@ -5343,7 +5431,7 @@ def _desktop_linux_sandbox_fixup(packaged_executable: Path) -> bool:
 
     sudo = shutil.which("sudo")
     if not sudo:
-        print("✗ Prostor Desktop requires sudo to configure Electron's Linux sandbox helper.")
+        print("✗ Hermes Desktop requires sudo to configure Electron's Linux sandbox helper.")
         return False
 
     print("→ Configuring Electron Linux sandbox helper (sudo required)...")
@@ -5362,23 +5450,23 @@ def cmd_gui(args: argparse.Namespace):
         sys.exit(1)
 
     try:
-        from prostor_logging import setup_logging as _setup_logging_gui
+        from hermes_logging import setup_logging as _setup_logging_gui
         _setup_logging_gui(mode="gui")
     except Exception:
         pass
 
-    from prostor_constants import find_node_executable, with_prostor_node_path
+    from hermes_constants import find_node_executable, with_hermes_node_path
 
-    # with_prostor_node_path() copies os.environ when called with no arg.
-    env = with_prostor_node_path()
+    # with_hermes_node_path() copies os.environ when called with no arg.
+    env = with_hermes_node_path()
     if getattr(args, "fake_boot", False):
-        env["PROSTOR_DESKTOP_BOOT_FAKE"] = "1"
+        env["HERMES_DESKTOP_BOOT_FAKE"] = "1"
     if getattr(args, "ignore_existing", False):
-        env["PROSTOR_DESKTOP_IGNORE_EXISTING"] = "1"
-    if getattr(args, "prostor_root", None):
-        env["PROSTOR_DESKTOP_PROSTOR_ROOT"] = str(Path(args.prostor_root).expanduser().resolve())
+        env["HERMES_DESKTOP_IGNORE_EXISTING"] = "1"
+    if getattr(args, "hermes_root", None):
+        env["HERMES_DESKTOP_HERMES_ROOT"] = str(Path(args.hermes_root).expanduser().resolve())
     if getattr(args, "cwd", None):
-        env["PROSTOR_DESKTOP_CWD"] = str(Path(args.cwd).expanduser().resolve())
+        env["HERMES_DESKTOP_CWD"] = str(Path(args.cwd).expanduser().resolve())
 
     source_mode = getattr(args, "source", False)
     skip_build = getattr(args, "skip_build", False)
@@ -5390,7 +5478,7 @@ def cmd_gui(args: argparse.Namespace):
         npm = find_node_executable("npm")
         if not npm:
             print("Desktop GUI requires Node.js/npm, but npm was not found on PATH.")
-            print("Install Node.js, then run:  prostor gui")
+            print("Install Node.js, then run:  hermes gui")
             sys.exit(1)
     else:
         npm = None
@@ -5449,7 +5537,7 @@ def cmd_gui(args: argparse.Namespace):
             build_script = "build" if source_mode else "pack"
             if not source_mode:
                 # A running desktop instance launched from release/win-unpacked
-                # holds Prostor.exe locked on Windows, so the pack can't replace
+                # holds Hermes.exe locked on Windows, so the pack can't replace
                 # it ("Access is denied" / ERR_ELECTRON_BUILDER_CANNOT_EXECUTE).
                 # Stop it first so the rebuild — including the installer's
                 # headless --update rebuild — succeeds instead of failing cryptically.
@@ -5470,7 +5558,7 @@ def cmd_gui(args: argparse.Namespace):
                     print("  ⚠ Desktop build failed; refreshed the Electron download and retrying once...")
                     for p in purged:
                         print(f"    - {p}")
-                    # The purge can't remove a win-unpacked tree whose Prostor.exe
+                    # The purge can't remove a win-unpacked tree whose Hermes.exe
                     # is still locked by a running instance; stop it before retry.
                     _stop_desktop_processes_locking_build(desktop_dir)
                     build_result = subprocess.run([npm, "run", build_script], cwd=desktop_dir, env=env, check=False)
@@ -5489,15 +5577,15 @@ def cmd_gui(args: argparse.Namespace):
                 print("✗ Desktop GUI build failed")
                 print(f"  Run manually:  cd apps/desktop && npm run {build_script}")
                 if sys.platform == "win32":
-                    print("  If this says \"Access is denied\" on Prostor.exe, close any")
-                    print("  running Prostor desktop window and retry.")
+                    print("  If this says \"Access is denied\" on Hermes.exe, close any")
+                    print("  running Hermes desktop window and retry.")
                 print("  If the log shows Electron download retries, rebuild via a mirror:")
-                print("    ELECTRON_MIRROR=<mirror-base-url> prostor desktop --force-build")
+                print("    ELECTRON_MIRROR=<mirror-base-url> hermes desktop --force-build")
                 sys.exit(build_result.returncode or 1)
             packaged_executable = _desktop_packaged_executable(desktop_dir)
             if not source_mode:
                 # Locally-built apps are ad-hoc signed; make them relaunchable after
-                # an in-place self-update (otherwise macOS reports "Prostor is
+                # an in-place self-update (otherwise macOS reports "Hermes is
                 # damaged"). No-op on non-macOS and on real-identity builds.
                 _desktop_macos_relaunchable_fixup(desktop_dir)
 
@@ -5525,7 +5613,7 @@ def cmd_gui(args: argparse.Namespace):
         return
 
     if source_mode:
-        print("→ Launching Prostor Desktop from source build...")
+        print("→ Launching Hermes Desktop from source build...")
         launch_result = subprocess.run([npm, "exec", "--", "electron", "."], cwd=desktop_dir, env=env, check=False)
         sys.exit(launch_result.returncode)
 
@@ -5537,7 +5625,7 @@ def cmd_gui(args: argparse.Namespace):
     if not _desktop_linux_sandbox_fixup(packaged_executable):
         sys.exit(1)
 
-    print(f"→ Launching packaged Prostor Desktop: {packaged_executable}")
+    print(f"→ Launching packaged Hermes Desktop: {packaged_executable}")
     launch_result = subprocess.run([str(packaged_executable)], cwd=desktop_dir, env=env, check=False)
     sys.exit(launch_result.returncode)
 
@@ -5546,10 +5634,10 @@ def _find_stale_dashboard_pids(
     *,
     exclude_pids: set[int] | None = None,
 ) -> list[int]:
-    """Return PIDs of ``prostor dashboard`` processes other than ourselves.
+    """Return PIDs of ``hermes dashboard`` processes other than ourselves.
 
-    ``prostor dashboard`` is a long-lived server process commonly started and
-    forgotten.  When ``prostor update`` replaces files on disk, the running
+    ``hermes dashboard`` is a long-lived server process commonly started and
+    forgotten.  When ``hermes update`` replaces files on disk, the running
     process keeps the old Python backend in memory while the JS bundle on
     disk is updated, causing a silent frontend/backend mismatch (e.g. new
     auth headers the old backend doesn't recognise → every API call 401s).
@@ -5561,20 +5649,20 @@ def _find_stale_dashboard_pids(
     ``_kill_stale_dashboard_processes`` for the kill.
 
     *exclude_pids* is an optional set of PIDs that must never be returned.
-    This is used by the Prostor Desktop Electron app to protect its own
-    backend child process: when the desktop spawns ``prostor dashboard`` as
+    This is used by the Hermes Desktop Electron app to protect its own
+    backend child process: when the desktop spawns ``hermes dashboard`` as
     a backend and triggers an auto-update, the update must not kill the
     dashboard that the desktop itself manages.  The desktop sets the
-    environment variable ``PROSTOR_DESKTOP_CHILD_PID`` on the spawned
+    environment variable ``HERMES_DESKTOP_CHILD_PID`` on the spawned
     backend process; ``_kill_stale_dashboard_processes`` reads it and
     passes it here.  (#37532)
 
     Returns an empty list on any scan error (missing ps/wmic, timeout, etc.).
     """
     patterns = [
-        "prostor dashboard",
-        "prostor_cli.main dashboard",
-        "prostor_cli/main.py dashboard",
+        "hermes dashboard",
+        "hermes_cli.main dashboard",
+        "hermes_cli/main.py dashboard",
     ]
     self_pid = os.getpid()
     dashboard_pids: list[int] = []
@@ -5616,8 +5704,8 @@ def _find_stale_dashboard_pids(
         else:
             # Linux / macOS: scan the process table via ps and match against
             # the same explicit patterns list used on Windows.  Using ps
-            # (rather than `pgrep -f "prostor.*dashboard"`) keeps us consistent
-            # with `prostor_cli.gateway._scan_gateway_pids` and avoids the
+            # (rather than `pgrep -f "hermes.*dashboard"`) keeps us consistent
+            # with `hermes_cli.gateway._scan_gateway_pids` and avoids the
             # greedy regex matching unrelated cmdlines that merely contain
             # both words (e.g. a chat session discussing "dashboard").
             result = subprocess.run(
@@ -5650,7 +5738,7 @@ def _find_stale_dashboard_pids(
 
 
 def _print_curator_first_run_notice() -> None:
-    """Print a short heads-up about the skill curator after `prostor update`.
+    """Print a short heads-up about the skill curator after `hermes update`.
 
     Only fires when the curator is enabled AND has no recorded run yet, which
     is exactly the window where the gateway ticker used to fire Curator
@@ -5683,10 +5771,10 @@ def _print_curator_first_run_notice() -> None:
         f"~{days}d after installation; only agent-created skills are in "
         f"scope and nothing is ever auto-deleted (archive is recoverable)."
     )
-    print("  Preview now:  prostor curator run --dry-run")
-    print("  Pause it:     prostor curator pause")
+    print("  Preview now:  hermes curator run --dry-run")
+    print("  Pause it:     hermes curator pause")
     print(
-        "  Docs:         https://github.com/maksim9510/Prostor/docs/user-guide/features/curator"
+        "  Docs:         https://hermes-agent.nousresearch.com/docs/user-guide/features/curator"
     )
 
 
@@ -5695,11 +5783,11 @@ def _print_curator_recent_run_notice() -> None:
 
     The curator runs in the background (gateway tick + CLI session start),
     so users learn about skill consolidations only by stumbling into a
-    rename. ``prostor update`` is a high-attention surface — surface the
+    rename. ``hermes update`` is a high-attention surface — surface the
     most recent run's rename map here, once.
 
     Show-once: state stamps ``last_run_summary_shown_at`` after printing.
-    Subsequent ``prostor update`` invocations skip the block until a newer
+    Subsequent ``hermes update`` invocations skip the block until a newer
     curator run lands. Silent when the curator has never run, when the
     most recent summary has already been shown, or when the summary has
     no rename information to display (no archives).
@@ -5745,7 +5833,7 @@ def _print_curator_recent_run_notice() -> None:
         print(f"  {line}")
     print(
         "  (This message shows once per curator run. "
-        "View anytime: prostor curator status)"
+        "View anytime: hermes curator status)"
     )
 
     # Stamp shown so we don't repeat on the next update.
@@ -5759,11 +5847,11 @@ def _print_curator_recent_run_notice() -> None:
 def _format_time_ago(iso_ts: str) -> str:
     """Render an ISO timestamp as `Xh ago` / `Xd ago` / `Xm ago`. Best effort."""
     try:
-        from datetime import datetime
+        from datetime import datetime, timezone
         ts = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=UTC)
-        delta = datetime.now(UTC) - ts
+            ts = ts.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - ts
         secs = int(delta.total_seconds())
         if secs < 60:
             return "just now"
@@ -5779,10 +5867,10 @@ def _format_time_ago(iso_ts: str) -> str:
 def _kill_stale_dashboard_processes(
     reason: str = "the running backend no longer matches the updated frontend",
 ) -> None:
-    """Kill running ``prostor dashboard`` processes.
+    """Kill running ``hermes dashboard`` processes.
 
-    Called at the end of ``prostor update`` (default ``reason``) and also
-    from ``prostor dashboard --stop`` (which overrides ``reason``).  The
+    Called at the end of ``hermes update`` (default ``reason``) and also
+    from ``hermes dashboard --stop`` (which overrides ``reason``).  The
     dashboard has no service manager, so after a code update the running
     process is guaranteed to be serving stale Python against a
     freshly-updated JS bundle.  Leaving it alive produces silent
@@ -5797,11 +5885,11 @@ def _kill_stale_dashboard_processes(
     launch args (--host, --port, --insecure, --tui, --no-open).  The user
     restarts it manually; a hint is printed.
     """
-    # When the Prostor Desktop Electron app spawns this dashboard as a
-    # backend child, it sets PROSTOR_DESKTOP_CHILD_PID so that the update
+    # When the Hermes Desktop Electron app spawns this dashboard as a
+    # backend child, it sets HERMES_DESKTOP_CHILD_PID so that the update
     # path can skip killing the desktop-managed process.  (#37532)
     exclude: set[int] | None = None
-    raw_pid = os.environ.get("PROSTOR_DESKTOP_CHILD_PID")
+    raw_pid = os.environ.get("HERMES_DESKTOP_CHILD_PID")
     if raw_pid:
         # The desktop may manage several backends (one per active profile) and
         # passes them comma-separated; a lone int still parses for back-compat.
@@ -5892,7 +5980,7 @@ def _kill_stale_dashboard_processes(
 
     if killed:
         print("  Restart the dashboard when you're ready:")
-        print("    prostor dashboard --port <port>")
+        print("    hermes dashboard --port <port>")
 
 
 # Back-compat alias: some tests and any external callers may import the old
@@ -5900,8 +5988,45 @@ def _kill_stale_dashboard_processes(
 _warn_stale_dashboard_processes = _kill_stale_dashboard_processes
 
 
+def _atomic_replace_dir(src: str, dst: str) -> None:
+    """Replace directory *dst* with *src* without leaving *dst* half-deleted.
+
+    The naive ``rmtree(dst); copytree(src, dst)`` has a destructive window: if
+    the copy fails partway (common on the Windows ZIP-update path, which only
+    runs because file I/O is already flaky on that machine), the old directory
+    is already gone and nothing replaced it — the install is left with a
+    deleted tree (issue #49145, where ``ui-tui/`` vanished and broke the TUI).
+
+    Instead, stage the new copy into a sibling temp dir first; only once that
+    fully succeeds do we swap it in. A failure during staging raises with the
+    original *dst* still intact.
+    """
+    staging = f"{dst}.hermes-update-staging"
+    backup = f"{dst}.hermes-update-old"
+    # Clear any leftovers from a previously-interrupted update.
+    for leftover in (staging, backup):
+        if os.path.exists(leftover):
+            shutil.rmtree(leftover, ignore_errors=True)
+
+    # 1. Stage the new copy. If this fails, dst is untouched.
+    shutil.copytree(src, staging)
+    # 2. Swap: move the live dir aside, move staging into place. Both moves are
+    #    same-filesystem renames; if the second fails we restore the backup.
+    if os.path.exists(dst):
+        os.rename(dst, backup)
+    try:
+        os.rename(staging, dst)
+    except OSError:
+        if os.path.exists(backup) and not os.path.exists(dst):
+            os.rename(backup, dst)  # roll back to the original
+        raise
+    # 3. New dir is in place; drop the old one (best-effort — never fatal).
+    if os.path.exists(backup):
+        shutil.rmtree(backup, ignore_errors=True)
+
+
 def _update_via_zip(args):
-    """Update Prostor Agent by downloading a ZIP archive.
+    """Update Hermes Agent by downloading a ZIP archive.
 
     Used on Windows when git file I/O is broken (antivirus, NTFS filter
     drivers causing 'Invalid argument' errors on file creation).
@@ -5925,25 +6050,25 @@ def _update_via_zip(args):
         print(
             "  This path runs when git file I/O is broken on the system. "
             "Either resolve the git-side breakage (typically an antivirus "
-            "or NTFS filter holding files open) and rerun `prostor update "
-            f"--branch {branch}`, or update against main with `prostor update`."
+            "or NTFS filter holding files open) and rerun `hermes update "
+            f"--branch {branch}`, or update against main with `hermes update`."
         )
         sys.exit(1)
     zip_url = (
-        f"https://github.com/maksim9510/Prostor/archive/refs/heads/{branch}.zip"
+        f"https://github.com/NousResearch/hermes-agent/archive/refs/heads/{branch}.zip"
     )
 
     print("→ Downloading latest version...")
-    tmp_dir = tempfile.mkdtemp(prefix="prostor-update-")
+    tmp_dir = tempfile.mkdtemp(prefix="hermes-update-")
     try:
-        zip_path = os.path.join(tmp_dir, f"prostor-agent-{branch}.zip")
+        zip_path = os.path.join(tmp_dir, f"hermes-agent-{branch}.zip")
         urlretrieve(zip_url, zip_path)
 
         print("→ Extracting...")
         import stat as _stat
         with zipfile.ZipFile(zip_path, "r") as zf:
             # Validate paths to prevent zip-slip (path traversal) AND reject
-            # symlink members. A GitHub source ZIP for prostor-agent itself
+            # symlink members. A GitHub source ZIP for hermes-agent itself
             # should never contain symlinks — they'd point outside the
             # extracted tree and let an attacker who can compromise the
             # update mirror plant arbitrary files via the update path.
@@ -5966,8 +6091,8 @@ def _update_via_zip(args):
                     )
             zf.extractall(tmp_dir)
 
-        # GitHub ZIPs extract to prostor-agent-<branch>/
-        extracted = os.path.join(tmp_dir, f"prostor-agent-{branch}")
+        # GitHub ZIPs extract to hermes-agent-<branch>/
+        extracted = os.path.join(tmp_dir, f"hermes-agent-{branch}")
         if not os.path.isdir(extracted):
             # Try to find it
             for d in os.listdir(tmp_dir):
@@ -5985,9 +6110,9 @@ def _update_via_zip(args):
             src = os.path.join(extracted, item)
             dst = os.path.join(str(PROJECT_ROOT), item)
             if os.path.isdir(src):
-                if os.path.exists(dst):
-                    shutil.rmtree(dst)
-                shutil.copytree(src, dst)
+                # Atomic-ish replace: never leave dst half-deleted if the copy
+                # fails partway (the failure mode behind #49145 on Windows).
+                _atomic_replace_dir(src, dst)
             else:
                 shutil.copy2(src, dst)
             update_count += 1
@@ -6012,7 +6137,7 @@ def _update_via_zip(args):
     # individually so update does not silently strip working capabilities.
     print("→ Updating Python dependencies...")
 
-    from prostor_cli.managed_uv import ensure_uv, update_managed_uv
+    from hermes_cli.managed_uv import ensure_uv, update_managed_uv
 
     # Keep managed uv current — runs `uv self update` if we already have one.
     update_managed_uv()
@@ -6066,7 +6191,7 @@ def _update_via_zip(args):
         if result.get("user_modified"):
             print(f"  ~ {len(result['user_modified'])} user-modified (kept)")
             print(
-                "    → see them: prostor skills list-modified  "
+                "    → see them: hermes skills list-modified  "
                 "(diff/reset to resume updates)"
             )
         if result.get("cleaned"):
@@ -6079,7 +6204,7 @@ def _update_via_zip(args):
     # Seed the model-catalog disk cache from the freshly-unpacked checkout
     # (same rationale as the git-pull path in _cmd_update_impl). Non-fatal.
     try:
-        from prostor_cli.model_catalog import seed_cache_from_checkout
+        from hermes_cli.model_catalog import seed_cache_from_checkout
 
         if seed_cache_from_checkout(PROJECT_ROOT):
             print("  ✓ Model catalog cache refreshed from checkout")
@@ -6099,7 +6224,7 @@ def _update_via_zip(args):
     _kill_stale_dashboard_processes()
 
 
-def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> str | None:
+def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[str]:
     status = subprocess.run(
         git_cmd + ["status", "--porcelain"],
         cwd=cwd,
@@ -6124,10 +6249,10 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> str | None:
         print("→ Clearing unmerged index entries from a previous conflict...")
         subprocess.run(git_cmd + ["reset"], cwd=cwd, capture_output=True)
 
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    stash_name = datetime.now(UTC).strftime(
-        "prostor-update-autostash-%Y%m%d-%H%M%S"
+    stash_name = datetime.now(timezone.utc).strftime(
+        "hermes-update-autostash-%Y%m%d-%H%M%S"
     )
     print("→ Local changes detected — stashing before update...")
     subprocess.run(
@@ -6147,7 +6272,7 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> str | None:
 
 def _resolve_stash_selector(
     git_cmd: list[str], cwd: Path, stash_ref: str
-) -> str | None:
+) -> Optional[str]:
     stash_list = subprocess.run(
         git_cmd + ["stash", "list", "--format=%gd %H"],
         cwd=cwd,
@@ -6163,7 +6288,7 @@ def _resolve_stash_selector(
 
 
 def _print_stash_cleanup_guidance(
-    stash_ref: str, stash_selector: str | None = None
+    stash_ref: str, stash_selector: Optional[str] = None
 ) -> None:
     print(
         "  Check `git status` first so you don't accidentally reapply the same change twice."
@@ -6190,7 +6315,7 @@ def _restore_stashed_changes(
         print(
             "  Restoring them may reapply local customizations onto the updated codebase."
         )
-        print("  Review the result afterward if Prostor behaves unexpectedly.")
+        print("  Review the result afterward if Hermes behaves unexpectedly.")
         print("Restore local changes now? [Y/n]")
         if input_fn is not None:
             response = input_fn("Restore local changes now? [Y/n]", "y")
@@ -6237,7 +6362,7 @@ def _restore_stashed_changes(
         print(f"  Stash ref: {stash_ref}")
 
         # Always reset to clean state — leaving conflict markers in source
-        # files makes prostor completely unrunnable (SyntaxError on import).
+        # files makes hermes completely unrunnable (SyntaxError on import).
         # The user's changes are safe in the stash for manual recovery.
         subprocess.run(
             git_cmd + ["reset", "--hard", "HEAD"],
@@ -6254,7 +6379,7 @@ def _restore_stashed_changes(
     stash_selector = _resolve_stash_selector(git_cmd, cwd, stash_ref)
     if stash_selector is None:
         print(
-            "⚠ Local changes were restored, but Prostor couldn't find the stash entry to drop."
+            "⚠ Local changes were restored, but Hermes couldn't find the stash entry to drop."
         )
         print(
             "  The stash was left in place. You can remove it manually after checking the result."
@@ -6269,7 +6394,7 @@ def _restore_stashed_changes(
         )
         if drop.returncode != 0:
             print(
-                "⚠ Local changes were restored, but Prostor couldn't drop the saved stash entry."
+                "⚠ Local changes were restored, but Hermes couldn't drop the saved stash entry."
             )
             if drop.stdout.strip():
                 print(drop.stdout.strip())
@@ -6281,7 +6406,7 @@ def _restore_stashed_changes(
             _print_stash_cleanup_guidance(stash_ref, stash_selector)
 
     print("⚠ Local changes were restored on top of the updated codebase.")
-    print("  Review `git diff` / `git status` if Prostor behaves unexpectedly.")
+    print("  Review `git diff` / `git status` if Hermes behaves unexpectedly.")
     return True
 
 
@@ -6308,7 +6433,7 @@ def _discard_stashed_changes(
     if stash_selector is None:
         print(
             "⚠ Configured to discard local changes on non-interactive update, "
-            "but Prostor couldn't find the stash entry to drop."
+            "but Hermes couldn't find the stash entry to drop."
         )
         _print_stash_cleanup_guidance(stash_ref)
         return False
@@ -6321,7 +6446,7 @@ def _discard_stashed_changes(
     )
     if drop.returncode != 0:
         print(
-            "⚠ Configured to discard local changes, but Prostor couldn't drop "
+            "⚠ Configured to discard local changes, but Hermes couldn't drop "
             "the saved stash entry."
         )
         if drop.stderr.strip():
@@ -6334,20 +6459,20 @@ def _discard_stashed_changes(
 
 
 # =========================================================================
-# Fork detection and upstream management for `prostor update`
+# Fork detection and upstream management for `hermes update`
 # =========================================================================
 
 OFFICIAL_REPO_URLS = {
-    "https://github.com/maksim9510/Prostor.git",
-    "git@github.com:maksim9510/Prostor.git",
-    "https://github.com/maksim9510/Prostor",
-    "git@github.com:maksim9510/Prostor",
+    "https://github.com/NousResearch/hermes-agent.git",
+    "git@github.com:NousResearch/hermes-agent.git",
+    "https://github.com/NousResearch/hermes-agent",
+    "git@github.com:NousResearch/hermes-agent",
 }
-OFFICIAL_REPO_URL = "https://github.com/maksim9510/Prostor.git"
+OFFICIAL_REPO_URL = "https://github.com/NousResearch/hermes-agent.git"
 SKIP_UPSTREAM_PROMPT_FILE = ".skip_upstream_prompt"
 
 
-def _get_origin_url(git_cmd: list[str], cwd: Path) -> str | None:
+def _get_origin_url(git_cmd: list[str], cwd: Path) -> Optional[str]:
     """Get the URL of the origin remote, or None if not set."""
     try:
         result = subprocess.run(
@@ -6363,7 +6488,7 @@ def _get_origin_url(git_cmd: list[str], cwd: Path) -> str | None:
     return None
 
 
-def _is_fork(origin_url: str | None) -> bool:
+def _is_fork(origin_url: Optional[str]) -> bool:
     """Check if the origin remote points to a fork (not the official repo)."""
     if not origin_url:
         return False
@@ -6426,17 +6551,17 @@ def _count_commits_between(git_cmd: list[str], cwd: Path, base: str, head: str) 
 
 def _should_skip_upstream_prompt() -> bool:
     """Check if user previously declined to add upstream."""
-    from prostor_constants import get_prostor_home
+    from hermes_constants import get_hermes_home
 
-    return (get_prostor_home() / SKIP_UPSTREAM_PROMPT_FILE).exists()
+    return (get_hermes_home() / SKIP_UPSTREAM_PROMPT_FILE).exists()
 
 
 def _mark_skip_upstream_prompt():
     """Create marker file to skip future upstream prompts."""
     try:
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
 
-        (get_prostor_home() / SKIP_UPSTREAM_PROMPT_FILE).touch()
+        (get_hermes_home() / SKIP_UPSTREAM_PROMPT_FILE).touch()
     except Exception:
         pass
 
@@ -6476,8 +6601,8 @@ def _sync_with_upstream_if_needed(git_cmd: list[str], cwd: Path) -> None:
 
         # Ask user if they want to add upstream
         print()
-        print("ℹ Your fork is not tracking the official Prostor repository.")
-        print("  This means you may miss updates from maksim9510/Prostor.")
+        print("ℹ Your fork is not tracking the official Hermes repository.")
+        print("  This means you may miss updates from NousResearch/hermes-agent.")
         print()
         try:
             response = (
@@ -6491,7 +6616,7 @@ def _sync_with_upstream_if_needed(git_cmd: list[str], cwd: Path) -> None:
             print("→ Adding upstream remote...")
             if _add_upstream_remote(git_cmd, cwd):
                 print(
-                    "  ✓ Added upstream: https://github.com/maksim9510/Prostor.git"
+                    "  ✓ Added upstream: https://github.com/NousResearch/hermes-agent.git"
                 )
                 has_upstream = True
             else:
@@ -6499,7 +6624,7 @@ def _sync_with_upstream_if_needed(git_cmd: list[str], cwd: Path) -> None:
                 return
         else:
             print(
-                "  Skipped. Run 'git remote add upstream https://github.com/maksim9510/Prostor.git' to add later."
+                "  Skipped. Run 'git remote add upstream https://github.com/NousResearch/hermes-agent.git' to add later."
             )
             _mark_skip_upstream_prompt()
             return
@@ -6579,13 +6704,13 @@ def _invalidate_update_cache():
     reports a stale "commits behind" count after a successful update.
 
     The git repo is shared across profiles — when one profile runs
-    ``prostor update``, every profile is now current.
+    ``hermes update``, every profile is now current.
     """
     homes = []
     # Default profile home (Docker-aware — uses /opt/data in Docker)
-    from prostor_constants import get_default_prostor_root
+    from hermes_constants import get_default_hermes_root
 
-    default_home = get_default_prostor_root()
+    default_home = get_default_hermes_root()
     homes.append(default_home)
     # Named profiles under <root>/profiles/
     profiles_root = default_home / "profiles"
@@ -6631,12 +6756,12 @@ def _load_installable_optional_extras(group: str = "all") -> list[str]:
     return referenced
 
 
-# Install-scoped breadcrumb dropped right before ``prostor update`` mutates the
+# Install-scoped breadcrumb dropped right before ``hermes update`` mutates the
 # venv and cleared only after the dependency install verifies clean.  If a user
 # kills the update mid-install (Ctrl-C, terminal close, WSL OOM), the marker
-# survives and the next ``prostor`` launch finishes the install instead of
+# survives and the next ``hermes`` launch finishes the install instead of
 # limping along on a half-built venv (e.g. pip wiped, a core dep like Pillow
-# never landed).  Lives next to the venv (not under $PROSTOR_HOME) because the
+# never landed).  Lives next to the venv (not under $HERMES_HOME) because the
 # venv is shared across all profiles, so a single marker covers every profile.
 def _update_marker_path() -> Path:
     return PROJECT_ROOT / ".update-incomplete"
@@ -6663,7 +6788,7 @@ def _clear_update_incomplete_marker() -> None:
 
 
 def _recover_from_interrupted_install() -> None:
-    """Finish a dependency install that a prior ``prostor update`` left half-done.
+    """Finish a dependency install that a prior ``hermes update`` left half-done.
 
     Triggered on launch when ``.update-incomplete`` is present — meaning the
     code was pulled but the dep install was killed before it verified clean.
@@ -6683,7 +6808,7 @@ def _recover_from_interrupted_install() -> None:
 
     Output: everything — our status lines AND the streamed pip/uv install
     (which inherits fd 1) — is routed to stderr.  Launches whose stdout is a
-    protocol stream (``prostor acp`` speaks JSON-RPC on stdout) must never get
+    protocol stream (``hermes acp`` speaks JSON-RPC on stdout) must never get
     install noise on stdout.
     """
     if not _update_marker_path().exists():
@@ -6731,12 +6856,12 @@ def _recover_from_interrupted_install() -> None:
         sys.stdout = sys.stderr
 
         print(
-            "⚠ A previous `prostor update` was interrupted mid-install — "
+            "⚠ A previous `hermes update` was interrupted mid-install — "
             "finishing dependency installation now..."
         )
 
         try:
-            from prostor_cli.managed_uv import ensure_uv
+            from hermes_cli.managed_uv import ensure_uv
 
             # Always bootstrap pip first: a killed install can leave the venv with
             # no pip module at all, and uv may also be gone. ensurepip restores a
@@ -6802,7 +6927,7 @@ def _run_install_with_heartbeat(
 
     Some resolvers/build backends (especially when compiling Rust/C extensions)
     can stay quiet for minutes. Emit a simple elapsed-time heartbeat so users
-    know ``prostor update`` is still progressing even if pip/uv itself is silent.
+    know ``hermes update`` is still progressing even if pip/uv itself is silent.
     """
     done = threading.Event()
     start = _time.time()
@@ -6844,7 +6969,7 @@ def _venv_scripts_dir() -> Path | None:
     return scripts if scripts.is_dir() else None
 
 
-def _prostor_exe_shims(scripts_dir: Path) -> list[Path]:
+def _hermes_exe_shims(scripts_dir: Path) -> list[Path]:
     """Entry-point shims that uv may try to rewrite during ``pip install -e .``.
 
     On Windows these are .exe launchers generated by setuptools/uv. On POSIX
@@ -6854,29 +6979,29 @@ def _prostor_exe_shims(scripts_dir: Path) -> list[Path]:
     if not _is_windows():
         return []
     return [
-        scripts_dir / "prostor.exe",
-        scripts_dir / "prostor-gateway.exe",
+        scripts_dir / "hermes.exe",
+        scripts_dir / "hermes-gateway.exe",
     ]
 
 
-def _detect_concurrent_prostor_instances(
+def _detect_concurrent_hermes_instances(
     scripts_dir: Path, *, exclude_pid: int | None = None
 ) -> list[tuple[int, str]]:
     """Find other live processes whose .exe is one of our entry-point shims.
 
     Windows blocks DELETE/REPLACE on a running .exe — and even RENAME on the
     same .exe when another process opened it without ``FILE_SHARE_DELETE``.
-    The Prostor Desktop Electron app spawns ``prostor.EXE`` as a backend child,
-    so during ``prostor update`` the user-invoked process and the desktop's
+    The Hermes Desktop Electron app spawns ``hermes.EXE`` as a backend child,
+    so during ``hermes update`` the user-invoked process and the desktop's
     child both hold the same file. The quarantine rename then fails with
     ``[WinError 32]`` and uv inherits the lock.
 
     This helper enumerates processes whose ``exe`` matches one of the venv's
-    shims (``prostor.exe`` / ``prostor-gateway.exe``) and returns ``(pid,
+    shims (``hermes.exe`` / ``hermes-gateway.exe``) and returns ``(pid,
     process_name)`` pairs. The caller's own PID and its entire ancestor
-    chain are excluded so the running ``prostor update`` invocation never
+    chain are excluded so the running ``hermes update`` invocation never
     reports itself — this matters on Windows where the setuptools .exe
-    launcher (``prostor.exe``) is a separate process from the Python
+    launcher (``hermes.exe``) is a separate process from the Python
     interpreter it loads (``python.exe``).
 
     Returns an empty list off-Windows, on missing psutil, or when no other
@@ -6892,7 +7017,7 @@ def _detect_concurrent_prostor_instances(
 
     # Resolve every shim path to its canonical form once for cheap comparison.
     shim_paths: set[str] = set()
-    for shim in _prostor_exe_shims(scripts_dir):
+    for shim in _hermes_exe_shims(scripts_dir):
         try:
             shim_paths.add(str(shim.resolve()).lower())
         except OSError:
@@ -6902,10 +7027,10 @@ def _detect_concurrent_prostor_instances(
 
     # Build a set of PIDs to exclude: the Python process itself plus every
     # ancestor whose executable is one of our shims. On Windows the
-    # setuptools-generated prostor.exe launcher is a separate native process
+    # setuptools-generated hermes.exe launcher is a separate native process
     # that spawns python.exe (the interpreter that runs our code).
     # os.getpid() returns the Python PID, but the launcher (which holds the
-    # file lock) is the parent. Without excluding it, every ``prostor update``
+    # file lock) is the parent. Without excluding it, every ``hermes update``
     # reports its own launcher as a concurrent instance — a false positive
     # (issues #29341, #34795).
     #
@@ -6916,7 +7041,7 @@ def _detect_concurrent_prostor_instances(
     #      across session/elevation boundaries), leaving the launcher shim in
     #      the candidate set and re-triggering the false positive.
     #   2. Only exclude ancestors whose exe is itself a shim. A genuine second
-    #      prostor.exe sitting *under* a non-Prostor parent (e.g. a Prostor
+    #      hermes.exe sitting *under* a non-Hermes parent (e.g. a Hermes
     #      Desktop backend child) must still be flagged, so we don't blanket-
     #      exclude unrelated ancestors like the shell or terminal.
     # Broad ``except Exception`` guards against partially-stubbed psutil in
@@ -6980,16 +7105,16 @@ def _format_concurrent_instances_message(
     matches: list[tuple[int, str]], scripts_dir: Path
 ) -> str:
     """Build a human-readable explanation + remediation hint for the user."""
-    shim = scripts_dir / "prostor.exe"
-    lines = ["✗ Another prostor.exe is running:"]
+    shim = scripts_dir / "hermes.exe"
+    lines = ["✗ Another hermes.exe is running:"]
     for pid, name in matches:
         lines.append(f"    PID {pid}  {name}")
     lines.append("")
     lines.append(f"  Updating now would fail to overwrite {shim} because")
     lines.append("  Windows blocks REPLACE on a running executable.")
     lines.append("")
-    lines.append("  Close Prostor Desktop, exit any open `prostor` REPLs, and")
-    lines.append("  stop the gateway (`prostor gateway stop`) before retrying.")
+    lines.append("  Close Hermes Desktop, exit any open `hermes` REPLs, and")
+    lines.append("  stop the gateway (`hermes gateway stop`) before retrying.")
     lines.append("")
     if matches:
         pid_args = " ".join(f"/PID {pid}" for pid, _ in matches)
@@ -6997,29 +7122,29 @@ def _format_concurrent_instances_message(
         lines.append("  stale, terminate them directly, then retry the update:")
         lines.append(f"      taskkill {pid_args} /F")
         lines.append("")
-    lines.append("  Override with `prostor update --force` if you've already")
+    lines.append("  Override with `hermes update --force` if you've already")
     lines.append("  confirmed those processes will not write to the venv.")
     return "\n".join(lines)
 
 
-def _quarantine_running_prostor_exe(
+def _quarantine_running_hermes_exe(
     scripts_dir: Path, *, max_attempts: int = 4
 ) -> list[tuple[Path, Path]]:
-    """Pre-empt Windows file lock on the running ``prostor.exe``.
+    """Pre-empt Windows file lock on the running ``hermes.exe``.
 
     Windows allows RENAMING a mapped/running executable (the kernel tracks the
     file by handle, not path), but blocks DELETE/REPLACE while it's loaded. uv
     needs to overwrite the entry-point shims during ``pip install -e .``;
-    when ``prostor update`` runs, ``prostor.exe`` IS the live process, and uv
+    when ``hermes update`` runs, ``hermes.exe`` IS the live process, and uv
     fails with ``Access is denied. (os error 5)``.
 
-    We rename live shims to ``prostor.exe.old.<unix-ms>`` first. uv then writes
+    We rename live shims to ``hermes.exe.old.<unix-ms>`` first. uv then writes
     fresh shims at the original paths. The ``.old`` files are cleaned up on
-    the next prostor invocation by ``_cleanup_quarantined_exes``.
+    the next hermes invocation by ``_cleanup_quarantined_exes``.
 
     Rename can still fail when *another* process has opened the .exe without
     ``FILE_SHARE_DELETE`` — typically AV real-time scanners with transient
-    handles (recovers in <1s), or the Prostor Desktop backend child process
+    handles (recovers in <1s), or the Hermes Desktop backend child process
     (won't recover until the user closes it). We mitigate:
 
     1. Retry up to ``max_attempts`` times with exponential backoff
@@ -7031,7 +7156,7 @@ def _quarantine_running_prostor_exe(
        update can complete; the user just needs to reboot to fully unload
        the stale image.
     3. Print a clear warning naming the most likely culprit (running
-       Prostor Desktop / gateway / REPL) and pointing to ``--force``.
+       Hermes Desktop / gateway / REPL) and pointing to ``--force``.
 
     Returns the list of (original, quarantined) pairs so the caller can roll
     back if the install itself fails before uv writes a replacement. Pairs
@@ -7050,7 +7175,7 @@ def _quarantine_running_prostor_exe(
     backoff_ms = [0, 100, 250, 500, 1000]
     attempts = max(1, min(max_attempts, len(backoff_ms)))
 
-    for shim in _prostor_exe_shims(scripts_dir):
+    for shim in _hermes_exe_shims(scripts_dir):
         if not shim.exists():
             continue
         target = shim.with_suffix(shim.suffix + f".old.{stamp}")
@@ -7098,8 +7223,8 @@ def _quarantine_running_prostor_exe(
             f"another process is holding it open)."
         )
         print(
-            "    Close Prostor Desktop, exit other `prostor` REPLs, stop the "
-            "gateway, or pause AV scanning, then re-run `prostor update`."
+            "    Close Hermes Desktop, exit other `hermes` REPLs, stop the "
+            "gateway, or pause AV scanning, then re-run `hermes update`."
         )
 
     return moved
@@ -7141,7 +7266,7 @@ def _schedule_replace_on_reboot(shim: Path, quarantine_target: Path) -> bool:
 
 
 def _restore_quarantined_exes(moved: list[tuple[Path, Path]]) -> None:
-    """Roll back ``_quarantine_running_prostor_exe`` if uv didn't write replacements."""
+    """Roll back ``_quarantine_running_hermes_exe`` if uv didn't write replacements."""
     for original, quarantined in moved:
         try:
             if not original.exists() and quarantined.exists():
@@ -7156,12 +7281,12 @@ def _run_quarantined_install(
     env: dict[str, str] | None = None,
     scripts_dir: Path | None = None,
 ) -> None:
-    """Run an editable install, quarantining the running ``prostor.exe`` first.
+    """Run an editable install, quarantining the running ``hermes.exe`` first.
 
     Any ``pip install -e .`` (or ``--reinstall``) rewrites the entry-point
-    shims, and on Windows the live ``prostor.exe`` is the running process —
+    shims, and on Windows the live ``hermes.exe`` is the running process —
     pip can neither delete nor overwrite it, so without quarantine the shim
-    is left missing and ``prostor`` drops off PATH. This wraps
+    is left missing and ``hermes`` drops off PATH. This wraps
     :func:`_run_install_with_heartbeat` with the same rename-out-of-the-way /
     restore-on-failure dance that the primary install path uses, so EVERY
     install that touches the shims is protected — including the
@@ -7173,7 +7298,7 @@ def _run_quarantined_install(
     """
     moved: list[tuple[Path, Path]] = []
     if scripts_dir is not None:
-        moved = _quarantine_running_prostor_exe(scripts_dir)
+        moved = _quarantine_running_hermes_exe(scripts_dir)
     try:
         _run_install_with_heartbeat(cmd, env=env)
     except BaseException:
@@ -7185,9 +7310,9 @@ def _run_quarantined_install(
 
 
 def _cleanup_quarantined_exes(scripts_dir: Path | None = None) -> None:
-    """Sweep ``prostor.exe.old.*`` left by prior updates.
+    """Sweep ``hermes.exe.old.*`` left by prior updates.
 
-    Called early on every prostor invocation. The .old files are unlocked once
+    Called early on every hermes invocation. The .old files are unlocked once
     their owning process exited, so deletion succeeds the next run. Silent
     no-op when nothing's there or on file-locked / permission errors.
     """
@@ -7212,7 +7337,7 @@ def _refresh_active_lazy_features() -> None:
 
     When pyproject.toml's ``[all]`` extra was slimmed down (May 2026), most
     optional backends moved to ``tools/lazy_deps.py`` and only install on
-    first use. ``prostor update`` runs ``uv pip install -e .[all]`` which
+    first use. ``hermes update`` runs ``uv pip install -e .[all]`` which
     leaves those packages untouched — so if we bump a pin in
     :data:`LAZY_DEPS` (CVE response, transitive bug fix), users who already
     activated the backend keep the stale version forever.
@@ -7272,7 +7397,7 @@ def _refresh_active_lazy_features() -> None:
                 reason = reason[:200] + "..."
             print(f"  ⚠ {feature} failed to refresh: {reason}")
         print("  Backends keep their previously-installed version; rerun")
-        print("  `prostor update` once the upstream issue is resolved.")
+        print("  `hermes update` once the upstream issue is resolved.")
 
 
 def _install_python_dependencies_with_optional_fallback(
@@ -7286,10 +7411,10 @@ def _install_python_dependencies_with_optional_fallback(
     By default this targets ``.[all]``; Termux callers can pass
     ``group='termux-all'`` to use the curated Android-compatible profile.
 
-    On Windows, pre-renames live ``prostor.exe`` / ``prostor-gateway.exe`` shims
+    On Windows, pre-renames live ``hermes.exe`` / ``hermes-gateway.exe`` shims
     in the venv Scripts dir before each install attempt so uv can write fresh
     copies (Windows blocks REPLACE on a running .exe but allows RENAME). See
-    ``_quarantine_running_prostor_exe`` for the rationale.
+    ``_quarantine_running_hermes_exe`` for the rationale.
     """
     scripts_dir = _venv_scripts_dir() if _is_windows() else None
 
@@ -7332,7 +7457,7 @@ def _install_python_dependencies_with_optional_fallback(
     # partial installs where a newly added base dep (e.g. ``pathspec``)
     # silently fails to land on top of a half-stale venv, and the only
     # symptom is a downstream subprocess crashing with ModuleNotFoundError
-    # hours later inside ``prostor update``'s desktop-rebuild or skill-sync
+    # hours later inside ``hermes update``'s desktop-rebuild or skill-sync
     # stage. Reinstall with --reinstall to force resolution if anything is
     # missing, then re-verify so the failure surfaces here instead of
     # downstream.
@@ -7378,7 +7503,7 @@ def _verify_core_dependencies_installed(
     # We use packaging.requirements when available (it ships with pip/uv envs),
     # falling back to a naive split that's good enough for the canonical
     # ``name==version[; marker]`` style this repo uses.
-    deps: list[tuple[str, object | None]] = []
+    deps: list[tuple[str, "object | None"]] = []
     try:
         from packaging.requirements import Requirement  # type: ignore
 
@@ -7417,7 +7542,7 @@ def _verify_core_dependencies_installed(
         return
 
     # Run the check inside the venv Python — sys.executable here may be the
-    # outer Python that drove ``prostor update``, not the venv we just wrote
+    # outer Python that drove ``hermes update``, not the venv we just wrote
     # to. The uv install_cmd_prefix encodes which environment we targeted
     # (either ``[uv, pip]`` with VIRTUAL_ENV in env, or
     # ``[sys.executable, -m, pip]`` for the in-process Python); resolve the
@@ -7464,9 +7589,9 @@ def _verify_core_dependencies_installed(
     # extras install can cost minutes and trips on whatever optional extra
     # was already broken upstream. Base is fast and is what's actually wrong.
     #
-    # Quarantine the running ``prostor.exe`` first: ``--reinstall -e .``
+    # Quarantine the running ``hermes.exe`` first: ``--reinstall -e .``
     # rewrites the entry-point shims, and on Windows pip can't overwrite the
-    # live launcher, which would leave ``prostor`` off PATH.
+    # live launcher, which would leave ``hermes`` off PATH.
     scripts_dir = _venv_scripts_dir() if _is_windows() else None
     repair_args = ["install", "--reinstall", "-e", "."]
     try:
@@ -7475,7 +7600,7 @@ def _verify_core_dependencies_installed(
         )
     except subprocess.CalledProcessError as e:
         logger.warning("dep verification: repair install failed: %s", e)
-        print("  ⚠ Repair install failed; check `prostor update` output above.")
+        print("  ⚠ Repair install failed; check `hermes update` output above.")
         return
 
     still_missing = _missing_deps()
@@ -7508,7 +7633,7 @@ def _verify_core_dependencies_installed(
         logger.warning("dep verification: per-package repair failed: %s", e)
         print(
             f"  ⚠ Could not install: {', '.join(still_missing)}. "
-            "Run `prostor update --force` after closing other prostor processes."
+            "Run `hermes update --force` after closing other hermes processes."
         )
         return
 
@@ -7516,7 +7641,7 @@ def _verify_core_dependencies_installed(
     if final_missing:
         print(
             f"  ⚠ Still missing after repair: {', '.join(final_missing)}. "
-            "Run `prostor update --force` after closing other prostor processes."
+            "Run `hermes update --force` after closing other hermes processes."
         )
     else:
         print("  ✓ All declared core dependencies now installed")
@@ -7580,8 +7705,7 @@ def _install_psutil_android_compat(
     """
     import tempfile
     import urllib.request
-
-    from prostor_cli.psutil_android import PSUTIL_URL, prepare_patched_psutil_sdist
+    from hermes_cli.psutil_android import PSUTIL_URL, prepare_patched_psutil_sdist
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -7599,11 +7723,11 @@ def _ensure_uv_for_termux(pip_cmd: list[str]) -> str | None:
     """Best-effort uv bootstrap on Termux for faster update installs.
 
     The normal path (``ensure_uv()`` in managed_uv) installs the managed
-    standalone uv into ``$PROSTOR_HOME/bin/uv``, but on Termux the official
+    standalone uv into ``$HERMES_HOME/bin/uv``, but on Termux the official
     installer may not work (glibc vs bionic).  Fall back to ``pip install uv``
     which gets a Termux-compatible binary.
     """
-    from prostor_cli.managed_uv import resolve_uv
+    from hermes_cli.managed_uv import resolve_uv
 
     existing = resolve_uv()
     if existing:
@@ -7620,7 +7744,7 @@ def _ensure_uv_for_termux(pip_cmd: list[str]) -> str | None:
 
 
 def _update_node_dependencies() -> None:
-    from prostor_constants import find_node_executable, with_prostor_node_path
+    from hermes_constants import find_node_executable, with_hermes_node_path
 
     npm = find_node_executable("npm")
     if not npm:
@@ -7632,14 +7756,14 @@ def _update_node_dependencies() -> None:
     # With a single workspace lockfile the root install would cover ALL
     # workspaces — but apps/desktop pulls in Electron as a devDependency,
     # and its postinstall downloads a ~200MB binary.  Most users don't
-    # need desktop during `prostor update`, so we install root-only first
+    # need desktop during `hermes update`, so we install root-only first
     # then add just the workspaces the CLI/TUI/web build actually requires.
     # Desktop deps are installed on demand by the desktop launcher
     # (see _desktop_build_needed).
     print("→ Updating Node.js dependencies...")
     extra_args = ["--no-fund", "--no-audit", "--progress=false"]
 
-    nixos_env = with_prostor_node_path(_nixos_build_env())
+    nixos_env = with_hermes_node_path(_nixos_build_env())
 
     # Step 1: root install (no workspace recursion).
     root_args = [*extra_args, "--workspaces=false"]
@@ -7677,12 +7801,12 @@ def _update_node_dependencies() -> None:
 
 
 class _UpdateOutputStream:
-    """Stream wrapper used during ``prostor update`` to survive terminal loss.
+    """Stream wrapper used during ``hermes update`` to survive terminal loss.
 
     Wraps the process's original stdout/stderr so that:
 
     * Every write is also mirrored to an append-only log file
-      (``~/.prostor/logs/update.log``) that users can inspect after the
+      (``~/.hermes/logs/update.log``) that users can inspect after the
       terminal disconnects.
     * Writes to the original stream that fail with ``BrokenPipeError`` /
       ``OSError`` / ``ValueError`` (closed file) no longer cascade into
@@ -7690,7 +7814,7 @@ class _UpdateOutputStream:
       stops.
 
     Combined with ``SIGHUP -> SIG_IGN`` installed by
-    ``_install_hangup_protection``, this makes ``prostor update`` safe to
+    ``_install_hangup_protection``, this makes ``hermes update`` safe to
     run in a plain SSH session that might disconnect mid-install.
     """
 
@@ -7752,7 +7876,7 @@ class _UpdateOutputStream:
 def _install_hangup_protection(gateway_mode: bool = False):
     """Protect ``cmd_update`` from SIGHUP and broken terminal pipes.
 
-    Users commonly run ``prostor update`` in an SSH session or a terminal
+    Users commonly run ``hermes update`` in an SSH session or a terminal
     that may close mid-install.  Without protection, ``SIGHUP`` from the
     terminal kills the Python process during ``pip install`` and leaves
     the venv half-installed; the documented workaround ("use screen /
@@ -7764,14 +7888,14 @@ def _install_hangup_protection(gateway_mode: bool = False):
        across ``exec()``, so pip and git subprocesses also stop dying on
        hangup.
     2. ``sys.stdout`` / ``sys.stderr`` are wrapped to mirror output to
-       ``~/.prostor/logs/update.log`` and to silently absorb
+       ``~/.hermes/logs/update.log`` and to silently absorb
        ``BrokenPipeError`` when the terminal vanishes.
 
     ``SIGINT`` (Ctrl-C) and ``SIGTERM`` (systemd shutdown) are
     **intentionally left alone** — those are legitimate cancellation
     signals the user or OS sent on purpose.
 
-    In gateway mode (``prostor update --gateway``) the update is already
+    In gateway mode (``hermes update --gateway``) the update is already
     spawned detached from a terminal, so this function is a no-op.
 
     Returns a dict that ``cmd_update`` can pass to
@@ -7803,10 +7927,10 @@ def _install_hangup_protection(gateway_mode: bool = False):
     # tolerance.  Any failure here is non-fatal; we just skip the wrap.
     try:
         # Late-bound import so tests can monkeypatch
-        # prostor_cli.config.get_prostor_home to simulate setup failure.
-        from prostor_cli.config import get_prostor_home as _get_prostor_home
+        # hermes_cli.config.get_hermes_home to simulate setup failure.
+        from hermes_cli.config import get_hermes_home as _get_hermes_home
 
-        logs_dir = _get_prostor_home() / "logs"
+        logs_dir = _get_hermes_home() / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         log_path = logs_dir / "update.log"
         log_file = open(log_path, "a", buffering=1, encoding="utf-8")
@@ -7814,7 +7938,7 @@ def _install_hangup_protection(gateway_mode: bool = False):
         import datetime as _dt
 
         log_file.write(
-            f"\n=== prostor update started "
+            f"\n=== hermes update started "
             f"{_dt.datetime.now().isoformat(timespec='seconds')} ===\n"
         )
 
@@ -7864,7 +7988,7 @@ def _resolve_update_branch(args) -> str:
 
 
 def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
-    """Implement ``prostor update --check``: fetch and report without installing.
+    """Implement ``hermes update --check``: fetch and report without installing.
 
     ``branch`` selects which branch the check compares against. Default is
     "main"; callers can pass another branch to ask "are there new commits
@@ -7875,19 +7999,19 @@ def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
     on a PyPI install we surface a one-line notice instead of silently
     dropping the flag.
     """
-    from prostor_cli.config import detect_install_method
+    from hermes_cli.config import detect_install_method
     method = detect_install_method(PROJECT_ROOT)
     if method == "docker":
         # Docker can't ``git fetch`` from within the container.  Surface the
-        # same long-form ``docker pull`` guidance ``prostor update`` (apply
+        # same long-form ``docker pull`` guidance ``hermes update`` (apply
         # path) uses — telling the user to "reinstall via curl" or that
         # ".git is missing" would point them at the wrong remediation.
-        from prostor_cli.config import format_docker_update_message
+        from hermes_cli.config import format_docker_update_message
         print(format_docker_update_message())
         sys.exit(1)
     if method == "pip":
-        from prostor_cli.banner import check_via_pypi
-        from prostor_cli.config import recommended_update_command
+        from hermes_cli.config import recommended_update_command
+        from hermes_cli.banner import check_via_pypi
         if branch_explicit and branch != "main":
             print(f"⚠ --branch is ignored for PyPI installs (would have checked '{branch}').")
         result = check_via_pypi()
@@ -7916,10 +8040,26 @@ def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
     # Note: upstream/<branch> may not exist for non-main branches (a fork's
     # bb/gui has no upstream counterpart), so when the caller picks a
     # non-default branch we skip the upstream probe and use origin directly.
+    # Installer checkouts are shallow (`git clone --depth 1`). A plain
+    # `git fetch` would unshallow the repo (dragging in the whole history —
+    # the exact cost the shallow clone avoided) and the rev-list count below
+    # would then report a huge bogus "behind" number. Detect shallow up front:
+    # fetch with --depth 1 to preserve the boundary and report presence-only.
+    is_shallow = (
+        subprocess.run(
+            git_cmd + ["rev-parse", "--is-shallow-repository"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == "true"
+    )
+    depth_args = ["--depth", "1"] if is_shallow else []
+
     if branch == "main":
         print("→ Fetching from upstream...")
         fetch_result = subprocess.run(
-            git_cmd + ["fetch", "upstream", branch],
+            git_cmd + ["fetch"] + depth_args + ["upstream", branch],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -7928,23 +8068,26 @@ def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
             # Fallback to origin if upstream doesn't exist
             print("→ Fetching from origin...")
             fetch_result = subprocess.run(
-                git_cmd + ["fetch", "origin", branch],
+                git_cmd + ["fetch"] + depth_args + ["origin", branch],
                 cwd=PROJECT_ROOT,
                 capture_output=True,
                 text=True,
             )
+            upstream_exists = False
             compare_branch = f"origin/{branch}"
         else:
+            upstream_exists = True
             compare_branch = f"upstream/{branch}"
     else:
         # Non-default branch: compare against origin/<branch> directly.
         print("→ Fetching from origin...")
         fetch_result = subprocess.run(
-            git_cmd + ["fetch", "origin", branch],
+            git_cmd + ["fetch"] + depth_args + ["origin", branch],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
         )
+        upstream_exists = False
         compare_branch = f"origin/{branch}"
 
     if fetch_result.returncode != 0:
@@ -7973,6 +8116,26 @@ def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
         print(f"✗ Branch '{branch}' not found on {compare_branch.split('/', 1)[0]}.")
         sys.exit(1)
 
+    if is_shallow:
+        # No history to count across the shallow boundary. Compare tip SHAs and
+        # report presence-only (mirrors the banner's _check_via_local_git).
+        head_sha = subprocess.run(
+            git_cmd + ["rev-parse", "HEAD"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True,
+        ).stdout.strip()
+        target_sha = subprocess.run(
+            git_cmd + ["rev-parse", compare_branch],
+            cwd=PROJECT_ROOT, capture_output=True, text=True,
+        ).stdout.strip()
+        if head_sha and target_sha and head_sha == target_sha:
+            print("✓ Already up to date.")
+        else:
+            print(f"⚕ Update available (behind {compare_branch}).")
+            from hermes_cli.config import recommended_update_command
+
+            print(f"  Run '{recommended_update_command()}' to install.")
+        return
+
     rev_result = subprocess.run(
         git_cmd + ["rev-list", f"HEAD..{compare_branch}", "--count"],
         cwd=PROJECT_ROOT,
@@ -7987,7 +8150,7 @@ def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
     else:
         commits_word = "commit" if behind == 1 else "commits"
         print(f"⚕ Update available: {behind} {commits_word} behind {compare_branch}.")
-        from prostor_cli.config import recommended_update_command
+        from hermes_cli.config import recommended_update_command
 
         print(f"  Run '{recommended_update_command()}' to install.")
 
@@ -7997,16 +8160,16 @@ def _ensure_fhs_path_guard() -> None:
 
     Mirrors the post-symlink probe added to ``scripts/install.sh`` so that
     existing FHS-layout root installs on RHEL/CentOS/Rocky/Alma 8+ get
-    repaired on ``prostor update`` without requiring a reinstall.  The
+    repaired on ``hermes update`` without requiring a reinstall.  The
     installer's assumption that ``/usr/local/bin`` is on PATH for every
     standard shell breaks on those distros in non-login interactive shells
     (su, sudo -s, tmux panes, some web terminals): /etc/bashrc doesn't
     add /usr/local/bin and /root/.bash_profile doesn't either.  Symptom:
-    ``prostor`` prints ``command not found`` even though the symlink lives
-    at /usr/local/bin/prostor.
+    ``hermes`` prints ``command not found`` even though the symlink lives
+    at /usr/local/bin/hermes.
 
     Silent no-op on: non-Linux, non-root, non-FHS installs, and any system
-    where ``bash -i -c 'command -v prostor'`` already resolves.  Idempotent.
+    where ``bash -i -c 'command -v hermes'`` already resolves.  Idempotent.
     """
     if sys.platform != "linux":
         return
@@ -8016,8 +8179,8 @@ def _ensure_fhs_path_guard() -> None:
     except AttributeError:
         return
     # Only act when this is actually an FHS-layout install (command link at
-    # /usr/local/bin/prostor, code at /usr/local/lib/prostor-agent).
-    fhs_link = Path("/usr/local/bin/prostor")
+    # /usr/local/bin/hermes, code at /usr/local/lib/hermes-agent).
+    fhs_link = Path("/usr/local/bin/hermes")
     if not fhs_link.is_symlink() and not fhs_link.exists():
         return
 
@@ -8035,7 +8198,7 @@ def _ensure_fhs_path_guard() -> None:
                 "bash",
                 "-i",
                 "-c",
-                "command -v prostor",
+                "command -v hermes",
             ],
             capture_output=True,
             text=True,
@@ -8048,7 +8211,7 @@ def _ensure_fhs_path_guard() -> None:
 
     path_line = 'export PATH="/usr/local/bin:$PATH"'
     path_comment = (
-        "# Prostor Agent — ensure /usr/local/bin is on PATH " "(RHEL non-login shells)"
+        "# Hermes Agent — ensure /usr/local/bin is on PATH " "(RHEL non-login shells)"
     )
     wrote_any = False
     for candidate in (".bashrc", ".bash_profile"):
@@ -8082,11 +8245,11 @@ def _ensure_fhs_path_guard() -> None:
 
 
 def _run_pre_update_backup(args) -> None:
-    """Create a full zip backup of PROSTOR_HOME before running the update.
+    """Create a full zip backup of HERMES_HOME before running the update.
 
     Gated on ``updates.pre_update_backup`` in config (default false).  Off
     by default because the zip can add minutes to every update on large
-    PROSTOR_HOME directories.  The ``--backup`` flag on ``prostor update``
+    HERMES_HOME directories.  The ``--backup`` flag on ``hermes update``
     opts in for a single run; ``--no-backup`` forces it off when config
     has it enabled.  Never raises — a backup failure should not block the
     update itself.
@@ -8100,7 +8263,7 @@ def _run_pre_update_backup(args) -> None:
     force_backup = bool(getattr(args, "backup", False))
 
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         cfg = load_config()
     except Exception as exc:
@@ -8111,7 +8274,7 @@ def _run_pre_update_backup(args) -> None:
 
     updates_cfg = cfg.get("updates", {}) if isinstance(cfg, dict) else {}
     # The default config ships with ``pre_update_backup: true`` (see
-    # ``prostor_cli/config.py``). Fall back to true if the key is missing
+    # ``hermes_cli/config.py``). Fall back to true if the key is missing
     # (e.g. a user has an older custom config without the field). The
     # ``False`` default from before #48200 caused silent data loss when
     # an update step computed a wrong path — the cost of a few minutes
@@ -8126,7 +8289,7 @@ def _run_pre_update_backup(args) -> None:
         return
 
     try:
-        from prostor_cli.backup import create_pre_update_backup
+        from hermes_cli.backup import create_pre_update_backup
     except Exception as exc:
         print(
             f"⚠ Pre-update backup: could not load backup module ({exc}); continuing update."
@@ -8164,28 +8327,29 @@ def _run_pre_update_backup(args) -> None:
         size_bytes /= 1024
         size_str = f"{size_bytes:.1f} {unit}"
 
-    # Render path using display_prostor_home so the user sees ~/.prostor/...
+    # Render path using display_hermes_home so the user sees ~/.hermes/...
     try:
-        from prostor_constants import display_prostor_home, get_prostor_home
+        from hermes_constants import get_hermes_home, display_hermes_home
 
-        home = get_prostor_home()
+        home = get_hermes_home()
         try:
-            display_path = f"{display_prostor_home()}/{out_path.relative_to(home)}"
+            display_path = f"{display_hermes_home()}/{out_path.relative_to(home)}"
         except ValueError:
             display_path = str(out_path)
     except Exception:
         display_path = str(out_path)
 
     print(f"  Saved:    {display_path} ({size_str}, {elapsed:.1f}s)")
-    print(f"  Restore:  prostor import {out_path}")
-    print("  Disable:  omit --backup (backups are off by default)")
-    print("            set updates.pre_update_backup: false in config.yaml")
+    print(f"  Restore:  hermes import {out_path}")
+    print(f"  Disable:  omit --backup (backups are off by default)")
+    print(f"            set updates.pre_update_backup: false in config.yaml")
     print()
 
 
 def _write_update_planned_stop_marker(profile_path: Path, pid: int) -> bool:
     """Write a planned-stop marker into a specific profile home."""
     try:
+        from datetime import timezone
 
         from gateway.status import _get_process_start_time
         from utils import atomic_json_write
@@ -8194,7 +8358,7 @@ def _write_update_planned_stop_marker(profile_path: Path, pid: int) -> bool:
             "target_pid": pid,
             "target_start_time": _get_process_start_time(pid),
             "stopper_pid": os.getpid(),
-            "written_at": datetime.now(UTC).isoformat(),
+            "written_at": datetime.now(timezone.utc).isoformat(),
         }
         atomic_json_write(
             Path(profile_path) / ".gateway-planned-stop.json",
@@ -8242,7 +8406,7 @@ def _pause_windows_gateways_for_update() -> dict | None:
     """Stop running Windows gateways before mutating the checkout or venv.
 
     Windows scheduled/startup gateways run through pythonw.exe, so the generic
-    prostor.exe concurrent-instance guard does not see them. They still import
+    hermes.exe concurrent-instance guard does not see them. They still import
     from the checkout and can keep files locked while ``git`` or ``uv`` updates
     the install. Stop only PIDs that the gateway discovery code identifies.
     """
@@ -8251,7 +8415,8 @@ def _pause_windows_gateways_for_update() -> dict | None:
 
     try:
         from gateway.status import terminate_pid
-        from prostor_cli.gateway import (
+        from hermes_cli.gateway import (
+            _capture_gateway_argv,
             _get_restart_drain_timeout,
             find_gateway_pids,
             find_profile_gateway_processes,
@@ -8266,6 +8431,31 @@ def _pause_windows_gateways_for_update() -> dict | None:
         logger.debug("Could not discover Windows gateway PIDs before update: %s", exc)
         return None
     if not running_pids:
+        # No gateway is running right now, but the user may have installed an
+        # autostart entry (Scheduled Task or Startup-folder login item) — that
+        # is an explicit "I want a gateway" signal. A gateway that died between
+        # updates (e.g. the spawning terminal/TUI closed, taking its child with
+        # it) would otherwise never come back: the autostart entry only fires on
+        # the next login, and the update flow's resume path only relaunched
+        # gateways that were running when the update began. Cold-start one after
+        # the update so an installed gateway is actually up post-update. Users
+        # who run gateway-less (no autostart entry) get nothing forced on them.
+        try:
+            from hermes_cli import gateway_windows
+
+            if gateway_windows.is_installed():
+                return {
+                    "resume_needed": True,
+                    "profiles": {},
+                    "unmapped_pids": [],
+                    "unmapped": [],
+                    "cold_start_if_installed": True,
+                }
+        except Exception as exc:
+            logger.debug(
+                "Could not check Windows gateway autostart state before update: %s",
+                exc,
+            )
         return None
 
     profile_processes = {}
@@ -8286,7 +8476,7 @@ def _pause_windows_gateways_for_update() -> dict | None:
         mapped_pids.append(int(pid))
         _write_update_planned_stop_marker(Path(proc.path), int(pid))
 
-    print("→ Stopping Windows gateway process(es) before updating Prostor...")
+    print("→ Stopping Windows gateway process(es) before updating Hermes...")
     try:
         drain_timeout = max(float(_get_restart_drain_timeout()), 1.0)
     except Exception:
@@ -8296,6 +8486,21 @@ def _pause_windows_gateways_for_update() -> dict | None:
         timeout=drain_timeout,
     )
     unmapped_pids = [pid for pid in running_pids if pid not in profile_processes]
+
+    # Snapshot each unmapped gateway's command line *before* we force-kill it,
+    # so ``_resume_windows_gateways_after_update`` can respawn it by replaying
+    # its own argv. Unmapped gateways are ones with no profile→PID-file mapping
+    # — e.g. a Windows Scheduled Task running ``pythonw.exe -m hermes_cli.main
+    # gateway run``. Without this snapshot they were force-killed and never
+    # restarted (the "Restart manually after update" dead-end from #50090).
+    unmapped: list[dict] = []
+    for pid in unmapped_pids:
+        argv = None
+        try:
+            argv = _capture_gateway_argv(int(pid))
+        except Exception as exc:
+            logger.debug("Could not capture argv for unmapped gateway %s: %s", pid, exc)
+        unmapped.append({"pid": int(pid), "argv": argv})
 
     force_killed = []
     for pid in sorted(set(survivors).union(unmapped_pids)):
@@ -8311,16 +8516,66 @@ def _pause_windows_gateways_for_update() -> dict | None:
         print(f"  → Force-stopped {len(force_killed)} gateway process(es)")
 
     if unmapped_pids:
+        respawnable = sum(1 for u in unmapped if u.get("argv"))
         print(
             f"  → Stopped {len(unmapped_pids)} gateway process(es) without profile mapping"
         )
-        print("    Restart manually after update: prostor gateway run")
+        if respawnable < len(unmapped_pids):
+            # Some had no recoverable command line (psutil missing, access
+            # denied, already gone): those still need a manual restart.
+            print("    Restart manually after update: hermes gateway run")
 
     return {
         "resume_needed": True,
         "profiles": profiles,
         "unmapped_pids": unmapped_pids,
+        "unmapped": unmapped,
     }
+
+
+def _cold_start_windows_gateway_after_update() -> None:
+    """Start a fresh detached gateway after update when one is installed but down.
+
+    Invoked from ``_resume_windows_gateways_after_update`` for the
+    ``cold_start_if_installed`` case: no gateway was running when the update
+    began, but an autostart entry (Scheduled Task / Startup-folder login item)
+    is installed, signalling the user wants a gateway. Unlike the relaunch
+    paths — which watch an old PID and respawn once it exits — this is a direct
+    fresh spawn via the same windowless ``pythonw`` + breakaway path that
+    ``hermes gateway start`` uses (``gateway_windows._spawn_detached``).
+
+    Best-effort and idempotent: re-checks that nothing is running first so a
+    concurrent start (e.g. the autostart entry firing) can't produce a
+    duplicate gateway.
+    """
+    if not _is_windows():
+        return
+    try:
+        from hermes_cli import gateway_windows
+        from hermes_cli.gateway import find_gateway_pids
+    except Exception as exc:
+        logger.debug("Could not load Windows gateway cold-start helpers: %s", exc)
+        return
+
+    # Re-check liveness right before spawning — between pause and resume the
+    # autostart entry may have already brought a gateway up, or a leftover
+    # process may have re-registered. Don't double-start.
+    try:
+        if list(find_gateway_pids(all_profiles=True)):
+            return
+    except Exception as exc:
+        logger.debug("Could not re-check gateway liveness before cold-start: %s", exc)
+        return
+
+    try:
+        pid = gateway_windows._spawn_detached()
+    except Exception as exc:
+        logger.debug("Could not cold-start Windows gateway after update: %s", exc)
+        return
+
+    if pid:
+        print()
+        print(f"  ✓ Starting Windows gateway after update (PID {pid})")
 
 
 def _resume_windows_gateways_after_update(token: dict | None) -> None:
@@ -8332,11 +8587,18 @@ def _resume_windows_gateways_after_update(token: dict | None) -> None:
         return
 
     profiles = token.get("profiles") or {}
-    if not profiles:
+    unmapped = token.get("unmapped") or []
+    cold_start = bool(token.get("cold_start_if_installed"))
+    if not profiles and not any(u.get("argv") for u in unmapped):
+        if cold_start:
+            _cold_start_windows_gateway_after_update()
         return
 
     try:
-        from prostor_cli.gateway import launch_detached_profile_gateway_restart
+        from hermes_cli.gateway import (
+            launch_detached_gateway_restart_by_cmdline,
+            launch_detached_profile_gateway_restart,
+        )
     except Exception as exc:
         logger.debug("Could not load Windows gateway restart helper: %s", exc)
         return
@@ -8353,9 +8615,33 @@ def _resume_windows_gateways_after_update(token: dict | None) -> None:
                 exc,
             )
 
+    # Respawn unmapped gateways (no profile→PID-file mapping, e.g. a Scheduled
+    # Task) by replaying the argv we snapshotted before force-killing them.
+    unmapped_relaunched = 0
+    for entry in unmapped:
+        argv = entry.get("argv")
+        old_pid = entry.get("pid")
+        if not argv or not old_pid:
+            continue
+        try:
+            if launch_detached_gateway_restart_by_cmdline(int(old_pid), list(argv)):
+                unmapped_relaunched += 1
+        except Exception as exc:
+            logger.debug(
+                "Could not restart unmapped Windows gateway (pid %s) after update: %s",
+                old_pid,
+                exc,
+            )
+
     if relaunched:
         print()
         print(f"  ✓ Restarting Windows gateway profile(s): {', '.join(relaunched)}")
+    if unmapped_relaunched:
+        if not relaunched:
+            print()
+        print(
+            f"  ✓ Restarting {unmapped_relaunched} unmapped Windows gateway process(es)"
+        )
 
 
 def _discard_lockfile_churn(git_cmd, repo_root):
@@ -8363,7 +8649,7 @@ def _discard_lockfile_churn(git_cmd, repo_root):
 
     npm rewrites lockfiles non-deterministically at install/build time. On a
     managed install those diffs are never intentional, so we discard them so
-    ``prostor update`` sees a clean tree instead of autostashing every run.
+    ``hermes update`` sees a clean tree instead of autostashing every run.
     Best-effort; only ever touches files named ``package-lock.json``.
     """
     try:
@@ -8402,13 +8688,13 @@ def _discard_lockfile_churn(git_cmd, repo_root):
 
 
 def cmd_update(args):
-    """Update Prostor Agent to the latest version.
+    """Update Hermes Agent to the latest version.
 
     Thin wrapper around ``_cmd_update_impl``: installs hangup protection,
     runs the update, then restores stdio on the way out (even on
     ``sys.exit`` or unhandled exceptions).
     """
-    from prostor_cli.config import (
+    from hermes_cli.config import (
         detect_install_method,
         format_docker_update_message,
         is_managed,
@@ -8416,7 +8702,7 @@ def cmd_update(args):
     )
 
     if is_managed():
-        managed_error("update Prostor Agent")
+        managed_error("update Hermes Agent")
         return
 
     # Docker users can't ``git pull`` — the image excludes ``.git`` from
@@ -8431,7 +8717,7 @@ def cmd_update(args):
 
     if getattr(args, "check", False):
         # --check honors --branch so the "any new commits?" answer matches
-        # what a subsequent `prostor update --branch=<x>` would actually pull.
+        # what a subsequent `hermes update --branch=<x>` would actually pull.
         branch = _resolve_update_branch(args)
         _cmd_update_check(
             branch=branch,
@@ -8452,14 +8738,14 @@ def cmd_update(args):
 
 
 def _cmd_update_pip(args):
-    """Update Prostor via pip (for PyPI installs)."""
-    from prostor_cli import __version__
-    from prostor_cli.config import is_uv_tool_install
+    """Update Hermes via pip (for PyPI installs)."""
+    from hermes_cli import __version__
+    from hermes_cli.config import is_uv_tool_install
 
     print(f"→ Current version: {__version__}")
     print("→ Checking PyPI for updates...")
 
-    from prostor_cli.managed_uv import ensure_uv, update_managed_uv
+    from hermes_cli.managed_uv import ensure_uv, update_managed_uv
 
     # Keep managed uv current before using it.
     update_managed_uv()
@@ -8482,13 +8768,13 @@ def _cmd_update_pip(args):
             print("✗ Detected a uv-tool install but managed uv install failed.")
             print("  Install uv manually: https://docs.astral.sh/uv/getting-started/installation/")
             sys.exit(1)
-        cmd = [uv, "tool", "upgrade", "prostor-agent"]
+        cmd = [uv, "tool", "upgrade", "hermes-agent"]
     elif pipx_managed and pipx:
         # pipx owns its own venv; ``pipx upgrade`` is the only correct path.
         # Matches scripts/auto-update.sh, which already uses pipx upgrade.
-        cmd = [pipx, "upgrade", "prostor-agent"]
+        cmd = [pipx, "upgrade", "hermes-agent"]
     elif uv:
-        cmd = [uv, "pip", "install", "--upgrade", "prostor-agent"]
+        cmd = [uv, "pip", "install", "--upgrade", "hermes-agent"]
         if in_venv:
             # Launcher shim runs the venv interpreter but doesn't export
             # VIRTUAL_ENV; without it uv errors "No virtual environment found".
@@ -8498,7 +8784,7 @@ def _cmd_update_pip(args):
             # interpreter, matching pip's default behaviour.
             cmd.insert(3, "--system")
     else:
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "prostor-agent"]
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "hermes-agent"]
 
     print(f"→ Running: {' '.join(cmd)}")
     run_kwargs = {}
@@ -8509,7 +8795,7 @@ def _cmd_update_pip(args):
         print("✗ Update failed")
         sys.exit(1)
 
-    print("✓ Update complete! Restart prostor to use the new version.")
+    print("✓ Update complete! Restart hermes to use the new version.")
 
 
 def _cmd_update_impl(args, gateway_mode: bool):
@@ -8536,7 +8822,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
     discard_local_changes = False
     if _non_interactive_update:
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
 
             _update_cfg = (load_config() or {}).get("updates", {})
             if isinstance(_update_cfg, dict):
@@ -8547,17 +8833,17 @@ def _cmd_update_impl(args, gateway_mode: bool):
             logger.debug("Could not read updates.non_interactive_local_changes: %s", exc)
             discard_local_changes = False
 
-    print("⚕ Updating Prostor Agent...")
+    print("⚕ Updating Hermes Agent...")
     print()
 
-    # On Windows, abort early if another prostor.exe is holding the venv shim
+    # On Windows, abort early if another hermes.exe is holding the venv shim
     # open. Continuing would result in a string of WinError 32 warnings and
     # then either a deferred-rename leftover or a failed git-pull fast path
     # that silently falls back to the slower ZIP route. See issue #26670.
     if _is_windows() and not getattr(args, "force", False):
         scripts_dir = _venv_scripts_dir()
         if scripts_dir is not None:
-            concurrent = _detect_concurrent_prostor_instances(scripts_dir)
+            concurrent = _detect_concurrent_hermes_instances(scripts_dir)
             if concurrent:
                 print(_format_concurrent_instances_message(concurrent, scripts_dir))
                 sys.exit(2)
@@ -8584,14 +8870,14 @@ def _cmd_update_impl(args, gateway_mode: bool):
         if sys.platform == "win32":
             use_zip_update = True
         else:
-            from prostor_cli.config import detect_install_method
+            from hermes_cli.config import detect_install_method
             method = detect_install_method(PROJECT_ROOT)
             if method == "pip":
                 _cmd_update_pip(args)
                 return
             print("✗ Not a git repository. Please reinstall:")
             print(
-                "  curl -fsSL https://github.com/maksim9510/Prostor/install.sh | bash"
+                "  curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
             )
             sys.exit(1)
 
@@ -8672,7 +8958,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     "✗ Authentication failed — check your git credentials or SSH key."
                 )
             else:
-                print("✗ Failed to fetch updates from origin.")
+                print(f"✗ Failed to fetch updates from origin.")
                 if stderr:
                     print(f"  {stderr.splitlines()[0]}")
             sys.exit(1)
@@ -8785,12 +9071,12 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # Snapshot critical state (state.db, config, pairing JSONs, etc.)
         # before pulling so a user can recover if something goes wrong.
         # Issue #15733 reported missing pairing data after an update; even
-        # though `git pull` can't touch $PROSTOR_HOME, this is cheap
+        # though `git pull` can't touch $HERMES_HOME, this is cheap
         # belt-and-suspenders insurance and gives the user something to
         # restore from via `/snapshot list` / `/snapshot restore <id>`.
         pre_update_snapshot_id = None
         try:
-            from prostor_cli.backup import create_quick_snapshot
+            from hermes_cli.backup import create_quick_snapshot
 
             pre_update_snapshot_id = create_quick_snapshot(label="pre-update", keep=1)
             if pre_update_snapshot_id:
@@ -8803,8 +9089,8 @@ def _cmd_update_impl(args, gateway_mode: bool):
         update_succeeded = False
         # Capture the pre-pull SHA so we can auto-roll-back if the new code
         # has a syntax error in a critical-path file (PR #28452 incident:
-        # orphan merge-conflict markers in prostor_cli/config.py bricked
-        # every user who ran ``prostor update`` for the 7 minutes between
+        # orphan merge-conflict markers in hermes_cli/config.py bricked
+        # every user who ran ``hermes update`` for the 7 minutes between
         # the bad commit and the fix landing).
         pre_pull_sha = _capture_head_sha(git_cmd, PROJECT_ROOT)
         try:
@@ -8840,7 +9126,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             # parse before declaring the update successful. If a bad commit
             # made it through CI (e.g. admin-merge bypass of a failing
             # ruff check), this catches it on the user side and rolls back
-            # so the CLI stays bootable. The user can then retry ``prostor
+            # so the CLI stays bootable. The user can then retry ``hermes
             # update`` later once a fix lands upstream.
             syntax_ok, failing_path, syntax_error = _validate_critical_files_syntax(
                 PROJECT_ROOT
@@ -8865,7 +9151,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     )
                     if rollback_result.returncode == 0:
                         print("  ✓ Rollback complete — your install is unchanged.")
-                        print("  Try ``prostor update`` again later once a fix lands.")
+                        print("  Try ``hermes update`` again later once a fix lands.")
                     else:
                         print("  ✗ Rollback failed. Recover manually with:")
                         print(f"    cd {PROJECT_ROOT} && git reset --hard {pre_pull_sha}")
@@ -8886,7 +9172,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     print(
                         f"  ℹ️  Local changes preserved in stash (ref: {auto_stash_ref})"
                     )
-                    print("  Restore manually with: git stash apply")
+                    print(f"  Restore manually with: git stash apply")
                 elif discard_local_changes:
                     # Non-interactive update + user opted into discarding local
                     # source edits (updates.non_interactive_local_changes:
@@ -8909,7 +9195,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
 
         # Clear stale .pyc bytecode cache — prevents ImportError on gateway
         # restart when updated source references names that didn't exist in
-        # the old bytecode (e.g. get_prostor_home added to prostor_constants).
+        # the old bytecode (e.g. get_hermes_home added to hermes_constants).
         removed = _clear_bytecode_cache(PROJECT_ROOT)
         if removed:
             print(
@@ -8926,12 +9212,12 @@ def _cmd_update_impl(args, gateway_mode: bool):
         #
         # Drop the interrupted-install breadcrumb BEFORE touching the venv. If
         # the install is killed mid-flight (Ctrl-C, terminal close, WSL OOM),
-        # the marker survives and the next ``prostor`` launch finishes the
+        # the marker survives and the next ``hermes`` launch finishes the
         # install via ``_recover_from_interrupted_install``. Cleared only after
         # the install + core-dependency verification completes below.
         _write_update_incomplete_marker()
         print("→ Updating Python dependencies...")
-        from prostor_cli.managed_uv import ensure_uv, update_managed_uv
+        from hermes_cli.managed_uv import ensure_uv, update_managed_uv
 
         # Keep managed uv current — runs `uv self update` if we already have one.
         update_managed_uv()
@@ -8995,19 +9281,19 @@ def _cmd_update_impl(args, gateway_mode: bool):
         _build_web_ui(PROJECT_ROOT / "web")
 
         # Rebuild the desktop app if the source tree changed since the last
-        # build.  ``prostor desktop --build-only`` uses the content-hash stamp
+        # build.  ``hermes desktop --build-only`` uses the content-hash stamp
         # internally, so this is effectively a no-op when nothing changed.
         # Only bother if the user has a desktop app installed (indicated by
         # an existing packaged executable or desktop dist); people who have
-        # never run ``prostor desktop`` shouldn't be forced into a full
-        # Electron build by ``prostor update``.
+        # never run ``hermes desktop`` shouldn't be forced into a full
+        # Electron build by ``hermes update``.
         desktop_dir = PROJECT_ROOT / "apps" / "desktop"
         has_desktop_app = _desktop_packaged_executable(desktop_dir) is not None or _desktop_dist_exists(desktop_dir)
-        from prostor_constants import find_node_executable
+        from hermes_constants import find_node_executable
 
         if (desktop_dir / "package.json").exists() and find_node_executable("npm") and has_desktop_app:
             print("→ Checking if desktop app needs rebuilding...")
-            _desktop_build_cmd = [sys.executable, "-m", "prostor_cli.main", "desktop", "--build-only"]
+            _desktop_build_cmd = [sys.executable, "-m", "hermes_cli.main", "desktop", "--build-only"]
             # Stream the build output live (long Electron builds otherwise
             # look hung). On the rare nonzero exit, retry once after waiting
             # again for the venv — this covers a still-settling rebuild window
@@ -9016,7 +9302,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             if build_result.returncode != 0:
                 build_result = subprocess.run(_desktop_build_cmd, cwd=PROJECT_ROOT, check=False)
             if build_result.returncode != 0:
-                print("  ⚠ Desktop build failed (non-fatal; run `prostor desktop` to retry)")
+                print("  ⚠ Desktop build failed (non-fatal; run `hermes desktop` to retry)")
 
         print()
         print("✓ Code updated!")
@@ -9024,13 +9310,13 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # Seed the model-catalog disk cache from the freshly-pulled checkout.
         # The repo ships the canonical catalog at
         # website/static/api/model-catalog.json, and `git pull` just made it
-        # current — so copy it straight over ~/.prostor/cache/model_catalog.json
+        # current — so copy it straight over ~/.hermes/cache/model_catalog.json
         # instead of waiting on a network fetch (which can be bot-gated or hit a
         # Portal hiccup). Keeps the model picker's curated/free lists in sync
         # with the version the user just installed. Non-fatal on failure: the
         # normal network refresh still applies on the next picker open.
         try:
-            from prostor_cli.model_catalog import seed_cache_from_checkout
+            from hermes_cli.model_catalog import seed_cache_from_checkout
 
             if seed_cache_from_checkout(PROJECT_ROOT):
                 print("  ✓ Model catalog cache refreshed from checkout")
@@ -9038,13 +9324,12 @@ def _cmd_update_impl(args, gateway_mode: bool):
             logger.debug("Model catalog seed during update failed: %s", e)
 
         # After git pull, source files on disk are newer than cached Python
-        # modules in this process.  Reload prostor_constants so that any lazy
+        # modules in this process.  Reload hermes_constants so that any lazy
         # import executed below (skills sync, gateway restart) sees new
-        # attributes like display_prostor_home() added since the last release.
+        # attributes like display_hermes_home() added since the last release.
         try:
             import importlib
-
-            import prostor_constants as _hc
+            import hermes_constants as _hc
 
             importlib.reload(_hc)
         except Exception:
@@ -9066,7 +9351,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             if result.get("user_modified"):
                 print(f"  ~ {len(result['user_modified'])} user-modified (kept)")
                 print(
-                    "    → see them: prostor skills list-modified  "
+                    "    → see them: hermes skills list-modified  "
                     "(diff/reset to resume updates)"
                 )
             if result.get("cleaned"):
@@ -9077,12 +9362,12 @@ def _cmd_update_impl(args, gateway_mode: bool):
             logger.debug("Skills sync during update failed: %s", e)
 
         # Sync bundled skills to all profiles (including the active one).
-        # seed_profile_skills() uses subprocess with an explicit PROSTOR_HOME so
-        # it is not affected by sync_skills()'s module-level PROSTOR_HOME cache,
+        # seed_profile_skills() uses subprocess with an explicit HERMES_HOME so
+        # it is not affected by sync_skills()'s module-level HERMES_HOME cache,
         # which means the active profile is reliably synced regardless of whether
-        # the caller's PROSTOR_HOME env var points at the default or a named profile.
+        # the caller's HERMES_HOME env var points at the default or a named profile.
         try:
-            from prostor_cli.profiles import (
+            from hermes_cli.profiles import (
                 list_profiles,
                 seed_profile_skills,
             )
@@ -9120,7 +9405,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # .env-seeding fix (#44792). Copies the default install's .env so
         # those profiles keep the credentials they were effectively using.
         try:
-            from prostor_cli.profiles import backfill_profile_envs
+            from hermes_cli.profiles import backfill_profile_envs
 
             backfilled = backfill_profile_envs(quiet=True)
             if backfilled:
@@ -9146,10 +9431,10 @@ def _cmd_update_impl(args, gateway_mode: bool):
         print()
         print("→ Checking configuration for new options...")
 
-        from prostor_cli.config import (
-            check_config_version,
-            get_missing_config_fields,
+        from hermes_cli.config import (
             get_missing_env_vars,
+            get_missing_config_fields,
+            check_config_version,
             migrate_config,
         )
 
@@ -9178,12 +9463,11 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 print("  ✓ Config format updated (no new settings to configure)")
             except Exception as _mig_err:
                 print(f"  ⚠️  Config format update failed: {_mig_err}")
-                print("     Run 'prostor config migrate' to retry.")
+                print("     Run 'hermes config migrate' to retry.")
         elif needs_migration:
             print()
             # Show WHAT changed, not just a count, so the user can make an
             # informed yes/no decision (previously the prompt named nothing).
-
             def _print_items(items, label, key, fallback_key=None):
                 if not items:
                     return
@@ -9257,10 +9541,10 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     print()
                     print("✓ Configuration updated!")
                 if (gateway_mode or assume_yes or response == "auto") and missing_env:
-                    print("  ℹ API keys require manual entry: prostor config migrate")
+                    print("  ℹ API keys require manual entry: hermes config migrate")
             else:
                 print()
-                print("Skipped. Run 'prostor config migrate' later to configure.")
+                print("Skipped. Run 'hermes config migrate' later to configure.")
         else:
             print("  ✓ Configuration is up to date")
 
@@ -9269,7 +9553,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # job (issue #34600). If the live file is now empty while the
         # pre-update snapshot held jobs, restore it and warn loudly.
         try:
-            from prostor_cli.backup import restore_cron_jobs_if_emptied
+            from hermes_cli.backup import restore_cron_jobs_if_emptied
 
             cron_restore = restore_cron_jobs_if_emptied(pre_update_snapshot_id)
             if cron_restore:
@@ -9298,7 +9582,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # Most-recent curator run notice — show-once per run. Surfaces the
         # rename map (`old-name → umbrella`) on the high-attention update
         # surface so users learn about consolidations without having to
-        # check `prostor curator status`. Self-stamps after printing so it
+        # check `hermes curator status`. Self-stamps after printing so it
         # never repeats for the same run.
         try:
             _print_curator_recent_run_notice()
@@ -9313,14 +9597,14 @@ def _cmd_update_impl(args, gateway_mode: bool):
             logger.debug("FHS PATH guard check failed: %s", e)
 
         # Refresh the cua-driver binary used by the Computer Use toolset.
-        # The upstream installer is gated on macOS and on the binary already
-        # being on PATH, so this is a no-op for users who don't have it.
-        # Tying the refresh to ``prostor update`` gives users a predictable
-        # cadence (matches when they pull new agent code) without adding
-        # startup latency or a per-launch GitHub API call.
+        # The upstream installer is gated on supported platforms and on the
+        # binary already being on PATH, so this is a no-op for users who
+        # don't have it. Tying the refresh to ``hermes update`` gives users a
+        # predictable cadence (matches when they pull new agent code) without
+        # adding startup latency or a per-launch GitHub API call.
         try:
-            if sys.platform == "darwin" and shutil.which("cua-driver"):
-                from prostor_cli.tools_config import install_cua_driver
+            if sys.platform in ("darwin", "win32", "linux") and shutil.which("cua-driver"):
+                from hermes_cli.tools_config import install_cua_driver
 
                 print()
                 print("→ Refreshing cua-driver (Computer Use)...")
@@ -9329,7 +9613,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             logger.debug("cua-driver refresh failed: %s", e)
 
         # Write exit code *before* the gateway restart attempt.
-        # When running as ``prostor update --gateway`` (spawned by the gateway's
+        # When running as ``hermes update --gateway`` (spawned by the gateway's
         # /update command), this process lives inside the gateway's systemd
         # cgroup.  A graceful SIGUSR1 restart keeps the drain loop alive long
         # enough for the exit-code marker to be written below, but the
@@ -9345,7 +9629,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # before we attempt the restart — ensures the new gateway sees it
         # regardless of how we die.
         if gateway_mode:
-            _exit_code_path = get_prostor_home() / ".update_exit_code"
+            _exit_code_path = get_hermes_home() / ".update_exit_code"
             try:
                 _exit_code_path.write_text("0")
             except OSError:
@@ -9355,19 +9639,18 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # The code update (git pull) is shared across all profiles, so every
         # running gateway needs restarting to pick up the new code.
         try:
-            import signal as _signal
-
-            from prostor_cli.gateway import (
+            from hermes_cli.gateway import (
+                is_macos,
+                supports_systemd_services,
                 _ensure_user_systemd_env,
+                find_gateway_pids,
+                find_profile_gateway_processes,
+                launch_detached_profile_gateway_restart,
                 _get_service_pids,
                 _graceful_restart_via_sigusr1,
                 _wait_for_gateway_exit,
-                find_gateway_pids,
-                find_profile_gateway_processes,
-                is_macos,
-                launch_detached_profile_gateway_restart,
-                supports_systemd_services,
             )
+            import signal as _signal
 
             def _wait_for_service_active(
                 scope_cmd_: list,
@@ -9468,7 +9751,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 non-interactive sudo (``sudo -n``) — first a blanket probe,
                 then a targeted ``systemctl reset-failed`` probe so a
                 least-privilege sudoers entry scoped to
-                ``systemctl ... prostor-gateway*`` also qualifies
+                ``systemctl ... hermes-gateway*`` also qualifies
                 (``reset-failed`` is an idempotent no-op we run before every
                 privileged restart anyway).  If neither works, return None —
                 the caller must SKIP the restart (without draining the
@@ -9495,7 +9778,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                         sudo_ok = _probe.returncode == 0
                         if not sudo_ok:
                             # Blanket sudo refused — a targeted sudoers entry
-                            # (NOPASSWD for systemctl ... prostor-gateway*)
+                            # (NOPASSWD for systemctl ... hermes-gateway*)
                             # may still allow the exact commands we need.
                             _probe = subprocess.run(
                                 sudo_cmd + ["reset-failed", svc_name_],
@@ -9516,14 +9799,14 @@ def _cmd_update_impl(args, gateway_mode: bool):
             # systemd units without SIGUSR1 wiring this wait just times out
             # and we fall back to ``systemctl restart`` (the old behaviour).
             try:
-                from prostor_constants import (
+                from hermes_constants import (
                     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT as _DEFAULT_DRAIN,
                 )
             except Exception:
                 _DEFAULT_DRAIN = 60.0
             _cfg_drain = None
             try:
-                from prostor_cli.config import load_config
+                from hermes_cli.config import load_config
 
                 _cfg_agent = load_config().get("agent") or {}
                 _cfg_drain = _cfg_agent.get("restart_drain_timeout")
@@ -9546,7 +9829,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             relaunched_profiles = []
 
             # --- Systemd services (Linux) ---
-            # Discover all prostor-gateway* units (default + profiles)
+            # Discover all hermes-gateway* units (default + profiles)
             if supports_systemd_services():
                 try:
                     _ensure_user_systemd_env()
@@ -9562,7 +9845,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                             scope_cmd
                             + [
                                 "list-units",
-                                "prostor-gateway*",
+                                "hermes-gateway*",
                                 "--plain",
                                 "--no-legend",
                                 "--no-pager",
@@ -9577,7 +9860,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                                 continue
                             unit = parts[
                                 0
-                            ]  # e.g. prostor-gateway.service or prostor-gateway-coder.service
+                            ]  # e.g. hermes-gateway.service or hermes-gateway-coder.service
                             if not unit.endswith(".service"):
                                 continue
                             svc_name = unit.removesuffix(".service")
@@ -9736,7 +10019,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                                     f"  ⚠ {svc_name} is a system service and restarting it needs root.\n"
                                     f"    Restart it manually to load the new version:\n"
                                     f"      sudo systemctl restart {svc_name}\n"
-                                    f"    To let `prostor update` restart it automatically, allow\n"
+                                    f"    To let `hermes update` restart it automatically, allow\n"
                                     f"    passwordless sudo for systemctl, or run updates with sudo."
                                 )
                                 continue
@@ -9755,7 +10038,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                             # the RestartSec backoff and leave the unit
                             # dead.  Clearing the failed state first makes
                             # the restart idempotent.  Mirrors the recovery
-                            # path in `prostor gateway restart`
+                            # path in `hermes gateway restart`
                             # (`systemd_restart()`) as of PR #20949.
                             subprocess.run(
                                 _manage_cmd + ["reset-failed", svc_name],
@@ -9831,16 +10114,16 @@ def _cmd_update_impl(args, gateway_mode: bool):
                         print(
                             f"  ⚠ systemctl timed out during the {scope}-scope "
                             f"gateway restart ({exc.cmd if exc.cmd else 'unknown command'}). "
-                            f"Check the gateway with: prostor gateway status"
+                            f"Check the gateway with: hermes gateway status"
                         )
 
             # --- Launchd services (macOS) ---
             if is_macos():
                 try:
-                    from prostor_cli.gateway import (
+                    from hermes_cli.gateway import (
+                        launchd_restart,
                         get_launchd_label,
                         get_launchd_plist_path,
-                        launchd_restart,
                     )
 
                     plist_path = get_launchd_plist_path()
@@ -9928,10 +10211,10 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 unmapped_count = len(killed_pids) - len(relaunched_profiles)
                 if unmapped_count:
                     print(f"  → Stopped {unmapped_count} manual gateway process(es)")
-                    print("    Restart manually: prostor gateway run")
+                    print("    Restart manually: hermes gateway run")
                     if unmapped_count > 1:
                         print(
-                            "    (or: prostor -p <profile> gateway run  for each profile)"
+                            "    (or: hermes -p <profile> gateway run  for each profile)"
                         )
 
             if not restarted_services and not killed_pids:
@@ -9985,30 +10268,30 @@ def _cmd_update_impl(args, gateway_mode: bool):
 
         _resume_windows_gateways_after_update(_windows_gateway_resume)
 
-        # Warn if legacy Prostor gateway unit files are still installed.
-        # When both prostor.service (from a pre-rename install) and the
-        # current prostor-gateway.service are enabled, they SIGTERM-fight
+        # Warn if legacy Hermes gateway unit files are still installed.
+        # When both hermes.service (from a pre-rename install) and the
+        # current hermes-gateway.service are enabled, they SIGTERM-fight
         # for the same bot token (see PR #11909). Flagging here means
-        # every `prostor update` surfaces the issue until the user migrates.
+        # every `hermes update` surfaces the issue until the user migrates.
         try:
-            from prostor_cli.gateway import (
-                _find_legacy_prostor_units,
-                has_legacy_prostor_units,
+            from hermes_cli.gateway import (
+                has_legacy_hermes_units,
+                _find_legacy_hermes_units,
                 supports_systemd_services,
             )
 
-            if supports_systemd_services() and has_legacy_prostor_units():
+            if supports_systemd_services() and has_legacy_hermes_units():
                 print()
-                print("⚠ Legacy Prostor gateway unit(s) detected:")
-                for _name, path, is_sys in _find_legacy_prostor_units():
+                print("⚠ Legacy Hermes gateway unit(s) detected:")
+                for name, path, is_sys in _find_legacy_hermes_units():
                     scope = "system" if is_sys else "user"
                     print(f"    {path}  ({scope} scope)")
                 print()
-                print("  These pre-rename units (prostor.service) fight the current")
-                print("  prostor-gateway.service for the bot token and cause SIGTERM")
+                print("  These pre-rename units (hermes.service) fight the current")
+                print("  hermes-gateway.service for the bot token and cause SIGTERM")
                 print("  flap loops. Remove them with:")
                 print()
-                print("    prostor gateway migrate-legacy")
+                print("    hermes gateway migrate-legacy")
                 print()
                 print("  (add `sudo` if any are in system scope)")
         except Exception as e:
@@ -10023,7 +10306,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
 
         print()
         print("Tip: You can now select a provider and model:")
-        print("  prostor model              # Select provider and model")
+        print("  hermes model              # Select provider and model")
 
     except subprocess.CalledProcessError as e:
         if sys.platform == "win32":
@@ -10039,7 +10322,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
 def _coalesce_session_name_args(argv: list) -> list:
     """Join unquoted multi-word session names after -c/--continue and -r/--resume.
 
-    When a user types ``prostor -c Pokemon Agent Dev`` without quoting the
+    When a user types ``hermes -c Pokemon Agent Dev`` without quoting the
     session name, argparse sees three separate tokens.  This function merges
     them into a single argument so argparse receives
     ``['-c', 'Pokemon Agent Dev']`` instead.
@@ -10116,27 +10399,27 @@ def _coalesce_session_name_args(argv: list) -> list:
 
 def cmd_profile(args):
     """Profile management — create, delete, list, switch, alias."""
-    from prostor_cli.profiles import (
-        _get_wrapper_dir,
-        _is_wrapper_dir_in_path,
-        check_alias_collision,
-        create_profile,
-        create_wrapper_script,
-        delete_profile,
-        get_active_profile_name,
+    from hermes_cli.profiles import (
         list_profiles,
-        remove_wrapper_script,
+        create_profile,
+        delete_profile,
         seed_profile_skills,
         set_active_profile,
+        get_active_profile_name,
+        check_alias_collision,
+        create_wrapper_script,
+        remove_wrapper_script,
+        _is_wrapper_dir_in_path,
+        _get_wrapper_dir,
     )
-    from prostor_constants import display_prostor_home
+    from hermes_constants import display_hermes_home
 
     action = getattr(args, "profile_action", None)
 
     if action is None:
-        # Bare `prostor profile` — show current profile status
+        # Bare `hermes profile` — show current profile status
         profile_name = get_active_profile_name()
-        dhh = display_prostor_home()
+        dhh = display_hermes_home()
         print(f"\nActive profile: {profile_name}")
         print(f"Path:           {dhh}")
 
@@ -10154,7 +10437,7 @@ def cmd_profile(args):
                 print(f"Skills:         {p.skill_count} installed")
                 if p.alias_path:
                     alias_display = p.alias_name or p.name
-                    print(f"Alias:          {alias_display} → prostor -p {p.name}")
+                    print(f"Alias:          {alias_display} → hermes -p {p.name}")
                 break
         print()
         return
@@ -10202,7 +10485,7 @@ def cmd_profile(args):
         try:
             set_active_profile(name)
             if name == "default":
-                print("Switched to: default (~/.prostor)")
+                print(f"Switched to: default (~/.hermes)")
             else:
                 print(f"Switched to: {name}")
         except (ValueError, FileNotFoundError) as e:
@@ -10270,7 +10553,9 @@ def cmd_profile(args):
                     print(f"{copied} bundled skills synced.")
                 else:
                     print(
-                        f"⚠ Skills could not be seeded. Run `{name} update` to retry."
+                        "⚠ Skills could not be seeded. Run `{} update` to retry.".format(
+                            name
+                        )
                     )
 
             # Create wrapper alias
@@ -10279,9 +10564,9 @@ def cmd_profile(args):
                 if collision:
                     print(f"\n⚠ Cannot create alias '{name}' — {collision}")
                     print(
-                        f"  Choose a custom alias:  prostor profile alias {name} --name <custom>"
+                        f"  Choose a custom alias:  hermes profile alias {name} --name <custom>"
                     )
-                    print(f"  Or access via flag:     prostor -p {name} chat")
+                    print(f"  Or access via flag:     hermes -p {name} chat")
                 else:
                     wrapper_path = create_wrapper_script(name)
                     if wrapper_path:
@@ -10289,9 +10574,9 @@ def cmd_profile(args):
                         if not _is_wrapper_dir_in_path():
                             print(f"\n⚠ {_get_wrapper_dir()} is not in your PATH.")
                             print(
-                                "  Add to your shell config (~/.bashrc or ~/.zshrc):"
+                                f"  Add to your shell config (~/.bashrc or ~/.zshrc):"
                             )
-                            print('    export PATH="$HOME/.local/bin:$PATH"')
+                            print(f'    export PATH="$HOME/.local/bin:$PATH"')
 
             # Profile dir for display
             try:
@@ -10300,7 +10585,7 @@ def cmd_profile(args):
                 profile_dir_display = str(profile_dir)
 
             # Next steps
-            print("\nNext steps:")
+            print(f"\nNext steps:")
             print(f"  {name} setup              Configure API keys and model")
             print(f"  {name} chat               Start chatting")
             print(f"  {name} gateway start      Start the messaging gateway")
@@ -10311,7 +10596,7 @@ def cmd_profile(args):
                 print(
                     f"\n  ⚠ This profile has no API keys yet. Run '{name} setup' first,"
                 )
-                print("    or it will inherit keys from your shell environment.")
+                print(f"    or it will inherit keys from your shell environment.")
                 print(f"  Edit {profile_dir_display}/SOUL.md to customize personality")
             print()
 
@@ -10332,7 +10617,7 @@ def cmd_profile(args):
         # Read or write a profile's description. The description is
         # consumed by the kanban decomposer to route tasks based on
         # role instead of name alone.
-        from prostor_cli import profiles as _profiles_mod
+        from hermes_cli import profiles as _profiles_mod
 
         all_flag = bool(getattr(args, "all_missing", False))
         auto_flag = bool(getattr(args, "auto", False))
@@ -10363,7 +10648,7 @@ def cmd_profile(args):
         if name and not text_value and not auto_flag:
             try:
                 if _profiles_mod.normalize_profile_name(name) == "default":
-                    from prostor_constants import get_prostor_home as _hh
+                    from hermes_constants import get_hermes_home as _hh
                     profile_dir = Path(_hh())
                 else:
                     profile_dir = _profiles_mod.get_profile_dir(name)
@@ -10386,7 +10671,7 @@ def cmd_profile(args):
         if text_value:
             try:
                 if _profiles_mod.normalize_profile_name(name) == "default":
-                    from prostor_constants import get_prostor_home as _hh
+                    from hermes_constants import get_hermes_home as _hh
                     profile_dir = Path(_hh())
                 else:
                     profile_dir = _profiles_mod.get_profile_dir(name)
@@ -10402,7 +10687,7 @@ def cmd_profile(args):
             sys.exit(0)
 
         # --auto path: invoke the LLM describer.
-        from prostor_cli import profile_describer as _pd
+        from hermes_cli import profile_describer as _pd
 
         if all_flag:
             targets = _pd.list_describable_profiles(missing_only=True)
@@ -10431,15 +10716,15 @@ def cmd_profile(args):
 
     elif action == "show":
         name = args.profile_name
-        from prostor_cli.profiles import (
-            _check_gateway_running,
-            _count_skills,
-            _get_wrapper_dir,
-            _read_config_model,
-            _read_distribution_meta,
-            find_alias_for_profile,
+        from hermes_cli.profiles import (
             get_profile_dir,
             profile_exists,
+            _read_config_model,
+            _check_gateway_running,
+            _count_skills,
+            _read_distribution_meta,
+            _get_wrapper_dir,
+            find_alias_for_profile,
         )
 
         if not profile_exists(name):
@@ -10468,11 +10753,11 @@ def cmd_profile(args):
             print(f"Distribution: {dist_name}@{dist_version or '?'}")
             if dist_source:
                 print(f"Installed from: {dist_source}")
-            print(f"  (run `prostor profile info {name}` for full manifest)")
+            print(f"  (run `hermes profile info {name}` for full manifest)")
         if alias_name:
             is_windows = sys.platform == "win32"
             wrapper = _get_wrapper_dir() / (f"{alias_name}.bat" if is_windows else alias_name)
-            print(f"Alias:   {alias_name} → prostor -p {name}  ({wrapper})")
+            print(f"Alias:   {alias_name} → hermes -p {name}  ({wrapper})")
         print()
 
     elif action == "alias":
@@ -10480,7 +10765,7 @@ def cmd_profile(args):
         remove = getattr(args, "remove", False)
         custom_name = getattr(args, "alias_name", None)
 
-        from prostor_cli.profiles import profile_exists
+        from hermes_cli.profiles import profile_exists
 
         if not profile_exists(name):
             print(f"Error: Profile '{name}' does not exist.")
@@ -10507,7 +10792,7 @@ def cmd_profile(args):
                     print(f"⚠ {_get_wrapper_dir()} is not in your PATH.")
 
     elif action == "rename":
-        from prostor_cli.profiles import rename_profile
+        from hermes_cli.profiles import rename_profile
 
         try:
             new_dir = rename_profile(args.old_name, args.new_name)
@@ -10518,7 +10803,7 @@ def cmd_profile(args):
             sys.exit(1)
 
     elif action == "export":
-        from prostor_cli.profiles import export_profile
+        from hermes_cli.profiles import export_profile
 
         name = args.profile_name
         output = args.output or f"{name}.tar.gz"
@@ -10530,7 +10815,7 @@ def cmd_profile(args):
             sys.exit(1)
 
     elif action == "import":
-        from prostor_cli.profiles import import_profile
+        from hermes_cli.profiles import import_profile
 
         try:
             profile_dir = import_profile(
@@ -10552,18 +10837,17 @@ def cmd_profile(args):
 
     elif action == "install":
         import tempfile
-
-        from prostor_cli.profile_distribution import (
-            DistributionError,
-            install_distribution,
+        from hermes_cli.profile_distribution import (
             plan_install,
+            install_distribution,
+            DistributionError,
         )
 
         try:
             # Preview: stage the distribution into a scratch dir, show the
             # manifest, then do the real install.  The double-stage avoids
             # any side-effects if the user declines.
-            with tempfile.TemporaryDirectory(prefix="prostor_dist_preview_") as tmp:
+            with tempfile.TemporaryDirectory(prefix="hermes_dist_preview_") as tmp:
                 plan = plan_install(
                     args.source,
                     Path(tmp),
@@ -10596,20 +10880,20 @@ def cmd_profile(args):
             if plan.has_cron:
                 print(
                     "  Cron jobs were included but are NOT scheduled automatically.\n"
-                    f"  Review them with:  prostor -p {plan.manifest.name} cron list"
+                    f"  Review them with:  hermes -p {plan.manifest.name} cron list"
                 )
-            print(f"\n  Use with:      prostor -p {plan.manifest.name} chat")
+            print(f"\n  Use with:      hermes -p {plan.manifest.name} chat")
         except (DistributionError, ValueError) as e:
             print(f"Error: {e}")
             sys.exit(1)
 
     elif action == "update":
-        from prostor_cli.profile_distribution import (
-            DistributionError,
-            read_manifest,
+        from hermes_cli.profile_distribution import (
             update_distribution,
+            read_manifest,
+            DistributionError,
         )
-        from prostor_cli.profiles import get_profile_dir, normalize_profile_name
+        from hermes_cli.profiles import get_profile_dir, normalize_profile_name
 
         name = args.profile_name
         try:
@@ -10618,7 +10902,7 @@ def cmd_profile(args):
             if current is None:
                 print(
                     f"Error: Profile '{canon}' is not a distribution (no distribution.yaml). "
-                    "Only profiles installed via `prostor profile install` can be updated."
+                    "Only profiles installed via `hermes profile install` can be updated."
                 )
                 sys.exit(1)
 
@@ -10644,14 +10928,14 @@ def cmd_profile(args):
             if plan.has_cron:
                 print(
                     "  Cron files were refreshed.  Review with:  "
-                    f"prostor -p {plan.manifest.name} cron list"
+                    f"hermes -p {plan.manifest.name} cron list"
                 )
         except (DistributionError, ValueError) as e:
             print(f"Error: {e}")
             sys.exit(1)
 
     elif action == "info":
-        from prostor_cli.profile_distribution import DistributionError, describe_distribution
+        from hermes_cli.profile_distribution import describe_distribution, DistributionError
 
         try:
             data = describe_distribution(args.profile_name)
@@ -10672,8 +10956,8 @@ def cmd_profile(args):
             print(f"Author:       {data['author']}")
         if data.get("license"):
             print(f"License:      {data['license']}")
-        if data.get("prostor_requires"):
-            print(f"Requires:     Prostor {data['prostor_requires']}")
+        if data.get("hermes_requires"):
+            print(f"Requires:     Hermes {data['hermes_requires']}")
         if data.get("source"):
             print(f"Source:       {data['source']}")
         if data.get("installed_at"):
@@ -10694,15 +10978,15 @@ def cmd_profile(args):
 
 def _render_distribution_plan(plan) -> None:
     """Print a human-readable summary of a pending distribution install."""
-    from prostor_cli.profile_distribution import MANIFEST_FILENAME
+    from hermes_cli.profile_distribution import MANIFEST_FILENAME
     mf = plan.manifest
     print(f"\nDistribution: {mf.name} v{mf.version}")
     if mf.description:
         print(f"  {mf.description}")
     if mf.author:
         print(f"  Author:   {mf.author}")
-    if mf.prostor_requires:
-        print(f"  Requires: Prostor {mf.prostor_requires}")
+    if mf.hermes_requires:
+        print(f"  Requires: Hermes {mf.hermes_requires}")
     print(f"  Source:   {plan.provenance}")
     print(f"  Target:   {plan.target_dir}")
     if plan.existing:
@@ -10755,19 +11039,19 @@ def _render_distribution_plan(plan) -> None:
 
 
 def _report_dashboard_status() -> int:
-    """Print ``prostor dashboard`` PIDs and return the count.
+    """Print ``hermes dashboard`` PIDs and return the count.
 
     Uses the same detection logic as ``_find_stale_dashboard_pids`` (the
-    current process is excluded, but since ``prostor dashboard --status``
+    current process is excluded, but since ``hermes dashboard --status``
     runs in a short-lived CLI process that never matches the pattern,
     the exclusion is irrelevant here).
     """
     pids = _find_stale_dashboard_pids()
     if not pids:
-        print("No prostor dashboard processes running.")
+        print("No hermes dashboard processes running.")
         return 0
 
-    print(f"{len(pids)} prostor dashboard process(es) running:")
+    print(f"{len(pids)} hermes dashboard process(es) running:")
     for pid in pids:
         # Best-effort: show the full cmdline so users can tell profiles apart.
         cmdline = ""
@@ -10806,6 +11090,147 @@ def _dashboard_listening(host: str, port: int) -> bool:
         return False
 
 
+def _maybe_setup_dashboard_auth_interactively(args) -> None:
+    """Offer to configure dashboard auth when a non-loopback bind has none.
+
+    Called from ``cmd_dashboard`` just before ``start_server``. The auth
+    gate engages on every non-loopback bind (``--insecure`` is a no-op since
+    the June 2026 hardening), and ``start_server`` fails closed when no
+    ``DashboardAuthProvider`` is registered. Rather than greet an interactive
+    operator with that hard error, prompt them to set up the bundled
+    username/password provider on the spot — or point them at
+    ``hermes dashboard register`` for OAuth.
+
+    No-ops (so the existing fail-closed ``SystemExit`` remains the backstop)
+    when:
+      * the bind is loopback (gate never engages), or
+      * a provider is already registered, or
+      * stdin/stdout isn't a TTY (Docker/s6, CI, piped ``--no-open`` runs).
+    """
+    host = getattr(args, "host", "127.0.0.1") or "127.0.0.1"
+
+    try:
+        from hermes_cli.web_server import should_require_auth
+        if not should_require_auth(host):
+            return  # loopback bind — gate never engages
+    except Exception:
+        return  # if we can't tell, defer to start_server's own gate
+
+    try:
+        from hermes_cli.dashboard_auth import list_providers
+        if list_providers():
+            return  # a provider is already configured/registered
+    except Exception:
+        return
+
+    # Only prompt an interactive operator. Non-TTY callers fall through to
+    # start_server's fail-closed SystemExit (with the corrected fix hint).
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return
+
+    print()
+    print(
+        f"⚠ The dashboard is binding to a non-loopback address ({host}) and "
+        f"needs an auth provider."
+    )
+    print(
+        "  Non-loopback binds always require authentication "
+        "(--insecure no longer bypasses this)."
+    )
+    print()
+    print("  How do you want to authenticate the dashboard?")
+    print("    [1] Username & password (quickest; for a trusted LAN / VPN)")
+    print("    [2] OAuth via Nous Portal (run `hermes dashboard register`)")
+    print("    [3] Cancel")
+    print()
+
+    try:
+        choice = input("  Choice [1]: ").strip() or "1"
+    except (EOFError, KeyboardInterrupt):
+        print("\n  Cancelled.")
+        sys.exit(1)
+
+    if choice == "2":
+        print()
+        print(
+            "  Run this on the host where the dashboard lives, then start "
+            "the dashboard again:\n"
+            "    hermes dashboard register\n"
+            "  It provisions a Nous Portal OAuth client and writes "
+            "HERMES_DASHBOARD_OAUTH_CLIENT_ID into ~/.hermes/.env for you.\n"
+            "  Docs: https://hermes-agent.nousresearch.com/docs/"
+            "user-guide/features/web-dashboard#authentication-gated-mode"
+        )
+        sys.exit(0)
+
+    if choice not in ("1",):
+        print("  Cancelled.")
+        sys.exit(1)
+
+    # ── Username/password setup ──────────────────────────────────────────
+    import getpass
+    import secrets
+
+    print()
+    try:
+        username = input("  Username [admin]: ").strip() or "admin"
+        password = getpass.getpass("  Password: ")
+        confirm = getpass.getpass("  Confirm password: ")
+    except (EOFError, KeyboardInterrupt):
+        print("\n  Cancelled.")
+        sys.exit(1)
+
+    if not password:
+        print("  ✗ Empty password — aborting.")
+        sys.exit(1)
+    if password != confirm:
+        print("  ✗ Passwords don't match — aborting.")
+        sys.exit(1)
+
+    try:
+        from plugins.dashboard_auth.basic import hash_password
+    except Exception as exc:
+        print(f"  ✗ Could not load the password provider: {exc}")
+        sys.exit(1)
+
+    password_hash = hash_password(password)
+    # A stable token-signing secret so sessions survive a dashboard restart.
+    secret = secrets.token_urlsafe(32)
+
+    try:
+        from hermes_cli.config import load_config, save_config
+
+        cfg = load_config()
+        dash = cfg.setdefault("dashboard", {})
+        basic = dash.setdefault("basic_auth", {})
+        basic["username"] = username
+        basic["password_hash"] = password_hash
+        # Never persist plaintext: clear any stale plaintext password key.
+        basic["password"] = ""
+        if not str(basic.get("secret", "") or "").strip():
+            basic["secret"] = secret
+        save_config(cfg)
+    except Exception as exc:
+        print(f"  ✗ Failed to write config.yaml: {exc}")
+        sys.exit(1)
+
+    # Re-run plugin discovery so the basic provider registers from the
+    # just-written config before start_server's gate check runs.
+    try:
+        from hermes_cli.plugins import discover_plugins
+
+        discover_plugins(force=True)
+    except Exception as exc:
+        print(f"  ⚠ Plugin re-discovery failed ({exc}); the gate may still "
+              "fail closed. Set the password again or restart the dashboard.")
+
+    print()
+    print(f"  ✓ Username/password auth configured (user: {username}).")
+    print("    Saved to config.yaml under dashboard.basic_auth.")
+    print("    Sign in at the dashboard with these credentials.")
+    print()
+
+
 def cmd_dashboard(args):
     """Start the web UI server, or (with --stop/--status) manage running ones."""
     # --status: report running dashboards and exit, no deps needed.
@@ -10817,9 +11242,9 @@ def cmd_dashboard(args):
     if getattr(args, "stop", False):
         pids = _find_stale_dashboard_pids()
         if not pids:
-            print("No prostor dashboard processes running.")
+            print("No hermes dashboard processes running.")
             sys.exit(0)
-        # Reuse the same SIGTERM-grace-SIGKILL path used after `prostor update`.
+        # Reuse the same SIGTERM-grace-SIGKILL path used after `hermes update`.
         _kill_stale_dashboard_processes(reason="requested via --stop")
         # _kill_stale_dashboard_processes prints outcomes itself.  Exit 0 if
         # we killed at least one, 1 if they were all unkillable.
@@ -10831,7 +11256,7 @@ def cmd_dashboard(args):
     # profile via the per-request ?profile= scoping. Running one dashboard
     # per profile just fragments that (port collisions, N processes, and a
     # "which dashboard am I on?" guessing game). So when a NAMED profile
-    # launches the dashboard (`worker dashboard` → PROSTOR_HOME points into
+    # launches the dashboard (`worker dashboard` → HERMES_HOME points into
     # profiles/), default to the machine dashboard:
     #   - already running → open the browser at ?profile=<name> and exit
     #   - not running     → re-exec as the machine dashboard (pinned to the
@@ -10840,7 +11265,7 @@ def cmd_dashboard(args):
     #     preselected in the UI's switcher.
     # `--isolated` opts out and preserves the old per-profile behavior.
     try:
-        from prostor_cli.profiles import get_active_profile_name
+        from hermes_cli.profiles import get_active_profile_name
         _launch_profile = get_active_profile_name()
     except Exception:
         _launch_profile = "default"
@@ -10850,7 +11275,7 @@ def cmd_dashboard(args):
         and not getattr(args, "isolated", False)
         and not getattr(args, "open_profile", "")
         # Desktop pool backends are intentionally per-profile.
-        and os.environ.get("PROSTOR_DESKTOP") != "1"
+        and os.environ.get("HERMES_DESKTOP") != "1"
     ):
         url = f"http://{args.host or '127.0.0.1'}:{args.port}/?profile={_launch_profile}"
         if _dashboard_listening(args.host, args.port):
@@ -10869,7 +11294,7 @@ def cmd_dashboard(args):
             f"preselected). Use --isolated for a dedicated per-profile server."
         )
         reexec_argv = [
-            sys.executable, "-m", "prostor_cli.main",
+            sys.executable, "-m", "hermes_cli.main",
             "-p", "default",
             "dashboard",
             "--port", str(args.port),
@@ -10884,23 +11309,23 @@ def cmd_dashboard(args):
             reexec_argv.append("--skip-build")
         env = os.environ.copy()
         # Pin the child to the machine ROOT, not the launching profile's
-        # PROSTOR_HOME.  We must resolve the root explicitly instead of just
-        # dropping PROSTOR_HOME: in the Docker layout the machine root is
-        # /opt/data (set via `ENV PROSTOR_HOME=/opt/data`), so an unset
-        # PROSTOR_HOME falls back to $HOME/.prostor = /opt/data/.prostor — an
+        # HERMES_HOME.  We must resolve the root explicitly instead of just
+        # dropping HERMES_HOME: in the Docker layout the machine root is
+        # /opt/data (set via `ENV HERMES_HOME=/opt/data`), so an unset
+        # HERMES_HOME falls back to $HOME/.hermes = /opt/data/.hermes — an
         # empty, auto-seeded home where the dashboard sees only the default
         # profile and the install-method stamp is missing (so the Docker
-        # update-button guard also misfires).  get_default_prostor_root()
-        # returns the root for both layouts: ~/.prostor for a standard install
+        # update-button guard also misfires).  get_default_hermes_root()
+        # returns the root for both layouts: ~/.hermes for a standard install
         # and /opt/data for Docker (it strips a trailing profiles/<name>).
         # See the support report for the double-mount workaround this avoids.
         try:
-            from prostor_constants import get_default_prostor_root
-            env["PROSTOR_HOME"] = str(get_default_prostor_root())
+            from hermes_constants import get_default_hermes_root
+            env["HERMES_HOME"] = str(get_default_hermes_root())
         except Exception:
             # Best-effort: if root resolution fails, fall back to the prior
-            # behaviour (drop PROSTOR_HOME) rather than block the reroute.
-            env.pop("PROSTOR_HOME", None)
+            # behaviour (drop HERMES_HOME) rather than block the reroute.
+            env.pop("HERMES_HOME", None)
         # On Windows, os.execvpe() does not truly replace the process — it
         # spawns via CreateProcess then the parent exits.  Under Python 3.14+
         # this can crash with STATUS_ACCESS_VIOLATION (0xC0000005) when
@@ -10913,9 +11338,9 @@ def cmd_dashboard(args):
             os.execvpe(sys.executable, reexec_argv, env)
 
     # Attach gui.log early so dashboard startup/build failures are captured in
-    # the same logs directory as every other Prostor surface.
+    # the same logs directory as every other Hermes surface.
     try:
-        from prostor_logging import setup_logging as _setup_logging_gui
+        from hermes_logging import setup_logging as _setup_logging_gui
         _setup_logging_gui(mode="gui")
     except Exception:
         pass
@@ -10940,7 +11365,7 @@ def cmd_dashboard(args):
     # backend is the desktop's primary entrypoint and needs the same.
     _sync_bundled_skills_quietly()
 
-    if "PROSTOR_WEB_DIST" not in os.environ and not getattr(args, "skip_build", False):
+    if "HERMES_WEB_DIST" not in os.environ and not getattr(args, "skip_build", False):
         if not _build_web_ui(PROJECT_ROOT / "web", fatal=True):
             sys.exit(1)
     elif getattr(args, "skip_build", False):
@@ -10948,9 +11373,9 @@ def cmd_dashboard(args):
         # Verify the dist actually exists; otherwise the server will start
         # and serve 404s with no obvious cause (issue #23817).
         _dist_root = (
-            Path(os.environ["PROSTOR_WEB_DIST"])
-            if "PROSTOR_WEB_DIST" in os.environ
-            else PROJECT_ROOT / "prostor_cli" / "web_dist"
+            Path(os.environ["HERMES_WEB_DIST"])
+            if "HERMES_WEB_DIST" in os.environ
+            else PROJECT_ROOT / "hermes_cli" / "web_dist"
         )
         if not (_dist_root / "index.html").exists():
             print(f"✗ --skip-build was passed but no web dist found at: {_dist_root}")
@@ -10967,7 +11392,7 @@ def cmd_dashboard(args):
     # the dashboard's server-side runtime depends on plugin-registered
     # providers (image_gen, web, dashboard_auth, …).
     try:
-        from prostor_cli.plugins import discover_plugins
+        from hermes_cli.plugins import discover_plugins
         discover_plugins()
     except Exception as exc:
         # Discovery failures must not block dashboard startup outright —
@@ -10983,7 +11408,7 @@ def cmd_dashboard(args):
     # sessions show no MCP tools.  Spawn discovery in the background here so a
     # slow/dead server can't block dashboard startup.
     try:
-        from prostor_cli.mcp_startup import start_background_mcp_discovery
+        from hermes_cli.mcp_startup import start_background_mcp_discovery
 
         start_background_mcp_discovery(
             logger=logger,
@@ -10995,7 +11420,14 @@ def cmd_dashboard(args):
             exc_info=True,
         )
 
-    from prostor_cli.web_server import start_server
+    from hermes_cli.web_server import start_server
+
+    # Interactive auth setup: if this bind will engage the auth gate but no
+    # provider is registered yet, offer to configure one here (TTY only)
+    # instead of hard-failing inside start_server. Non-interactive callers
+    # (Docker/s6, CI, --no-open pipelines) fall through to start_server's
+    # fail-closed SystemExit unchanged.
+    _maybe_setup_dashboard_auth_interactively(args)
 
     # The in-browser Chat tab (the embedded TUI over PTY/WebSocket) is always
     # available — the desktop app and the dashboard's own Chat tab both rely on
@@ -11011,21 +11443,21 @@ def cmd_dashboard(args):
 
 def cmd_dashboard_register(args):
     """Register a self-hosted dashboard OAuth client with Nous Portal."""
-    from prostor_cli.dashboard_register import cmd_dashboard_register as _impl
+    from hermes_cli.dashboard_register import cmd_dashboard_register as _impl
 
     _impl(args)
 
 
 def cmd_gateway_enroll(args):
     """Enroll a self-hosted gateway with a relay connector."""
-    from prostor_cli.gateway_enroll import cmd_gateway_enroll as _impl
+    from hermes_cli.gateway_enroll import cmd_gateway_enroll as _impl
 
     _impl(args)
 
 
 def cmd_completion(args, parser=None):
     """Print shell completion script."""
-    from prostor_cli.completion import generate_bash, generate_fish, generate_zsh
+    from hermes_cli.completion import generate_bash, generate_zsh, generate_fish
 
     shell = getattr(args, "shell", "bash")
     if shell == "zsh":
@@ -11038,14 +11470,14 @@ def cmd_completion(args, parser=None):
 
 def cmd_prompt_size(args):
     """Show a byte/char breakdown of the system prompt + tool schemas."""
-    from prostor_cli.prompt_size import cmd_prompt_size as _impl
+    from hermes_cli.prompt_size import cmd_prompt_size as _impl
 
     _impl(args)
 
 
 def cmd_logs(args):
-    """View and filter Prostor log files."""
-    from prostor_cli.logs import list_logs, tail_log
+    """View and filter Hermes log files."""
+    from hermes_cli.logs import tail_log, list_logs
 
     log_name = getattr(args, "log_name", "agent") or "agent"
 
@@ -11062,6 +11494,22 @@ def cmd_logs(args):
         since=getattr(args, "since", None),
         component=getattr(args, "component", None),
     )
+
+
+def _build_provider_choices() -> list[str]:
+    """Build the --provider choices list from CANONICAL_PROVIDERS + 'auto'."""
+    try:
+        from hermes_cli.models import CANONICAL_PROVIDERS as _cp
+        return ["auto"] + [p.slug for p in _cp]
+    except Exception:
+        # Fallback: static list guarantees the CLI always works
+        return [
+            "auto", "openrouter", "nous", "openai-codex", "xai-oauth", "copilot-acp", "copilot",
+            "anthropic", "gemini", "xai", "bedrock", "azure-foundry",
+            "ollama-cloud", "huggingface", "zai", "kimi-coding", "kimi-coding-cn",
+            "stepfun", "minimax", "minimax-cn", "kilocode", "novita", "xiaomi", "arcee",
+            "nvidia", "deepseek", "alibaba", "qwen-oauth", "opencode-zen", "opencode-go",
+        ]
 
 
 # Top-level subcommands that argparse knows about WITHOUT running plugin
@@ -11094,9 +11542,9 @@ _BUILTIN_SUBCOMMANDS = frozenset(
 
 
 # Top-level flags that take a value. Needed by ``_first_positional_argv``
-# so that in ``prostor -m gpt5 chat``, ``gpt5`` is correctly skipped as a
+# so that in ``hermes -m gpt5 chat``, ``gpt5`` is correctly skipped as a
 # flag value rather than misclassified as a subcommand. Kept in sync with
-# the top-level flags declared in ``prostor_cli/_parser.py``.
+# the top-level flags declared in ``hermes_cli/_parser.py``.
 #
 # Correctness-safe either way: missing an entry here only makes the
 # fast-path bail out too eagerly (we run plugin discovery when we didn't
@@ -11123,7 +11571,7 @@ def _first_positional_argv() -> str | None:
 
     Used by ``main()`` to decide whether plugin discovery has to run at
     argparse-setup time. Handles common invocations like
-    ``prostor -m gpt5 --provider openai chat "msg"`` by skipping the
+    ``hermes -m gpt5 --provider openai chat "msg"`` by skipping the
     values attached to known top-level flags.
 
     Does NOT fully simulate argparse — unknown ``--foo=bar`` / ``--foo
@@ -11162,7 +11610,7 @@ def _plugin_cli_discovery_needed() -> bool:
     """
     first = _first_positional_argv()
     if first is None:
-        # Bare ``prostor`` or only flags → defaults to ``chat``.
+        # Bare ``hermes`` or only flags → defaults to ``chat``.
         return False
     if first in _BUILTIN_SUBCOMMANDS:
         return False
@@ -11183,7 +11631,7 @@ _AGENT_SUBCOMMANDS = {
 
 
 def _is_tui_chat_launch(args) -> bool:
-    return bool(getattr(args, "tui", False) or os.environ.get("PROSTOR_TUI") == "1")
+    return bool(getattr(args, "tui", False) or os.environ.get("HERMES_TUI") == "1")
 
 
 def _command_has_dedicated_mcp_startup(args) -> bool:
@@ -11213,7 +11661,7 @@ def _prepare_agent_startup(args) -> None:
 
     _accept_hooks = bool(getattr(args, "accept_hooks", False))
     try:
-        from prostor_cli.plugins import discover_plugins
+        from hermes_cli.plugins import discover_plugins
 
         discover_plugins()
     except Exception:
@@ -11233,7 +11681,7 @@ def _prepare_agent_startup(args) -> None:
         _run_inline_mcp_discovery = False
     elif _should_background_mcp_startup(args):
         try:
-            from prostor_cli.mcp_startup import start_background_mcp_discovery
+            from hermes_cli.mcp_startup import start_background_mcp_discovery
 
             start_background_mcp_discovery(
                 logger=logger,
@@ -11258,8 +11706,8 @@ def _prepare_agent_startup(args) -> None:
                 exc_info=True,
             )
     try:
+        from hermes_cli.config import load_config
         from agent.shell_hooks import register_from_config
-        from prostor_cli.config import load_config
 
         register_from_config(load_config(), accept_hooks=_accept_hooks)
     except Exception:
@@ -11288,7 +11736,7 @@ def _try_termux_fast_cli_launch() -> bool:
     """Run obvious Termux non-TUI chat/oneshot/version paths on a light parser."""
     if not _is_termux_startup_environment():
         return False
-    if os.environ.get("PROSTOR_TERMUX_DISABLE_FAST_CLI") == "1":
+    if os.environ.get("HERMES_TERMUX_DISABLE_FAST_CLI") == "1":
         return False
 
     argv = sys.argv[1:]
@@ -11312,7 +11760,7 @@ def _try_termux_fast_cli_launch() -> bool:
     if not has_oneshot and first not in {None, "chat"}:
         return False
 
-    from prostor_cli._parser import build_top_level_parser
+    from hermes_cli._parser import build_top_level_parser
 
     parser, _subparsers, chat_parser = build_top_level_parser()
     chat_parser.set_defaults(func=cmd_chat)
@@ -11324,7 +11772,7 @@ def _try_termux_fast_cli_launch() -> bool:
 
     if getattr(args, "oneshot", None):
         _prepare_agent_startup(args)
-        from prostor_cli.oneshot import run_oneshot
+        from hermes_cli.oneshot import run_oneshot
 
         sys.exit(
             run_oneshot(
@@ -11344,11 +11792,11 @@ def _try_termux_fast_cli_launch() -> bool:
         if interactive_prompt:
             # Bare Termux CLI should reach the prompt first and do agent-only
             # discovery on the first submitted turn instead of before input.
-            args.compact = True
-            os.environ["PROSTOR_DEFER_AGENT_STARTUP"] = "1"
-            os.environ["PROSTOR_FAST_STARTUP_BANNER"] = "1"
+            setattr(args, "compact", True)
+            os.environ["HERMES_DEFER_AGENT_STARTUP"] = "1"
+            os.environ["HERMES_FAST_STARTUP_BANNER"] = "1"
             if getattr(args, "accept_hooks", False):
-                os.environ["PROSTOR_ACCEPT_HOOKS"] = "1"
+                os.environ["HERMES_ACCEPT_HOOKS"] = "1"
         else:
             _prepare_agent_startup(args)
         cmd_chat(args)
@@ -11360,7 +11808,7 @@ def _try_termux_fast_cli_launch() -> bool:
 def _try_termux_fast_tui_launch() -> bool:
     """Launch obvious Termux TUI invocations before building every subparser.
 
-    `prostor --tui` is the hot path on phones. The full parser setup imports
+    `hermes --tui` is the hot path on phones. The full parser setup imports
     command modules for model, fallback, migrate, kanban, bundles, plugins,
     etc. even though the TUI immediately execs Node. On Termux only, parse the
     lightweight top-level/chat parser and hand off to ``cmd_chat`` when the
@@ -11380,7 +11828,7 @@ def _try_termux_fast_tui_launch() -> bool:
     if first not in {None, "chat"}:
         return False
 
-    from prostor_cli._parser import build_top_level_parser
+    from hermes_cli._parser import build_top_level_parser
 
     parser, _subparsers, chat_parser = build_top_level_parser()
     chat_parser.set_defaults(func=cmd_chat)
@@ -11401,7 +11849,7 @@ def _try_termux_fast_tui_launch() -> bool:
 def cmd_memory(args):
     sub = getattr(args, "memory_command", None)
     if sub == "off":
-        from prostor_cli.config import load_config, save_config
+        from hermes_cli.config import load_config, save_config
 
         config = load_config()
         if not isinstance(config.get("memory"), dict):
@@ -11411,9 +11859,9 @@ def cmd_memory(args):
         print("\n  ✓ Memory provider: built-in only")
         print("  Saved to config.yaml\n")
     elif sub == "reset":
-        from prostor_constants import display_prostor_home, get_prostor_home
+        from hermes_constants import get_hermes_home, display_hermes_home
 
-        mem_dir = get_prostor_home() / "memories"
+        mem_dir = get_hermes_home() / "memories"
         target = getattr(args, "target", "all")
         files_to_reset = []
         if target in {"all", "memory"}:
@@ -11427,11 +11875,11 @@ def cmd_memory(args):
         ]
         if not existing:
             print(
-                f"\n  Nothing to reset — no memory files found in {display_prostor_home()}/memories/\n"
+                f"\n  Nothing to reset — no memory files found in {display_hermes_home()}/memories/\n"
             )
             return
 
-        print("\n  This will permanently erase the following memory files:")
+        print(f"\n  This will permanently erase the following memory files:")
         for f, desc in existing:
             path = mem_dir / f
             size = path.stat().st_size
@@ -11452,17 +11900,17 @@ def cmd_memory(args):
             print(f"  ✓ Deleted {f} ({desc})")
 
         print(
-            "\n  Memory reset complete. New sessions will start with a blank slate."
+            f"\n  Memory reset complete. New sessions will start with a blank slate."
         )
-        print(f"  Files were in: {display_prostor_home()}/memories/\n")
+        print(f"  Files were in: {display_hermes_home()}/memories/\n")
     else:
-        from prostor_cli.memory_setup import memory_command
+        from hermes_cli.memory_setup import memory_command
 
         memory_command(args)
 
 
 def cmd_acp(args):
-    """Launch Prostor Agent as an ACP server."""
+    """Launch Hermes Agent as an ACP server."""
     try:
         from acp_adapter.entry import main as acp_main
 
@@ -11487,24 +11935,24 @@ def cmd_acp(args):
 def cmd_tools(args):
     action = getattr(args, "tools_action", None)
     if action in {"list", "disable", "enable"}:
-        from prostor_cli.tools_config import tools_disable_enable_command
+        from hermes_cli.tools_config import tools_disable_enable_command
 
         tools_disable_enable_command(args)
     elif action == "post-setup":
-        from prostor_cli.tools_config import run_post_setup_command
+        from hermes_cli.tools_config import run_post_setup_command
 
         sys.exit(run_post_setup_command(args))
     else:
         _require_tty("tools")
-        from prostor_cli.tools_config import tools_command
+        from hermes_cli.tools_config import tools_command
 
         tools_command(args)
 
 
 def cmd_insights(args):
     try:
+        from hermes_state import SessionDB
         from agent.insights import InsightsEngine
-        from prostor_state import SessionDB
 
         db = SessionDB()
         engine = InsightsEngine(db)
@@ -11519,69 +11967,69 @@ def cmd_skills(args):
     # Route 'config' action to skills_config module
     if getattr(args, "skills_action", None) == "config":
         _require_tty("skills config")
-        from prostor_cli.skills_config import skills_command as skills_config_command
+        from hermes_cli.skills_config import skills_command as skills_config_command
 
         skills_config_command(args)
     else:
-        from prostor_cli.skills_hub import skills_command
+        from hermes_cli.skills_hub import skills_command
 
         skills_command(args)
 
 
 def cmd_pairing(args):
-    from prostor_cli.pairing import pairing_command
+    from hermes_cli.pairing import pairing_command
 
     pairing_command(args)
 
 
 def cmd_plugins(args):
-    from prostor_cli.plugins_cmd import plugins_command
+    from hermes_cli.plugins_cmd import plugins_command
 
     plugins_command(args)
 
 
 def cmd_mcp(args):
-    from prostor_cli.mcp_config import mcp_command
+    from hermes_cli.mcp_config import mcp_command
 
     mcp_command(args)
 
 
 def cmd_claw(args):
-    from prostor_cli.claw import claw_command
+    from hermes_cli.claw import claw_command
 
     claw_command(args)
 
 
 def main():
-    """Main entry point for prostor CLI."""
-    # Cosmetic: make the process show up as 'prostor' instead of 'python3.11'
+    """Main entry point for hermes CLI."""
+    # Cosmetic: make the process show up as 'hermes' instead of 'python3.11'
     # in ps/top/htop.  Non-fatal — just a nicer UX.
     _set_process_title()
 
     # Force UTF-8 stdio on Windows before anything prints.  No-op elsewhere.
     try:
-        from prostor_cli.stdio import configure_windows_stdio
+        from hermes_cli.stdio import configure_windows_stdio
         configure_windows_stdio()
     except Exception:
         pass
 
-    # Sweep stale ``prostor.exe.old.*`` quarantine files left by previous
-    # ``prostor update`` runs on Windows. Silent no-op on non-Windows or when
-    # there's nothing to clean. See ``_quarantine_running_prostor_exe``.
+    # Sweep stale ``hermes.exe.old.*`` quarantine files left by previous
+    # ``hermes update`` runs on Windows. Silent no-op on non-Windows or when
+    # there's nothing to clean. See ``_quarantine_running_hermes_exe``.
     try:
         _cleanup_quarantined_exes()
     except Exception:
         pass
 
-    # Self-heal a venv left half-built by an interrupted ``prostor update``
+    # Self-heal a venv left half-built by an interrupted ``hermes update``
     # (Ctrl-C, terminal close, WSL OOM mid-install). Skip when the user is
     # *running* update — that flow writes and clears its own marker, and we
     # don't want a recovery install racing the real one. Never raises.
     #
     # The substring match is deliberately loose: argv isn't parsed yet at this
     # point, and the failure modes are asymmetric. Over-matching (e.g.
-    # ``prostor skills install update``) merely defers recovery one launch;
-    # under-matching (missing ``prostor -p work update``) would race a recovery
+    # ``hermes skills install update``) merely defers recovery one launch;
+    # under-matching (missing ``hermes -p work update``) would race a recovery
     # install against the real one. Loose wins.
     try:
         if "update" not in sys.argv[1:]:
@@ -11594,20 +12042,20 @@ def main():
     if _try_termux_fast_cli_launch():
         return
 
-    from prostor_cli._parser import build_top_level_parser
+    from hermes_cli._parser import build_top_level_parser
 
     parser, subparsers, chat_parser = build_top_level_parser()
     chat_parser.set_defaults(func=cmd_chat)
 
     # =========================================================================
-    # model command  (parser built in prostor_cli/subcommands/model.py)
+    # model command  (parser built in hermes_cli/subcommands/model.py)
     # =========================================================================
     build_model_parser(subparsers, cmd_model=cmd_model)
 
     # =========================================================================
     # fallback command — manage the fallback provider chain
     # =========================================================================
-    from prostor_cli.fallback_cmd import cmd_fallback
+    from hermes_cli.fallback_cmd import cmd_fallback
 
     fallback_parser = subparsers.add_parser(
         "fallback",
@@ -11616,7 +12064,7 @@ def main():
             "Manage the fallback provider chain.  Fallback providers are tried "
             "in order when the primary model fails with rate-limit, overload, or "
             "connection errors.  See: "
-            "https://github.com/maksim9510/Prostor/docs/user-guide/features/fallback-providers"
+            "https://hermes-agent.nousresearch.com/docs/user-guide/features/fallback-providers"
         ),
     )
     fallback_subparsers = fallback_parser.add_subparsers(dest="fallback_command")
@@ -11627,7 +12075,7 @@ def main():
     )
     fallback_subparsers.add_parser(
         "add",
-        help="Pick a provider + model (same picker as `prostor model`) and append to the chain",
+        help="Pick a provider + model (same picker as `hermes model`) and append to the chain",
     )
     fallback_subparsers.add_parser(
         "remove",
@@ -11648,9 +12096,9 @@ def main():
         help="Manage external secret sources (Bitwarden Secrets Manager)",
         description=(
             "Pull API keys from an external secret manager at process startup "
-            "instead of storing them in ~/.prostor/.env.  Currently supports "
+            "instead of storing them in ~/.hermes/.env.  Currently supports "
             "Bitwarden Secrets Manager.  See: "
-            "https://github.com/maksim9510/Prostor/docs/user-guide/secrets/bitwarden"
+            "https://hermes-agent.nousresearch.com/docs/user-guide/secrets/bitwarden"
         ),
     )
     secrets_subparsers = secrets_parser.add_subparsers(dest="secrets_command")
@@ -11662,7 +12110,7 @@ def main():
     )
 
     # Lazy import — only pays for itself when this subcommand is actually used.
-    from prostor_cli import secrets_cli as _secrets_cli
+    from hermes_cli import secrets_cli as _secrets_cli
 
     _secrets_cli.register_cli(secrets_bw)
 
@@ -11679,7 +12127,7 @@ def main():
     # =========================================================================
     # migrate command
     # =========================================================================
-    from prostor_cli.migrate import cmd_migrate, cmd_migrate_xai
+    from hermes_cli.migrate import cmd_migrate, cmd_migrate_xai
 
     migrate_parser = subparsers.add_parser(
         "migrate",
@@ -11715,7 +12163,7 @@ def main():
     migrate_parser.set_defaults(func=cmd_migrate)
 
     # =========================================================================
-    # gateway + proxy commands  (parsers built in prostor_cli/subcommands/gateway.py)
+    # gateway + proxy commands  (parsers built in hermes_cli/subcommands/gateway.py)
     # =========================================================================
     build_gateway_parser(
         subparsers, cmd_gateway=cmd_gateway, cmd_proxy=cmd_proxy, cmd_gateway_enroll=cmd_gateway_enroll
@@ -11733,17 +12181,17 @@ def main():
         logger.debug("LSP CLI registration failed: %s", _lsp_err)
 
     # =========================================================================
-    # setup command  (parser built in prostor_cli/subcommands/setup.py)
+    # setup command  (parser built in hermes_cli/subcommands/setup.py)
     # =========================================================================
     build_setup_parser(subparsers, cmd_setup=cmd_setup)
 
     # =========================================================================
-    # postinstall command  (parser built in prostor_cli/subcommands/postinstall.py)
+    # postinstall command  (parser built in hermes_cli/subcommands/postinstall.py)
     # =========================================================================
     build_postinstall_parser(subparsers, cmd_postinstall=cmd_postinstall)
 
     # =========================================================================
-    # whatsapp command  (parser built in prostor_cli/subcommands/whatsapp.py)
+    # whatsapp command  (parser built in hermes_cli/subcommands/whatsapp.py)
     # =========================================================================
     build_whatsapp_parser(subparsers, cmd_whatsapp=cmd_whatsapp)
 
@@ -11756,63 +12204,63 @@ def main():
         description=(
             "Configure the official Meta WhatsApp Business Cloud API "
             "adapter (Business account required, public webhook URL "
-            "required). Distinct from `prostor whatsapp` which sets up "
+            "required). Distinct from `hermes whatsapp` which sets up "
             "the Baileys bridge for personal accounts."
         ),
     )
     whatsapp_cloud_parser.set_defaults(func=cmd_whatsapp_cloud)
 
     # =========================================================================
-    # slack command  (parser built in prostor_cli/subcommands/slack.py)
+    # slack command  (parser built in hermes_cli/subcommands/slack.py)
     # =========================================================================
     build_slack_parser(subparsers, cmd_slack=cmd_slack)
 
     # =========================================================================
     # send command — pipe shell-script output to any configured platform
     # =========================================================================
-    from prostor_cli.send_cmd import register_send_subparser
+    from hermes_cli.send_cmd import register_send_subparser
     register_send_subparser(subparsers)
 
     # =========================================================================
-    # login command  (parser built in prostor_cli/subcommands/login.py)
+    # login command  (parser built in hermes_cli/subcommands/login.py)
     # =========================================================================
     build_login_parser(subparsers, cmd_login=cmd_login)
 
     # =========================================================================
-    # logout command  (parser built in prostor_cli/subcommands/logout.py)
+    # logout command  (parser built in hermes_cli/subcommands/logout.py)
     # =========================================================================
     build_logout_parser(subparsers, cmd_logout=cmd_logout)
 
     # =========================================================================
-    # auth command  (parser built in prostor_cli/subcommands/auth.py)
+    # auth command  (parser built in hermes_cli/subcommands/auth.py)
     # =========================================================================
     build_auth_parser(subparsers, cmd_auth=cmd_auth)
 
     # =========================================================================
-    # status command  (parser built in prostor_cli/subcommands/status.py)
+    # status command  (parser built in hermes_cli/subcommands/status.py)
     # =========================================================================
     build_status_parser(subparsers, cmd_status=cmd_status)
 
     # =========================================================================
-    # cron command  (parser built in prostor_cli/subcommands/cron.py)
+    # cron command  (parser built in hermes_cli/subcommands/cron.py)
     # =========================================================================
     build_cron_parser(subparsers, cmd_cron=cmd_cron)
 
     # =========================================================================
-    # webhook command  (parser built in prostor_cli/subcommands/webhook.py)
+    # webhook command  (parser built in hermes_cli/subcommands/webhook.py)
     # =========================================================================
     build_webhook_parser(subparsers, cmd_webhook=cmd_webhook)
 
     # =========================================================================
     # portal command — Nous Portal status + Tool Gateway routing
     # =========================================================================
-    from prostor_cli.portal_cli import add_parser as _add_portal_parser
+    from hermes_cli.portal_cli import add_parser as _add_portal_parser
     _add_portal_parser(subparsers)
 
     # =========================================================================
     # kanban command — multi-profile collaboration board
     # =========================================================================
-    from prostor_cli.kanban import build_parser as _build_kanban_parser
+    from hermes_cli.kanban import build_parser as _build_kanban_parser
 
     kanban_parser = _build_kanban_parser(subparsers)
     kanban_parser.set_defaults(func=cmd_kanban)
@@ -11820,34 +12268,34 @@ def main():
     # =========================================================================
     # hooks command — shell-hook inspection and management
     # =========================================================================
-    # hooks command  (parser built in prostor_cli/subcommands/hooks.py)
+    # hooks command  (parser built in hermes_cli/subcommands/hooks.py)
     # =========================================================================
     build_hooks_parser(subparsers, cmd_hooks=cmd_hooks)
 
     # =========================================================================
-    # doctor command  (parser built in prostor_cli/subcommands/doctor.py)
+    # doctor command  (parser built in hermes_cli/subcommands/doctor.py)
     # =========================================================================
     build_doctor_parser(subparsers, cmd_doctor=cmd_doctor)
 
     # =========================================================================
     # security command — on-demand supply-chain audit
     # =========================================================================
-    # security command  (parser built in prostor_cli/subcommands/security.py)
+    # security command  (parser built in hermes_cli/subcommands/security.py)
     # =========================================================================
     build_security_parser(subparsers, cmd_security=cmd_security)
 
     # =========================================================================
-    # dump command  (parser built in prostor_cli/subcommands/dump.py)
+    # dump command  (parser built in hermes_cli/subcommands/dump.py)
     # =========================================================================
     build_dump_parser(subparsers, cmd_dump=cmd_dump)
 
     # =========================================================================
-    # debug command  (parser built in prostor_cli/subcommands/debug.py)
+    # debug command  (parser built in hermes_cli/subcommands/debug.py)
     # =========================================================================
     build_debug_parser(subparsers, cmd_debug=cmd_debug)
 
     # =========================================================================
-    # backup command  (parser built in prostor_cli/subcommands/backup.py)
+    # backup command  (parser built in hermes_cli/subcommands/backup.py)
     # =========================================================================
     build_backup_parser(subparsers, cmd_backup=cmd_backup)
 
@@ -11856,32 +12304,32 @@ def main():
     # =========================================================================
     checkpoints_parser = subparsers.add_parser(
         "checkpoints",
-        help="Inspect / prune / clear ~/.prostor/checkpoints/",
+        help="Inspect / prune / clear ~/.hermes/checkpoints/",
         description="Manage the filesystem checkpoint store — the shadow git "
-        "repo prostor uses to snapshot working directories before "
+        "repo hermes uses to snapshot working directories before "
         "write_file/patch/terminal calls. Lets you see how much "
         "space checkpoints occupy, force a prune, or wipe the base.",
     )
-    from prostor_cli.checkpoints import register_cli as _register_checkpoints_cli
+    from hermes_cli.checkpoints import register_cli as _register_checkpoints_cli
     _register_checkpoints_cli(checkpoints_parser)
 
     # =========================================================================
-    # import command  (parser built in prostor_cli/subcommands/import_cmd.py)
+    # import command  (parser built in hermes_cli/subcommands/import_cmd.py)
     # =========================================================================
     build_import_cmd_parser(subparsers, cmd_import=cmd_import)
 
     # =========================================================================
-    # config command  (parser built in prostor_cli/subcommands/config.py)
+    # config command  (parser built in hermes_cli/subcommands/config.py)
     # =========================================================================
     build_config_parser(subparsers, cmd_config=cmd_config)
 
     # =========================================================================
-    # pairing command  (parser built in prostor_cli/subcommands/pairing.py)
+    # pairing command  (parser built in hermes_cli/subcommands/pairing.py)
     # =========================================================================
     build_pairing_parser(subparsers, cmd_pairing=cmd_pairing)
 
     # =========================================================================
-    # skills command  (parser built in prostor_cli/subcommands/skills.py)
+    # skills command  (parser built in hermes_cli/subcommands/skills.py)
     # =========================================================================
     build_skills_parser(subparsers, cmd_skills=cmd_skills)
 
@@ -11897,13 +12345,12 @@ def main():
             "referenced skill at once."
         ),
     )
-    from prostor_cli.bundles import bundles_command
-    from prostor_cli.bundles import register_cli as _bundles_register
+    from hermes_cli.bundles import register_cli as _bundles_register, bundles_command
     _bundles_register(bundles_parser)
     bundles_parser.set_defaults(func=bundles_command)
 
     # =========================================================================
-    # plugins command  (parser built in prostor_cli/subcommands/plugins.py)
+    # plugins command  (parser built in hermes_cli/subcommands/plugins.py)
     # =========================================================================
     build_plugins_parser(subparsers, cmd_plugins=cmd_plugins)
 
@@ -11913,7 +12360,7 @@ def main():
     # own argparse tree.  No hardcoded plugin commands in main.py.
     #
     # Skipped when the invocation is already targeting a known built-in
-    # subcommand — ``prostor --help``, ``prostor version``, ``prostor logs``,
+    # subcommand — ``hermes --help``, ``hermes version``, ``hermes logs``,
     # etc.  This avoids eagerly importing every bundled plugin module
     # (google.cloud.pubsub_v1, aiohttp, grpc, PIL …) which costs
     # 500-650ms on typical installs.
@@ -11921,7 +12368,7 @@ def main():
     if _plugin_cli_discovery_needed():
         try:
             from plugins.memory import discover_plugin_cli_commands
-            from prostor_cli.plugins import discover_plugins, get_plugin_manager
+            from hermes_cli.plugins import discover_plugins, get_plugin_manager
 
             seen_plugin_commands = set()
             for cmd_info in discover_plugin_cli_commands():
@@ -11967,19 +12414,19 @@ def main():
         ),
     )
     try:
-        from prostor_cli.curator import register_cli as _register_curator_cli
+        from hermes_cli.curator import register_cli as _register_curator_cli
 
         _register_curator_cli(curator_parser)
     except Exception as _exc:
         logging.getLogger(__name__).debug("curator CLI wiring failed: %s", _exc)
 
     # =========================================================================
-    # memory command  (parser built in prostor_cli/subcommands/memory.py)
+    # memory command  (parser built in hermes_cli/subcommands/memory.py)
     # =========================================================================
     build_memory_parser(subparsers, cmd_memory=cmd_memory)
 
     # =========================================================================
-    # tools command  (parser built in prostor_cli/subcommands/tools.py)
+    # tools command  (parser built in hermes_cli/subcommands/tools.py)
     # =========================================================================
     build_tools_parser(subparsers, cmd_tools=cmd_tools)
 
@@ -11988,23 +12435,28 @@ def main():
     # =========================================================================
     computer_use_parser = subparsers.add_parser(
         "computer-use",
-        help="Manage the Computer Use (cua-driver) backend (macOS)",
+        help="Manage the Computer Use (cua-driver) backend (macOS/Windows/Linux)",
         description=(
             "Install or check the cua-driver binary used by the\n"
-            "`computer_use` toolset. macOS-only.\n\n"
-            "Use `prostor computer-use install` to fetch and run the\n"
+            "`computer_use` toolset. Supported on macOS, Windows, and\n"
+            "Linux.\n\n"
+            "Use `hermes computer-use install` to fetch and run the\n"
             "upstream cua-driver installer. This is equivalent to the\n"
-            "post-setup hook that `prostor tools` runs when you first\n"
+            "post-setup hook that `hermes tools` runs when you first\n"
             "enable the Computer Use toolset, and is a stable target\n"
             "for re-running the install if it didn't fire (e.g. when\n"
-            "toggling the toolset on a returning-user setup)."
+            "toggling the toolset on a returning-user setup).\n\n"
+            "Use `hermes computer-use doctor` to run cua-driver's\n"
+            "`health_report` MCP tool and surface its check matrix\n"
+            "(TCC, bundle identity, version, platform support, ...)\n"
+            "in human-readable form."
         ),
     )
     computer_use_sub = computer_use_parser.add_subparsers(dest="computer_use_action")
 
     computer_use_install = computer_use_sub.add_parser(
         "install",
-        help="Install or repair the cua-driver binary (macOS)",
+        help="Install or repair the cua-driver binary (macOS/Windows/Linux)",
     )
     computer_use_install.add_argument(
         "--upgrade",
@@ -12019,23 +12471,93 @@ def main():
         "status",
         help="Print whether cua-driver is installed and on PATH",
     )
+    computer_use_doctor = computer_use_sub.add_parser(
+        "doctor",
+        help="Run cua-driver `health_report` and surface the check matrix",
+        description=(
+            "Drive cua-driver's stable `health_report` MCP tool and render\n"
+            "its check matrix (TCC permissions, bundle identity, version,\n"
+            "platform support, screenshot probe, …) as human-readable\n"
+            "output. cua-driver owns the health model; this command stays\n"
+            "thin so new checks added upstream surface here without code\n"
+            "changes. Exits 0 when overall=ok, 1 when degraded/failed, 2\n"
+            "when the binary is missing or unreachable."
+        ),
+    )
+    computer_use_doctor.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="CHECK",
+        help=(
+            "Run only the listed checks. Repeat for multiple "
+            "(e.g. --include tcc_accessibility --include bundle_identity). "
+            "Unknown names are reported by cua-driver."
+        ),
+    )
+    computer_use_doctor.add_argument(
+        "--skip",
+        action="append",
+        default=[],
+        metavar="CHECK",
+        help="Skip the listed checks. Repeat for multiple. Wins over --include.",
+    )
+    computer_use_doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the raw structured payload as JSON (same shape as `tools/call`).",
+    )
+    computer_use_perms = computer_use_sub.add_parser(
+        "permissions",
+        help="Check or grant macOS Accessibility + Screen Recording (macOS)",
+        description=(
+            "Computer Use drives the Mac through cua-driver, whose TCC grants\n"
+            "attach to cua-driver's own identity (com.trycua.driver) — not the\n"
+            "terminal or the Hermes app. `status` reports the driver's grant\n"
+            "state; `grant` launches CuaDriver via LaunchServices so the macOS\n"
+            "permission dialog is attributed to the process that does the work."
+        ),
+    )
+    computer_use_perms_sub = computer_use_perms.add_subparsers(
+        dest="computer_use_perms_action"
+    )
+    computer_use_perms_status = computer_use_perms_sub.add_parser(
+        "status",
+        help="Report Accessibility + Screen Recording grant state (read-only)",
+    )
+    computer_use_perms_status.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the normalized permission payload as JSON.",
+    )
+    computer_use_perms_sub.add_parser(
+        "grant",
+        help="Request the grants (opens the dialog attributed to CuaDriver)",
+    )
 
     def cmd_computer_use(args):
         action = getattr(args, "computer_use_action", None)
         if action == "install":
-            from prostor_cli.tools_config import install_cua_driver
+            from hermes_cli.tools_config import install_cua_driver
             install_cua_driver(upgrade=bool(getattr(args, "upgrade", False)))
             return
         if action == "status":
             import shutil
             import subprocess
-            path = shutil.which("cua-driver")
+            from hermes_cli.tools_config import _cua_driver_cmd
+            # Honor HERMES_CUA_DRIVER_CMD for local-build testing — same
+            # resolver `install_cua_driver` and the runtime backend use,
+            # so `status` reports what `computer_use` will actually invoke.
+            driver_cmd = _cua_driver_cmd()
+            path = shutil.which(driver_cmd)
             if path:
                 version = ""
                 try:
+                    from hermes_cli.tools_config import _cua_driver_env
                     version = subprocess.run(
-                        ["cua-driver", "--version"],
+                        [path, "--version"],
                         capture_output=True, text=True, timeout=5,
+                        env=_cua_driver_env(),
                     ).stdout.strip()
                 except Exception:
                     pass
@@ -12043,17 +12565,73 @@ def main():
                     print(f"cua-driver: installed at {path} ({version})")
                 else:
                     print(f"cua-driver: installed at {path}")
-                print("  Refresh to latest: prostor computer-use install --upgrade")
+                try:
+                    from tools.computer_use.cua_backend import cua_driver_update_check
+                    st = cua_driver_update_check()
+                    if st and st.get("update_available"):
+                        latest = st.get("latest_version") or "?"
+                        print(f"  ⬆ Update available: cua-driver {latest}.")
+                        print("    Run: hermes computer-use install --upgrade")
+                    elif st:
+                        print("  ✓ Up to date.")
+                    else:
+                        # Older driver (no check-update verb) or offline.
+                        print("  Refresh to latest: hermes computer-use install --upgrade")
+                except Exception:
+                    print("  Refresh to latest: hermes computer-use install --upgrade")
                 return
             print("cua-driver: not installed")
-            print("  Run: prostor computer-use install")
+            print("  Run: hermes computer-use install")
+            return
+        if action == "doctor":
+            from tools.computer_use.doctor import run_doctor
+            code = run_doctor(
+                include=list(getattr(args, "include", []) or []),
+                skip=list(getattr(args, "skip", []) or []),
+                json_output=bool(getattr(args, "json", False)),
+            )
+            sys.exit(code)
+        if action == "permissions":
+            perms_action = getattr(args, "computer_use_perms_action", None)
+            if perms_action == "grant":
+                from tools.computer_use.permissions import request_permissions_grant
+                sys.exit(request_permissions_grant())
+            if perms_action == "status":
+                import json as _json
+                from tools.computer_use.permissions import computer_use_status
+                st = computer_use_status()
+                if bool(getattr(args, "json", False)):
+                    print(_json.dumps(st, indent=2, sort_keys=True))
+                    sys.exit(0 if st["ready"] else 1)
+                if not st["platform_supported"]:
+                    print(f"Computer Use is not supported on {st['platform']}.")
+                    sys.exit(1)
+                if not st["installed"]:
+                    print("cua-driver: not installed. Run: hermes computer-use install")
+                    sys.exit(1)
+                glyph = lambda v: "✅" if v is True else ("❌" if v is False else "•")  # noqa: E731
+                print(f"cua-driver: {st['version'] or 'installed'} ({st['platform']})")
+                if st["can_grant"]:  # macOS TCC permissions
+                    print(f"  {glyph(st['accessibility'])} Accessibility")
+                    print(f"  {glyph(st['screen_recording'])} Screen Recording")
+                    if not st["ready"]:
+                        print("  Grant: hermes computer-use permissions grant")
+                else:  # no TCC model — readiness is driver health
+                    print(f"  {glyph(st['ready'])} driver health (no permission toggles on {st['platform']})")
+                for c in st["checks"]:
+                    if c["status"] != "ok":
+                        print(f"  ⚠ {c['label']}: {c['message']}")
+                if st["error"]:
+                    print(f"  ⚠ {st['error']}")
+                sys.exit(0 if st["ready"] else 1)
+            computer_use_perms.print_help()
             return
         # No subcommand → show help
         computer_use_parser.print_help()
 
     computer_use_parser.set_defaults(func=cmd_computer_use)
     # =========================================================================
-    # mcp command  (parser built in prostor_cli/subcommands/mcp.py)
+    # mcp command  (parser built in hermes_cli/subcommands/mcp.py)
     # =========================================================================
     build_mcp_parser(subparsers, cmd_mcp=cmd_mcp)
 
@@ -12165,7 +12743,7 @@ def main():
         # exactly the case where SessionDB() can't open, so it operates on the
         # raw file path instead.
         if action == "repair":
-            from prostor_state import (
+            from hermes_state import (
                 DEFAULT_DB_PATH,
                 _db_opens_cleanly,
                 repair_state_db_schema,
@@ -12191,7 +12769,7 @@ def main():
                     print(f"  backup: {report['backup_path']}")
                 print(f"  strategy: {report.get('strategy')}")
                 try:
-                    from prostor_state import SessionDB
+                    from hermes_state import SessionDB
 
                     n = SessionDB()._conn.execute(
                         "SELECT COUNT(*) FROM sessions"
@@ -12207,7 +12785,7 @@ def main():
             return
 
         try:
-            from prostor_state import SessionDB
+            from hermes_state import SessionDB
 
             db = SessionDB()
         except Exception as e:
@@ -12288,7 +12866,7 @@ def main():
                 ):
                     print("Cancelled.")
                     return
-            sessions_dir = get_prostor_home() / "sessions"
+            sessions_dir = get_hermes_home() / "sessions"
             if db.delete_session(resolved_session_id, sessions_dir=sessions_dir):
                 print(f"Deleted session '{resolved_session_id}'.")
             else:
@@ -12303,7 +12881,7 @@ def main():
                 ):
                     print("Cancelled.")
                     return
-            sessions_dir = get_prostor_home() / "sessions"
+            sessions_dir = get_hermes_home() / "sessions"
             count = db.prune_sessions(
                 older_than_days=days, source=args.source, sessions_dir=sessions_dir
             )
@@ -12340,9 +12918,9 @@ def main():
                 print("Cancelled.")
                 return
 
-            # Launch prostor --resume <id> by replacing the current process
+            # Launch hermes --resume <id> by replacing the current process
             print(f"Resuming session: {selected_id}")
-            from prostor_cli.relaunch import relaunch
+            from hermes_cli.relaunch import relaunch
 
             relaunch(["--resume", selected_id])
             return  # won't reach here after execvp
@@ -12397,37 +12975,37 @@ def main():
     sessions_parser.set_defaults(func=cmd_sessions)
 
     # =========================================================================
-    # insights command  (parser built in prostor_cli/subcommands/insights.py)
+    # insights command  (parser built in hermes_cli/subcommands/insights.py)
     # =========================================================================
     build_insights_parser(subparsers, cmd_insights=cmd_insights)
 
     # =========================================================================
-    # claw command  (parser built in prostor_cli/subcommands/claw.py)
+    # claw command  (parser built in hermes_cli/subcommands/claw.py)
     # =========================================================================
     build_claw_parser(subparsers, cmd_claw=cmd_claw)
 
     # =========================================================================
-    # version command  (parser built in prostor_cli/subcommands/version.py)
+    # version command  (parser built in hermes_cli/subcommands/version.py)
     # =========================================================================
     build_version_parser(subparsers, cmd_version=cmd_version)
 
     # =========================================================================
-    # update command  (parser built in prostor_cli/subcommands/update.py)
+    # update command  (parser built in hermes_cli/subcommands/update.py)
     # =========================================================================
     build_update_parser(subparsers, cmd_update=cmd_update)
 
     # =========================================================================
-    # uninstall command  (parser built in prostor_cli/subcommands/uninstall.py)
+    # uninstall command  (parser built in hermes_cli/subcommands/uninstall.py)
     # =========================================================================
     build_uninstall_parser(subparsers, cmd_uninstall=cmd_uninstall)
 
     # =========================================================================
-    # acp command  (parser built in prostor_cli/subcommands/acp.py)
+    # acp command  (parser built in hermes_cli/subcommands/acp.py)
     # =========================================================================
     build_acp_parser(subparsers, cmd_acp=cmd_acp)
 
     # =========================================================================
-    # profile command  (parser built in prostor_cli/subcommands/profile.py)
+    # profile command  (parser built in hermes_cli/subcommands/profile.py)
     # =========================================================================
     build_profile_parser(subparsers, cmd_profile=cmd_profile)
 
@@ -12448,7 +13026,7 @@ def main():
     completion_parser.set_defaults(func=lambda args: cmd_completion(args, parser))
 
     # =========================================================================
-    # dashboard command  (parser built in prostor_cli/subcommands/dashboard.py)
+    # dashboard command  (parser built in hermes_cli/subcommands/dashboard.py)
     # =========================================================================
     build_dashboard_parser(
         subparsers,
@@ -12456,26 +13034,27 @@ def main():
         cmd_dashboard_register=cmd_dashboard_register,
     )
 
+
     # =========================================================================
     # desktop (a.k.a. gui) command
     #
     # The canonical name is "desktop"; "gui" is kept as a deprecated alias
-    # for one release. The Prostor-Setup.exe success screen tells users to
-    # run `prostor desktop` from a terminal, so the canonical name needs
+    # for one release. The Hermes-Setup.exe success screen tells users to
+    # run `hermes desktop` from a terminal, so the canonical name needs
     # to be the one that appears in --help (argparse promotes the primary
     # name; aliases stay hidden).
     # =========================================================================
-    # gui command  (parser built in prostor_cli/subcommands/gui.py)
+    # gui command  (parser built in hermes_cli/subcommands/gui.py)
     # =========================================================================
     build_gui_parser(subparsers, cmd_gui=cmd_gui)
 
     # =========================================================================
-    # logs command  (parser built in prostor_cli/subcommands/logs.py)
+    # logs command  (parser built in hermes_cli/subcommands/logs.py)
     # =========================================================================
     build_logs_parser(subparsers, cmd_logs=cmd_logs)
 
     # =========================================================================
-    # prompt-size command  (parser built in prostor_cli/subcommands/prompt_size.py)
+    # prompt-size command  (parser built in hermes_cli/subcommands/prompt_size.py)
     # =========================================================================
     build_prompt_size_parser(subparsers, cmd_prompt_size=cmd_prompt_size)
 
@@ -12484,13 +13063,13 @@ def main():
     # =========================================================================
     # Pre-process argv so unquoted multi-word session names after -c / -r
     # are merged into a single token before argparse sees them.
-    # e.g. ``prostor -c Pokemon Agent Dev`` → ``prostor -c 'Pokemon Agent Dev'``
+    # e.g. ``hermes -c Pokemon Agent Dev`` → ``hermes -c 'Pokemon Agent Dev'``
     # ── Container-aware routing ────────────────────────────────────────
     # When NixOS container mode is active, route ALL subcommands into
     # the managed container.  This MUST run before parse_args() so that
     # --help, unrecognised flags, and every subcommand are forwarded
     # transparently instead of being intercepted by argparse on the host.
-    from prostor_cli.config import get_container_exec_info
+    from hermes_cli.config import get_container_exec_info
 
     container_info = get_container_exec_info()
     if container_info:
@@ -12509,7 +13088,7 @@ def main():
     #
     # Fix: when argv contains a token matching a known subcommand, set
     # subparsers.required=True to force deterministic routing.  If that
-    # fails (e.g. 'prostor -c model' where 'model' is consumed as the
+    # fails (e.g. 'hermes -c model' where 'model' is consumed as the
     # session name for --continue), fall back to the default behaviour.
     import io as _io
 
@@ -12549,7 +13128,7 @@ def main():
 
     # Discover Python plugins and register shell hooks once, before any
     # command that can fire lifecycle hooks.  Both are idempotent; gated
-    # so introspection/management commands (prostor hooks list, cron
+    # so introspection/management commands (hermes hooks list, cron
     # list, gateway status, mcp add, ...) don't pay discovery cost or
     # trigger consent prompts for hooks the user is still inspecting.
     _prepare_agent_startup(args)
@@ -12557,7 +13136,7 @@ def main():
     # Handle top-level --oneshot / -z: single-shot mode, stdout = final
     # response only, nothing else. Bypasses cli.py entirely.
     if getattr(args, "oneshot", None):
-        from prostor_cli.oneshot import run_oneshot
+        from hermes_cli.oneshot import run_oneshot
 
         sys.exit(
             run_oneshot(

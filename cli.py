@@ -23,26 +23,26 @@ except ModuleNotFoundError:
     # means UTF-8 stdio setup is skipped on Windows; POSIX is unaffected.
     pass
 
-import atexit
-import base64
-import concurrent.futures
-import errno
-import json
 import logging
 import os
-import re
 import shutil
 import sys
+import json
+import re
+import concurrent.futures
+import base64
+import atexit
+import errno
 import tempfile
-import textwrap
 import time
 import uuid
+import textwrap
 from collections import deque
-from contextlib import contextmanager
-from datetime import datetime
-from pathlib import Path
-from typing import Any
 from urllib.parse import unquote, urlparse
+from contextlib import contextmanager
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -50,31 +50,25 @@ logger = logging.getLogger(__name__)
 os.environ["PROSTOR_QUIET"] = "1"  # Our own modules
 
 import yaml
-from prompt_toolkit import print_formatted_text as _pt_print
-from prompt_toolkit.application import Application
-from prompt_toolkit.filters import Condition
-from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
+
+from prostor_cli.fallback_config import get_fallback_chain
+from prostor_cli.cli_agent_setup_mixin import CLIAgentSetupMixin
+from prostor_cli.cli_commands_mixin import CLICommandsMixin
 
 # prompt_toolkit for fixed input area TUI
 from prompt_toolkit.history import FileHistory
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import ConditionalContainer, FormattedTextControl, HSplit, Layout, Window
+from prompt_toolkit.styles import Style as PTStyle
+from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.application import Application
+from prompt_toolkit.layout import Layout, HSplit, Window, FormattedTextControl, ConditionalContainer
+from prompt_toolkit.layout.processors import Processor, Transformation, PasswordProcessor, ConditionalProcessor
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu
-from prompt_toolkit.layout.processors import ConditionalProcessor, PasswordProcessor, Processor, Transformation
-from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.styles import Style as PTStyle
 from prompt_toolkit.widgets import TextArea
-
-from prostor_cli.cli_agent_setup_mixin import CLIAgentSetupMixin
-from prostor_cli.cli_approval_mixin import CLIApprovalMixin
-from prostor_cli.cli_billing_mixin import CLIBillingMixin
-from prostor_cli.cli_commands_mixin import CLICommandsMixin
-from prostor_cli.cli_status_bar_mixin import CLIStatusBarMixin
-from prostor_cli.cli_ui_mixin import CLIUiMixin
-from prostor_cli.cli_voice_mixin import CLIVoiceMixin
-from prostor_cli.fallback_config import get_fallback_chain
-
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit import print_formatted_text as _pt_print
+from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
 try:
     from prompt_toolkit.cursor_shapes import CursorShape
     _STEADY_CURSOR = CursorShape.BLOCK  # Non-blinking block cursor
@@ -93,9 +87,8 @@ try:
     del install_shift_enter_alias, install_ctrl_enter_alias, install_ignored_terminal_sequences
 except Exception:
     pass
-import queue
 import threading
-
+import queue
 
 def CanonicalUsage(*args, **kwargs):
     from agent.usage_pricing import CanonicalUsage as _CanonicalUsage
@@ -109,16 +102,43 @@ def estimate_usage_cost(*args, **kwargs):
     return _estimate_usage_cost(*args, **kwargs)
 
 
-# format_duration_compact, format_token_count_compact, _strip_reasoning_tags,
-# _assistant_content_as_text, _assistant_copy_text moved to
-# prostor_cli.cli_utils. Re-imported here as thin private aliases so existing
-# call sites inside cli.py keep working without a 500-line import-block edit.
-# New code outside cli.py should import directly from prostor_cli.cli_utils.
-from prostor_cli.cli_utils import (
-    format_duration_compact,
-    format_token_count_compact,
-    strip_reasoning_tags as _strip_reasoning_tags,  # noqa: F401 — re-exported for tests
-)
+def format_duration_compact(*args, **kwargs):
+    seconds = float(args[0] if args else kwargs.get("seconds", 0.0))
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    minutes = seconds / 60
+    if minutes < 60:
+        return f"{minutes:.0f}m"
+    hours = minutes / 60
+    if hours < 24:
+        remaining_min = int(minutes % 60)
+        return f"{int(hours)}h {remaining_min}m" if remaining_min else f"{int(hours)}h"
+    days = hours / 24
+    return f"{days:.1f}d"
+
+
+def format_token_count_compact(*args, **kwargs):
+    value = int(args[0] if args else kwargs.get("value", 0))
+    abs_value = abs(value)
+    if abs_value < 1_000:
+        return str(value)
+
+    sign = "-" if value < 0 else ""
+    units = ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K"))
+    for threshold, suffix in units:
+        if abs_value >= threshold:
+            scaled = abs_value / threshold
+            if scaled < 10:
+                text = f"{scaled:.2f}"
+            elif scaled < 100:
+                text = f"{scaled:.1f}"
+            else:
+                text = f"{scaled:.0f}"
+            if "." in text:
+                text = text.rstrip("0").rstrip(".")
+            return f"{sign}{text}{suffix}"
+
+    return f"{value:,}"
 
 
 def is_table_divider(*args, **kwargs):
@@ -137,8 +157,6 @@ def realign_markdown_tables(*args, **kwargs):
     from agent.markdown_tables import realign_markdown_tables as _realign_markdown_tables
 
     return _realign_markdown_tables(*args, **kwargs)
-
-
 # NOTE: `from agent.account_usage import ...` is deliberately NOT at module
 # top — it transitively pulls the OpenAI SDK chain (~230 ms cold) and is only
 # needed when the user runs `/limits`. Lazy-imported inside the handler below.
@@ -149,11 +167,14 @@ _COMMAND_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧
 
 # Load .env from ~/.prostor/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
+from prostor_constants import get_prostor_home, display_prostor_home
 from prostor_cli.browser_connect import (
+    DEFAULT_BROWSER_CDP_URL,
+    is_browser_debug_ready,
+    manual_chrome_debug_command,
     try_launch_chrome_debug,
 )
 from prostor_cli.env_loader import load_prostor_dotenv
-from prostor_constants import display_prostor_home, get_prostor_home
 from utils import base_url_host_matches
 
 _prostor_home = get_prostor_home()
@@ -161,21 +182,116 @@ _project_env = Path(__file__).parent / '.env'
 load_prostor_dotenv(prostor_home=_prostor_home, project_env=_project_env)
 
 
-# _strip_reasoning_tags, _assistant_content_as_text, _assistant_copy_text
-# live in prostor_cli.cli_utils — re-imported above for backward compatibility
-# with internal call sites in this file.
+_REASONING_TAGS = (
+    "REASONING_SCRATCHPAD",
+    "think",
+    "thinking",
+    "reasoning",
+    "thought",
+)
+
+
+def _strip_reasoning_tags(text: str) -> str:
+    """Remove reasoning/thinking blocks from displayed text.
+
+    Handles every case:
+      * Closed pairs ``<tag>…</tag>`` (case-insensitive, multi-line).
+      * Unterminated open tags that run to end-of-text (e.g. truncated
+        generations on NIM/MiniMax where the close tag is dropped).
+      * Stray orphan close tags (``stuff</think>answer``) left behind by
+        partial-content dumps.
+
+    Covers the variants emitted by reasoning models today: ``<think>``,
+    ``<thinking>``, ``<reasoning>``, ``<REASONING_SCRATCHPAD>``, and
+    ``<thought>`` (Gemma 4).  Must stay in sync with
+    ``run_agent.py::_strip_think_blocks`` and the stream consumer's
+    ``_OPEN_THINK_TAGS`` / ``_CLOSE_THINK_TAGS`` tuples.
+
+    Also strips tool-call XML blocks some open models leak into visible
+    content (``<tool_call>``, ``<function_calls>``, Gemma-style
+    ``<function name="…">…</function>``). Ported from
+    openclaw/openclaw#67318.
+    """
+    cleaned = text
+    for tag in _REASONING_TAGS:
+        # Closed pair — case-insensitive so <THINK>…</THINK> is handled too.
+        cleaned = re.sub(
+            rf"<{tag}>.*?</{tag}>\s*",
+            "",
+            cleaned,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        # Unterminated open tag — strip from the tag to end of text.
+        cleaned = re.sub(
+            rf"<{tag}>.*$",
+            "",
+            cleaned,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        # Stray orphan close tag left behind by partial dumps.
+        cleaned = re.sub(
+            rf"</{tag}>\s*",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+    # Tool-call XML blocks (openclaw/openclaw#67318).
+    for tc_tag in ("tool_call", "tool_calls", "tool_result",
+                   "function_call", "function_calls"):
+        cleaned = re.sub(
+            rf"<{tc_tag}\b[^>]*>.*?</{tc_tag}>\s*",
+            "",
+            cleaned,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+    # <function name="..."> — boundary + attribute gated to avoid prose FPs.
+    cleaned = re.sub(
+        r'(?:(?<=^)|(?<=[\n\r.!?:]))[ \t]*'
+        r'<function\b[^>]*\bname\s*=[^>]*>'
+        r'(?:(?:(?!</function>).)*)</function>\s*',
+        '',
+        cleaned,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    # Stray tool-call close tags.
+    cleaned = re.sub(
+        r'</(?:tool_call|tool_calls|tool_result|function_call|function_calls|function)>\s*',
+        '',
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip()
+
+
+def _assistant_content_as_text(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [
+            str(part.get("text", ""))
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        ]
+        return "\n".join(p for p in parts if p)
+    return str(content)
+
+
+def _assistant_copy_text(content: Any) -> str:
+    return _strip_reasoning_tags(_assistant_content_as_text(content))
 
 
 # =============================================================================
 # Configuration Loading
 # =============================================================================
 
-def _load_prefill_messages(file_path: str) -> list[dict[str, Any]]:
+def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
     """Load ephemeral prefill messages from a JSON file.
-
+    
     The file should contain a JSON array of {role, content} dicts, e.g.:
         [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello!"}]
-
+    
     Relative paths are resolved from ~/.prostor/.
     Returns an empty list if the path is empty or the file doesn't exist.
     """
@@ -188,7 +304,7 @@ def _load_prefill_messages(file_path: str) -> list[dict[str, Any]]:
         logger.warning("Prefill messages file not found: %s", path)
         return []
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, list):
             logger.warning("Prefill messages file must contain a JSON array: %s", path)
@@ -199,7 +315,7 @@ def _load_prefill_messages(file_path: str) -> list[dict[str, Any]]:
         return []
 
 
-def _resolve_prefill_messages_file(config: dict[str, Any]) -> str:
+def _resolve_prefill_messages_file(config: Dict[str, Any]) -> str:
     """Resolve the prefill file path from env/config.
 
     ``prefill_messages_file`` at the top level is the canonical config key.
@@ -237,15 +353,14 @@ def _parse_service_tier_config(raw: str) -> str | None:
     logger.warning("Unknown service_tier '%s', ignoring", raw)
     return None
 
-
-def load_cli_config() -> dict[str, Any]:
+def load_cli_config() -> Dict[str, Any]:
     """
     Load CLI configuration from config files.
-
+    
     Config lookup order:
     1. ~/.prostor/config.yaml (user config - preferred)
     2. ./cli-config.yaml (project config - fallback)
-
+    
     Environment variables take precedence over config file values.
     Returns default values if no config file exists.
 
@@ -337,6 +452,7 @@ def load_cli_config() -> dict[str, Any]:
             "resume_max_assistant_lines": 3,
             "resume_skip_tool_only": True,
             "show_reasoning": False,
+            "reasoning_full": False,
             "streaming": True,
             "busy_input_mode": "interrupt",
             "persistent_output": True,
@@ -381,7 +497,7 @@ def load_cli_config() -> dict[str, Any]:
             "seen": {},
         },
     }
-
+    
     # Track whether the config file explicitly set terminal config.
     # When using defaults (no config file / no terminal section), we should NOT
     # overwrite env vars that were already set by .env -- only a user's config
@@ -391,11 +507,11 @@ def load_cli_config() -> dict[str, Any]:
     # Load from file if exists
     if config_path.exists():
         try:
-            with open(config_path, encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 from prostor_cli.config import _normalize_root_model_keys
 
                 file_config = _normalize_root_model_keys(yaml.safe_load(f) or {})
-
+            
             _file_has_terminal_config = "terminal" in file_config
 
             # Handle model config - can be string (new format) or dict (old format)
@@ -425,13 +541,13 @@ def load_cli_config() -> dict[str, Any]:
                         defaults[key].update(file_config[key])
                     else:
                         defaults[key] = file_config[key]
-
+            
             # Second: carry over keys from file_config that aren't in defaults
             # (e.g. platform_toolsets, provider_routing, memory, honcho, etc.)
             for key in file_config:
                 if key not in defaults and key != "model":
                     defaults[key] = file_config[key]
-
+            
             # Handle legacy root-level max_turns (backwards compat) - copy to
             # agent.max_turns whenever the nested key is missing.
             agent_file_config = file_config.get("agent")
@@ -461,13 +577,13 @@ def load_cli_config() -> dict[str, Any]:
 
     # Apply terminal config to environment variables (so terminal_tool picks them up)
     terminal_config = defaults.get("terminal", {})
-
+    
     # Normalize config key: the new config system (prostor_cli/config.py) and all
     # documentation use "backend", the legacy cli-config.yaml uses "env_type".
     # Accept both, with "backend" taking precedence (it's the documented key).
     if "backend" in terminal_config:
         terminal_config["env_type"] = terminal_config["backend"]
-
+    
     # CWD resolution for CLI/TUI. The gateway has its own config bridge in
     # gateway/run.py but may lazily import cli.py (triggering this code).
     # Local backend: always os.getcwd(). Use `cd /dir && prostor` to control it.
@@ -481,7 +597,7 @@ def load_cli_config() -> dict[str, Any]:
         defaults["terminal"]["cwd"] = terminal_config["cwd"]
     elif terminal_config.get("cwd") in _CWD_PLACEHOLDERS:
         terminal_config.pop("cwd", None)
-
+    
     env_mappings = {
         "env_type": "TERMINAL_ENV",
         "cwd": "TERMINAL_CWD",
@@ -505,6 +621,7 @@ def load_cli_config() -> dict[str, Any]:
         "container_persistent": "TERMINAL_CONTAINER_PERSISTENT",
         "docker_volumes": "TERMINAL_DOCKER_VOLUMES",
         "docker_env": "TERMINAL_DOCKER_ENV",
+        "docker_extra_args": "TERMINAL_DOCKER_EXTRA_ARGS",
         "docker_mount_cwd_to_workspace": "TERMINAL_DOCKER_MOUNT_CWD_TO_WORKSPACE",
         "docker_run_as_host_user": "TERMINAL_DOCKER_RUN_AS_HOST_USER",
         "docker_persist_across_processes": "TERMINAL_DOCKER_PERSIST_ACROSS_PROCESSES",
@@ -515,7 +632,7 @@ def load_cli_config() -> dict[str, Any]:
         # Sudo support (works with all backends)
         "sudo_password": "SUDO_PASSWORD",
     }
-
+    
     # Bridge config → env vars for terminal_tool. TERMINAL_CWD is force-exported
     # UNLESS we're inside a gateway process (detected by _PROSTOR_GATEWAY marker)
     # where it was already set correctly by gateway/run.py's config bridge.
@@ -534,17 +651,17 @@ def load_cli_config() -> dict[str, Any]:
                     os.environ[env_var] = json.dumps(val)
                 else:
                     os.environ[env_var] = str(val)
-
+    
     # Apply browser config to environment variables
     browser_config = defaults.get("browser", {})
     browser_env_mappings = {
         "inactivity_timeout": "BROWSER_INACTIVITY_TIMEOUT",
     }
-
+    
     for config_key, env_var in browser_env_mappings.items():
         if config_key in browser_config:
             os.environ[env_var] = str(browser_config[config_key])
-
+    
     # Apply auxiliary model/direct-endpoint overrides to environment variables.
     # Vision and web_extract each have their own provider/model/base_url/api_key tuple.
     # Compression config is read directly from config.yaml by run_agent.py and
@@ -573,7 +690,7 @@ def load_cli_config() -> dict[str, Any]:
             "api_key": "AUXILIARY_APPROVAL_API_KEY",
         },
     }
-
+    
     for task_key, env_map in auxiliary_task_env.items():
         task_cfg = auxiliary_config.get(task_key, {})
         if not isinstance(task_cfg, dict):
@@ -590,7 +707,7 @@ def load_cli_config() -> dict[str, Any]:
             os.environ[env_map["base_url"]] = base_url
         if api_key:
             os.environ[env_map["api_key"]] = api_key
-
+    
     # Security settings
     security_config = defaults.get("security", {})
     if isinstance(security_config, dict):
@@ -599,7 +716,6 @@ def load_cli_config() -> dict[str, Any]:
             os.environ["PROSTOR_REDACT_SECRETS"] = str(redact).lower()
 
     return defaults
-
 
 # Load configuration at module startup
 CLI_CONFIG = load_cli_config()
@@ -650,8 +766,8 @@ except Exception:
 # be constructed (the import-then-instantiate ordering is enforced by
 # Python's import system).
 try:
-    import importlib.util as _httpx_neuter_imp_util
     import sys as _httpx_neuter_sys
+    import importlib.util as _httpx_neuter_imp_util
 
     class _AsyncHttpxDelNeuter:
         """Defer ``AsyncHttpxClientWrapper.__del__`` neutering until import.
@@ -701,7 +817,6 @@ from rich.markup import escape as _escape
 from rich.panel import Panel
 from rich.text import Text as _RichText
 
-
 # Import agent and tool systems lazily. Bare interactive startup only needs the
 # prompt; the full agent/tool registry is initialized on first use.
 def AIAgent(*args, **kwargs):
@@ -711,8 +826,8 @@ def AIAgent(*args, **kwargs):
 
 
 def get_tool_definitions(*args, **kwargs):
-    from model_tools import get_tool_definitions as _get_tool_definitions
     from prostor_cli.mcp_startup import wait_for_mcp_discovery
+    from model_tools import get_tool_definitions as _get_tool_definitions
 
     wait_for_mcp_discovery()
     return _get_tool_definitions(*args, **kwargs)
@@ -723,10 +838,9 @@ def get_toolset_for_tool(*args, **kwargs):
 
     return _get_toolset_for_tool(*args, **kwargs)
 
-
 # Extracted CLI modules (Phase 3)
 from prostor_cli.banner import build_welcome_banner
-from prostor_cli.commands import SlashCommandAutoSuggest, SlashCommandCompleter
+from prostor_cli.commands import SlashCommandCompleter, SlashCommandAutoSuggest
 
 
 def get_all_toolsets(*args, **kwargs):
@@ -753,13 +867,11 @@ def _sync_process_session_id(session_id: str) -> None:
 
     set_current_session_id(session_id)
 
-
 # Cron job system for scheduled tasks (execution is handled by the gateway)
 def get_job(*args, **kwargs):
     from cron import get_job as _get_job
 
     return _get_job(*args, **kwargs)
-
 
 # Resource cleanup imports for safe shutdown (terminal VMs, browser sessions)
 from prostor_cli.callbacks import prompt_for_secret
@@ -793,7 +905,6 @@ def _cleanup_all_browsers(*args, **kwargs):
     from tools.browser_tool import _emergency_cleanup_all_sessions
 
     return _emergency_cleanup_all_sessions(*args, **kwargs)
-
 
 # Guard to prevent cleanup from running multiple times on exit
 _cleanup_done = False
@@ -862,7 +973,6 @@ def _prepare_deferred_agent_startup() -> None:
             "shell-hook registration failed at deferred CLI startup",
             exc_info=True,
         )
-
 
 def _run_cleanup(*, notify_session_finalize: bool = True):
     """Run resource cleanup exactly once."""
@@ -1074,47 +1184,404 @@ def _reset_terminal_input_modes_on_exit() -> None:
 # Git Worktree Isolation (#652)
 # =============================================================================
 
-# Worktree management moved to prostor_cli.cli_worktree. The canonical
-# implementations live there; the stubs below delegate to those so any
-# external callers of cli._normalize_git_bash_path etc. keep working.
-# ``_active_worktree`` is re-exported from cli_worktree so the
-# ProstorCLI class can still read/write it through this module.
+# Tracks the active worktree for cleanup on exit
+_active_worktree: Optional[Dict[str, str]] = None
 
 
-def _normalize_git_bash_path(p: str | None) -> str | None:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.normalize_git_bash_path."""
-    from prostor_cli.cli_worktree import normalize_git_bash_path as _real_impl
-    return _real_impl(p)
+def _normalize_git_bash_path(p: Optional[str]) -> Optional[str]:
+    """Translate a Git Bash-style path (``/c/Users/...``) to the native
+    Windows form (``C:\\Users\\...``) that Python's ``subprocess.Popen``
+    and ``pathlib.Path`` accept.
+
+    No-op on non-Windows and for paths that already look native.  Git on
+    native Windows normally emits forward-slash Windows paths
+    (``C:/Users/...``) which both bash and Python handle, but certain
+    configurations (Git Bash shells, MSYS2, WSL-mounted repos) surface
+    ``/c/...`` or ``/cygdrive/c/...`` variants.
+    """
+    if not p:
+        return p
+    if sys.platform != "win32":
+        return p
+    import re as _re
+    # /c/Users/... or /C/Users/...
+    m = _re.match(r"^/([a-zA-Z])/(.*)$", p)
+    if m:
+        drive, rest = m.group(1), m.group(2)
+        return f"{drive.upper()}:\\{rest.replace('/', chr(92))}"
+    # /cygdrive/c/... or /mnt/c/...
+    m = _re.match(r"^/(?:cygdrive|mnt)/([a-zA-Z])/(.*)$", p)
+    if m:
+        drive, rest = m.group(1), m.group(2)
+        return f"{drive.upper()}:\\{rest.replace('/', chr(92))}"
+    return p
 
 
-def _git_repo_root() -> str | None:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.git_repo_root."""
-    from prostor_cli.cli_worktree import git_repo_root as _real_impl
-    return _real_impl()
+def _git_repo_root() -> Optional[str]:
+    """Return the git repo root for CWD, or None if not in a repo.
+
+    Runs through :func:`_normalize_git_bash_path` so callers can pass
+    the result directly to ``Path``/``subprocess.Popen(cwd=...)`` on
+    Windows without hitting ``C:\\c\\Users\\...`` style resolution
+    mistakes.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return _normalize_git_bash_path(result.stdout.strip())
+    except Exception:
+        pass
+    return None
 
 
 def _path_is_within_root(path: Path, root: Path) -> bool:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.path_is_within_root."""
-    from prostor_cli.cli_worktree import path_is_within_root as _real_impl
-    return _real_impl(path, root)
+    """Return True when a resolved path stays within the expected root."""
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
-def _setup_worktree(repo_root: str = None) -> dict[str, str] | None:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.setup_worktree."""
-    from prostor_cli.cli_worktree import setup_worktree as _real_impl
-    return _real_impl(repo_root)
+def _resolve_worktree_base(repo_root: str) -> tuple:
+    """Resolve the freshest base ref to branch a new worktree from.
+
+    The standalone clone's ``HEAD`` can lag the remote by hundreds of commits
+    (the ``~/.prostor/prostor-agent`` clone is updated only by ``prostor update``,
+    not on every session). Branching a worktree from that stale ``HEAD`` roots
+    every new branch on an old base — so the PR diff GitHub computes against
+    current ``main`` balloons with unrelated changes, and the agent has to
+    discover the staleness via the pre-push gate and rebase. Branching from the
+    freshly-fetched remote tip instead means the worktree starts current.
+
+    Strategy (each step falls back to the next on failure):
+      1. If the current branch tracks an upstream, fetch and use that upstream
+         ref — so a deliberate feature-branch worktree tracks its own remote,
+         not the default branch.
+      2. Else fetch the remote's default branch (``origin/HEAD`` → e.g.
+         ``origin/main``) and use it.
+      3. Else fall back to ``HEAD`` (offline, no remote, or detached) — the
+         old behavior, never worse than before.
+
+    Returns ``(base_ref, label)`` where *base_ref* is a git revision suitable
+    for ``git worktree add ... <base_ref>`` and *label* is a short
+    human-readable description for the session banner.
+    """
+    import subprocess
+
+    def _git(args, timeout=20):
+        return subprocess.run(
+            ["git", *args],
+            capture_output=True, text=True, timeout=timeout, cwd=repo_root,
+        )
+
+    # 1. Current branch's upstream, if it tracks one.
+    try:
+        up = _git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+        if up.returncode == 0:
+            upstream = up.stdout.strip()  # e.g. "origin/main"
+            if upstream and "/" in upstream:
+                remote = upstream.split("/", 1)[0]
+                # Fetch just that branch; fail-soft if offline.
+                _git(["fetch", remote, upstream.split("/", 1)[1]], timeout=30)
+                return upstream, f"{upstream} (fetched)"
+    except Exception as e:
+        logger.debug("worktree base: upstream resolution failed: %s", e)
+
+    # 2. Remote default branch (origin/HEAD).
+    try:
+        # Resolve the remote's default branch symref.
+        head_ref = _git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
+        default_ref = ""
+        if head_ref.returncode == 0:
+            default_ref = head_ref.stdout.strip().replace("refs/remotes/", "", 1)
+        if not default_ref:
+            # origin/HEAD not set locally; ask the remote.
+            show = _git(["remote", "show", "origin"], timeout=30)
+            for line in show.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("HEAD branch:"):
+                    _branch = line.split(":", 1)[1].strip()
+                    # A remote with no default branch reports "(unknown)";
+                    # don't construct a bogus "origin/(unknown)" ref from it.
+                    if _branch and _branch != "(unknown)":
+                        default_ref = "origin/" + _branch
+                    break
+        if default_ref and "/" in default_ref:
+            remote, branch = default_ref.split("/", 1)
+            _git(["fetch", remote, branch], timeout=30)
+            return default_ref, f"{default_ref} (fetched)"
+    except Exception as e:
+        logger.debug("worktree base: default-branch resolution failed: %s", e)
+
+    # 3. Fall back to local HEAD (offline / no remote / detached).
+    return "HEAD", "HEAD (local — could not reach remote)"
+
+
+def _setup_worktree(repo_root: str = None, sync_base: bool = True) -> Optional[Dict[str, str]]:
+    """Create an isolated git worktree for this CLI session.
+
+    Returns a dict with worktree metadata on success, None on failure.
+    The dict contains: path, branch, repo_root.
+
+    When *sync_base* is True (default), the worktree branches from the
+    freshly-fetched remote tip rather than the (possibly stale) local ``HEAD``
+    — see ``_resolve_worktree_base``. Set ``worktree_sync: false`` in config to
+    branch from local ``HEAD`` (the pre-#10760-followup behavior).
+    """
+    import subprocess
+
+    repo_root = repo_root or _git_repo_root()
+    if not repo_root:
+        print("\033[31m✗ --worktree requires being inside a git repository.\033[0m")
+        print("  cd into your project repo first, then run prostor -w")
+        return None
+
+    short_id = uuid.uuid4().hex[:8]
+    wt_name = f"prostor-{short_id}"
+    branch_name = f"prostor/{wt_name}"
+
+    worktrees_dir = Path(repo_root) / ".worktrees"
+    worktrees_dir.mkdir(parents=True, exist_ok=True)
+
+    wt_path = worktrees_dir / wt_name
+
+    # Ensure .worktrees/ is in .gitignore
+    gitignore = Path(repo_root) / ".gitignore"
+    _ignore_entry = ".worktrees/"
+    try:
+        existing = gitignore.read_text() if gitignore.exists() else ""
+        if _ignore_entry not in existing.splitlines():
+            with open(gitignore, "a", encoding="utf-8") as f:
+                if existing and not existing.endswith("\n"):
+                    f.write("\n")
+                f.write(f"{_ignore_entry}\n")
+    except Exception as e:
+        logger.debug("Could not update .gitignore: %s", e)
+
+    # Resolve the base ref. By default branch from the freshly-fetched remote
+    # tip so the worktree starts current with the project, not from the
+    # (possibly stale) local HEAD of the standalone clone (#10760 follow-up).
+    if sync_base:
+        base_ref, base_label = _resolve_worktree_base(repo_root)
+    else:
+        base_ref, base_label = "HEAD", "HEAD (local — worktree_sync disabled)"
+
+    # Create the worktree
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "add", str(wt_path), "-b", branch_name, base_ref],
+            capture_output=True, text=True, timeout=30, cwd=repo_root,
+        )
+        if result.returncode != 0:
+            # If branching from the resolved remote ref failed for any reason
+            # (e.g. a partial fetch left the ref unusable), retry from local
+            # HEAD so worktree creation never hard-fails on a sync hiccup.
+            if base_ref != "HEAD":
+                logger.warning(
+                    "worktree add from %s failed (%s); retrying from local HEAD",
+                    base_ref, result.stderr.strip(),
+                )
+                base_ref, base_label = "HEAD", "HEAD (fallback — remote base failed)"
+                result = subprocess.run(
+                    ["git", "worktree", "add", str(wt_path), "-b", branch_name, base_ref],
+                    capture_output=True, text=True, timeout=30, cwd=repo_root,
+                )
+            if result.returncode != 0:
+                print(f"\033[31m✗ Failed to create worktree: {result.stderr.strip()}\033[0m")
+                return None
+    except Exception as e:
+        print(f"\033[31m✗ Failed to create worktree: {e}\033[0m")
+        return None
+
+    # Copy files listed in .worktreeinclude (gitignored files the agent needs)
+    include_file = Path(repo_root) / ".worktreeinclude"
+    if include_file.exists():
+        try:
+            repo_root_resolved = Path(repo_root).resolve()
+            wt_path_resolved = wt_path.resolve()
+            for line in include_file.read_text().splitlines():
+                entry = line.strip()
+                if not entry or entry.startswith("#"):
+                    continue
+                src = Path(repo_root) / entry
+                dst = wt_path / entry
+                # Prevent path traversal and symlink escapes: both the resolved
+                # source and the resolved destination must stay inside their
+                # expected roots before any file or symlink operation happens.
+                try:
+                    src_resolved = src.resolve(strict=False)
+                    dst_resolved = dst.resolve(strict=False)
+                except (OSError, ValueError):
+                    logger.debug("Skipping invalid .worktreeinclude entry: %s", entry)
+                    continue
+                if not _path_is_within_root(src_resolved, repo_root_resolved):
+                    logger.warning("Skipping .worktreeinclude entry outside repo root: %s", entry)
+                    continue
+                if not _path_is_within_root(dst_resolved, wt_path_resolved):
+                    logger.warning("Skipping .worktreeinclude entry that escapes worktree: %s", entry)
+                    continue
+                if src.is_file():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(src), str(dst))
+                elif src.is_dir():
+                    # Symlink directories (faster, saves disk).  On Windows,
+                    # symlink creation requires Developer Mode or elevation,
+                    # and fails with OSError otherwise — fall back to a
+                    # recursive copy so the worktree is still usable.  The
+                    # copy is slower and uses disk, but it doesn't require
+                    # admin and matches the Linux/macOS symlink outcome
+                    # functionally.
+                    if not dst.exists():
+                        dst.parent.mkdir(parents=True, exist_ok=True)
+                        try:
+                            os.symlink(str(src_resolved), str(dst))
+                        except (OSError, NotImplementedError) as _sym_err:
+                            if sys.platform == "win32":
+                                logger.info(
+                                    ".worktreeinclude: symlink failed (%s) — "
+                                    "falling back to copytree on Windows.",
+                                    _sym_err,
+                                )
+                                try:
+                                    shutil.copytree(
+                                        str(src_resolved),
+                                        str(dst),
+                                        symlinks=True,
+                                        dirs_exist_ok=False,
+                                    )
+                                except Exception as _copy_err:
+                                    logger.warning(
+                                        ".worktreeinclude: copy fallback "
+                                        "also failed for %s -> %s: %s",
+                                        src, dst, _copy_err,
+                                    )
+                            else:
+                                raise
+        except Exception as e:
+            logger.debug("Error copying .worktreeinclude entries: %s", e)
+
+    # Lock the worktree so other processes (and `git worktree remove`) can see
+    # it is actively in use.  Fail-soft: a lock failure never blocks the session.
+    try:
+        subprocess.run(
+            ["git", "worktree", "lock", "--reason", f"prostor pid={os.getpid()}", str(wt_path)],
+            capture_output=True, text=True, timeout=10, cwd=repo_root,
+        )
+        logger.debug("Worktree locked: %s (pid=%s)", wt_path, os.getpid())
+    except Exception as e:
+        logger.debug("git worktree lock failed (non-fatal): %s", e)
+
+    info = {
+        "path": str(wt_path),
+        "branch": branch_name,
+        "repo_root": repo_root,
+        "base": base_ref,
+    }
+
+    print(f"\033[32m✓ Worktree created:\033[0m {wt_path}")
+    print(f"  Branch: {branch_name}")
+    print(f"  Base:   {base_label}")
+
+    return info
 
 
 def _worktree_has_unpushed_commits(worktree_path: str, timeout: int = 10) -> bool:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.worktree_has_unpushed_commits."""
-    from prostor_cli.cli_worktree import worktree_has_unpushed_commits as _real_impl
-    return _real_impl(worktree_path, timeout)
+    """Return whether a worktree has commits not reachable from any remote branch.
+
+    ``git log HEAD --not --remotes`` compares against remote-tracking refs under
+    ``refs/remotes/*``. If a repo has no remote-tracking refs yet, there is no
+    usable remote baseline to compare against, so treat it as having no
+    "unpushed" commits.
+    """
+    import subprocess
+
+    try:
+        remote_refs = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/remotes"],
+            capture_output=True, text=True, timeout=timeout, cwd=worktree_path,
+        )
+        if remote_refs.returncode != 0:
+            return True
+        if not remote_refs.stdout.strip():
+            return False
+
+        result = subprocess.run(
+            ["git", "log", "--oneline", "HEAD", "--not", "--remotes"],
+            capture_output=True, text=True, timeout=timeout, cwd=worktree_path,
+        )
+        if result.returncode != 0:
+            return True
+        return bool(result.stdout.strip())
+    except Exception:
+        return True
 
 
-def _cleanup_worktree(info: dict[str, str] = None) -> None:
-    """Deprecated alias - moved to prostor_cli.cli_worktree.cleanup_worktree."""
-    from prostor_cli.cli_worktree import cleanup_worktree as _real_impl
-    _real_impl(info)
+def _cleanup_worktree(info: Dict[str, str] = None) -> None:
+    """Remove a worktree and its branch on exit.
+
+    Preserves the worktree only if it has unpushed commits (real work
+    that hasn't been pushed to any remote).  Uncommitted changes alone
+    (untracked files, test artifacts) are not enough to keep it — agent
+    work lives in commits/PRs, not the working tree.
+    """
+    global _active_worktree
+    info = info or _active_worktree
+    if not info:
+        return
+
+    import subprocess
+
+    wt_path = info["path"]
+    branch = info["branch"]
+    repo_root = info["repo_root"]
+
+    if not Path(wt_path).exists():
+        return
+
+    has_unpushed = _worktree_has_unpushed_commits(wt_path, timeout=10)
+
+    if has_unpushed:
+        print(f"\n\033[33m⚠ Worktree has unpushed commits, keeping: {wt_path}\033[0m")
+        print(f"  To clean up manually: git worktree remove --force {wt_path}")
+        _active_worktree = None
+        return
+
+    # Remove worktree (even if working tree is dirty — uncommitted
+    # changes without unpushed commits are just artifacts)
+    # Unlock first so `git worktree remove` isn't blocked by the lock we
+    # placed at creation time.  Fail-soft — never block cleanup.
+    try:
+        subprocess.run(
+            ["git", "worktree", "unlock", wt_path],
+            capture_output=True, text=True, timeout=10, cwd=repo_root,
+        )
+    except Exception as e:
+        logger.debug("git worktree unlock failed (non-fatal): %s", e)
+
+    try:
+        subprocess.run(
+            ["git", "worktree", "remove", wt_path, "--force"],
+            capture_output=True, text=True, timeout=15, cwd=repo_root,
+        )
+    except Exception as e:
+        logger.debug("Failed to remove worktree: %s", e)
+
+    # Delete the branch
+    try:
+        subprocess.run(
+            ["git", "branch", "-D", branch],
+            capture_output=True, text=True, timeout=10, cwd=repo_root,
+        )
+    except Exception as e:
+        logger.debug("Failed to delete branch %s: %s", branch, e)
+
+    _active_worktree = None
+    print(f"\033[32m✓ Worktree cleaned up: {wt_path}\033[0m")
 
 
 def _run_state_db_auto_maintenance(session_db) -> None:
@@ -1329,7 +1796,6 @@ def _prune_orphaned_branches(repo_root: str) -> None:
 
     logger.debug("Pruned %d orphaned branches", len(orphaned))
 
-
 # ============================================================================
 # ASCII Art & Branding
 # ============================================================================
@@ -1382,32 +1848,162 @@ def _hex_to_ansi(hex_color: str, *, bold: bool = False) -> str:
 #   5. OSC 11 query (\x1b]11;?\x1b\\) — ask the terminal directly
 #   6. Default: assume dark (matches the legacy Prostor assumption)
 #
-# Skin + light-mode helpers moved to prostor_cli.cli_skin. Re-imported
-# here as thin aliases so existing call sites inside cli.py keep working.
-from prostor_cli.cli_skin import (
-    ACCENT as _ACCENT,
-)
-from prostor_cli.cli_skin import (
-    DIM as _DIM,
-)
-from prostor_cli.cli_skin import (
-    accent_hex as _accent_hex,
-)
-from prostor_cli.cli_skin import (
-    b as _b,
-)
-from prostor_cli.cli_skin import (
-    d as _d,
-)
-from prostor_cli.cli_skin import (
-    detect_light_mode as _detect_light_mode,
-)
-from prostor_cli.cli_skin import (
-    install_skin_light_mode_hook as _install_skin_light_mode_hook,
-)
-from prostor_cli.cli_skin import (
-    maybe_remap_for_light_mode as _maybe_remap_for_light_mode,
-)
+# Cached after first call so we don't query the terminal repeatedly.
+_LIGHT_MODE_CACHE: bool | None = None
+_TRUE_RE = re.compile(r"^(1|true|on|yes|y)$")
+_FALSE_RE = re.compile(r"^(0|false|off|no|n)$")
+_LIGHT_DEFAULT_TERM_PROGRAMS = frozenset()  # Apple_Terminal doesn't reliably indicate; require explicit
+
+
+def _luminance_from_hex(hex_str: str) -> float | None:
+    s = (hex_str or "").strip().lstrip("#")
+    if len(s) == 3:
+        s = "".join(c * 2 for c in s)
+    if len(s) != 6 or not all(c in "0123456789abcdefABCDEF" for c in s):
+        return None
+    try:
+        r, g, b = int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
+    except ValueError:
+        return None
+    # Rec.709 luma
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+
+
+def _query_osc11_background() -> str | None:
+    """Ask the terminal for its background color via OSC 11.
+
+    Most modern terminals reply with \x1b]11;rgb:RRRR/GGGG/BBBB\x1b\\
+    within a few ms.  We wait up to 100ms total before giving up.
+    Returns "#RRGGBB" or None on timeout / non-tty.
+
+    Skipped over SSH: the round-trip routinely exceeds our 100ms budget, so a
+    late reply lands after prompt_toolkit has grabbed the tty — its payload
+    leaks in as typed text and the BEL terminator reads as Ctrl+G (open
+    editor), trapping the user in a stray editor. Remote sessions fall back to
+    COLORFGBG / env hints / the dark default instead.
+    """
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return None
+    if any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY")):
+        return None
+    try:
+        import termios
+        import tty
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+    except Exception:
+        return None
+    try:
+        try:
+            tty.setcbreak(fd)
+        except Exception:
+            return None
+        try:
+            sys.stdout.write("\x1b]11;?\x1b\\")
+            sys.stdout.flush()
+        except Exception:
+            return None
+        # Read up to ~50ms for the response
+        import select
+        deadline = time.monotonic() + 0.1
+        buf = b""
+        while time.monotonic() < deadline:
+            r, _, _ = select.select([fd], [], [], deadline - time.monotonic())
+            if not r:
+                continue
+            try:
+                chunk = os.read(fd, 64)
+            except OSError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+            if b"\x1b\\" in buf or b"\x07" in buf:
+                break
+        # Parse: \x1b]11;rgb:RRRR/GGGG/BBBB\x1b\\
+        m = re.search(rb"rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)", buf)
+        if not m:
+            return None
+        # Each component is 1-4 hex digits — normalize to 8-bit
+        def norm(h: bytes) -> int:
+            v = int(h, 16)
+            # Scale to 0-255 based on hex length
+            bits = len(h) * 4
+            return (v * 255) // ((1 << bits) - 1) if bits else 0
+        r, g, b = norm(m.group(1)), norm(m.group(2)), norm(m.group(3))
+        return f"#{r:02X}{g:02X}{b:02X}"
+    finally:
+        # TCSAFLUSH discards any unread input as it restores the original
+        # attributes — scrubs a slow/partial OSC 11 reply out of the tty
+        # buffer before prompt_toolkit can read it as keystrokes.
+        try:
+            termios.tcsetattr(fd, termios.TCSAFLUSH, old)
+        except Exception:
+            pass
+
+
+def _detect_light_mode() -> bool:
+    global _LIGHT_MODE_CACHE
+    if _LIGHT_MODE_CACHE is not None:
+        return _LIGHT_MODE_CACHE
+    result = False
+    try:
+        # 1. Explicit env override
+        for var in ("PROSTOR_LIGHT", "PROSTOR_TUI_LIGHT"):
+            v = (os.environ.get(var) or "").strip().lower()
+            if _TRUE_RE.match(v):
+                result = True
+                _LIGHT_MODE_CACHE = result
+                return result
+            if _FALSE_RE.match(v):
+                _LIGHT_MODE_CACHE = result
+                return result
+        # 2. Theme hint
+        theme = (os.environ.get("PROSTOR_TUI_THEME") or "").strip().lower()
+        if theme == "light":
+            result = True
+            _LIGHT_MODE_CACHE = result
+            return result
+        if theme == "dark":
+            _LIGHT_MODE_CACHE = result
+            return result
+        # 3. Explicit bg hex
+        bg_hint = os.environ.get("PROSTOR_TUI_BACKGROUND") or ""
+        bg_lum = _luminance_from_hex(bg_hint)
+        if bg_lum is not None:
+            result = bg_lum >= 0.5
+            _LIGHT_MODE_CACHE = result
+            return result
+        # 4. COLORFGBG (xterm/Konsole/urxvt)
+        cfgbg = (os.environ.get("COLORFGBG") or "").strip()
+        if cfgbg:
+            last = cfgbg.split(";")[-1] if ";" in cfgbg else cfgbg
+            if last.isdigit():
+                bg = int(last)
+                if bg in {7, 15}:
+                    result = True
+                    _LIGHT_MODE_CACHE = result
+                    return result
+                if 0 <= bg < 16:
+                    _LIGHT_MODE_CACHE = result
+                    return result
+        # 5. OSC 11 query (best-effort, only when stdin/stdout are TTY)
+        bg_color = _query_osc11_background()
+        if bg_color:
+            lum = _luminance_from_hex(bg_color)
+            if lum is not None:
+                result = lum >= 0.5
+                _LIGHT_MODE_CACHE = result
+                return result
+        # 6. TERM_PROGRAM allow-list (currently empty)
+        tp = (os.environ.get("TERM_PROGRAM") or "").strip()
+        if tp in _LIGHT_DEFAULT_TERM_PROGRAMS:
+            result = True
+    except Exception:
+        result = False
+    _LIGHT_MODE_CACHE = result
+    return result
+
 
 # Light-mode equivalents of skin colors that are unreadable on cream
 # Terminal.app backgrounds.  Used by _SkinAwareAnsi to remap colors
@@ -1478,7 +2074,6 @@ def _install_skin_light_mode_hook() -> None:
 
 
 _install_skin_light_mode_hook()
-_install_skin_light_mode_hook()
 
 
 # Prime the light-mode detection cache early (at module load) when
@@ -1491,8 +2086,77 @@ except Exception:
     pass
 
 
-# _SkinAwareAnsi class, _ACCENT, _DIM, _b, _d, _accent_hex, _hex_to_ansi
-# moved to prostor_cli.cli_skin — re-imported above as aliases.
+
+class _SkinAwareAnsi:
+    """Lazy ANSI escape that resolves from the skin engine on first use.
+
+    Acts as a string in f-strings and concatenation.  Call ``.reset()`` to
+    force re-resolution after a ``/skin`` switch.
+    """
+
+    def __init__(self, skin_key: str, fallback_hex: str = "#FFD700", *, bold: bool = False):
+        self._skin_key = skin_key
+        self._fallback_hex = fallback_hex
+        self._bold = bold
+        self._cached: str | None = None
+
+    def __str__(self) -> str:
+        if self._cached is None:
+            try:
+                from prostor_cli.skin_engine import get_active_skin
+                self._cached = _hex_to_ansi(
+                    get_active_skin().get_color(self._skin_key, self._fallback_hex),
+                    bold=self._bold,
+                )
+            except Exception:
+                self._cached = _hex_to_ansi(self._fallback_hex, bold=self._bold)
+        return self._cached
+
+    def __add__(self, other: str) -> str:
+        return str(self) + other
+
+    def __radd__(self, other: str) -> str:
+        return other + str(self)
+
+    def reset(self) -> None:
+        """Clear cache so the next access re-reads the skin."""
+        self._cached = None
+
+
+_ACCENT = _SkinAwareAnsi("response_border", "#FFD700", bold=True)
+# Use ANSI dim+italic attributes (\x1b[2;3m) instead of a hardcoded
+# hex color so dim/thinking text inherits the terminal's default
+# foreground color and stays readable in both light and dark
+# Terminal.app modes.  Hardcoded skin colors like #B8860B
+# (dark goldenrod) become invisible against light cream backgrounds.
+_DIM = "\x1b[2;3m"
+
+
+def _b(s: str) -> str:
+    """Bold if stdout is a real TTY; plain text otherwise (slash-worker safe)."""
+    import sys as _sys
+    try:
+        return f"\x1b[1m{s}\x1b[0m" if _sys.stdout.isatty() else str(s)
+    except Exception:
+        return str(s)
+
+
+def _d(s: str) -> str:
+    """Dim-italic if stdout is a real TTY; plain text otherwise."""
+    import sys as _sys
+    try:
+        return f"\x1b[2;3m{s}\x1b[0m" if _sys.stdout.isatty() else str(s)
+    except Exception:
+        return str(s)
+
+
+def _accent_hex() -> str:
+    """Return the active skin accent color for legacy CLI output lines."""
+    try:
+        from prostor_cli.skin_engine import get_active_skin
+        return get_active_skin().get_color("ui_accent", "#FFBF00")
+    except Exception:
+        return "#FFBF00"
 
 
 def _rich_text_from_ansi(text: str) -> _RichText:
@@ -1969,6 +2633,9 @@ def _resolve_attachment_path(raw_path: str) -> Path | None:
     return resolved
 
 
+
+
+
 def _detect_file_drop(user_input: str) -> "dict | None":
     """Detect if *user_input* starts with a real local file path.
 
@@ -2123,8 +2790,8 @@ def _apply_bracketed_paste_timeout_patch() -> None:
     """
     try:
         import prompt_toolkit.input.vt100_parser as _vt100_mod
-        from prompt_toolkit.key_binding.key_processor import KeyPress as _PtKeyPress
         from prompt_toolkit.keys import Keys as _PtKeys
+        from prompt_toolkit.key_binding.key_processor import KeyPress as _PtKeyPress
 
         if getattr(_vt100_mod, "_prostor_bp_timeout_patched", False):
             return
@@ -2248,7 +2915,7 @@ def _preserve_ctrl_enter_newline() -> bool:
     # WSL detection — env vars can be scrubbed under sudo, also peek /proc.
     for p in ("/proc/version", "/proc/sys/kernel/osrelease"):
         try:
-            with open(p, encoding="utf-8", errors="ignore") as f:
+            with open(p, "r", encoding="utf-8", errors="ignore") as f:
                 if "microsoft" in f.read().lower():
                     return True
         except OSError:
@@ -2352,8 +3019,7 @@ def _estimate_tui_input_height(
     try:
         from prompt_toolkit.utils import get_cwidth
     except Exception:
-        def get_cwidth(value):
-            return len(value or "")  # type: ignore[assignment]
+        get_cwidth = lambda value: len(value or "")  # type: ignore[assignment]
 
     try:
         columns = int(terminal_columns or 0)
@@ -2462,8 +3128,7 @@ class ChatConsole:
         """
         yield self
 
-
-# ASCII Art - PROSTOR-AGENT logo (full width, single line - requires ~95 char terminal)
+# ASCII Art - HERMES-AGENT logo (full width, single line - requires ~95 char terminal)
 PROSTOR_AGENT_LOGO = """[bold #FFD700]██╗  ██╗███████╗██████╗ ███╗   ███╗███████╗███████╗       █████╗  ██████╗ ███████╗███╗   ██╗████████╗[/]
 [bold #FFD700]██║  ██║██╔════╝██╔══██╗████╗ ████║██╔════╝██╔════╝      ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝[/]
 [#FFBF00]███████║█████╗  ██████╔╝██╔████╔██║█████╗  ███████╗█████╗███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║[/]
@@ -2489,6 +3154,7 @@ PROSTOR_CADUCEUS = """[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡀⠀⣀⣀�
 [#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]"""
 
 
+
 def _build_compact_banner() -> str:
     """Build a compact banner that fits the current terminal width."""
     try:
@@ -2503,8 +3169,8 @@ def _build_compact_banner() -> str:
     dim_color = _skin.get_color("banner_dim", "#B8860B") if _skin else "#B8860B"
 
     if skin_name == "default":
-        line1 = "⚕ NOUS PROSTOR - AI Agent Framework"
-        tiny_line = "⚕ NOUS PROSTOR"
+        line1 = "⚕ NOUS HERMES - AI Agent Framework"
+        tiny_line = "⚕ NOUS HERMES"
     else:
         agent_name = _skin.get_branding("agent_name", "Prostor Agent") if _skin else "Prostor Agent"
         line1 = f"{agent_name} - AI Agent Framework"
@@ -2536,6 +3202,7 @@ def _build_compact_banner() -> str:
         f"[bold {border_color}]║[/] [dim {dim_color}]{line2}[/] [bold {border_color}]║[/]\n"
         f"[bold {border_color}]╚{bar}╝[/]\n"
     )
+
 
 
 # ============================================================================
@@ -2644,15 +3311,15 @@ def _parse_skills_argument(skills: str | list[str] | tuple[str, ...] | None) -> 
 def save_config_value(key_path: str, value: any) -> bool:
     """
     Save a value to the active config file at the specified key path.
-
+    
     Respects the same lookup order as load_cli_config():
     1. ~/.prostor/config.yaml (user config - preferred, used if it exists)
     2. ./cli-config.yaml (project config - fallback)
-
+    
     Args:
         key_path: Dot-separated path like "agent.system_prompt"
         value: Value to save
-
+    
     Returns:
         True if successful, False otherwise
     """
@@ -2660,49 +3327,51 @@ def save_config_value(key_path: str, value: any) -> bool:
     user_config_path = _prostor_home / 'config.yaml'
     project_config_path = Path(__file__).parent / 'cli-config.yaml'
     config_path = user_config_path if user_config_path.exists() else project_config_path
-
+    
     try:
         # Ensure parent directory exists (for ~/.prostor/config.yaml on first use)
         config_path.parent.mkdir(parents=True, exist_ok=True)
-
+        
         # Save back atomically while preserving comments, ordering, quotes, and
         # readable Unicode in user-edited config.yaml.
         from utils import atomic_roundtrip_yaml_update
         atomic_roundtrip_yaml_update(config_path, key_path, value)
-
+        
         # Enforce owner-only permissions on config files (contain API keys)
         try:
             os.chmod(config_path, 0o600)
         except (OSError, NotImplementedError):
             pass
-
+        
         return True
     except Exception as e:
         logger.error("Failed to save config: %s", e)
         return False
 
 
+
+
 # ============================================================================
 # ProstorCLI Class
 # ============================================================================
 
-class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLICommandsMixin, CLIStatusBarMixin, CLIUiMixin, CLIVoiceMixin):
+class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     """
     Interactive CLI for the Prostor Agent.
-
+    
     Provides a REPL interface with rich formatting, command history,
     and tool execution capabilities.
     """
-
+    
     def __init__(
         self,
         model: str = None,
-        toolsets: list[str] = None,
+        toolsets: List[str] = None,
         provider: str = None,
         api_key: str = None,
         base_url: str = None,
         max_turns: int = None,
-        verbose: bool | None = None,
+        verbose: Optional[bool] = None,
         compact: bool = False,
         resume: str = None,
         checkpoints: bool = False,
@@ -2738,6 +3407,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self.bell_on_complete = CLI_CONFIG["display"].get("bell_on_complete", False)
         # show_reasoning: display model thinking/reasoning before the response
         self.show_reasoning = CLI_CONFIG["display"].get("show_reasoning", False)
+        # reasoning_full: when reasoning display is on, print the post-response
+        # recap box uncollapsed instead of clamping to the first 10 lines.
+        self.reasoning_full = CLI_CONFIG["display"].get("reasoning_full", False)
         _configure_output_history(
             enabled=CLI_CONFIG["display"].get("persistent_output", True),
             max_lines=CLI_CONFIG["display"].get("persistent_output_max_lines", 200),
@@ -2759,7 +3431,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         # Coupling the two (PR #6a1aa420e) caused all module DEBUG logs to spew
         # to console whenever a user set tool_progress: verbose in config.
         self.verbose = bool(verbose) if verbose is not None else False
-
+        
         # streaming: stream tokens to the terminal as they arrive (display.streaming in config.yaml)
         self.streaming_enabled = CLI_CONFIG["display"].get("streaming", False)
         # show_timestamps: prefix user and assistant labels with [HH:MM]
@@ -2802,7 +3474,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self._pending_edit_snapshots = {}
         self._last_input_mode_recovery = 0.0
         self._input_mode_recovery_notice_shown = False
-
+        
         # Configuration - priority: CLI args > env vars > config file
         # Model comes from: CLI arg or config.yaml (single source of truth).
         # LLM_MODEL/OPENAI_MODEL env vars are NOT checked — config.yaml is
@@ -2852,10 +3524,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             or os.getenv("PROSTOR_INFERENCE_PROVIDER")
             or "auto"
         )
-        self._provider_source: str | None = None
+        self._provider_source: Optional[str] = None
         self.provider = self.requested_provider
         self.api_mode = "chat_completions"
-        self.acp_command: str | None = None
+        self.acp_command: Optional[str] = None
         self.acp_args: list[str] = []
         self.base_url = (
             base_url
@@ -2883,7 +3555,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 self.max_turns = 90
         else:
             self.max_turns = 90
-
+        
         # Parse and validate toolsets
         self.enabled_toolsets = toolsets
         self.disabled_toolsets = CLI_CONFIG["agent"].get("disabled_toolsets") or []
@@ -2896,7 +3568,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             invalid = [t for t in toolsets if not validate_toolset(t) and t not in mcp_names]
             if invalid:
                 self._console_print(f"[bold red]Warning: Unknown toolsets: {', '.join(invalid)}[/]")
-
+        
         # Filesystem checkpoints: CLI flag > config
         cp_cfg = CLI_CONFIG.get("checkpoints", {})
         if isinstance(cp_cfg, bool):
@@ -2911,19 +3583,19 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         # pass skip_context_files=True and skip_memory=True to AIAgent so
         # AGENTS.md/SOUL.md/.cursorrules and persistent memory are not loaded.
         self.ignore_rules = ignore_rules or os.environ.get("PROSTOR_IGNORE_RULES") == "1"
-
+        
         # Ephemeral system prompt: env var takes precedence, then config
         self.system_prompt = (
             os.getenv("PROSTOR_EPHEMERAL_SYSTEM_PROMPT", "")
             or CLI_CONFIG["agent"].get("system_prompt", "")
         )
         self.personalities = CLI_CONFIG["agent"].get("personalities", {})
-
+        
         # Ephemeral prefill messages (few-shot priming, never persisted)
         self.prefill_messages = _load_prefill_messages(
             _resolve_prefill_messages_file(CLI_CONFIG)
         )
-
+        
         # Reasoning config (OpenRouter reasoning effort level)
         self.reasoning_config = _parse_reasoning_config(
             CLI_CONFIG["agent"].get("reasoning_effort", "")
@@ -2931,7 +3603,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self.service_tier = _parse_service_tier_config(
             CLI_CONFIG["agent"].get("service_tier", "")
         )
-
+        
         # OpenRouter provider routing preferences
         pr = CLI_CONFIG.get("provider_routing", {}) or {}
         self._provider_sort = pr.get("sort")
@@ -2946,7 +3618,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         # Empty string / None / out-of-range = unset (let OR pick strongest coder).
         _or_cfg = CLI_CONFIG.get("openrouter", {}) or {}
         _raw_score = _or_cfg.get("min_coding_score")
-        self._openrouter_min_coding_score: float | None = None
+        self._openrouter_min_coding_score: Optional[float] = None
         if _raw_score not in {None, ""}:
             try:
                 _f = float(_raw_score)
@@ -2954,7 +3626,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     self._openrouter_min_coding_score = _f
             except (TypeError, ValueError):
                 pass
-
+        
         # Fallback provider chain — tried in order when primary fails after retries.
         # Merge new ``fallback_providers`` entries with any legacy
         # ``fallback_model`` entries so old configs still participate.
@@ -2966,20 +3638,20 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self._active_agent_route_signature = None
 
         # Agent will be initialized on first use
-        self.agent: Any | None = None
+        self.agent: Optional[Any] = None
         self._tool_callbacks_installed = False
         self._tirith_security_checked = False
         self._app = None  # prompt_toolkit Application (set in run())
-
+        
         # Conversation state
-        self.conversation_history: list[dict[str, Any]] = []
+        self.conversation_history: List[Dict[str, Any]] = []
         self.session_start = datetime.now()
         self._resumed = False
         # Per-prompt elapsed timer — started at the beginning of each chat turn,
         # frozen when the agent thread completes, displayed in the status bar.
-        self._prompt_start_time: float | None = None  # time.time() when turn started
+        self._prompt_start_time: Optional[float] = None  # time.time() when turn started
         self._prompt_duration: float = 0.0  # frozen duration of last completed turn
-        self._last_turn_finished_at: float | None = None  # time.time() when the last agent loop finished
+        self._last_turn_finished_at: Optional[float] = None  # time.time() when the last agent loop finished
         # Initialize SQLite session store early so /title works before first message
         self._session_db = None
         self._session_db_unavailable = False
@@ -3025,8 +3697,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         _run_checkpoint_auto_maintenance()
 
         # Deferred title: stored in memory until the session is created in the DB
-        self._pending_title: str | None = None
-
+        self._pending_title: Optional[str] = None
+        
         # Session ID: reuse existing one when resuming, otherwise generate fresh
         if resume:
             self.session_id = resume
@@ -3035,7 +3707,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             timestamp_str = self.session_start.strftime("%Y%m%d_%H%M%S")
             short_uuid = uuid.uuid4().hex[:6]
             self.session_id = f"{timestamp_str}_{short_uuid}"
-
+        
         # History file for persistent input recall across sessions
         self._history_file = _prostor_home / ".prostor_history"
         self._last_invalidate: float = 0.0  # throttle UI repaints
@@ -3133,7 +3805,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self._last_resize_width = None
 
         # Background task tracking: {task_id: threading.Thread}
-        self._background_tasks: dict[str, threading.Thread] = {}
+        self._background_tasks: Dict[str, threading.Thread] = {}
         self._background_task_counter = 0
 
     def _claim_active_session(self, surface: str = "cli", *, stderr: bool = False) -> bool:
@@ -3433,7 +4105,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             self._resize_recovery_pending = False
             self._recover_after_resize(app, original_on_resize)
 
-    def _status_bar_context_style(self, percent_used: int | None) -> str:
+    def _status_bar_context_style(self, percent_used: Optional[int]) -> str:
         if percent_used is None:
             return "class:status-bar-dim"
         if percent_used >= 95:
@@ -3453,13 +4125,13 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             return "class:status-bar-warn"
         return "class:status-bar-dim"
 
-    def _build_context_bar(self, percent_used: int | None, width: int = 10) -> str:
+    def _build_context_bar(self, percent_used: Optional[int], width: int = 10) -> str:
         safe_percent = max(0, min(100, percent_used or 0))
         filled = round((safe_percent / 100) * width)
         return f"[{('█' * filled) + ('░' * max(0, width - filled))}]"
 
     @staticmethod
-    def _format_prompt_elapsed(prompt_start_time: float | None, prompt_duration: float, live: bool = False) -> str:
+    def _format_prompt_elapsed(prompt_start_time: Optional[float], prompt_duration: float, live: bool = False) -> str:
         """Format per-prompt elapsed time for the status bar.
 
         Always returns a string — shows 0s on fresh start before first turn.
@@ -3497,7 +4169,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         return f"{emoji} {time_str}"
 
     @staticmethod
-    def _format_idle_since(last_finished_at: float | None, turn_live: bool) -> str:
+    def _format_idle_since(last_finished_at: Optional[float], turn_live: bool) -> str:
         """Format time since the last final agent response for the status bar.
 
         Returns an empty string while a turn is live (the per-prompt elapsed
@@ -3509,7 +4181,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         idle = max(0.0, time.time() - last_finished_at)
         return f"✓ {format_duration_compact(idle)}"
 
-    def _get_status_bar_snapshot(self) -> dict[str, Any]:
+    def _get_status_bar_snapshot(self) -> Dict[str, Any]:
         # Prefer the agent's model name — it updates on fallback.
         # self.model reflects the originally configured model and never
         # changes mid-session, so the TUI would show a stale name after
@@ -3550,6 +4222,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             "compressions": 0,
             "active_background_tasks": 0,
             "active_background_processes": 0,
+            "active_background_subagents": 0,
         }
 
         # Count live /background tasks. The dict entry is removed in the
@@ -3569,6 +4242,17 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             snapshot["active_background_processes"] = process_registry.count_running()
         except Exception:
             pass
+
+        # Count live background/async subagents (delegate_task batches and
+        # background single delegations tracked by tools.async_delegation).
+        # active_count() iterates an in-memory records dict under a lock —
+        # cheap and only counts records still in the "running" state.
+        try:
+            from tools.async_delegation import active_count as _async_active_count
+            snapshot["active_background_subagents"] = _async_active_count()
+        except Exception:
+            pass
+
 
         if not agent:
             return snapshot
@@ -3660,14 +4344,14 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         except Exception:
             return shutil.get_terminal_size(default).columns
 
-    def _use_minimal_tui_chrome(self, width: int | None = None) -> bool:
+    def _use_minimal_tui_chrome(self, width: Optional[int] = None) -> bool:
         """Hide low-value chrome on narrow/mobile terminals to preserve rows."""
         if width is None:
             width = self._get_tui_terminal_width()
         return width < 64
 
     @staticmethod
-    def _scrollback_box_width(width: int | None = None) -> int:
+    def _scrollback_box_width(width: Optional[int] = None) -> int:
         """Return the full viewport width for printed scrollback box rules.
 
         Previously this clamped to ``max(32, min(width, 56))`` as a defense
@@ -3690,7 +4374,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 width = 80
         return max(32, int(width or 80))
 
-    def _tui_input_rule_height(self, position: str, width: int | None = None) -> int:
+    def _tui_input_rule_height(self, position: str, width: Optional[int] = None) -> int:
         """Return the visible height for the top/bottom input separator rules."""
         if position not in {"top", "bottom"}:
             raise ValueError(f"Unknown input rule position: {position}")
@@ -3700,13 +4384,13 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             return 1
         return 0 if self._use_minimal_tui_chrome(width=width) else 1
 
-    def _agent_spacer_height(self, width: int | None = None) -> int:
+    def _agent_spacer_height(self, width: Optional[int] = None) -> int:
         """Return the spacer height shown above the status bar while the agent runs."""
         if not getattr(self, "_agent_running", False):
             return 0
         return 0 if self._use_minimal_tui_chrome(width=width) else 1
 
-    def _spinner_widget_height(self, width: int | None = None) -> int:
+    def _spinner_widget_height(self, width: Optional[int] = None) -> int:
         """Return the visible height for the spinner/status text line above the status bar."""
         spinner_line = self._render_spinner_text()
         if not spinner_line:
@@ -3739,7 +4423,61 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             return f"  {txt}  ({elapsed_str})"
         return f"  {txt}"
 
-    def _build_status_bar_text(self, width: int | None = None) -> str:
+    def _voice_record_key_label(self) -> str:
+        """Return the configured voice push-to-talk key formatted for UI.
+
+        Shared helper so every voice-facing status line / placeholder /
+        recording hint advertises the SAME label as the registered
+        prompt_toolkit binding.
+
+        Cached at startup (see ``set_voice_record_key_cache``) rather
+        than re-read per render. Two reasons (Copilot round-13 on
+        #19835):
+
+        * The prompt_toolkit binding is registered once at session
+          start via ``@kb.add(_voice_key)``; re-reading config per
+          render meant the status bar could advertise a new shortcut
+          after a config edit while the actual binding was still the
+          startup chord — exactly the display/binding drift this PR
+          is trying to eliminate.
+        * The label is on the hot render path (status bar + composer
+          placeholder invalidated every 150ms during recording), so
+          reading config on every call added avoidable UI overhead.
+        """
+        return getattr(self, "_voice_record_key_display_cache", None) or "Ctrl+B"
+
+    def set_voice_record_key_cache(self, raw_key: object) -> None:
+        """Populate the voice label cache from a raw ``voice.record_key``.
+
+        Called at CLI startup after the prompt_toolkit binding is
+        registered so the cached label always matches the live binding.
+        """
+        try:
+            from prostor_cli.voice import format_voice_record_key_for_status
+            self._voice_record_key_display_cache = format_voice_record_key_for_status(raw_key)
+        except Exception:
+            self._voice_record_key_display_cache = "Ctrl+B"
+
+    def _get_voice_status_fragments(self, width: Optional[int] = None):
+        """Return the voice status bar fragments for the interactive TUI."""
+        width = width or self._get_tui_terminal_width()
+        compact = self._use_minimal_tui_chrome(width=width)
+        label = self._voice_record_key_label()
+        if self._voice_recording:
+            if compact:
+                return [("class:voice-status-recording", " ● REC ")]
+            return [("class:voice-status-recording", f" ● REC  {label} to stop ")]
+        if self._voice_processing:
+            if compact:
+                return [("class:voice-status", " ◉ STT ")]
+            return [("class:voice-status", " ◉ Transcribing... ")]
+        if compact:
+            return [("class:voice-status", f" 🎤 {label} ")]
+        tts = " | TTS on" if self._voice_tts else ""
+        cont = " | Continuous" if self._voice_continuous else ""
+        return [("class:voice-status", f" 🎤 Voice mode{tts}{cont}  —  {label} to record ")]
+
+    def _build_status_bar_text(self, width: Optional[int] = None) -> str:
         """Return a compact one-line session status string for the TUI footer."""
         try:
             snapshot = self._get_status_bar_snapshot()
@@ -3766,6 +4504,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 bg_proc_count = snapshot.get("active_background_processes", 0)
                 if bg_proc_count:
                     parts.append(f"⚙ {bg_proc_count}")
+                bg_subagent_count = snapshot.get("active_background_subagents", 0)
+                if bg_subagent_count:
+                    parts.append(f"⛓ {bg_subagent_count}")
                 parts.append(duration_label)
                 if yolo_active:
                     parts.append("⚠ YOLO")
@@ -3788,6 +4529,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             bg_proc_count = snapshot.get("active_background_processes", 0)
             if bg_proc_count:
                 parts.append(f"⚙ {bg_proc_count}")
+            bg_subagent_count = snapshot.get("active_background_subagents", 0)
+            if bg_subagent_count:
+                parts.append(f"⛓ {bg_subagent_count}")
             parts.append(duration_label)
             prompt_elapsed = snapshot.get("prompt_elapsed")
             if prompt_elapsed:
@@ -3833,6 +4577,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     compressions = snapshot.get("compressions", 0)
                     bg_count = snapshot.get("active_background_tasks", 0)
                     bg_proc_count = snapshot.get("active_background_processes", 0)
+                    bg_subagent_count = snapshot.get("active_background_subagents", 0)
                     frags = [
                         ("class:status-bar", " ⚕ "),
                         ("class:status-bar-strong", snapshot["model_short"]),
@@ -3848,6 +4593,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     if bg_proc_count:
                         frags.append(("class:status-bar-dim", " · "))
                         frags.append(("class:status-bar-strong", f"⚙ {bg_proc_count}"))
+                    if bg_subagent_count:
+                        frags.append(("class:status-bar-dim", " · "))
+                        frags.append(("class:status-bar-strong", f"⛓ {bg_subagent_count}"))
                     frags.extend([
                         ("class:status-bar-dim", " · "),
                         ("class:status-bar-dim", duration_label),
@@ -3868,6 +4616,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     compressions = snapshot.get("compressions", 0)
                     bg_count = snapshot.get("active_background_tasks", 0)
                     bg_proc_count = snapshot.get("active_background_processes", 0)
+                    bg_subagent_count = snapshot.get("active_background_subagents", 0)
                     frags = [
                         ("class:status-bar", " ⚕ "),
                         ("class:status-bar-strong", snapshot["model_short"]),
@@ -3887,6 +4636,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     if bg_proc_count:
                         frags.append(("class:status-bar-dim", " │ "))
                         frags.append(("class:status-bar-strong", f"⚙ {bg_proc_count}"))
+                    if bg_subagent_count:
+                        frags.append(("class:status-bar-dim", " │ "))
+                        frags.append(("class:status-bar-strong", f"⛓ {bg_subagent_count}"))
                     frags.extend([
                         ("class:status-bar-dim", " │ "),
                         ("class:status-bar-dim", duration_label),
@@ -4215,7 +4967,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             # the input to be silently dropped (#17666).
             try:
                 return path.read_text(encoding="utf-8")
-            except OSError:
+            except (OSError, IOError):
                 logger.warning("Paste file gone or unreadable, returning placeholder: %s", path)
                 return match.group(0)
 
@@ -4652,11 +5404,87 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             # Set skip flag (again) so the text-change event fired when the
             # editor closes does not re-collapse the returned content.
             self._skip_paste_collapse = True
-            target_buffer.open_in_editor(validate_and_handle=False)
+            # Open the editor, then submit the saved draft on a clean exit —
+            # matching the TUI's Ctrl+G (openEditor), which sends the buffer
+            # instead of requiring a second Enter. Submission in this CLI is
+            # driven by the custom `enter` keybinding, NOT the buffer's
+            # accept_handler, so validate_and_handle can't route through it;
+            # chain a done-callback on the returned Task that re-uses the
+            # real submit pipeline via _submit_editor_buffer().
+            task = target_buffer.open_in_editor(validate_and_handle=False)
+            if task is not None and hasattr(task, "add_done_callback"):
+                task.add_done_callback(
+                    lambda _t, b=target_buffer: self._submit_editor_buffer(b)
+                )
             return True
         except Exception as exc:
             _cprint(f"{_DIM}Failed to open external editor: {exc}{_RST}")
             return False
+
+    def _submit_editor_buffer(self, buffer) -> None:
+        """Submit the draft an external editor left in ``buffer``.
+
+        Invoked from the Ctrl+G done-callback so saving the editor sends the
+        prompt (TUI parity) instead of leaving it sitting in the input area.
+        Mirrors the idle/queue branches of the `enter` keybinding handler:
+        an empty save is ignored (never submits a blank turn), a slash command
+        is dispatched, otherwise the text is routed through the same input
+        queues the normal Enter path uses. Runs on the prompt_toolkit event
+        loop via the Task callback, so it must be cheap and non-blocking.
+        """
+        try:
+            text = (getattr(buffer, "text", "") or "").strip()
+        except Exception:
+            return
+        if not text:
+            # Editor saved empty / was cleared — match the TUI, which drops
+            # an empty draft instead of submitting a blank turn.
+            return
+
+        app = getattr(self, "_app", None)
+
+        # Slash commands: dispatch directly, same as the Enter handler's
+        # _looks_like_slash_command branch.
+        if _looks_like_slash_command(text):
+            try:
+                if not self.process_command(text):
+                    self._should_exit = True
+                    if app is not None and app.is_running:
+                        app.exit()
+            except Exception as exc:
+                _cprint(f"  {_DIM}Command failed: {exc}{_RST}")
+            finally:
+                self._reset_input_buffer(buffer)
+                if app is not None:
+                    app.invalidate()
+            return
+
+        # Regular prompt: route through the same queues the Enter handler uses.
+        if self._agent_running:
+            # Agent busy → honour the configured busy-input behaviour by
+            # queueing for the next turn (the safe default; interrupt/steer
+            # remain reachable via the normal Enter path).
+            self._interrupt_queue.put(text) if self.busy_input_mode == "interrupt" else self._pending_input.put(text)
+            preview = text[:80] + ("..." if len(text) > 80 else "")
+            _cprint(f"  Queued for the next turn: {preview}")
+        else:
+            self._pending_input.put(text)
+
+        self._reset_input_buffer(buffer)
+        if app is not None:
+            app.invalidate()
+
+    def _reset_input_buffer(self, buffer) -> None:
+        """Clear an input buffer after a programmatic submit (best-effort)."""
+        try:
+            buffer.reset(append_to_history=True)
+        except Exception:
+            try:
+                buffer.text = ""
+            except Exception:
+                pass
+
+
 
     def _install_tool_callbacks(self) -> None:
         """Install tool callbacks that need the live prompt UI."""
@@ -4693,6 +5521,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         except Exception:
             pass
 
+    
     def _show_security_advisories(self):
         """Show a startup banner if any unacked security advisories match.
 
@@ -4724,22 +5553,22 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         ctx_len = None
         if hasattr(self, 'agent') and self.agent and hasattr(self.agent, 'context_compressor'):
             ctx_len = self.agent.context_compressor.context_length
-
+        
         # Auto-compact for narrow terminals — the full banner with caduceus
         # + tool list needs ~80 columns minimum to render without wrapping.
         term_width = shutil.get_terminal_size().columns
         use_compact = self.compact or term_width < 80
-
+        
         if use_compact:
             self._console_print(_build_compact_banner())
             self._show_status()
         else:
             # Get tools for display
             tools = get_tool_definitions(enabled_toolsets=self.enabled_toolsets, quiet_mode=True)
-
+            
             # Get terminal working directory (where commands will execute)
             cwd = os.getenv("TERMINAL_CWD", os.getcwd())
-
+            
             # Build and display the banner
             build_welcome_banner(
                 console=self.console,
@@ -4750,7 +5579,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 session_id=self.session_id,
                 context_length=ctx_len,
             )
-
+        
         # Tool discovery is intentionally deferred on the Termux bare prompt
         # path; availability warnings are shown once tools are initialized.
         if os.environ.get("PROSTOR_DEFER_AGENT_STARTUP") != "1":
@@ -4855,6 +5684,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         else:
             self._console_print(f"[dim]{_escape(msg)}[/dim]")
 
+
+
     def _render_resume_history_panel_lines(self, panel) -> list[str]:
         """Render the resume panel at the current terminal width for resize replay."""
         from io import StringIO
@@ -4891,6 +5722,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self._image_counter -= 1
         return False
 
+
     def _resolve_checkpoint_ref(self, ref: str, checkpoints: list) -> str | None:
         """Resolve a checkpoint number or hash to a full commit hash."""
         try:
@@ -4903,6 +5735,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         except ValueError:
             # Treat as a git hash
             return ref
+
+
+
+
 
     def _write_osc52_clipboard(self, text: str) -> None:
         """Copy *text* to terminal clipboard via OSC 52."""
@@ -4952,6 +5788,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 f"If this repeats, run /new or restart this tab.{_RST}"
             )
 
+
+
     def _preprocess_images_with_vision(self, text: str, images: list, *, announce: bool = True) -> str:
         """Analyze attached images via the vision tool and return enriched text.
 
@@ -4965,7 +5803,6 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         image later with ``vision_analyze`` if needed.
         """
         import asyncio as _asyncio
-
         from tools.vision_tools import vision_analyze_tool
 
         analysis_prompt = (
@@ -5023,24 +5860,24 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         """Show warnings about disabled tools due to missing API keys."""
         try:
             from model_tools import check_tool_availability
-
+            
             available, unavailable = check_tool_availability()
-
+            
             # Filter to only those missing API keys (not system deps)
             api_key_missing = [u for u in unavailable if u["missing_vars"]]
-
+            
             if api_key_missing:
                 self._console_print()
                 self._console_print("[yellow]⚠️  Some tools disabled (missing API keys):[/]")
                 for item in api_key_missing:
                     tools_str = ", ".join(item["tools"][:2])  # Show first 2 tools
                     if len(item["tools"]) > 2:
-                        tools_str += f", +{len(item['tools']) - 2} more"
+                        tools_str += f", +{len(item['tools'])-2} more"
                     self._console_print(f"   [dim]• {item['name']}[/] [dim italic]({', '.join(item['missing_vars'])})[/]")
                 self._console_print("[dim]   Run 'prostor setup' to configure[/]")
         except Exception:
             pass  # Don't crash on import errors
-
+    
     def _show_status(self):
         """Show compact startup status line."""
         # Avoid pulling the full tool registry into the bare Termux prompt path.
@@ -5137,7 +5974,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             f"Agent Running: {'Yes' if is_running else 'No'}",
         ])
         self._console_print("\n".join(lines), highlight=False, markup=False)
-
+    
     def _fast_command_available(self) -> bool:
         try:
             from prostor_cli.models import model_supports_fast_mode
@@ -5211,15 +6048,15 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             _cprint(f"  {_DIM}Attach image: /image {_termux_example_image_path()} or start your prompt with a local image path{_RST}\n")
         else:
             _cprint(f"  {_DIM}Paste image: Alt+V (or /paste){_RST}\n")
-
+    
     def show_tools(self):
         """Display available tools with kawaii ASCII art."""
         tools = get_tool_definitions(enabled_toolsets=self.enabled_toolsets, quiet_mode=True)
-
+        
         if not tools:
             print("(;_;) No tools available")
             return
-
+        
         # Header
         print()
         title = "(^_^)/ Available Tools"
@@ -5229,7 +6066,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         print("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
         print("+" + "-" * width + "+")
         print()
-
+        
         # Group tools by toolset
         toolsets = {}
         for tool in sorted(tools, key=lambda t: t["function"]["name"]):
@@ -5243,21 +6080,22 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             if ". " in desc:
                 desc = desc[:desc.index(". ") + 1]
             toolsets[toolset].append((name, desc))
-
+        
         # Display by toolset
         for toolset in sorted(toolsets.keys()):
             print(f"  [{toolset}]")
             for name, desc in toolsets[toolset]:
                 print(f"    * {name:<20} - {desc}")
             print()
-
+        
         print(f"  Total: {len(tools)} tools  ヽ(^o^)ノ")
         print()
+
 
     def show_toolsets(self):
         """Display available toolsets with kawaii ASCII art."""
         all_toolsets = get_all_toolsets()
-
+        
         # Header
         print()
         title = "(^_^)b Available Toolsets"
@@ -5267,23 +6105,24 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         print("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
         print("+" + "-" * width + "+")
         print()
-
+        
         for name in sorted(all_toolsets.keys()):
             info = get_toolset_info(name)
             if info:
                 tool_count = info["tool_count"]
                 desc = info["description"]
-
+                
                 # Mark if currently enabled
                 marker = "(*)" if self.enabled_toolsets and name in self.enabled_toolsets else "   "
                 print(f"  {marker} {name:<18} [{tool_count:>2} tools] - {desc}")
-
+        
         print()
         print("  (*) = currently enabled")
         print()
         print("  Tip: Use 'all' or '*' to enable all toolsets")
         print("  Example: python cli.py --toolsets web,terminal")
         print()
+    
 
     def show_config(self):
         """Display current configuration with kawaii ASCII art."""
@@ -5291,7 +6130,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         terminal_env = os.getenv("TERMINAL_ENV", "local")
         terminal_cwd = os.getenv("TERMINAL_CWD", os.getcwd())
         terminal_timeout = os.getenv("TERMINAL_TIMEOUT", "60")
-
+        
         user_config_path = _prostor_home / 'config.yaml'
         project_config_path = Path(__file__).parent / 'cli-config.yaml'
         if user_config_path.exists():
@@ -5299,7 +6138,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         else:
             config_path = project_config_path
         config_status = "(loaded)" if config_path.exists() else "(not found)"
-
+        
         # ``self.api_key`` may be a callable (Azure Foundry Entra ID bearer
         # provider). Never invoke it; just identify the auth surface.
         from agent.azure_identity_adapter import is_token_provider
@@ -5309,7 +6148,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             api_key_display = f"{self.api_key[:8]}...{self.api_key[-4:]}"
         else:
             api_key_display = "Not set!"
-
+        
         print()
         title = "(^_^) Configuration"
         width = 50
@@ -5342,7 +6181,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         print(f"  Started:     {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"  Config File: {config_path} {config_status}")
         print()
-
+    
     def _list_recent_sessions(self, limit: int = 10) -> list[dict[str, Any]]:
         """Return recent CLI sessions for in-chat browsing/resume affordances."""
         if not self._session_db:
@@ -5402,6 +6241,22 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         preview_limit = 400
         visible_index = 0
         hidden_tool_messages = 0
+        show_ts = bool(getattr(self, "show_timestamps", False))
+
+        def _ts_suffix(message: dict) -> str:
+            # Messages restored from SessionDB carry a unix `timestamp`; live
+            # unsaved turns may not. Only annotate when both the toggle is on
+            # and the turn actually has a stored time — never fabricate one.
+            if not show_ts:
+                return ""
+            ts = message.get("timestamp")
+            if not ts:
+                return ""
+            try:
+                from datetime import datetime
+                return f"  [{datetime.fromtimestamp(float(ts)).strftime('%H:%M')}]"
+            except (ValueError, OSError, TypeError):
+                return ""
 
         def flush_tool_summary():
             nonlocal hidden_tool_messages
@@ -5435,13 +6290,13 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             content_text = "" if content is None else str(content)
 
             if role == "user":
-                print(f"\n  [You #{visible_index}]")
+                print(f"\n  [You #{visible_index}]{_ts_suffix(msg)}")
                 print(
                     f"    {content_text[:preview_limit]}{'...' if len(content_text) > preview_limit else ''}"
                 )
                 continue
 
-            print(f"\n  [Prostor #{visible_index}]")
+            print(f"\n  [Prostor #{visible_index}]{_ts_suffix(msg)}")
             tool_calls = msg.get("tool_calls") or []
             if content_text:
                 preview = content_text[:preview_limit]
@@ -5458,7 +6313,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
 
         flush_tool_summary()
         print()
-
+    
     def _notify_session_boundary(self, event_type: str) -> None:
         """Fire a session-boundary plugin hook (on_session_finalize or on_session_reset).
 
@@ -5476,7 +6331,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         except Exception:
             pass
 
-    def _discard_session_if_empty(self, session_id: str | None) -> bool:
+    def _discard_session_if_empty(self, session_id: Optional[str]) -> bool:
         """Drop a just-ended session row when it never gained content.
 
         Starting the CLI and immediately quitting (or rotating with /new,
@@ -5622,6 +6477,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             else:
                 print("(^_^)v New session started!")
 
+
+
     def _consume_pending_resume_selection(self, text: str) -> bool:
         """Resolve a bare numeric reply that follows a bare ``/resume`` prompt.
 
@@ -5660,6 +6517,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self._handle_resume_command(f"/resume {index}")
         return True
 
+
+
     def save_conversation(self):
         """Save the current conversation to a JSON snapshot under ~/.prostor/sessions/saved/.
 
@@ -5694,10 +6553,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 print(f"       Resume the live session with: prostor --resume {self.session_id}")
         except Exception as e:
             print(f"(x_x) Failed to save: {e}")
-
+    
     def retry_last(self):
         """Retry the last user message by removing the last exchange and re-sending.
-
+        
         Removes the last assistant response (and any tool-call messages) and
         the last user message, then re-sends that user message to the agent.
         Returns the message to re-send, or None if there's nothing to retry.
@@ -5705,25 +6564,25 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         if not self.conversation_history:
             print("(._.) No messages to retry.")
             return None
-
+        
         # Walk backwards to find the last user message
         last_user_idx = None
         for i in range(len(self.conversation_history) - 1, -1, -1):
             if self.conversation_history[i].get("role") == "user":
                 last_user_idx = i
                 break
-
+        
         if last_user_idx is None:
             print("(._.) No user message found to retry.")
             return None
-
+        
         # Extract the message text and remove everything from that point forward
         last_message = self.conversation_history[last_user_idx].get("content", "")
         self.conversation_history = self.conversation_history[:last_user_idx]
-
+        
         print(f"(^_^)b Retrying: \"{last_message[:60]}{'...' if len(last_message) > 60 else ''}\"")
         return last_message
-
+    
     def undo_last(self, n: int = 1, prefill: bool = True):
         """Back up N user turns: truncate history, soft-delete on disk, prefill.
 
@@ -5874,11 +6733,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             app.invalidate()
         except Exception as e:
             logger.debug("undo: prefill buffer failed: %s", e)
-
+    
     def _run_curses_picker(self, title: str, items: list[str], default_index: int = 0) -> int | None:
         """Run curses_single_select via run_in_terminal so prompt_toolkit handles terminal ownership cleanly."""
         import threading
-
         from prostor_cli.curses_ui import curses_single_select
 
         result = [None]
@@ -6094,6 +6952,120 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self._slash_confirm_deadline = 0
         self._invalidate()
 
+    def _normalize_slash_confirm_choice(
+        self,
+        raw: str | None,
+        choices: list[tuple[str, str, str]],
+    ) -> str | None:
+        if raw is None:
+            return None
+        choice_raw = raw.strip().lower()
+        if not choice_raw:
+            return None
+        aliases = {
+            "1": "once",
+            "once": "once",
+            "approve": "once",
+            "yes": "once",
+            "y": "once",
+            "ok": "once",
+            "2": "always",
+            "always": "always",
+            "remember": "always",
+            "3": "cancel",
+            "cancel": "cancel",
+            "nevermind": "cancel",
+            "no": "cancel",
+            "n": "cancel",
+        }
+        allowed = {choice[0] for choice in choices}
+        normalized = aliases.get(choice_raw)
+        if normalized in allowed:
+            return normalized
+        if choice_raw in allowed:
+            return choice_raw
+        return None
+
+    def _get_slash_confirm_display_fragments(self):
+        """Render the /new-/clear-style confirmation panel."""
+        state = self._slash_confirm_state
+        if not state:
+            return []
+
+        title = state.get("title") or "Confirm action"
+        detail = state.get("detail") or ""
+        choices = state.get("choices") or []
+        selected = state.get("selected", 0)
+
+        def _panel_box_width(title_text: str, content_lines: list[str], min_width: int = 56, max_width: int = 86) -> int:
+            term_cols = shutil.get_terminal_size((100, 20)).columns
+            longest = max([len(title_text)] + [len(line) for line in content_lines] + [min_width - 4])
+            inner = min(max(longest + 4, min_width - 2), max_width - 2, max(24, term_cols - 6))
+            return inner + 2
+
+        def _wrap_panel_text(text: str, width: int, subsequent_indent: str = "") -> list[str]:
+            wrapped = textwrap.wrap(
+                text,
+                width=max(8, width),
+                replace_whitespace=False,
+                drop_whitespace=False,
+                subsequent_indent=subsequent_indent,
+            )
+            return wrapped or [""]
+
+        def _append_panel_line(lines, border_style: str, content_style: str, text: str, box_width: int) -> None:
+            inner_width = max(0, box_width - 2)
+            lines.append((border_style, "│ "))
+            lines.append((content_style, text.ljust(inner_width)))
+            lines.append((border_style, " │\n"))
+
+        def _append_blank_panel_line(lines, border_style: str, box_width: int) -> None:
+            lines.append((border_style, "│" + (" " * box_width) + "│\n"))
+
+        preview_lines = []
+        for line in detail.splitlines():
+            preview_lines.extend(_wrap_panel_text(line, 72))
+        for idx, (_value, label, desc) in enumerate(choices):
+            marker = "❯" if idx == selected else " "
+            preview_lines.extend(_wrap_panel_text(f"{marker} [{idx + 1}] {label} — {desc}", 72, subsequent_indent="    "))
+        preview_lines.append("Type 1/2/3 or use ↑/↓ then Enter. ESC/Ctrl+C cancels.")
+
+        box_width = _panel_box_width(title, preview_lines)
+        inner_text_width = max(8, box_width - 2)
+        detail_wrapped = []
+        for line in detail.splitlines():
+            detail_wrapped.extend(_wrap_panel_text(line, inner_text_width))
+        choice_wrapped: list[tuple[int, str]] = []
+        for idx, (_value, label, desc) in enumerate(choices):
+            marker = "❯" if idx == selected else " "
+            for wrapped in _wrap_panel_text(f"{marker} [{idx + 1}] {label} — {desc}", inner_text_width, subsequent_indent="    "):
+                choice_wrapped.append((idx, wrapped))
+
+        term_rows = shutil.get_terminal_size((100, 24)).lines
+        reserved_below = 6
+        chrome_full = 6
+        available = max(0, term_rows - reserved_below)
+        max_detail_rows = max(1, available - chrome_full - len(choice_wrapped))
+        max_detail_rows = min(max_detail_rows, 8)
+        if len(detail_wrapped) > max_detail_rows:
+            keep = max(1, max_detail_rows - 1)
+            detail_wrapped = detail_wrapped[:keep] + ["… (detail truncated)"]
+
+        lines = []
+        lines.append(('class:approval-border', '╭' + ('─' * box_width) + '╮\n'))
+        _append_panel_line(lines, 'class:approval-border', 'class:approval-title', title, box_width)
+        _append_blank_panel_line(lines, 'class:approval-border', box_width)
+        for wrapped in detail_wrapped:
+            _append_panel_line(lines, 'class:approval-border', 'class:approval-desc', wrapped, box_width)
+        _append_blank_panel_line(lines, 'class:approval-border', box_width)
+        for idx, wrapped in choice_wrapped:
+            style = 'class:approval-selected' if idx == selected else 'class:approval-choice'
+            _append_panel_line(lines, 'class:approval-border', style, wrapped, box_width)
+        _append_blank_panel_line(lines, 'class:approval-border', box_width)
+        _append_panel_line(lines, 'class:approval-border', 'class:approval-cmd', 'Type 1/2/3 or use ↑/↓ then Enter. ESC/Ctrl+C cancels.', box_width)
+        lines.append(('class:approval-border', '╰' + ('─' * box_width) + '╯\n'))
+        return lines
+
     def _open_model_picker(self, providers: list, current_model: str, current_provider: str, user_provs=None, custom_provs=None) -> None:
         """Open prompt_toolkit-native /model picker modal."""
         self._capture_modal_input_snapshot()
@@ -6108,6 +7080,47 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             "custom_provs": custom_provs,
         }
         self._invalidate(min_interval=0.0)
+
+    def _confirm_expensive_model_switch(self, result) -> bool:
+        """Ask for explicit confirmation before applying costly model switches."""
+        if not getattr(result, "success", False):
+            return True
+        try:
+            from prostor_cli.model_cost_guard import expensive_model_warning
+
+            warning = expensive_model_warning(
+                result.new_model,
+                provider=result.target_provider,
+                base_url=result.base_url or self.base_url or "",
+                api_key=result.api_key or self.api_key or "",
+                model_info=result.model_info,
+            )
+        except Exception:
+            warning = None
+        if warning is None:
+            return True
+
+        choices = [
+            ("once", "Switch anyway", "Use this model for the current Prostor session."),
+            ("cancel", "Cancel", "Keep the current model."),
+        ]
+        raw = self._prompt_text_input_modal(
+            title="!!! Expensive Model Warning !!!",
+            detail=warning.message,
+            choices=choices,
+            timeout=120,
+        )
+        choice = self._normalize_slash_confirm_choice(raw, choices)
+        return choice == "once"
+
+    def _confirm_and_apply_model_switch_result(self, result, persist_global: bool) -> None:
+        try:
+            if result.success and not self._confirm_expensive_model_switch(result):
+                _cprint("  Model switch cancelled.")
+                return
+            self._apply_model_switch_result(result, persist_global)
+        except Exception as exc:
+            _cprint(f"  ✗ Model selection failed: {exc}")
 
     def _close_model_picker(self) -> None:
         self._model_picker_state = None
@@ -6147,7 +7160,35 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             _cprint(f"  ✗ {result.error_message}")
             return
 
+        if self.agent is not None:
+            try:
+                from prostor_cli.context_switch_guard import merge_preflight_compression_warning
+
+                merge_preflight_compression_warning(
+                    result,
+                    agent=self.agent,
+                    messages=list(self.conversation_history or []),
+                    config_context_length=getattr(self.agent, "_config_context_length", None),
+                )
+            except Exception as exc:
+                logger.debug("preflight-compression switch warning failed: %s", exc)
+
         old_model = self.model
+        # Snapshot the CLI-level credential/runtime fields BEFORE mutating them
+        # so a failed in-place agent swap can roll the whole CLI back to the old
+        # working model.  Otherwise the broken credentials staged below leak into
+        # the next turn's resolution even though the agent itself rolled back
+        # (#50163).
+        _cli_snapshot = {
+            "model": self.model,
+            "provider": self.provider,
+            "requested_provider": self.requested_provider,
+            "_explicit_api_key": getattr(self, "_explicit_api_key", None),
+            "_explicit_base_url": getattr(self, "_explicit_base_url", None),
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "api_mode": self.api_mode,
+        }
         self.model = result.new_model
         self.provider = result.target_provider
         self.requested_provider = result.target_provider
@@ -6173,7 +7214,17 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     api_mode=result.api_mode,
                 )
             except Exception as exc:
-                _cprint(f"  ⚠ Agent swap failed ({exc}); change applied to next session.")
+                # The agent rolled itself back to the old working model/client.
+                # Roll the CLI's own staged fields back too and abort the rest
+                # of the commit (note + success print) so a failed switch is a
+                # no-op rather than a dead session (#50163).
+                for _k, _v in _cli_snapshot.items():
+                    setattr(self, _k, _v)
+                _cprint(
+                    f"  ⚠ Model switch to {result.new_model} failed ({exc}); "
+                    f"staying on {old_model}."
+                )
+                return
 
         self._pending_model_switch_note = (
             f"[Note: model was just switched from {old_model} to {result.new_model} "
@@ -6311,9 +7362,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         config.yaml, default True). Use ``--session`` for a one-off switch.
         """
         from prostor_cli.model_switch import (
+            switch_model,
             parse_model_flags,
             resolve_persist_behavior,
-            switch_model,
         )
         from prostor_cli.providers import get_label
 
@@ -6413,6 +7464,19 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             _cprint(f"  ✗ {result.error_message}")
             return
 
+        if self.agent is not None:
+            try:
+                from prostor_cli.context_switch_guard import merge_preflight_compression_warning
+
+                merge_preflight_compression_warning(
+                    result,
+                    agent=self.agent,
+                    messages=list(self.conversation_history or []),
+                    config_context_length=getattr(self.agent, "_config_context_length", None),
+                )
+            except Exception as exc:
+                logger.debug("preflight-compression switch warning failed: %s", exc)
+
         if not self._confirm_expensive_model_switch(result):
             _cprint("  Model switch cancelled.")
             return
@@ -6421,6 +7485,18 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         # Update requested_provider so _ensure_runtime_credentials() doesn't
         # overwrite the switch on the next turn (it re-resolves from this).
         old_model = self.model
+        # Snapshot CLI-level fields before mutation so a failed in-place swap
+        # rolls the whole CLI back to the old working model (#50163).
+        _cli_snapshot = {
+            "model": self.model,
+            "provider": self.provider,
+            "requested_provider": self.requested_provider,
+            "_explicit_api_key": getattr(self, "_explicit_api_key", None),
+            "_explicit_base_url": getattr(self, "_explicit_base_url", None),
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "api_mode": self.api_mode,
+        }
         self.model = result.new_model
         self.provider = result.target_provider
         self.requested_provider = result.target_provider
@@ -6447,7 +7523,15 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     api_mode=result.api_mode,
                 )
             except Exception as exc:
-                _cprint(f"  ⚠ Agent swap failed ({exc}); change applied to next session.")
+                # Agent rolled itself back; roll the CLI back too and abort so a
+                # failed switch is a no-op rather than a dead session (#50163).
+                for _k, _v in _cli_snapshot.items():
+                    setattr(self, _k, _v)
+                _cprint(
+                    f"  ⚠ Model switch to {result.new_model} failed ({exc}); "
+                    f"staying on {old_model}."
+                )
+                return
 
         # Store a note to prepend to the next user message so the model
         # knows a switch occurred (avoids injecting system messages mid-history
@@ -6598,35 +7682,40 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         if isinstance(value, dict):
             parts = [value.get("system_prompt", "")]
             if value.get("tone"):
-                parts.append(f'Tone: {value["tone"]}')
+                parts.append(f'Tone: {value["tone"]}' )
             if value.get("style"):
-                parts.append(f'Style: {value["style"]}')
+                parts.append(f'Style: {value["style"]}' )
             return "\n".join(p for p in parts if p)
         return str(value)
 
+
+    
+
+
+
     def _show_gateway_status(self):
         """Show status of the gateway and connected messaging platforms."""
-        from gateway.config import Platform, load_gateway_config
-
+        from gateway.config import load_gateway_config, Platform
+        
         print()
         print("+" + "-" * 60 + "+")
         print("|" + " " * 15 + "(✿◠‿◠) Gateway Status" + " " * 17 + "|")
         print("+" + "-" * 60 + "+")
         print()
-
+        
         try:
             config = load_gateway_config()
-
+            
             print("  Messaging Platform Configuration:")
             print("  " + "-" * 55)
-
+            
             platform_status = {
                 Platform.TELEGRAM: ("Telegram", "TELEGRAM_BOT_TOKEN"),
                 Platform.DISCORD: ("Discord", "DISCORD_BOT_TOKEN"),
                 Platform.SLACK: ("Slack", "SLACK_BOT_TOKEN"),
                 Platform.WHATSAPP: ("WhatsApp", "WHATSAPP_ENABLED"),
             }
-
+            
             for platform, (name, env_var) in platform_status.items():
                 pconfig = config.platforms.get(platform)
                 if pconfig and pconfig.enabled:
@@ -6635,7 +7724,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     print(f"    ✓ {name:<12} Enabled{home_str}")
                 else:
                     print(f"    ○ {name:<12} Not configured ({env_var})")
-
+            
             print()
             print("  Session Reset Policy:")
             print("  " + "-" * 55)
@@ -6643,14 +7732,14 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             print(f"    Mode: {policy.mode}")
             print(f"    Daily reset at: {policy.at_hour}:00")
             print(f"    Idle timeout: {policy.idle_minutes} minutes")
-
+            
             print()
             print("  To start the gateway:")
             print("    python cli.py --gateway")
             print()
             print(f"  Configuration file: {display_prostor_home()}/config.yaml")
             print()
-
+            
         except Exception as e:
             print(f"  Error loading gateway config: {e}")
             print()
@@ -6660,14 +7749,14 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             print("       DISCORD_BOT_TOKEN=your_token")
             print(f"    2. Or configure settings in {display_prostor_home()}/config.yaml")
             print()
-
+    
     def process_command(self, command: str) -> bool:
         """
         Process a slash command.
-
+        
         Args:
             command: The command string (starting with /)
-
+            
         Returns:
             bool: True to continue, False to exit
         """
@@ -6868,8 +7957,6 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             self._handle_model_switch(cmd_original)
         elif canonical == "codex-runtime":
             self._handle_codex_runtime(cmd_original)
-        elif canonical == "gquota":
-            self._handle_gquota_command(cmd_original)
 
         elif canonical == "personality":
             # Use original case (handler lowercases the personality name itself)
@@ -6879,6 +7966,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             if retry_msg and hasattr(self, '_pending_input'):
                 # Re-queue the message so process_loop sends it to the agent
                 self._pending_input.put(retry_msg)
+        elif canonical == "prompt":
+            self._handle_prompt_compose_command(cmd_original)
         elif canonical == "undo":
             # Parse optional turn count: "/undo" → 1, "/undo 3" → 3.
             _undo_n = 1
@@ -6930,6 +8019,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             self._status_bar_visible = not self._status_bar_visible
             state = "visible" if self._status_bar_visible else "hidden"
             self._console_print(f"  Status bar {state}")
+        elif canonical == "timestamps":
+            self._handle_timestamps_command(cmd_original)
         elif canonical == "verbose":
             self._toggle_verbose()
         elif canonical == "footer":
@@ -7024,7 +8115,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                         loaded = {}
 
                     print(f"User plugins ({len(user_entries)}):")
-                    for name, version, _desc, _source, _dir, key in sorted(user_entries):
+                    for name, version, _desc, source, _dir, key in sorted(user_entries):
                         state = _plugin_status(name, enabled, disabled, key=key)
                         glyph = {"enabled": "✓", "disabled": "✗"}.get(state, "○")
                         ver = f" v{version}" if version else ""
@@ -7236,8 +8327,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 else:
                     _cprint(f"\033[1;31mUnknown command: {cmd_lower}{_RST}")
                     _cprint(f"{_DIM}{_ACCENT}Type /help for available commands{_RST}")
-
+        
         return True
+    
 
     @staticmethod
     def _try_launch_chrome_debug(port: int, system: str) -> bool:
@@ -7250,6 +8342,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         """
         return try_launch_chrome_debug(port, system)
 
+
+
     # ────────────────────────────────────────────────────────────────
     # /goal — persistent cross-turn goals (Ralph-style loop)
     # ────────────────────────────────────────────────────────────────
@@ -7261,8 +8355,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         session split).
         """
         try:
-            from prostor_cli.config import load_config
             from prostor_cli.goals import GoalManager
+            from prostor_cli.config import load_config
         except Exception as exc:
             logging.debug("goal manager unavailable: %s", exc)
             return None
@@ -7285,6 +8379,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         mgr = GoalManager(session_id=sid, default_max_turns=max_turns)
         self._goal_manager = mgr
         return mgr
+
+
 
     def _maybe_continue_goal_after_turn(self) -> None:
         """Hook run after every CLI turn. Judges + maybe re-queues.
@@ -7389,7 +8485,17 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         if not last_response.strip():
             return
 
-        decision = mgr.evaluate_after_turn(last_response, user_initiated=True)
+        try:
+            from prostor_cli.goals import gather_background_processes as _gather_bg
+            _bg_procs = _gather_bg()
+        except Exception:
+            _bg_procs = None
+
+        decision = mgr.evaluate_after_turn(
+            last_response,
+            user_initiated=True,
+            background_processes=_bg_procs,
+        )
         msg = decision.get("message") or ""
         if msg:
             _cprint(f"  {msg}")
@@ -7401,6 +8507,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     self._pending_input.put(prompt)
                 except Exception as exc:
                     logging.debug("goal continuation enqueue failed: %s", exc)
+
+
 
     def _toggle_verbose(self):
         """Cycle tool progress mode: off → new → all → verbose → off.
@@ -7530,6 +8638,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 " — all commands auto-approved. Use with caution."
             )
 
+
+
+
     def _on_reasoning(self, reasoning_text: str):
         """Callback for intermediate reasoning display during tool-call loops."""
         if not reasoning_text:
@@ -7586,8 +8697,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         original_count = len(self.conversation_history)
         with self._busy_command("Compressing context..."):
             try:
-                from agent.manual_compression_feedback import summarize_manual_compression
                 from agent.model_metadata import estimate_request_tokens_rough
+                from agent.manual_compression_feedback import summarize_manual_compression
                 original_history = list(self.conversation_history)
 
                 # Boundary-aware split: only the head is summarized; the
@@ -7685,6 +8796,862 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             except Exception as e:
                 print(f"  ❌ Compression failed: {e}")
 
+
+
+    def _show_usage(self):
+        """Rate limits + session token usage (when a live agent exists) + Nous credits.
+
+        The Nous credits block is agent-independent (a portal fetch), so it runs even
+        with no live agent — important for the TUI, where /usage runs in a slash-worker
+        subprocess that resumes the session WITHOUT building an agent (self.agent is None),
+        which would otherwise early-return before any credits showed.
+        """
+        if not self.agent:
+            if not self._print_nous_credits_block():
+                print("(._.) No active agent -- send a message first.")
+            return
+
+        agent = self.agent
+        calls = agent.session_api_calls
+
+        if calls == 0:
+            if not self._print_nous_credits_block():
+                print("(._.) No API calls made yet in this session.")
+            return
+
+        # ── Rate limits (shown first when available) ────────────────
+        rl_state = agent.get_rate_limit_state()
+        if rl_state and rl_state.has_data:
+            from agent.rate_limit_tracker import format_rate_limit_display
+            print()
+            print(format_rate_limit_display(rl_state))
+            print()
+
+        # ── Session token usage ─────────────────────────────────────
+        input_tokens = getattr(agent, "session_input_tokens", 0) or 0
+        output_tokens = getattr(agent, "session_output_tokens", 0) or 0
+        cache_read_tokens = getattr(agent, "session_cache_read_tokens", 0) or 0
+        cache_write_tokens = getattr(agent, "session_cache_write_tokens", 0) or 0
+        reasoning_tokens = getattr(agent, "session_reasoning_tokens", 0) or 0
+        prompt = agent.session_prompt_tokens
+        completion = agent.session_completion_tokens
+        total = agent.session_total_tokens
+
+        compressor = agent.context_compressor
+        last_prompt = compressor.last_prompt_tokens
+        ctx_len = compressor.context_length
+        pct = min(100, (last_prompt / ctx_len * 100)) if ctx_len else 0
+        compressions = compressor.compression_count
+
+        msg_count = len(self.conversation_history)
+        cost_result = estimate_usage_cost(
+            agent.model,
+            CanonicalUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+            ),
+            provider=getattr(agent, "provider", None),
+            base_url=getattr(agent, "base_url", None),
+        )
+        elapsed = format_duration_compact((datetime.now() - self.session_start).total_seconds())
+
+        print("  📊 Session Token Usage")
+        print(f"  {'─' * 40}")
+        print(f"  Model:                     {agent.model}")
+        print(f"  Input tokens:              {input_tokens:>10,}")
+        print(f"  Cache read tokens:         {cache_read_tokens:>10,}")
+        print(f"  Cache write tokens:        {cache_write_tokens:>10,}")
+        print(f"  Output tokens:             {output_tokens:>10,}")
+        if reasoning_tokens:
+            print(f"  ↳ Reasoning (subset):      {reasoning_tokens:>10,}")
+        print(f"  Prompt tokens (total):     {prompt:>10,}")
+        print(f"  Completion tokens:         {completion:>10,}")
+        print(f"  Total tokens:              {total:>10,}")
+        print(f"  API calls:                 {calls:>10,}")
+        print(f"  Session duration:          {elapsed:>10}")
+        print(f"  Cost status:              {cost_result.status:>10}")
+        print(f"  Cost source:              {cost_result.source:>10}")
+        if cost_result.amount_usd is not None:
+            prefix = "~" if cost_result.status == "estimated" else ""
+            print(f"  Total cost:              {prefix}${float(cost_result.amount_usd):>10.4f}")
+        elif cost_result.status == "included":
+            print(f"  Total cost:              {'included':>10}")
+        else:
+            print(f"  Total cost:              {'n/a':>10}")
+        print(f"  {'─' * 40}")
+        print(f"  Current context:  {last_prompt:,} / {ctx_len:,} ({pct:.0f}%)")
+        print(f"  Messages:         {msg_count}")
+        print(f"  Compressions:     {compressions}")
+        if cost_result.status == "unknown":
+            print(f"  Note:             Pricing unknown for {agent.model}")
+
+        # Account limits -- fetched off-thread with a hard timeout so slow
+        # provider APIs don't hang the prompt.
+        provider = getattr(agent, "provider", None) or getattr(self, "provider", None)
+        base_url = getattr(agent, "base_url", None) or getattr(self, "base_url", None)
+        api_key = getattr(agent, "api_key", None) or getattr(self, "api_key", None)
+        # Lazy import — pulls the OpenAI SDK chain, only needed here.
+        from agent.account_usage import fetch_account_usage, render_account_usage_lines
+        account_snapshot = None
+        if provider:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+                try:
+                    account_snapshot = _pool.submit(
+                        fetch_account_usage, provider,
+                        base_url=base_url, api_key=api_key,
+                    ).result(timeout=10.0)
+                except (concurrent.futures.TimeoutError, Exception):
+                    account_snapshot = None
+        account_lines = [f"  {line}" for line in render_account_usage_lines(account_snapshot)]
+        if account_lines:
+            print()
+            for line in account_lines:
+                print(line)
+
+        # Nous credits magnitudes + monthly-grant gauge (agent-independent — also
+        # runs at the no-agent / no-calls early-returns above). See the helper.
+        self._print_nous_credits_block()
+
+        if self.verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
+            for noisy in ('openai', 'openai._base_client', 'httpx', 'httpcore', 'asyncio', 'hpack', 'grpc', 'modal'):
+                logging.getLogger(noisy).setLevel(logging.WARNING)
+        else:
+            logging.getLogger().setLevel(logging.INFO)
+            # NOTE: We deliberately do NOT raise per-logger levels for
+            # tools/run_agent/etc. in quiet mode. Setting logger.setLevel
+            # above the file handler level filters records before they
+            # reach handlers, so agent.log / errors.log lose visibility
+            # into stream-retry events, credential rotations, etc.
+            # Console quietness is enforced by prostor_logging not
+            # installing a console StreamHandler in non-verbose mode.
+
+    def _print_nous_credits_block(self) -> bool:
+        """Print the Nous credits magnitudes + monthly-grant gauge when a Nous account
+        is logged in. Returns True if it printed anything.
+
+        Delegates to the shared ``agent.account_usage.nous_credits_lines`` helper —
+        the single source for the /usage credits block across CLI, gateway, and TUI.
+        It's agent-independent (a portal fetch gated on "a Nous account is logged in",
+        NOT the inference-provider string), so /usage shows the block even in the TUI
+        slash-worker subprocess that resumes WITHOUT a live agent. Fail-open and
+        wall-clock-bounded inside the helper; also honors PROSTOR_DEV_CREDITS_FIXTURE
+        for offline testing — same behavior as every other surface.
+        """
+        from agent.account_usage import nous_credits_lines
+
+        lines = nous_credits_lines()
+        if not lines:
+            return False
+        print()
+        for line in lines:
+            print(f"  {line}")
+        return True
+
+    def _show_credits(self):
+        """`/credits` — focused Nous credit balance + top-up handoff.
+
+        Interactive CLI: balance block + identity line + a 3-button panel
+        (Open top-up / Copy link / Cancel). Non-interactive contexts — the TUI
+        slash-worker subprocess and any place without a live prompt_toolkit app
+        (``self._app is None``) — render a text variant (balance + tappable
+        top-up URL), because the modal would try to read the RPC stdin and crash
+        the worker. The terminal never confirms or polls payment (billing phase
+        2a). Fail-open: a portal hiccup or logged-out account degrades to a clear
+        message, never a crash.
+        """
+        from agent.account_usage import build_credits_view
+
+        view = build_credits_view()
+
+        if not view.logged_in:
+            print()
+            _cprint(f"  💳 {_d('Not logged into Nous Portal.')}")
+            print("  Run `prostor portal` to log in, then /credits.")
+            return
+
+        print()
+        print("  💳 Nous credits")
+        print(f"  {'─' * 41}")
+        for line in view.balance_lines:
+            # Drop the helper's own "📈 Nous credits" header — we print our own.
+            if line.lstrip().startswith("📈"):
+                continue
+            print(f"  {line}")
+        print(f"  {'─' * 41}")
+        if view.identity_line:
+            print(f"  {view.identity_line}")
+
+        if not view.topup_url:
+            return
+
+        # Non-interactive (TUI slash-worker, piped, no live app): the
+        # prompt_toolkit modal can't run here — it would read the worker's
+        # JSON-RPC stdin and crash the command. Render the text variant: the
+        # tappable URL IS the affordance, same as the messaging surfaces.
+        if not getattr(self, "_app", None):
+            print()
+            print(f"  Top up: {view.topup_url}")
+            print("  Complete your top-up in the browser — credits will appear in /credits shortly.")
+            return
+
+        choices = [
+            ("open", "Open top-up in browser", "launch the portal billing page"),
+            ("copy", "Copy link", "copy the top-up URL to your clipboard"),
+            ("cancel", "Cancel", "do nothing"),
+        ]
+        raw = self._prompt_text_input_modal(
+            title="💳 Add credits?",
+            detail=f"Top-up page:\n{view.topup_url}",
+            choices=choices,
+        )
+        choice = self._normalize_slash_confirm_choice(raw, choices)
+
+        if choice == "open":
+            opened = False
+            try:
+                import webbrowser
+
+                opened = webbrowser.open(view.topup_url)
+            except Exception:
+                opened = False
+            if not opened:
+                print(f"  Open this URL to top up: {view.topup_url}")
+            print()
+            print("  Complete your top-up in the browser — credits will appear in /credits shortly.")
+        elif choice == "copy":
+            try:
+                self._write_osc52_clipboard(view.topup_url)
+                print(f"  📋 Copied: {view.topup_url}")
+            except Exception:
+                print(f"  Top-up URL: {view.topup_url}")
+        else:
+            print("  🟡 Cancelled. No credits added.")
+
+    # ------------------------------------------------------------------
+    # /billing — Phase 2b terminal billing (CLI surface, all 5 screens)
+    # ------------------------------------------------------------------
+
+    def _show_billing(self, command: str = "/billing"):
+        """`/billing` — terminal billing for Nous (one interactive modal).
+
+        ZERO sub-commands: any argument is ignored. Bare ``/billing`` always
+        opens the Overview (Screen 1), whose numbered menu is the *only* way to
+        reach the Buy / Auto-reload / Monthly-limit sub-screens. (Per the unified
+        UX spec §0.4 — ``/billing buy`` etc. are gone; we don't error on a stray
+        arg, we just open the menu.)
+
+        Interactive CLI uses the prompt_toolkit modal; non-interactive contexts
+        (TUI slash-worker / no live app) render text + the portal deep-link, never
+        prompting (the URL is the affordance), same discipline as ``_show_credits``.
+        All money is Decimal end-to-end; the terminal never collects card details.
+        """
+        from agent.billing_view import build_billing_state
+
+        state = build_billing_state()
+        if not state.logged_in:
+            print()
+            if state.error:
+                _msg = f"Couldn't load billing: {state.error}"
+                _cprint(f"  💳 {_d(_msg)}")
+            else:
+                _cprint(f"  💳 {_d('Not logged into Nous Portal.')}")
+                print("  Run `prostor portal` to log in, then /billing.")
+            return
+
+        # Any sub-arg is intentionally ignored — always open the menu.
+        self._billing_overview(state)
+
+    def _billing_portal_hint(self, state, *, reason: str = "") -> None:
+        """Print a portal deep-link line (the funnel for portal-only actions)."""
+        url = getattr(state, "portal_url", None)
+        if not url:
+            return
+        if reason:
+            print(f"  {reason}")
+        print(f"  Manage on portal: {url}")
+
+    def _billing_overview(self, state):
+        """Screen 1 — overview: balance, spend bar, role-gated action menu."""
+        from agent.billing_view import format_money
+
+        print()
+        _cprint(f"  💳 {_b('Usage credits')}")
+        print(f"  {'─' * 41}")
+
+        cap = state.monthly_cap
+        if cap is not None and cap.limit_usd is not None:
+            spent = format_money(cap.spent_this_month_usd)
+            limit = format_money(cap.limit_usd)
+            ceiling = " (default ceiling)" if cap.is_default_ceiling else ""
+            bar, pct = self._billing_spend_bar(
+                cap.spent_this_month_usd, cap.limit_usd
+            )
+            print(f"  {spent} of {limit} used{ceiling}   {bar} {pct}%")
+
+        print(f"  Balance: {format_money(state.balance_usd)}")
+
+        ar = state.auto_reload
+        if ar is not None:
+            if ar.enabled:
+                print(
+                    f"  Auto-reload: on — below {format_money(ar.threshold_usd)} "
+                    f"→ reload to {format_money(ar.reload_to_usd)}"
+                )
+            else:
+                print("  Auto-reload: off")
+
+        if state.org_name:
+            role = (state.role or "").title()
+            _org_line = f"Org: {state.org_name}{f' · {role}' if role else ''}"
+            _cprint(f"  {_d(_org_line)}")
+        print(f"  {'─' * 41}")
+
+        # Action gating: admin + kill-switch for charge/auto-reload; everyone gets portal.
+        if not state.is_admin:
+            _cprint(f"  {_d('Billing actions require an org admin/owner.')}")
+            self._billing_portal_hint(state)
+            return
+        if not state.cli_billing_enabled:
+            _cprint(f"  {_d('Terminal billing is turned off for this org.')}")
+            self._billing_portal_hint(state, reason="Enable it on the portal to buy credits here.")
+            return
+
+        # Optimistic funnel: no card on file → a charge will 403 no_payment_method.
+        # Surface that up front (with the portal link) but DON'T hide Buy — /state.card
+        # can't fully prove CLI-chargeability, so we advise rather than gate.
+        if state.card is None:
+            _cprint(
+                f"  {_d('No saved card for terminal charges yet — set one up on the portal first.')}"
+            )
+            self._billing_portal_hint(state)
+
+        # Non-interactive (slash-worker / no live app): no modal, no sub-command
+        # advertising — just the portal funnel (the URL is the affordance).
+        if not getattr(self, "_app", None):
+            self._billing_portal_hint(state)
+            return
+
+        choices = [
+            ("buy", "Buy credits", "purchase a one-time credit top-up"),
+            ("auto", "Adjust auto-reload", "configure automatic top-ups"),
+            ("limit", "Adjust monthly limit", "show the monthly spend cap (read-only)"),
+            ("portal", "Manage on portal", "open the billing page in your browser"),
+            ("cancel", "Cancel", "do nothing"),
+        ]
+        # The overview summary is already printed above; the modal only needs to
+        # present the action menu — repeating the title/balance reads as a dupe.
+        raw = self._prompt_text_input_modal(
+            title="💳 Choose an action", detail="",
+            choices=choices,
+        )
+        choice = self._normalize_slash_confirm_choice(raw, choices)
+        if choice == "buy":
+            self._billing_buy_flow(state)
+        elif choice == "auto":
+            self._billing_auto_reload_flow(state)
+        elif choice == "limit":
+            self._billing_limit_screen(state)
+        elif choice == "portal":
+            self._billing_open_portal(state)
+        else:
+            print("  🟡 Cancelled.")
+
+    def _billing_spend_bar(self, spent, limit, *, cells: int = 10):
+        """Render a 10-cell `█`/`░` spend bar + integer percent from spent/limit.
+
+        Returns ``(bar, pct)`` where ``bar`` is like ``[████░░░░░░]`` and ``pct``
+        is the spent/limit percentage clamped to 0..100. Box-drawing glyphs are
+        not SGR codes, so this is leak-safe even without ``_b()``/``_d()``.
+        """
+        from decimal import Decimal
+
+        try:
+            s = Decimal(str(spent)) if spent is not None else Decimal("0")
+            l = Decimal(str(limit)) if limit is not None else Decimal("0")
+        except Exception:
+            s, l = Decimal("0"), Decimal("0")
+        if l <= 0:
+            pct = 0
+        else:
+            pct = int((s / l) * 100)
+        pct = max(0, min(100, pct))
+        filled = int(round(pct / 100 * cells))
+        filled = max(0, min(cells, filled))
+        bar = ("█" * filled) + ("░" * (cells - filled))
+        return bar, pct
+
+    def _billing_open_portal(self, state):
+        url = getattr(state, "portal_url", None)
+        if not url:
+            print("  No portal URL available.")
+            return
+        opened = False
+        try:
+            import webbrowser
+
+            opened = webbrowser.open(url)
+        except Exception:
+            opened = False
+        if not opened:
+            print(f"  Open this URL: {url}")
+        print("  Complete billing changes in the browser.")
+
+    def _billing_require_admin(self, state) -> bool:
+        """Guard charge/auto-reload entry points; print + return False if blocked."""
+        if not state.is_admin:
+            print()
+            _cprint(f"  💳 {_d('Billing actions require an org admin/owner.')}")
+            self._billing_portal_hint(state)
+            return False
+        if not state.cli_billing_enabled:
+            print()
+            _cprint(f"  💳 {_d('Terminal billing is turned off for this org.')}")
+            self._billing_portal_hint(state, reason="Enable it on the portal first.")
+            return False
+        return True
+
+    def _billing_buy_flow(self, state):
+        """Screen 2 (preset select) → Screen 3 (confirm + charge + poll)."""
+        from agent.billing_view import format_money, validate_charge_amount
+
+        if not self._billing_require_admin(state):
+            return
+
+        # Screen 3 — preset selection.
+        if not getattr(self, "_app", None):
+            presets = ", ".join(format_money(p) for p in state.charge_presets)
+            print()
+            _cprint(f"  💳 {_b('Buy usage credits')}")
+            print(f"  Presets: {presets}")
+            print("  Run this in the interactive CLI to complete a purchase.")
+            self._billing_portal_hint(state)
+            return
+
+        preset_choices = []
+        for p in state.charge_presets:
+            preset_choices.append((str(p), format_money(p), "one-time credit purchase"))
+        preset_choices.append(("custom", "Custom amount…", "enter your own amount"))
+        preset_choices.append(("cancel", "Cancel", "do nothing"))
+
+        card = state.card
+        detail = f"Payment: {card.masked}" if card else "No saved card on file"
+        raw = self._prompt_text_input_modal(
+            title="💳 Buy usage credits", detail=detail, choices=preset_choices,
+        )
+        choice = self._normalize_slash_confirm_choice(raw, preset_choices)
+        if not choice or choice == "cancel":
+            print("  🟡 Cancelled. No credits added.")
+            return
+
+        from decimal import Decimal
+
+        if choice == "custom":
+            entered = self._prompt_text_input("  Amount (USD): ")
+            if entered is None:
+                # None = cancelled (e.g. slash-worker can't prompt off-thread).
+                print("  🟡 Cancelled. No credits added.")
+                return
+            v = validate_charge_amount(
+                entered or "", min_usd=state.min_usd, max_usd=state.max_usd
+            )
+            if not v.ok:
+                print(f"  🔴 {v.error}")
+                return
+            amount = v.amount
+        else:
+            try:
+                amount = Decimal(choice)
+            except Exception:
+                print("  🔴 Invalid selection.")
+                return
+
+        self._billing_confirm_and_charge(state, amount)
+
+    def _billing_confirm_and_charge(self, state, amount):
+        """Screen 3 — confirm total + consent, charge, then poll to settlement."""
+        from agent.billing_view import format_money, new_idempotency_key
+
+        card = state.card
+        print()
+        _cprint(f"  💳 {_b('Confirm purchase')}")
+        print(f"  {'─' * 41}")
+        print(f"  Total: {format_money(amount)}")
+        if card:
+            print(f"  Payment: {card.masked}")
+        print(f"  {'─' * 41}")
+        _consent = (
+            "By confirming, you allow Nous Research to charge your card."
+        )
+        _cprint(f"  {_d(_consent)}")
+
+        confirm_choices = [
+            ("pay", f"Pay {format_money(amount)} now", "submit the charge"),
+            ("cancel", "Go back", "do not charge"),
+        ]
+        if not getattr(self, "_app", None):
+            print("  Run in the interactive CLI to confirm a purchase.")
+            return
+        raw = self._prompt_text_input_modal(
+            title=f"💳 Pay {format_money(amount)}?",
+            detail=(card.masked if card else "no saved card"),
+            choices=confirm_choices,
+        )
+        choice = self._normalize_slash_confirm_choice(raw, confirm_choices)
+        if choice != "pay":
+            print("  🟡 Cancelled. No credits added.")
+            return
+
+        # Submit the charge with a fresh idempotency key (reused on retry).
+        from prostor_cli.nous_billing import (
+            BillingError,
+            BillingScopeRequired,
+            post_charge,
+        )
+
+        key = new_idempotency_key()
+        try:
+            result = post_charge(amount_usd=amount, idempotency_key=key)
+        except BillingScopeRequired:
+            self._billing_handle_scope_required(state)
+            return
+        except BillingError as exc:
+            self._billing_render_charge_error(state, exc)
+            return
+
+        charge_id = result.get("chargeId")
+        if not charge_id:
+            print("  🔴 No charge id returned; please check the portal.")
+            return
+        _cprint(f"  {_d('Charge submitted — confirming settlement…')}")
+        self._billing_poll_charge(state, charge_id, amount)
+
+    def _billing_poll_charge(self, state, charge_id, amount):
+        """Poll loop: 2s interval, 5-min cap, cancellable. settled = ledger truth."""
+        import time as _time
+
+        from agent.billing_view import format_money
+        from prostor_cli.nous_billing import (
+            BillingError,
+            BillingRateLimited,
+            get_charge_status,
+        )
+
+        deadline = _time.time() + 300  # 5-minute cap
+        interval = 2.0
+        while _time.time() < deadline:
+            try:
+                status = get_charge_status(charge_id)
+            except BillingRateLimited as exc:
+                # Retry-after, NOT a failure — back off and keep polling.
+                wait = exc.retry_after or 5
+                _time.sleep(min(wait, 30))
+                continue
+            except BillingError as exc:
+                print(f"  🔴 Could not check the charge: {exc}")
+                return
+
+            state_str = status.get("status")
+            if state_str == "settled":
+                amt = status.get("amountUsd")
+                from agent.billing_view import parse_money
+
+                shown = format_money(parse_money(amt)) if amt else format_money(amount)
+                print(f"  ✅ {shown} in credits added.")
+                return
+            if state_str == "failed":
+                self._billing_render_charge_failed(state, status.get("reason"))
+                return
+            # pending → wait and poll again
+            _time.sleep(interval)
+
+        # Past the cap with no terminal state = timeout (not an error).
+        print(f"  🟡 Still processing after 5 minutes — this is a timeout, not a "
+              f"failure. Check /billing or the portal shortly.")
+        self._billing_portal_hint(state)
+
+    def _billing_render_charge_failed(self, state, reason):
+        """Branch the poll `failed` reasons to the right copy + portal funnel."""
+        reason = (reason or "").strip()
+        if reason == "authentication_required":
+            print("  🔴 Your bank requires verification (3DS). Complete it on the "
+                  "portal to finish this purchase.")
+        elif reason == "payment_method_expired":
+            print("  🔴 Your card has expired. Update it on the portal.")
+        elif reason == "card_declined":
+            print("  🔴 Your card was declined. Try another card on the portal.")
+        else:
+            print(f"  🔴 The charge didn't go through ({reason or 'processing_error'}).")
+        self._billing_portal_hint(state)
+
+    def _billing_render_charge_error(self, state, exc):
+        """Render a typed BillingError at submit time (pre-poll)."""
+        from prostor_cli.nous_billing import BillingRateLimited
+
+        code = getattr(exc, "error", None)
+        portal_url = getattr(exc, "portal_url", None) or getattr(state, "portal_url", None)
+        if code == "no_payment_method":
+            print("  💳 No saved card for terminal charges yet. Set one up on the "
+                  "portal (one-time credit buys don't save a reusable card).")
+        elif code == "cli_billing_disabled":
+            print("  🔴 Terminal billing is turned off for this org — an admin must enable it on the portal.")
+        elif code == "monthly_cap_exceeded":
+            remaining = (getattr(exc, "payload", {}) or {}).get("remainingUsd")
+            if remaining is not None:
+                print(f"  🔴 Monthly spend cap reached — ${remaining} headroom left.")
+            else:
+                print("  🔴 Monthly spend cap reached.")
+        elif isinstance(exc, BillingRateLimited):
+            wait = getattr(exc, "retry_after", None)
+            mins = f" (try again in ~{max(1, round(wait / 60))} min)" if wait else ""
+            print(f"  🟡 Too many charges right now{mins}. This isn't a payment failure.")
+        else:
+            print(f"  🔴 {exc}")
+        if portal_url:
+            print(f"  Portal: {portal_url}")
+
+    def _billing_handle_scope_required(self, state):
+        """403 insufficient_scope → lazy step-up re-auth (plan D-A)."""
+        print()
+        print("  💳 Terminal billing needs an extra permission (billing:manage).")
+        _scope_msg = (
+            "An org admin/owner must tick \"Allow terminal billing\" during "
+            "login."
+        )
+        _cprint(f"  {_d(_scope_msg)}")
+        if not getattr(self, "_app", None):
+            print("  Run `prostor portal` and approve terminal billing, then retry.")
+            return
+        confirm_choices = [
+            ("yes", "Re-authorize now", "open the portal to grant billing access"),
+            ("no", "Not now", "cancel"),
+        ]
+        raw = self._prompt_text_input_modal(
+            title="💳 Grant terminal billing access?",
+            detail="Opens the portal device-authorization page.",
+            choices=confirm_choices,
+        )
+        choice = self._normalize_slash_confirm_choice(raw, confirm_choices)
+        if choice != "yes":
+            print("  🟡 Cancelled.")
+            return
+        try:
+            from prostor_cli.auth import step_up_nous_billing_scope
+
+            granted = step_up_nous_billing_scope(open_browser=True)
+        except Exception as exc:
+            print(f"  🔴 Re-authorization failed: {exc}")
+            return
+        if granted:
+            print("  ✅ Billing permission granted.")
+            # Step-up only grants the billing:manage TOKEN scope; the ORG
+            # kill-switch (cli_billing_enabled) is a separate gate. Re-fetch
+            # /state so we don't over-promise when a charge would still hit
+            # cli_billing_disabled.
+            from agent.billing_view import build_billing_state
+
+            fresh = build_billing_state()
+            if fresh.logged_in and fresh.cli_billing_enabled:
+                print("  Run /billing buy again to continue.")
+            else:
+                print("  🟡 Permission granted, but terminal billing is still turned "
+                      "off for this org. Enable it in the portal, then run /billing again.")
+                self._billing_portal_hint(fresh)
+        else:
+            print("  🟡 Terminal billing was not granted (an admin must tick the box).")
+
+    def _billing_auto_reload_flow(self, state):
+        """Screen 4 — auto-reload config: threshold + reload-to → PATCH.
+
+        Prefills the current values from ``state.auto_reload``. Validates both
+        amounts (2dp, within bounds, ``reload_to > threshold``). When auto-reload
+        is already on, offers a "Turn off" path (PATCH ``enabled:false``).
+        """
+        from agent.billing_view import format_money, validate_charge_amount
+
+        if not self._billing_require_admin(state):
+            return
+
+        card = state.card
+        ar = state.auto_reload
+        currently_on = bool(ar and ar.enabled)
+
+        print()
+        _cprint(f"  💳 {_b('Auto-reload')}")
+        print(f"  {'─' * 41}")
+        _cprint(f"  {_d('Automatically buy more credits when your balance is low.')}")
+        if card:
+            print(f"  Card on file: {card.masked}")
+        else:
+            print("  No saved card — set one up on the portal first.")
+            self._billing_portal_hint(state)
+            return
+        if currently_on:
+            print(
+                f"  Currently: below {format_money(ar.threshold_usd)} → "
+                f"reload to {format_money(ar.reload_to_usd)}"
+            )
+
+        if not getattr(self, "_app", None):
+            print("  Run in the interactive CLI to configure auto-reload.")
+            self._billing_portal_hint(state)
+            return
+
+        # When already enabled, let the user turn it off without re-entering values.
+        if currently_on:
+            top_choices = [
+                ("edit", "Edit thresholds", "change when / how much to reload"),
+                ("off", "Turn off", "disable auto-reload"),
+                ("cancel", "Cancel", "do nothing"),
+            ]
+            raw = self._prompt_text_input_modal(
+                title="💳 Auto-reload",
+                detail=(
+                    f"On — below {format_money(ar.threshold_usd)} → "
+                    f"reload to {format_money(ar.reload_to_usd)}"
+                ),
+                choices=top_choices,
+            )
+            top = self._normalize_slash_confirm_choice(raw, top_choices)
+            if top == "off":
+                self._billing_auto_reload_disable(state)
+                return
+            if top != "edit":
+                print("  🟡 Cancelled.")
+                return
+
+        # Field 1 — threshold (prefilled when editing an existing config).
+        cur_thr = format_money(ar.threshold_usd) if currently_on else None
+        thr_prompt = "  When balance falls below (USD)"
+        thr_prompt += f" [{cur_thr}]: " if cur_thr else ": "
+        threshold_raw = self._prompt_text_input(thr_prompt)
+        if threshold_raw is None:
+            # None = cancelled (e.g. slash-worker can't prompt off-thread).
+            print("  🟡 Cancelled.")
+            return
+        if not (threshold_raw or "").strip() and currently_on:
+            threshold_amt = ar.threshold_usd  # keep current value on empty input
+        else:
+            tv = validate_charge_amount(
+                threshold_raw or "", min_usd=state.min_usd, max_usd=state.max_usd
+            )
+            if not tv.ok or tv.amount is None:
+                print(f"  🔴 {tv.error}")
+                return
+            threshold_amt = tv.amount
+
+        # Field 2 — reload-to (prefilled when editing an existing config).
+        cur_rel = format_money(ar.reload_to_usd) if currently_on else None
+        rel_prompt = "  Reload balance to (USD)"
+        rel_prompt += f" [{cur_rel}]: " if cur_rel else ": "
+        reload_raw = self._prompt_text_input(rel_prompt)
+        if reload_raw is None:
+            print("  🟡 Cancelled.")
+            return
+        if not (reload_raw or "").strip() and currently_on:
+            reload_amt = ar.reload_to_usd  # keep current value on empty input
+        else:
+            rv = validate_charge_amount(
+                reload_raw or "", min_usd=state.min_usd, max_usd=state.max_usd
+            )
+            if not rv.ok or rv.amount is None:
+                print(f"  🔴 {rv.error}")
+                return
+            reload_amt = rv.amount
+
+        if reload_amt is None or threshold_amt is None or reload_amt <= threshold_amt:
+            print("  🔴 Reload-to amount must be greater than the threshold.")
+            return
+
+        print()
+        _ar_consent = (
+            f"By confirming, you authorize Nous Research to charge {card.masked} "
+            f"whenever your balance reaches {format_money(threshold_amt)}. "
+            f"Turn off any time here or on the portal."
+        )
+        _cprint(f"  {_d(_ar_consent)}")
+        confirm_choices = [
+            ("agree", "Agree and turn on", "enable auto-reload"),
+            ("cancel", "Cancel", "do nothing"),
+        ]
+        raw = self._prompt_text_input_modal(
+            title="💳 Turn on auto-reload?",
+            detail=f"Below {format_money(threshold_amt)} → reload to {format_money(reload_amt)}",
+            choices=confirm_choices,
+        )
+        choice = self._normalize_slash_confirm_choice(raw, confirm_choices)
+        if choice != "agree":
+            print("  🟡 Cancelled.")
+            return
+
+        from prostor_cli.nous_billing import (
+            BillingError,
+            BillingScopeRequired,
+            patch_auto_top_up,
+        )
+
+        try:
+            patch_auto_top_up(
+                enabled=True, threshold=float(threshold_amt), top_up_amount=float(reload_amt)
+            )
+        except BillingScopeRequired:
+            self._billing_handle_scope_required(state)
+            return
+        except BillingError as exc:
+            self._billing_render_charge_error(state, exc)
+            return
+        print(f"  ✅ Auto-reload on: below {format_money(threshold_amt)} → "
+              f"reload to {format_money(reload_amt)}.")
+
+    def _billing_auto_reload_disable(self, state):
+        """Turn off auto-reload (PATCH ``enabled:false``).
+
+        The endpoint requires ``threshold``/``topUpAmount`` in the body even when
+        disabling, so we echo back the current values (falling back to 0).
+        """
+        from prostor_cli.nous_billing import (
+            BillingError,
+            BillingScopeRequired,
+            patch_auto_top_up,
+        )
+
+        ar = state.auto_reload
+        thr = float(ar.threshold_usd) if ar and ar.threshold_usd is not None else 0.0
+        rel = float(ar.reload_to_usd) if ar and ar.reload_to_usd is not None else 0.0
+        try:
+            patch_auto_top_up(enabled=False, threshold=thr, top_up_amount=rel)
+        except BillingScopeRequired:
+            self._billing_handle_scope_required(state)
+            return
+        except BillingError as exc:
+            self._billing_render_charge_error(state, exc)
+            return
+        print("  ✅ Auto-reload turned off.")
+
+    def _billing_limit_screen(self, state):
+        """Screen 5 — monthly spend limit (read-only; cap is portal-only)."""
+        from agent.billing_view import format_money
+
+        print()
+        _cprint(f"  💳 {_b('Monthly spend limit')}")
+        print(f"  {'─' * 41}")
+        cap = state.monthly_cap
+        if cap is None or cap.limit_usd is None:
+            _cprint(f"  {_d('No monthly cap visible (managed on the portal).')}")
+        else:
+            spent = format_money(cap.spent_this_month_usd)
+            limit = format_money(cap.limit_usd)
+            ceiling = " (default ceiling)" if cap.is_default_ceiling else ""
+            print(f"  {spent} of {limit} used this month{ceiling}")
+        _limit_note = (
+            "The monthly limit is set on the portal — the terminal shows "
+            "it read-only."
+        )
+        _cprint(f"  {_d(_limit_note)}")
+        self._billing_portal_hint(state)
+
     def _show_insights(self, command: str = "/insights"):
         """Show usage insights and analytics from session history."""
         # Parse optional --days flag
@@ -7710,8 +9677,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 i += 1
 
         try:
-            from agent.insights import InsightsEngine
             from prostor_state import SessionDB
+            from agent.insights import InsightsEngine
 
             db = SessionDB()
             engine = InsightsEngine(db)
@@ -7777,6 +9744,198 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         if _reload_thread.is_alive():
             print("  ⚠️  MCP reload timed out (30s). Some servers may not have reconnected.")
 
+    # Inline-skip tokens that bypass the destructive-slash confirmation modal.
+    # A general escape hatch for non-interactive use (scripting/automation) and
+    # for the degraded path where the modal can't be marshaled onto the app loop
+    # — lets users self-serve without flipping approvals.destructive_slash_confirm
+    # in config. (Native Windows now drives the modal normally — see #33961.)
+    _DESTRUCTIVE_SKIP_TOKENS = frozenset({"now", "--yes", "-y"})
+
+    @classmethod
+    def _split_destructive_skip(cls, cmd_text: Optional[str]) -> tuple[str, bool]:
+        """Split inline-skip tokens out of a destructive slash command.
+
+        Returns ``(remainder, skip)`` where ``remainder`` is the original
+        text with the command word and any recognized skip tokens removed,
+        and ``skip`` is True iff at least one skip token was found.
+
+        Examples:
+            "/reset now"            -> ("", True)
+            "/reset --yes My title" -> ("My title", True)
+            "/new My title"         -> ("My title", False)
+            "/clear"                -> ("", False)
+        """
+        if not cmd_text:
+            return "", False
+        tokens = cmd_text.strip().split()
+        if not tokens:
+            return "", False
+        # Drop leading "/cmd" word — callers pass the full command text.
+        if tokens[0].startswith("/"):
+            tokens = tokens[1:]
+        skip = False
+        kept: list[str] = []
+        for tok in tokens:
+            if tok.lower() in cls._DESTRUCTIVE_SKIP_TOKENS:
+                skip = True
+                continue
+            kept.append(tok)
+        return " ".join(kept), skip
+
+    def _confirm_destructive_slash(
+        self,
+        command: str,
+        detail: str,
+        cmd_original: Optional[str] = None,
+    ) -> Optional[str]:
+        """Prompt the user to confirm a destructive session slash command.
+
+        Used by ``/clear``, ``/new``/``/reset``, and ``/undo`` before they
+        discard conversation state.  Three-option prompt:
+
+          1. Approve Once — proceed this time only
+          2. Always Approve — proceed and persist
+             ``approvals.destructive_slash_confirm: false`` so future
+             destructive commands run without confirmation
+          3. Cancel — abort
+
+        Gated by ``approvals.destructive_slash_confirm`` (default on).  If the
+        gate is off the function returns ``"once"`` immediately without
+        prompting.
+
+        Inline-skip: if ``cmd_original`` contains ``now``, ``--yes``, or
+        ``-y`` as an argument (e.g. ``/reset now``, ``/new --yes My title``),
+        the modal is bypassed and ``"once"`` is returned immediately. This is
+        an escape hatch for non-interactive use and for the degraded path where
+        the modal can't be marshaled onto the app loop (native Windows itself now
+        drives the modal normally — see #33961). Callers are responsible
+        for stripping the skip tokens from any remaining argument parsing
+        (see :meth:`_split_destructive_skip`).
+
+        Returns ``"once"``, ``"always"``, or ``None`` (cancelled).  Callers
+        proceed with the destructive action when the result is non-None.
+        """
+        # Inline-skip escape hatch — works regardless of platform/modal state.
+        # See class-level _DESTRUCTIVE_SKIP_TOKENS for the accepted tokens.
+        if cmd_original:
+            _, _skip = self._split_destructive_skip(cmd_original)
+            if _skip:
+                return "once"
+
+        # Gate check — respects prior "Always Approve" clicks.
+        try:
+            cfg = load_cli_config()
+            approvals = cfg.get("approvals") if isinstance(cfg, dict) else None
+            confirm_required = True
+            if isinstance(approvals, dict):
+                confirm_required = bool(approvals.get("destructive_slash_confirm", True))
+        except Exception:
+            confirm_required = True
+
+        if not confirm_required:
+            return "once"
+
+        # Render a prompt_toolkit-native confirmation panel.  This keeps option
+        # labels visible above the composer and avoids raw input()/EOF races with
+        # the running TUI.
+        choices = [
+            ("once", "Approve Once", "proceed this time only"),
+            ("always", "Always Approve", "proceed and silence this prompt permanently"),
+            ("cancel", "Cancel", "keep current conversation"),
+        ]
+        raw = self._prompt_text_input_modal(
+            title=f"⚠️  /{command} — destroys conversation state",
+            detail=detail,
+            choices=choices,
+        )
+        if raw is None:
+            print(f"🟡 /{command} cancelled (no input).")
+            return None
+        choice = self._normalize_slash_confirm_choice(raw, choices)
+        if choice is None:
+            print(f"🟡 Unrecognized choice '{raw}'. /{command} cancelled.")
+            return None
+
+        if choice == "cancel":
+            print(f"🟡 /{command} cancelled. Conversation unchanged.")
+            return None
+
+        if choice == "always":
+            if save_config_value("approvals.destructive_slash_confirm", False):
+                print("🔒 Future /clear, /new, /reset, and /undo will run without confirmation.")
+                print("   Re-enable via `approvals.destructive_slash_confirm: true` in config.yaml.")
+            else:
+                print("⚠️  Couldn't persist opt-out — proceeding once.")
+
+        return choice
+
+    def _confirm_and_reload_mcp(self, cmd_original: str = "") -> None:
+        """Interactive /reload-mcp — confirm with the user, then reload.
+
+        Reloading MCP tools invalidates the provider prompt cache for the
+        active session (tool schemas are baked into the system prompt).
+        The next message re-sends full input tokens — can be expensive on
+        long-context or high-reasoning models.
+
+        Three options: Approve Once, Always Approve (persists
+        ``approvals.mcp_reload_confirm: false`` so future reloads run
+        without this prompt), Cancel.  Gated by
+        ``approvals.mcp_reload_confirm`` — default on.
+        """
+        # Gate check — respects prior "Always Approve" clicks.
+        try:
+            cfg = load_cli_config()
+            approvals = cfg.get("approvals") if isinstance(cfg, dict) else None
+            confirm_required = True
+            if isinstance(approvals, dict):
+                confirm_required = bool(approvals.get("mcp_reload_confirm", True))
+        except Exception:
+            confirm_required = True
+
+        if not confirm_required:
+            with self._busy_command(self._slow_command_status(cmd_original)):
+                self._reload_mcp()
+            return
+
+        # Render warning + prompt.  Use the same prompt_toolkit-native composer
+        # modal as destructive slash confirmations so choices stay visible.
+        choices = [
+            ("once", "Approve Once", "reload now"),
+            ("always", "Always Approve", "reload now and silence this prompt permanently"),
+            ("cancel", "Cancel", "leave MCP tools unchanged"),
+        ]
+        raw = self._prompt_text_input_modal(
+            title="⚠️  /reload-mcp — Prompt cache invalidation warning",
+            detail=(
+                "Reloading MCP servers rebuilds the tool set for this session and\n"
+                "invalidates the provider prompt cache. The next message will\n"
+                "re-send full input tokens (can be expensive on long-context or\n"
+                "high-reasoning models)."
+            ),
+            choices=choices,
+        )
+        if raw is None:
+            print("🟡 /reload-mcp cancelled (no input).")
+            return
+        choice = self._normalize_slash_confirm_choice(raw, choices)
+        if choice is None:
+            print(f"🟡 Unrecognized choice '{raw}'. /reload-mcp cancelled.")
+            return
+
+        if choice == "cancel":
+            print("🟡 /reload-mcp cancelled. MCP tools unchanged.")
+            return
+
+        if choice == "always":
+            if save_config_value("approvals.mcp_reload_confirm", False):
+                print("🔒 Future /reload-mcp calls will run without confirmation.")
+                print("   Re-enable via `approvals.mcp_reload_confirm: true` in config.yaml.")
+            else:
+                print("⚠️  Couldn't persist opt-out — reloading once.")
+
+        with self._busy_command(self._slow_command_status(cmd_original)):
+            self._reload_mcp()
+
     def _reload_mcp(self):
         """Reload MCP servers: disconnect all, re-read config.yaml, reconnect.
 
@@ -7784,7 +9943,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         sees the updated tools on the next turn.
         """
         try:
-            from tools.mcp_tool import _lock, _servers, discover_mcp_tools, shutdown_mcp_servers
+            from tools.mcp_tool import shutdown_mcp_servers, discover_mcp_tools, _servers, _lock
 
             # Capture old server names
             with _lock:
@@ -7895,7 +10054,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         prompt caching intact.
         """
         try:
-            from agent.skill_commands import get_skill_commands, reload_skills
+            from agent.skill_commands import reload_skills, get_skill_commands
 
             if not self._command_running:
                 print("🔄 Reloading skills...")
@@ -8003,7 +10162,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             # Print stacked scrollback line for "all" / "new" modes
             if function_name and self.tool_progress_mode in {"all", "new"}:
                 duration = kwargs.get("duration", 0.0)
-                kwargs.get("is_error", False)
+                is_error = kwargs.get("is_error", False)
                 # Pop stored args from tool.started for this function
                 stored = self._pending_tool_info.get(function_name)
                 stored_args = stored.pop(0) if stored else {}
@@ -8092,6 +10251,438 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         except Exception:
             logger.debug("Edit diff preview failed for %s", function_name, exc_info=True)
 
+    # ====================================================================
+    # Voice mode methods
+    # ====================================================================
+
+    def _voice_start_recording(self):
+        """Start capturing audio from the microphone."""
+        if getattr(self, '_should_exit', False):
+            return
+        from tools.voice_mode import create_audio_recorder, check_voice_requirements
+
+        reqs = check_voice_requirements()
+        if not reqs["audio_available"]:
+            if _is_termux_environment():
+                details = reqs.get("details", "")
+                if "Termux:API Android app is not installed" in details:
+                    raise RuntimeError(
+                        "Termux:API command package detected, but the Android app is missing.\n"
+                        "Install/update the Termux:API Android app, then retry /voice on.\n"
+                        "Fallback: pkg install python-numpy portaudio && python -m pip install sounddevice"
+                    )
+                raise RuntimeError(
+                    "Voice mode requires either Termux:API microphone access or Python audio libraries.\n"
+                    "Option 1: pkg install termux-api and install the Termux:API Android app\n"
+                    "Option 2: pkg install python-numpy portaudio && python -m pip install sounddevice"
+                )
+            raise RuntimeError(
+                "Voice mode requires sounddevice and numpy.\n"
+                f"Install with: {sys.executable} -m pip install sounddevice numpy"
+            )
+        if not reqs.get("stt_available", reqs.get("stt_key_set")):
+            raise RuntimeError(
+                "Voice mode requires an STT provider for transcription.\n"
+                "Option 1: uv pip install faster-whisper  "
+                "(free, local; `pip install faster-whisper` also works if pip is on PATH)\n"
+                "Option 2: Set GROQ_API_KEY (free tier)\n"
+                "Option 3: Set VOICE_TOOLS_OPENAI_KEY (paid)"
+            )
+
+        # Prevent double-start from concurrent threads (atomic check-and-set)
+        with self._voice_lock:
+            if self._voice_recording:
+                return
+            self._voice_recording = True
+
+        # Load silence detection params from config. Shape-safe: a
+        # hand-edited ``voice: true`` / ``voice: cmd+b`` leaves
+        # ``load_config()['voice']`` as a non-dict; coerce to {} so
+        # continuous recording falls back to the documented defaults
+        # instead of crashing on ``.get()``.
+        voice_cfg: dict = {}
+        try:
+            from prostor_cli.config import load_config
+            _cfg = load_config().get("voice")
+            voice_cfg = _cfg if isinstance(_cfg, dict) else {}
+        except Exception:
+            pass
+
+        if self._voice_recorder is None:
+            self._voice_recorder = create_audio_recorder()
+
+        # Apply config-driven silence params (numeric-guarded so YAML
+        # scalar corruption doesn't break recording start-up).
+        #
+        # ``bool`` is explicitly excluded from the numeric check — in
+        # Python bool is a subclass of int, so a hand-edited
+        # ``silence_threshold: true`` would otherwise be forwarded as
+        # ``1`` instead of falling back to the 200 default (Copilot
+        # round-12 on #19835).
+        _threshold = voice_cfg.get("silence_threshold")
+        _duration = voice_cfg.get("silence_duration")
+        self._voice_recorder._silence_threshold = (
+            _threshold if isinstance(_threshold, (int, float)) and not isinstance(_threshold, bool) else 200
+        )
+        self._voice_recorder._silence_duration = (
+            _duration if isinstance(_duration, (int, float)) and not isinstance(_duration, bool) else 3.0
+        )
+
+        def _on_silence():
+            """Called by AudioRecorder when silence is detected after speech."""
+            with self._voice_lock:
+                if not self._voice_recording:
+                    return
+            _cprint(f"\n{_DIM}Silence detected, auto-stopping...{_RST}")
+            if hasattr(self, '_app') and self._app:
+                self._app.invalidate()
+            self._voice_stop_and_transcribe()
+
+        # Audio cue: single beep BEFORE starting stream (avoid CoreAudio conflict)
+        if self._voice_beeps_enabled():
+            try:
+                from tools.voice_mode import play_beep
+                play_beep(frequency=880, count=1)
+            except Exception:
+                pass
+
+        try:
+            self._voice_recorder.start(on_silence_stop=_on_silence)
+        except Exception:
+            with self._voice_lock:
+                self._voice_recording = False
+            raise
+        _label = self._voice_record_key_label()
+        if getattr(self._voice_recorder, "supports_silence_autostop", True):
+            _recording_hint = f"auto-stops on silence | {_label} to stop & exit continuous"
+        elif _is_termux_environment():
+            _recording_hint = f"Termux:API capture | {_label} to stop"
+        else:
+            _recording_hint = f"{_label} to stop"
+        _cprint(f"\n{_ACCENT}● Recording...{_RST} {_DIM}({_recording_hint}){_RST}")
+
+        # Periodically refresh prompt to update audio level indicator
+        def _refresh_level():
+            while True:
+                with self._voice_lock:
+                    still_recording = self._voice_recording
+                if not still_recording:
+                    break
+                if hasattr(self, '_app') and self._app:
+                    self._app.invalidate()
+                time.sleep(0.15)
+        threading.Thread(target=_refresh_level, daemon=True).start()
+
+    def _voice_stop_and_transcribe(self):
+        """Stop recording, transcribe via STT, and queue the transcript as input."""
+        # Atomic guard: only one thread can enter stop-and-transcribe.
+        # Set _voice_processing immediately so concurrent Ctrl+B presses
+        # don't race into the START path while recorder.stop() holds its lock.
+        with self._voice_lock:
+            if not self._voice_recording:
+                return
+            self._voice_recording = False
+            self._voice_processing = True
+
+        submitted = False
+        transcription_failed = False
+        wav_path = None
+        try:
+            if self._voice_recorder is None:
+                return
+
+            wav_path = self._voice_recorder.stop()
+
+            # Audio cue: double beep after stream stopped (no CoreAudio conflict)
+            if self._voice_beeps_enabled():
+                try:
+                    from tools.voice_mode import play_beep
+                    play_beep(frequency=660, count=2)
+                except Exception:
+                    pass
+
+            if wav_path is None:
+                _cprint(f"{_DIM}No speech detected.{_RST}")
+                return
+
+            # _voice_processing is already True (set atomically above)
+            if hasattr(self, '_app') and self._app:
+                self._app.invalidate()
+            _cprint(f"{_DIM}Transcribing...{_RST}")
+
+            # Get STT model from config
+            stt_model = None
+            try:
+                from prostor_cli.config import load_config
+                stt_config = load_config().get("stt", {})
+                stt_model = stt_config.get("model")
+            except Exception:
+                pass
+
+            from tools.voice_mode import transcribe_recording
+            result = transcribe_recording(wav_path, model=stt_model)
+
+            if result.get("success") and result.get("transcript", "").strip():
+                transcript = result["transcript"].strip()
+                self._attached_images.clear()
+                if hasattr(self, '_app') and self._app:
+                    self._app.invalidate()
+                self._pending_input.put(transcript)
+                submitted = True
+            elif result.get("success"):
+                _cprint(f"{_DIM}No speech detected.{_RST}")
+            else:
+                error = result.get("error", "Unknown error")
+                _cprint(f"\n{_DIM}Transcription failed: {error}{_RST}")
+                transcription_failed = True
+
+        except Exception as e:
+            _cprint(f"\n{_DIM}Voice processing error: {e}{_RST}")
+            transcription_failed = wav_path is not None
+        finally:
+            with self._voice_lock:
+                self._voice_processing = False
+            if hasattr(self, '_app') and self._app:
+                self._app.invalidate()
+            # Clean up temp file unless transcription failed. On failure, keep
+            # the source recording so long dictation is not lost.
+            try:
+                if wav_path and os.path.isfile(wav_path):
+                    if transcription_failed:
+                        _cprint(f"{_DIM}Recording preserved at: {wav_path}{_RST}")
+                    else:
+                        os.unlink(wav_path)
+            except Exception:
+                pass
+
+            # Track consecutive no-speech cycles to avoid infinite restart loops.
+            if not submitted:
+                self._no_speech_count = getattr(self, '_no_speech_count', 0) + 1
+                if self._no_speech_count >= 3:
+                    self._voice_continuous = False
+                    self._no_speech_count = 0
+                    _cprint(f"{_DIM}No speech detected 3 times, continuous mode stopped.{_RST}")
+                    return
+            else:
+                self._no_speech_count = 0
+
+            # If no transcript was submitted but continuous mode is active,
+            # restart recording so the user can keep talking.
+            # (When transcript IS submitted, process_loop handles restart
+            # after chat() completes.)
+            if self._voice_continuous and not submitted and not self._voice_recording:
+                def _restart_recording():
+                    try:
+                        self._voice_start_recording()
+                        if hasattr(self, '_app') and self._app:
+                            self._app.invalidate()
+                    except Exception as e:
+                        _cprint(f"{_DIM}Voice auto-restart failed: {e}{_RST}")
+                threading.Thread(target=_restart_recording, daemon=True).start()
+
+    def _voice_speak_response_async(self, text: str) -> None:
+        """Schedule TTS and mark it pending before continuous recording can restart."""
+        if not self._voice_tts or not text:
+            return
+        self._voice_tts_done.clear()
+        threading.Thread(
+            target=self._voice_speak_response,
+            args=(text,),
+            daemon=True,
+        ).start()
+
+    def _voice_speak_response(self, text: str):
+        """Speak the agent's response aloud using TTS (runs in background thread)."""
+        if not self._voice_tts:
+            return
+        self._voice_tts_done.clear()
+        try:
+            from tools.tts_tool import text_to_speech_tool
+            from tools.voice_mode import play_audio_file
+
+            # Strip markdown and non-speech content for cleaner TTS
+            tts_text = text[:4000] if len(text) > 4000 else text
+            tts_text = re.sub(r'```[\s\S]*?```', ' ', tts_text)   # fenced code blocks
+            tts_text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', tts_text)  # [text](url) -> text
+            tts_text = re.sub(r'https?://\S+', '', tts_text)      # URLs
+            tts_text = re.sub(r'\*\*(.+?)\*\*', r'\1', tts_text)  # bold
+            tts_text = re.sub(r'\*(.+?)\*', r'\1', tts_text)      # italic
+            tts_text = re.sub(r'`(.+?)`', r'\1', tts_text)        # inline code
+            tts_text = re.sub(r'^#+\s*', '', tts_text, flags=re.MULTILINE)  # headers
+            tts_text = re.sub(r'^\s*[-*]\s+', '', tts_text, flags=re.MULTILINE)  # list items
+            tts_text = re.sub(r'---+', '', tts_text)              # horizontal rules
+            tts_text = re.sub(r'\n{3,}', '\n\n', tts_text)        # excessive newlines
+            tts_text = tts_text.strip()
+            if not tts_text:
+                return
+
+            # Use MP3 output for CLI playback (afplay doesn't handle OGG well).
+            # The TTS tool may auto-convert MP3->OGG, but the original MP3 remains.
+            os.makedirs(os.path.join(tempfile.gettempdir(), "prostor_voice"), exist_ok=True)
+            mp3_path = os.path.join(
+                tempfile.gettempdir(), "prostor_voice",
+                f"tts_{time.strftime('%Y%m%d_%H%M%S')}.mp3",
+            )
+
+            text_to_speech_tool(text=tts_text, output_path=mp3_path)
+
+            # Play the MP3 directly (the TTS tool returns OGG path but MP3 still exists)
+            if os.path.isfile(mp3_path) and os.path.getsize(mp3_path) > 0:
+                play_audio_file(mp3_path)
+                # Clean up
+                try:
+                    os.unlink(mp3_path)
+                    ogg_path = mp3_path.rsplit(".", 1)[0] + ".ogg"
+                    if os.path.isfile(ogg_path):
+                        os.unlink(ogg_path)
+                except OSError:
+                    pass
+        except Exception as e:
+            logger.warning("Voice TTS playback failed: %s", e)
+            _cprint(f"{_DIM}TTS playback failed: {e}{_RST}")
+        finally:
+            self._voice_tts_done.set()
+
+
+    def _voice_beeps_enabled(self) -> bool:
+        """Return whether CLI voice mode should play record start/stop beeps."""
+        try:
+            from prostor_cli.config import load_config
+            voice_cfg = load_config().get("voice", {})
+            if isinstance(voice_cfg, dict):
+                return bool(voice_cfg.get("beep_enabled", True))
+        except Exception:
+            pass
+        return True
+
+    def _enable_voice_mode(self):
+        """Enable voice mode after checking requirements."""
+        if self._voice_mode:
+            _cprint(f"{_DIM}Voice mode is already enabled.{_RST}")
+            return
+
+        from tools.voice_mode import check_voice_requirements, detect_audio_environment
+
+        # Environment detection -- warn and block in incompatible environments
+        env_check = detect_audio_environment()
+        if not env_check["available"]:
+            _cprint(f"\n{_ACCENT}Voice mode unavailable in this environment:{_RST}")
+            for warning in env_check["warnings"]:
+                _cprint(f"  {_DIM}{warning}{_RST}")
+            return
+
+        reqs = check_voice_requirements()
+        if not reqs["available"]:
+            _cprint(f"\n{_ACCENT}Voice mode requirements not met:{_RST}")
+            for line in reqs["details"].split("\n"):
+                _cprint(f"  {_DIM}{line}{_RST}")
+            if reqs["missing_packages"]:
+                if _is_termux_environment():
+                    _cprint(f"\n  {_BOLD}Option 1: pkg install termux-api{_RST}")
+                    _cprint(f"  {_DIM}Then install/update the Termux:API Android app for microphone capture{_RST}")
+                    _cprint(f"  {_BOLD}Option 2: pkg install python-numpy portaudio && python -m pip install sounddevice{_RST}")
+                else:
+                    _cprint(f"\n  {_BOLD}Install: {sys.executable} -m pip install {' '.join(reqs['missing_packages'])}{_RST}")
+            return
+
+        with self._voice_lock:
+            self._voice_mode = True
+
+        # Check config for auto_tts (shape-safe — malformed ``voice:`` YAML
+        # leaves ``voice_config`` as a non-dict, so guard before .get()).
+        try:
+            from prostor_cli.config import load_config
+            _raw_voice = load_config().get("voice")
+            voice_config = _raw_voice if isinstance(_raw_voice, dict) else {}
+            if voice_config.get("auto_tts", False):
+                with self._voice_lock:
+                    self._voice_tts = True
+        except Exception:
+            pass
+
+        # Voice mode instruction is injected as a user message prefix (not a
+        # system prompt change) to avoid invalidating the prompt cache.  See
+        # _voice_message_prefix property and its usage in _process_message().
+
+        tts_status = " (TTS enabled)" if self._voice_tts else ""
+        # Use the startup-pinned cache so the advertised shortcut always
+        # matches the live prompt_toolkit binding — reading live config
+        # here would drift after a mid-session config edit (Copilot
+        # round-14 on #19835, same class as round-13).
+        _ptt_display = self._voice_record_key_label()
+        _cprint(f"\n{_ACCENT}Voice mode enabled{tts_status}{_RST}")
+        _cprint(f"  {_DIM}{_ptt_display} to start/stop recording{_RST}")
+        _cprint(f"  {_DIM}/voice tts  to toggle speech output{_RST}")
+        _cprint(f"  {_DIM}/voice off  to disable voice mode{_RST}")
+
+    def _disable_voice_mode(self):
+        """Disable voice mode, cancel any active recording, and stop TTS."""
+        recorder = None
+        with self._voice_lock:
+            if self._voice_recording and self._voice_recorder:
+                self._voice_recorder.cancel()
+                self._voice_recording = False
+            recorder = self._voice_recorder
+            self._voice_mode = False
+            self._voice_tts = False
+            self._voice_continuous = False
+
+        # Shut down the persistent audio stream in background
+        if recorder is not None:
+            def _bg_shutdown(rec=recorder):
+                try:
+                    rec.shutdown()
+                except Exception:
+                    pass
+            threading.Thread(target=_bg_shutdown, daemon=True).start()
+            self._voice_recorder = None
+
+        # Stop any active TTS playback
+        try:
+            from tools.voice_mode import stop_playback
+            stop_playback()
+        except Exception:
+            pass
+        self._voice_tts_done.set()
+
+        _cprint(f"\n{_DIM}Voice mode disabled.{_RST}")
+
+    def _toggle_voice_tts(self):
+        """Toggle TTS output for voice mode."""
+        if not self._voice_mode:
+            _cprint(f"{_DIM}Enable voice mode first: /voice on{_RST}")
+            return
+
+        with self._voice_lock:
+            self._voice_tts = not self._voice_tts
+        status = "enabled" if self._voice_tts else "disabled"
+
+        if self._voice_tts:
+            from tools.tts_tool import check_tts_requirements
+            if not check_tts_requirements():
+                _cprint(f"{_DIM}Warning: No TTS provider available. Install edge-tts or set API keys.{_RST}")
+
+        _cprint(f"{_ACCENT}Voice TTS {status}.{_RST}")
+
+    def _show_voice_status(self):
+        """Show current voice mode status."""
+        from tools.voice_mode import check_voice_requirements
+
+        reqs = check_voice_requirements()
+
+        _cprint(f"\n{_BOLD}Voice Mode Status{_RST}")
+        _cprint(f"  Mode:      {'ON' if self._voice_mode else 'OFF'}")
+        _cprint(f"  TTS:       {'ON' if self._voice_tts else 'OFF'}")
+        _cprint(f"  Recording: {'YES' if self._voice_recording else 'no'}")
+        # Display the startup-pinned label so /voice status always
+        # matches the live prompt_toolkit binding (Copilot round-14 on
+        # #19835, same class as round-13). Reading live config here
+        # would drift after a mid-session config edit.
+        _cprint(f"  Record key: {self._voice_record_key_label()}")
+        _cprint(f"\n  {_BOLD}Requirements:{_RST}")
+        for line in reqs["details"].split("\n"):
+            _cprint(f"    {line}")
+
     def _persist_prompt_summary(self, icon: str, label: str, detail: str, outcome: str) -> None:
         """Print a one-line scrollback summary of a resolved modal prompt.
 
@@ -8175,7 +10766,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
     def _sudo_password_callback(self) -> str:
         """
         Prompt for sudo password through the prompt_toolkit UI.
-
+        
         Called from the agent thread when a sudo command is encountered.
         Uses the same clarify-style mechanism: sets UI state, waits on a
         queue for the user's response via the Enter key binding.
@@ -8219,6 +10810,302 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         self._paint_now()
         _cprint(f"\n{_DIM}  ⏱ Timeout — continuing without sudo{_RST}")
         return ""
+
+    def _approval_callback(self, command: str, description: str,
+                           *, allow_permanent: bool = True) -> str:
+        """
+        Prompt for dangerous command approval through the prompt_toolkit UI.
+
+        Called from the agent thread. Shows a selection UI similar to clarify
+        with choices: once / session / always / deny. When allow_permanent
+        is False (tirith warnings present), the 'always' option is hidden.
+        Long commands also get a 'view' option so the full command can be
+        expanded before deciding.
+
+        Uses _approval_lock to serialize concurrent requests (e.g. from
+        parallel delegation subtasks) so each prompt gets its own turn
+        and the shared _approval_state / _approval_deadline aren't clobbered.
+        """
+        import time as _time
+
+        with self._approval_lock:
+            timeout = int(CLI_CONFIG.get("approvals", {}).get("timeout", 60))
+            response_queue = queue.Queue()
+
+            self._approval_state = {
+                "command": command,
+                "description": description,
+                "choices": self._approval_choices(command, allow_permanent=allow_permanent),
+                "selected": 0,
+                "response_queue": response_queue,
+            }
+            self._approval_deadline = _time.monotonic() + timeout
+
+            # Modal prompt — paint immediately, bypassing the throttle/resize
+            # guard. A throttled paint here can be silently dropped (250ms
+            # window collision or in-flight resize), leaving the panel unseen so
+            # the command is denied on timeout without the user ever seeing it
+            # (#41098). The countdown refreshes below paint the same way.
+            self._paint_now()
+
+            _last_countdown_refresh = _time.monotonic()
+            while True:
+                try:
+                    result = response_queue.get(timeout=1)
+                    self._approval_state = None
+                    self._approval_deadline = 0
+                    self._paint_now()
+                    _outcome_labels = {
+                        "once": "allowed once",
+                        "session": "allowed for session",
+                        "always": "added to allowlist",
+                        "deny": "denied",
+                    }
+                    self._persist_prompt_summary(
+                        "⚠", "Approval", command,
+                        _outcome_labels.get(result, str(result)),
+                    )
+                    return result
+                except queue.Empty:
+                    remaining = self._approval_deadline - _time.monotonic()
+                    if remaining <= 0:
+                        break
+                    now = _time.monotonic()
+                    if now - _last_countdown_refresh >= 1.0:
+                        _last_countdown_refresh = now
+                        self._paint_now()
+
+            self._approval_state = None
+            self._approval_deadline = 0
+            self._paint_now()
+            _cprint(f"\n{_DIM}  ⏱ Timeout — denying command{_RST}")
+            return "deny"
+
+    def _approval_choices(self, command: str, *, allow_permanent: bool = True) -> list[str]:
+        """Return approval choices for a dangerous command prompt."""
+        choices = ["once", "session", "always", "deny"] if allow_permanent else ["once", "session", "deny"]
+        if len(command) > 70:
+            choices.append("view")
+        return choices
+
+    def _computer_use_approval_callback(self, action: str, args: dict, summary: str) -> str:
+        """Adapt the generic approval UI for the computer_use tool.
+
+        The computer_use handler expects verdicts of the form
+        `approve_once` | `approve_session` | `always_approve` | `deny`.
+        The CLI's built-in approval UI returns `once` | `session` | `always`
+        | `deny`. Translate between the two.
+        """
+        # Build a command-ish string so the existing UI renders something
+        # meaningful. `summary` is already a one-line human description.
+        verdict = self._approval_callback(
+            command=f"computer_use: {summary}",
+            description=f"Allow computer_use to perform `{action}`?",
+        )
+        return {
+            "once": "approve_once",
+            "session": "approve_session",
+            "always": "always_approve",
+            "deny": "deny",
+        }.get(verdict, "deny")
+
+    def _handle_approval_selection(self) -> None:
+        """Process the currently selected dangerous-command approval choice."""
+        state = self._approval_state
+        if not state:
+            return
+
+        selected = state.get("selected", 0)
+        choices = state.get("choices")
+        if not isinstance(choices, list):
+            choices = []
+        if not (0 <= selected < len(choices)):
+            return
+
+        chosen = choices[selected]
+        if chosen == "view":
+            state["show_full"] = True
+            state["choices"] = [choice for choice in choices if choice != "view"]
+            if state["selected"] >= len(state["choices"]):
+                state["selected"] = max(0, len(state["choices"]) - 1)
+            self._invalidate()
+            return
+
+        state["response_queue"].put(chosen)
+        self._approval_state = None
+        self._invalidate()
+
+    def _get_approval_display_fragments(self):
+        """Render the dangerous-command approval panel for the prompt_toolkit UI.
+
+        Layout priority: title + command + choices must always render, even if
+        the terminal is short or the description is long. Description is placed
+        at the bottom of the panel and gets truncated to fit the remaining row
+        budget. This prevents HSplit from clipping approve/deny off-screen when
+        tirith findings produce multi-paragraph descriptions or when the user
+        runs in a compact terminal pane.
+        """
+        state = self._approval_state
+        if not state:
+            return []
+
+        def _panel_box_width(title_text: str, content_lines: list[str], min_width: int = 46, max_width: int = 76) -> int:
+            term_cols = shutil.get_terminal_size((100, 20)).columns
+            longest = max([len(title_text)] + [len(line) for line in content_lines] + [min_width - 4])
+            inner = min(max(longest + 4, min_width - 2), max_width - 2, max(24, term_cols - 6))
+            return inner + 2
+
+        def _wrap_panel_text(text: str, width: int, subsequent_indent: str = "") -> list[str]:
+            wrapped = textwrap.wrap(
+                text,
+                width=max(8, width),
+                replace_whitespace=False,
+                drop_whitespace=False,
+                subsequent_indent=subsequent_indent,
+            )
+            return wrapped or [""]
+
+        def _append_panel_line(lines, border_style: str, content_style: str, text: str, box_width: int) -> None:
+            inner_width = max(0, box_width - 2)
+            lines.append((border_style, "│ "))
+            lines.append((content_style, text.ljust(inner_width)))
+            lines.append((border_style, " │\n"))
+
+        def _append_blank_panel_line(lines, border_style: str, box_width: int) -> None:
+            lines.append((border_style, "│" + (" " * box_width) + "│\n"))
+
+        command = state["command"]
+        description = state["description"]
+        choices = state["choices"]
+        selected = state.get("selected", 0)
+        show_full = state.get("show_full", False)
+
+        title = "⚠️  Dangerous Command"
+        cmd_display = command
+        choice_labels = {
+            "once": "Allow once",
+            "session": "Allow for this session",
+            "always": "Add to permanent allowlist",
+            "deny": "Deny",
+            "view": "Show full command",
+        }
+
+        preview_lines = _wrap_panel_text(description, 60)
+        preview_lines.extend(_wrap_panel_text(cmd_display, 60))
+        for i, choice in enumerate(choices):
+            prefix = '❯ ' if i == selected else '  '
+            preview_lines.extend(_wrap_panel_text(
+                f"{prefix}{choice_labels.get(choice, choice)}",
+                60,
+                subsequent_indent="  ",
+            ))
+
+        box_width = _panel_box_width(title, preview_lines)
+        inner_text_width = max(8, box_width - 2)
+
+        # Pre-wrap the mandatory content — command + choices must always render.
+        cmd_wrapped = _wrap_panel_text(cmd_display, inner_text_width)
+        if not show_full and "view" in choices and len(cmd_wrapped) > 4:
+            cmd_wrapped = cmd_wrapped[:3] + _wrap_panel_text(
+                "… (choose Show full command)",
+                inner_text_width,
+            )
+
+        # (choice_index, wrapped_line) so we can re-apply selected styling below
+        choice_wrapped: list[tuple[int, str]] = []
+        for i, choice in enumerate(choices):
+            label = choice_labels.get(choice, choice)
+            # Show number prefix for quick selection (1-9 for items 1-9, 0 for 10th item)
+            if i < 9:
+                num_prefix = str(i + 1)
+            elif i == 9:
+                num_prefix = '0'
+            else:
+                num_prefix = ' '  # No number for items beyond 10th
+            if i == selected:
+                prefix = f'❯ {num_prefix}. '
+            else:
+                prefix = f'  {num_prefix}. '
+            for wrapped in _wrap_panel_text(f"{prefix}{label}", inner_text_width, subsequent_indent="    "):
+                choice_wrapped.append((i, wrapped))
+
+        # Budget vertical space so HSplit never clips the command or choices.
+        # Panel chrome (full layout with separators):
+        #   top border + title + blank_after_title
+        #   + blank_between_cmd_choices + bottom border = 5 rows.
+        # In tight terminals we collapse to:
+        #   top border + title + bottom border = 3 rows (no blanks).
+        #
+        # reserved_below: rows consumed below the approval panel by the
+        # spinner/tool-progress line, status bar, input area, separators, and
+        # prompt symbol. Measured at ~6 rows during live PTY approval prompts;
+        # budget 6 so we don't overestimate the panel's room.
+        term_rows = shutil.get_terminal_size((100, 24)).lines
+        chrome_full = 5
+        chrome_tight = 3
+        reserved_below = 6
+
+        available = max(0, term_rows - reserved_below)
+        mandatory_full = chrome_full + len(cmd_wrapped) + len(choice_wrapped)
+
+        # If the full-chrome panel doesn't fit, drop the separator blanks.
+        # This keeps the command and every choice on-screen in compact terminals.
+        use_compact_chrome = mandatory_full > available
+        chrome_rows = chrome_tight if use_compact_chrome else chrome_full
+
+        # If the command itself is too long to leave room for choices (e.g. user
+        # hit "view" on a multi-hundred-character command), truncate it so the
+        # approve/deny buttons still render. Keep at least 1 row of command.
+        max_cmd_rows = max(1, available - chrome_rows - len(choice_wrapped))
+        if len(cmd_wrapped) > max_cmd_rows:
+            keep = max(1, max_cmd_rows - 1) if max_cmd_rows > 1 else 1
+            cmd_wrapped = cmd_wrapped[:keep] + _wrap_panel_text(
+                "… (command truncated — use /logs or /debug for full text)",
+                inner_text_width,
+            )
+
+        # Allocate any remaining rows to description. The extra -1 in full mode
+        # accounts for the blank separator between choices and description.
+        mandatory_no_desc = chrome_rows + len(cmd_wrapped) + len(choice_wrapped)
+        desc_sep_cost = 0 if use_compact_chrome else 1
+        available_for_desc = available - mandatory_no_desc - desc_sep_cost
+        # Even on huge terminals, cap description height so the panel stays compact.
+        available_for_desc = max(0, min(available_for_desc, 10))
+
+        desc_wrapped = _wrap_panel_text(description, inner_text_width) if description else []
+        if available_for_desc < 1 or not desc_wrapped:
+            desc_wrapped = []
+        elif len(desc_wrapped) > available_for_desc:
+            keep = max(1, available_for_desc - 1)
+            desc_wrapped = desc_wrapped[:keep] + ["… (description truncated)"]
+
+        # Render: title → command → choices → description (description last so
+        # any remaining overflow clips from the bottom of the least-critical
+        # content, never from the command or choices). Use compact chrome (no
+        # blank separators) when the terminal is tight.
+        lines = []
+        lines.append(('class:approval-border', '╭' + ('─' * box_width) + '╮\n'))
+        _append_panel_line(lines, 'class:approval-border', 'class:approval-title', title, box_width)
+        if not use_compact_chrome:
+            _append_blank_panel_line(lines, 'class:approval-border', box_width)
+
+        for wrapped in cmd_wrapped:
+            _append_panel_line(lines, 'class:approval-border', 'class:approval-cmd', wrapped, box_width)
+        if not use_compact_chrome:
+            _append_blank_panel_line(lines, 'class:approval-border', box_width)
+
+        for i, wrapped in choice_wrapped:
+            style = 'class:approval-selected' if i == selected else 'class:approval-choice'
+            _append_panel_line(lines, 'class:approval-border', style, wrapped, box_width)
+
+        if desc_wrapped:
+            if not use_compact_chrome:
+                _append_blank_panel_line(lines, 'class:approval-border', box_width)
+            for wrapped in desc_wrapped:
+                _append_panel_line(lines, 'class:approval-border', 'class:approval-desc', wrapped, box_width)
+
+        lines.append(('class:approval-border', '╰' + ('─' * box_width) + '╯\n'))
+        return lines
 
     def _secret_capture_callback(self, var_name: str, prompt: str, metadata=None) -> dict:
         return prompt_for_secret(self, var_name, prompt, metadata)
@@ -8270,22 +11157,22 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             except Exception:
                 pass
 
-    def chat(self, message, images: list = None) -> str | None:
+    def chat(self, message, images: list = None) -> Optional[str]:
         """
         Send a message to the agent and get a response.
-
+        
         Handles streaming output, interrupt detection (user typing while agent
         is working), and re-queueing of interrupted messages.
-
+        
         Uses a dedicated _interrupt_queue (separate from _pending_input) to avoid
         race conditions between the process_loop and interrupt monitoring. Messages
         typed while the agent is running go to _interrupt_queue; messages typed while
         idle go to _pending_input.
-
+        
         Args:
             message: The user's message (str or multimodal content list)
             images: Optional list of Path objects for attached images
-
+            
         Returns:
             The agent's response, or None on error
         """
@@ -8316,7 +11203,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             request_overrides=turn_route.get("request_overrides"),
         ):
             return None
-
+        
         # Route image attachments based on the active model's vision capability.
         # "native" → pass pixels as OpenAI-style content parts (adapters
         #            translate for Anthropic/Gemini/Bedrock).
@@ -8409,7 +11296,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
 
         ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
         print(flush=True)
-
+        
         try:
             # Run the conversation with interrupt monitoring
             result = None
@@ -8435,15 +11322,11 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             if self._voice_tts:
                 try:
                     from tools.tts_tool import (
+                        _load_tts_config as _load_tts_cfg,
                         _get_provider as _get_prov,
-                    )
-                    from tools.tts_tool import (
                         _import_elevenlabs,
                         _import_sounddevice,
                         stream_tts_to_speaker,
-                    )
-                    from tools.tts_tool import (
-                        _load_tts_config as _load_tts_cfg,
                     )
                     _tts_cfg = _load_tts_cfg()
                     if _get_prov(_tts_cfg) == "elevenlabs":
@@ -8794,11 +11677,12 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     r_fill = w - 2 - len(r_label)
                     r_top = f"{_DIM}┌─{r_label}{'─' * max(r_fill - 1, 0)}┐{_RST}"
                     r_bot = f"{_DIM}└{'─' * (w - 2)}┘{_RST}"
-                    # Collapse long reasoning: show first 10 lines
+                    # Collapse long reasoning to the first 10 lines unless the
+                    # user opted into full display via /reasoning full.
                     lines = reasoning.strip().splitlines()
-                    if len(lines) > 10:
+                    if len(lines) > 10 and not getattr(self, "reasoning_full", False):
                         display_reasoning = "\n".join(lines[:10])
-                        display_reasoning += f"\n{_DIM}  ... ({len(lines) - 10} more lines){_RST}"
+                        display_reasoning += f"\n{_DIM}  ... ({len(lines) - 10} more lines — /reasoning full to show){_RST}"
                     else:
                         display_reasoning = reasoning.strip()
                     _cprint(f"\n{r_top}\n{_DIM}{display_reasoning}{_RST}\n{r_bot}")
@@ -8839,6 +11723,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                         width=self._scrollback_box_width(),
                     ))
 
+
             # Play terminal bell when agent finishes (if enabled).
             # Works over SSH — the bell propagates to the user's terminal.
             if self.bell_on_complete:
@@ -8860,6 +11745,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             # Skip batch TTS when streaming TTS already handled it
             if self._voice_tts and response and not use_streaming_tts:
                 self._voice_speak_response_async(response)
+
 
             # Re-queue the interrupt message (and any that arrived while we were
             # processing the first) as the next prompt for process_loop.
@@ -8893,7 +11779,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 self._pending_input.put(_leftover_steer)
 
             return response
-
+            
         except Exception as e:
             print(f"Error: {e}")
             return None
@@ -8911,7 +11797,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 stop_event.set()
             if tts_thread is not None and tts_thread.is_alive():
                 tts_thread.join(timeout=5)
-
+    
     def _clear_terminal_on_exit(self):
         """Clear screen + scrollback so nothing is stranded above the exit summary.
 
@@ -8946,6 +11832,36 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         except Exception:
             pass
 
+    def _persist_active_session_before_close(self):
+        """Best-effort SQLite/JSON flush before the CLI marks a session closed.
+
+        ``run_conversation()`` normally persists at turn boundaries, but a
+        terminal close/SIGHUP/SIGTERM can unwind the prompt_toolkit app while
+        the agent thread still holds the current turn only in memory.  Flush the
+        agent's live ``_session_messages`` before ``end_session()`` so resume,
+        session_search, and state.db do not lose the interrupted turn.
+        """
+        agent = getattr(self, "agent", None)
+        if not agent or not hasattr(agent, "_persist_session"):
+            return
+
+        messages = getattr(agent, "_session_messages", None)
+        if not isinstance(messages, list):
+            messages = getattr(self, "conversation_history", None)
+        if not isinstance(messages, list) or not messages:
+            return
+
+        conversation_history = getattr(self, "conversation_history", None)
+        if not isinstance(conversation_history, list):
+            conversation_history = messages
+
+        try:
+            agent._persist_session(messages, conversation_history)
+            if getattr(agent, "session_id", None):
+                self.session_id = agent.session_id
+        except (Exception, KeyboardInterrupt) as e:
+            logger.debug("Could not persist active CLI session before close: %s", e)
+
     def _print_exit_summary(self):
         """Print session resume info on exit, similar to Claude Code."""
         # Clear the screen + scrollback before printing the summary so the
@@ -8973,7 +11889,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 duration_str = f"{minutes}m {seconds}s"
             else:
                 duration_str = f"{seconds}s"
-
+            
             # Look up session title for resume-by-name hint
             session_title = None
             if self._session_db:
@@ -9051,6 +11967,18 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
 
         # Icon-only custom prompts should still remain visible in special states.
         return symbol, symbol
+
+    def _audio_level_bar(self) -> str:
+        """Return a visual audio level indicator based on current RMS."""
+        _LEVEL_BARS = " ▁▂▃▄▅▆▇"
+        rec = getattr(self, "_voice_recorder", None)
+        if rec is None:
+            return ""
+        rms = rec.current_rms
+        # Normalize RMS (0-32767) to 0-7 index, with log-ish scaling
+        # Typical speech RMS is 500-5000, we cap display at ~8000
+        level = min(rms, 8000) * 7 // 8000
+        return _LEVEL_BARS[level]
 
     def _get_tui_prompt_fragments(self):
         """Return the prompt_toolkit fragments for the current interactive state."""
@@ -9349,7 +12277,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             )
             self._startup_skills_line_shown = True
         self._console_print()
-
+        
         # State for async operation
         self._agent_running = False
         self._pending_input = queue.Queue()     # For normal input (commands + new queries)
@@ -9423,7 +12351,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
 
         if os.environ.get("PROSTOR_DEFER_AGENT_STARTUP") != "1":
             self._ensure_tirith_security()
-
+        
         # Key bindings for the input area
         kb = KeyBindings()
 
@@ -9443,7 +12371,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
 
         def handle_enter(event):
             """Handle Enter key - submit input.
-
+            
             Routes to the correct queue based on active UI state:
             - Sudo password prompt: password goes to sudo response queue
             - Approval selection: selected choice goes to approval response queue
@@ -9639,7 +12567,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 event.app.current_buffer.reset(append_to_history=True)
 
         _bind_prompt_submit_keys(kb, handle_enter)
-
+        
         @kb.add('escape', 'enter')
         def handle_alt_enter(event):
             """Alt+Enter inserts a newline for multi-line input.
@@ -9870,7 +12798,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         @kb.add('c-c')
         def handle_ctrl_c(event):
             """Handle Ctrl+C - cancel interactive prompts, interrupt agent, or exit.
-
+            
             Priority:
             0. Cancel active voice recording
             1. Cancel active sudo/approval/clarify prompt
@@ -9950,7 +12878,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     self._should_exit = True
                     event.app.exit()
                     return
-
+                
                 self._last_ctrl_c_time = now
                 print("\n⚡ Interrupting agent... (press Ctrl+C again to force exit)")
                 self.agent.interrupt()
@@ -10103,13 +13031,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 event.app.invalidate()
                 return
             import signal as _sig
-
             from prompt_toolkit.application import run_in_terminal
-
             from prostor_cli.skin_engine import get_active_skin
             agent_name = get_active_skin().get_branding("agent_name", "Prostor Agent")
             msg = f"\n{agent_name} has been suspended. Run `fg` to bring {agent_name} back."
-
             def _suspend():
                 os.write(1, msg.encode())
                 os.kill(0, _sig.SIGTSTP)
@@ -10321,6 +13246,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
         # Create the input area with multiline (Alt+Enter), autocomplete, and paste handling
         from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
         from prompt_toolkit.completion import ThreadedCompleter
+
 
         _completer = SlashCommandCompleter(
             skill_commands_provider=lambda: get_skill_commands(),
@@ -10772,7 +13698,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                     other_num_prefix = '0'
                 else:
                     other_num_prefix = ' '
-
+                
                 if selected == other_idx and not cli_ref._clarify_freetext:
                     other_style = 'class:clarify-selected'
                 elif cli_ref._clarify_freetext:
@@ -11045,7 +13971,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 )
             )
         )
-
+        
         # Style for the application
         self._tui_style_base = {
             # Input area / prompt: empty style strings inherit the
@@ -11103,7 +14029,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             'voice-status-recording': 'bg:#1a1a2e #FF4444 bold',
         }
         style = PTStyle.from_dict(self._build_tui_style_dict())
-
+        
         # Create the application
         app = Application(
             layout=layout,
@@ -11228,7 +14154,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
 
         spinner_thread = threading.Thread(target=spinner_loop, daemon=True)
         spinner_thread.start()
-
+        
         # Background thread to process inputs and run agent
         def process_loop():
             while not self._should_exit:
@@ -11249,7 +14175,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                             except Exception:
                                 pass
                         continue
-
+                    
                     if not user_input:
                         continue
 
@@ -11267,7 +14193,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                         user_input, _had_mouse_reports = _strip_leaked_terminal_responses_with_meta(user_input)
                         if _had_mouse_reports:
                             self._recover_terminal_input_modes(reason="mouse reports leaked into submitted input")
-
+                    
                     # Check for commands — but detect dragged/pasted file paths first.
                     # See _detect_file_drop() for details.
                     _file_drop = _detect_file_drop(user_input) if isinstance(user_input, str) else None
@@ -11322,7 +14248,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                             user_input = _seed
                         else:
                             continue
-
+                    
                     # Expand paste references back to full content
                     _paste_ref_re = re.compile(r'\[Pasted text #\d+: \d+ lines \u2192 (.+?)\]')
                     paste_refs = list(_paste_ref_re.finditer(user_input)) if isinstance(user_input, str) else []
@@ -11330,7 +14256,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                         user_input = self._expand_paste_references(user_input)
                     print()
                     self._print_user_message_preview(user_input)
-
+                    
                     # Show image attachment count
                     if submit_images:
                         n = len(submit_images)
@@ -11389,14 +14315,14 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
 
                 except Exception as e:
                     logger.warning("process_loop unhandled error (msg may be lost): %s", e)
-
+        
         # Start processing thread
         process_thread = threading.Thread(target=process_loop, daemon=True)
         process_thread.start()
-
+        
         # Register atexit cleanup so resources are freed even on unexpected exit
         atexit.register(_run_cleanup)
-
+        
         # Register signal handlers for graceful shutdown on SSH disconnect / SIGTERM
         def _signal_handler(signum, frame):
             """Handle SIGHUP/SIGTERM by triggering graceful cleanup.
@@ -11467,7 +14393,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             except Exception:
                 pass
             raise KeyboardInterrupt()  # fallback for non-prompt_toolkit contexts
-
+        
         try:
             import signal as _signal
             _signal.signal(_signal.SIGTERM, _signal_handler)
@@ -11505,7 +14431,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
                 _signal.signal(_signal.SIGINT, _sigint_absorb)
         except Exception:
             pass  # Signal handlers may fail in restricted environments
-
+        
         # Install a custom asyncio exception handler that suppresses the
         # "Event loop is closed" RuntimeError from httpx transport cleanup
         # and the "0 is not registered" KeyError from broken stdin (#6393).
@@ -11632,6 +14558,12 @@ class ProstorCLI(CLIAgentSetupMixin, CLIApprovalMixin, CLIBillingMixin, CLIComma
             set_sudo_password_callback(None)
             set_approval_callback(None)
             set_secret_capture_callback(None)
+            # Flush any in-memory turn transcript before marking the session
+            # closed.  On SIGHUP/SIGTERM/window close the agent thread may not
+            # reach its normal run_conversation() persistence path before the
+            # daemon thread is reaped.
+            self._persist_active_session_before_close()
+
             # Close session in SQLite
             if hasattr(self, '_session_db') and self._session_db and self.agent:
                 try:
@@ -11713,8 +14645,7 @@ def _run_kanban_goal_loop_q(cli: "ProstorCLI", first_response: str) -> None:
         return
 
     from prostor_cli import kanban_db as _kb
-    from prostor_cli.goals import DEFAULT_MAX_TURNS as _DEF_TURNS
-    from prostor_cli.goals import run_kanban_goal_loop as _run_loop
+    from prostor_cli.goals import run_kanban_goal_loop as _run_loop, DEFAULT_MAX_TURNS as _DEF_TURNS
 
     # Resolve goal text from the card (title + body = the acceptance
     # criteria the judge evaluates against).
@@ -11798,7 +14729,7 @@ def main(
     api_key: str = None,
     base_url: str = None,
     max_turns: int = None,
-    verbose: bool | None = None,
+    verbose: Optional[bool] = None,
     quiet: bool = False,
     compact: bool = False,
     list_tools: bool = False,
@@ -11814,7 +14745,7 @@ def main(
 ):
     """
     Prostor Agent CLI - Interactive AI Assistant
-
+    
     Args:
         query: Single query to execute (then exit). Alias: -q
         q: Shorthand for --query
@@ -11833,7 +14764,7 @@ def main(
         resume: Resume a previous session by its ID (e.g., 20260225_143052_a1b2c3)
         worktree: Run in an isolated git worktree (for parallel agents). Alias: -w
         w: Shorthand for --worktree
-
+    
     Examples:
         python cli.py                            # Start interactive mode
         python cli.py --toolsets web,terminal    # Use specific toolsets
@@ -11859,11 +14790,10 @@ def main(
     # Signal to terminal_tool that we're in interactive mode
     # This enables interactive sudo password prompts with timeout
     os.environ["PROSTOR_INTERACTIVE"] = "1"
-
+    
     # Handle gateway mode (messaging + cron)
     if gateway:
         import asyncio
-
         from gateway.run import start_gateway
         print("Starting Prostor Gateway (messaging platforms)...")
         asyncio.run(start_gateway())
@@ -11881,7 +14811,11 @@ def main(
             _repo = _git_repo_root()
             if _repo:
                 _prune_stale_worktrees(_repo)
-            wt_info = _setup_worktree()
+            # Branch the worktree from the freshly-fetched remote tip by
+            # default so it starts current with the project. Opt out with
+            # worktree_sync: false to branch from local HEAD instead.
+            _sync_base = CLI_CONFIG.get("worktree_sync", True)
+            wt_info = _setup_worktree(sync_base=_sync_base)
             if wt_info:
                 _active_worktree = wt_info
                 os.environ["TERMINAL_CWD"] = wt_info["path"]
@@ -11892,10 +14826,10 @@ def main(
                 return
     else:
         wt_info = None
-
+    
     # Handle query shorthand
     query = query or q
-
+    
     # Parse toolsets - handle both string and tuple/list inputs
     # Default to prostor-cli toolset which includes cronjob management tools
     toolsets_list = None
@@ -11926,7 +14860,7 @@ def main(
             # Use the shared resolver so MCP servers are included at runtime
             from prostor_cli.tools_config import _get_platform_tools
             toolsets_list = sorted(_get_platform_tools(CLI_CONFIG, "cli"))
-
+    
     parsed_skills = _parse_skills_argument(skills)
 
     # Create CLI instance
@@ -11969,18 +14903,18 @@ def main(
             f"The original repo is at {wt_info['repo_root']}.]"
         )
         cli.system_prompt = (cli.system_prompt or "") + wt_note
-
+    
     # Handle list commands (don't init agent for these)
     if list_tools:
         cli.show_banner()
         cli.show_tools()
         sys.exit(0)
-
+    
     if list_toolsets:
         cli.show_banner()
         cli.show_toolsets()
         sys.exit(0)
-
+    
     # Register cleanup for single-query mode (interactive mode registers in run())
     atexit.register(_run_cleanup)
 
@@ -12055,7 +14989,7 @@ def main(
             _signal.signal(_signal.SIGHUP, _signal_handler_q)
     except Exception:
         pass  # signal handler may fail in restricted environments
-
+    
     # Handle single query mode
     if query or image:
         if not cli._claim_active_session("cli", stderr=bool(quiet)):
@@ -12073,8 +15007,8 @@ def main(
             _kanban_task_id = os.environ.get("PROSTOR_KANBAN_TASK", "").strip()
             if _kanban_task_id:
                 try:
-                    from agent.image_routing import extract_image_refs as _extract_refs
                     from prostor_cli import kanban_db as _kb
+                    from agent.image_routing import extract_image_refs as _extract_refs
 
                     _conn = _kb.connect()
                     try:
@@ -12277,7 +15211,7 @@ def main(
         finally:
             _finalize_single_query(cli)
         return
-
+    
     # Run interactive mode
     cli.run()
 
