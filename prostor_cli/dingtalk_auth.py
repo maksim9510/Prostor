@@ -235,8 +235,6 @@ def dingtalk_qr_auth() -> tuple[str, str] | None:
     cancelled or the flow failed.
     """
 
-from __future__ import annotations
-
     from prostor_cli.setup import print_error, print_info, print_success, print_warning
 
     print()

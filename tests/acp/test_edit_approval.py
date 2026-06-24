@@ -79,8 +79,10 @@ def test_write_file_approval_mutates_and_request_includes_diff(tmp_path):
         )
     )
 
-    assert result.get("bytes_written") == len("after\n")
-    assert target.read_text(encoding="utf-8") == "after\n"
+    # On Windows, write_file normalizes \n to CRLF
+    assert result.get("bytes_written") == len(target.read_bytes())
+    actual = target.read_bytes()
+    assert actual in (b"after\n", b"after\r\n")
     assert len(proposals) == 1
     proposal = proposals[0]
     assert proposal.tool_name == "write_file"

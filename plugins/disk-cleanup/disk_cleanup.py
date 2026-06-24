@@ -549,8 +549,6 @@ def guess_category(path: Path) -> str | None:
     Used by the ``post_tool_call`` hook to auto-track ephemeral files.
     """
 
-from __future__ import annotations
-
     if not is_safe_path(path):
         return None
 

@@ -112,6 +112,7 @@ def estimate_usage_cost(*args, **kwargs):
 from prostor_cli.cli_utils import (
     format_duration_compact,
     format_token_count_compact,
+    strip_reasoning_tags as _strip_reasoning_tags,
 )
 
 
