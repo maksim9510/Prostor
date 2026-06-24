@@ -138,3 +138,7 @@ RELEASE_v*.md
 *.egg-info/
 .prostor/
 _test_results.txt
+dist/
+build/
+*.tar.gz
+*.whl
