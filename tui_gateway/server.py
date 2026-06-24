@@ -15,15 +15,16 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from prostor_cli.env_loader import load_prostor_dotenv
 from prostor_constants import (
     get_prostor_home,
     get_prostor_home_override,
     reset_prostor_home_override,
     set_prostor_home_override,
 )
+from prostor_cli.env_loader import load_prostor_dotenv
+from utils import is_truthy_value
 from tui_gateway.transport import (
     StdioTransport,
     Transport,
@@ -31,7 +32,6 @@ from tui_gateway.transport import (
     current_transport,
     reset_transport,
 )
-from utils import is_truthy_value
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +381,14 @@ def _release_active_session_slot(session: dict | None) -> None:
 
 
 def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> None:
-    """Best-effort finalize hook + memory commit for a session."""
+    """Best-effort finalize hook + memory commit for a session.
+
+    Fires ``on_session_end`` plugin hook and attempts to persist any
+    unflushed messages before closing the session.  This mirrors the
+    CLI's exit-path behaviour and prevents data loss when the TUI is
+    force-quit (double Ctrl‑C, terminal‑close, SIGHUP) while the agent
+    is mid‑turn.
+    """
     if not session or session.get("_finalized"):
         return
     session["_finalized"] = True
@@ -397,6 +404,51 @@ def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> No
             history = list(session.get("history", []))
     else:
         history = list(session.get("history", []))
+
+    # ── Persist unflushed messages to SQLite ──────────────────────────
+    # Two sources, tried in order of freshness:
+    #   1. agent._session_messages — set by the last _persist_session()
+    #      call inside run_conversation().  This is the most recent
+    #      snapshot the agent thread wrote, and may include partial
+    #      turn data that hasn't reached session["history"] yet.
+    #   2. session["history"] — updated after run_conversation()
+    #      returns.  Stale when the agent is mid‑turn, but correct
+    #      when the turn completed before finalize.
+    # Best‑effort — the agent thread may still be mid‑turn, so only
+    # previously completed messages are guaranteed.
+    if agent is not None and hasattr(agent, "_persist_session"):
+        snapshot = (
+            getattr(agent, "_session_messages", None)
+            or history
+        )
+        if snapshot:
+            try:
+                agent._persist_session(snapshot, conversation_history=history)
+            except Exception:
+                pass
+
+    # ── Plugin hook: on_session_end ────────────────────────────────────
+    # Signals every plugin that the session is closing, with
+    # interrupted=True so crash‑recovery plugins can flush buffers,
+    # persist state, or close connections before the gateway exits.
+    # Mirrors cli.py's atexit handler that fires the same hook when
+    # the user Ctrl‑C's mid‑turn.
+    if agent is not None:
+        try:
+            from prostor_cli.plugins import invoke_hook
+
+            invoke_hook(
+                "on_session_end",
+                session_id=getattr(agent, "session_id", None)
+                or session.get("session_key", ""),
+                completed=False,
+                interrupted=True,
+                model=getattr(agent, "model", "unknown"),
+                platform=getattr(agent, "platform", None) or "tui",
+            )
+        except Exception:
+            pass
+
     if agent is not None and history and hasattr(agent, "commit_memory_session"):
         try:
             agent.commit_memory_session(history)
@@ -490,6 +542,7 @@ def _close_session_by_id(sid: str, *, end_reason: str = "tui_close") -> bool:
         return False
     _teardown_session(session, end_reason=end_reason)
     return True
+
 
 
 def _ws_session_is_orphaned(session: dict | None) -> bool:
@@ -753,6 +806,21 @@ def _emit(event: str, sid: str, payload: dict | None = None):
     write_json({"jsonrpc": "2.0", "method": "event", "params": params})
 
 
+def _emit_approval_request(sid: str, data: dict | None) -> None:
+    """Emit an ``approval.request`` event to the TUI client with the command
+    redacted. The approval payload is built from the RAW command string, so a
+    credential-shaped value Tirith flagged would otherwise be echoed verbatim
+    to the TUI client (#48456 — third egress transport alongside the chat
+    platforms and the SSE/API stream fixed in #50767). Reuse the shared gateway
+    seam so all approval transports redact consistently."""
+    payload = dict(data or {})
+    if "command" in payload:
+        from gateway.run import _redact_approval_command
+
+        payload["command"] = _redact_approval_command(payload.get("command"))
+    _emit("approval.request", sid, payload)
+
+
 def _status_update(sid: str, kind: str, text: str | None = None):
     body = (text if text is not None else kind).strip()
     if not body:
@@ -842,7 +910,7 @@ def handle_request(req: dict) -> dict | None:
     return fn(rid, params)
 
 
-def dispatch(req: dict, transport: Transport | None = None) -> dict | None:
+def dispatch(req: dict, transport: Optional[Transport] = None) -> dict | None:
     """Route inbound RPCs — long handlers to the pool, everything else inline.
 
     Returns a response dict when handled inline. Returns None when the
@@ -982,12 +1050,12 @@ def _start_agent_build(sid: str, session: dict) -> None:
 
             try:
                 from tools.approval import (
-                    load_permanent_allowlist,
                     register_gateway_notify,
+                    load_permanent_allowlist,
                 )
 
                 register_gateway_notify(
-                    key, lambda data: _emit("approval.request", sid, data)
+                    key, lambda data: _emit_approval_request(sid, data)
                 )
                 notify_registered = True
                 load_permanent_allowlist()
@@ -1494,7 +1562,7 @@ def _clear_pending(sid: str | None = None) -> None:
 
 def resolve_skin() -> dict:
     try:
-        from prostor_cli.skin_engine import get_active_skin, init_skin_from_config
+        from prostor_cli.skin_engine import init_skin_from_config, get_active_skin
 
         init_skin_from_config(_load_cfg())
         skin = get_active_skin()
@@ -2247,6 +2315,25 @@ def _apply_model_switch(
     if not result.success:
         raise ValueError(result.error_message or "model switch failed")
 
+    if agent:
+        try:
+            from prostor_cli.context_switch_guard import merge_preflight_compression_warning
+
+            _cfg_ctx = None
+            if isinstance(cfg, dict):
+                _mc = cfg.get("model", {})
+                if isinstance(_mc, dict) and _mc.get("context_length") is not None:
+                    _cfg_ctx = int(_mc["context_length"])
+            merge_preflight_compression_warning(
+                result,
+                agent=agent,
+                messages=list(session.get("history", [])),
+                custom_providers=custom_provs,
+                config_context_length=_cfg_ctx,
+            )
+        except Exception as exc:
+            logger.debug("preflight-compression switch warning failed: %s", exc)
+
     if not confirm_expensive_model:
         try:
             from prostor_cli.model_cost_guard import expensive_model_warning
@@ -2261,21 +2348,38 @@ def _apply_model_switch(
         except Exception:
             warning = None
         if warning is not None:
+            confirm_msg = warning.message
+            if result.warning_message:
+                confirm_msg = f"{confirm_msg}\n\n{result.warning_message}"
             return {
                 "value": result.new_model,
-                "warning": warning.message,
+                "warning": confirm_msg,
                 "confirm_required": True,
-                "confirm_message": warning.message,
+                "confirm_message": confirm_msg,
             }
 
     if agent:
-        agent.switch_model(
-            new_model=result.new_model,
-            new_provider=result.target_provider,
-            api_key=result.api_key,
-            base_url=result.base_url,
-            api_mode=result.api_mode,
-        )
+        try:
+            agent.switch_model(
+                new_model=result.new_model,
+                new_provider=result.target_provider,
+                api_key=result.api_key,
+                base_url=result.base_url,
+                api_mode=result.api_mode,
+            )
+        except Exception as exc:
+            # The in-place swap rolled the agent back to the old working
+            # model/client and re-raised.  Abort the commit: do NOT restart the
+            # slash worker, persist runtime, append the switch marker, set a
+            # session model_override, or persist to config — all of which would
+            # otherwise leave the session pinned to a broken model and kill the
+            # conversation on the next turn (#50163).  A failed switch is a
+            # no-op; surface a clean error to the client.
+            logger.warning("In-place model switch failed for TUI agent: %s", exc)
+            raise ValueError(
+                f"Model switch to {result.new_model} failed ({exc}); "
+                f"staying on {getattr(agent, 'model', current_model)}."
+            ) from exc
         _restart_slash_worker(sid, session)
         _persist_live_session_runtime(session)
         _persist_live_session_system_prompt(session)
@@ -2465,7 +2569,7 @@ def _sync_session_key_after_compress(
         try:
             register_gateway_notify(
                 new_session_id,
-                lambda data: _emit("approval.request", sid, data),
+                lambda data: _emit_approval_request(sid, data),
             )
         except Exception:
             pass
@@ -2485,8 +2589,7 @@ def _sync_session_key_after_compress(
 
 
 def _get_usage(agent) -> dict:
-    def g(k, fb=None):
-        return getattr(agent, k, 0) or (getattr(agent, fb, 0) if fb else 0)
+    g = lambda k, fb=None: getattr(agent, k, 0) or (getattr(agent, fb, 0) if fb else 0)
     usage = {
         "model": getattr(agent, "model", "") or "",
         "input": g("session_input_tokens", "session_prompt_tokens"),
@@ -2608,6 +2711,9 @@ def _session_info(agent, session: dict | None = None) -> dict:
                 session = candidate
                 break
     cwd = _session_cwd(session)
+    session_key = str(
+        (session or {}).get("session_key") or getattr(agent, "session_id", "") or ""
+    )
     cfg_personality = ((_load_cfg().get("display") or {}).get("personality") or "")
     personality = (session or {}).get("personality", cfg_personality)
     reasoning_config = getattr(agent, "reasoning_config", None)
@@ -2632,8 +2738,9 @@ def _session_info(agent, session: dict | None = None) -> dict:
             is_session_yolo_enabled,
         )
 
-        session_key = (session or {}).get("session_key")
-        session_yolo = bool(is_session_yolo_enabled(session_key)) if session_key else False
+        session_yolo = (
+            bool(is_session_yolo_enabled(session_key)) if session_key else False
+        )
         yolo = bool(_YOLO_MODE_FROZEN) or session_yolo or _get_approval_mode() == "off"
     except Exception:
         yolo = False
@@ -2650,6 +2757,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
         "branch": _git_branch_for_cwd(cwd),
         "personality": str(personality or ""),
         "running": bool((session or {}).get("running")),
+        "title": _session_live_title(session or {}, session_key) if session_key else "",
         "desktop_contract": DESKTOP_BACKEND_CONTRACT,
         "version": "",
         "release_date": "",
@@ -2659,7 +2767,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
         "profile_name": _current_profile_name(),
     }
     try:
-        from prostor_cli import __release_date__, __version__
+        from prostor_cli import __version__, __release_date__
 
         info["version"] = __version__
         info["release_date"] = __release_date__
@@ -2712,6 +2820,16 @@ def _tool_ctx(name: str, args: dict) -> str:
         return build_tool_preview(name, args, max_len=80) or ""
     except Exception:
         return ""
+
+
+def _emit_session_info_for_session(sid: str, session: dict) -> None:
+    agent = session.get("agent")
+    if agent is None:
+        return
+    try:
+        _emit("session.info", sid, _session_info(agent, session))
+    except Exception:
+        pass
 
 
 # Tool Args/Result text shipped to the TUI for the verbose trail line. The TUI
@@ -3145,8 +3263,8 @@ def _agent_cbs(sid: str) -> dict:
 
 
 def _wire_callbacks(sid: str):
-    from tools.skills_tool import set_secret_capture_callback
     from tools.terminal_tool import set_sudo_password_callback
+    from tools.skills_tool import set_secret_capture_callback
 
     set_sudo_password_callback(lambda: _block("sudo.request", sid, {}, timeout=120))
 
@@ -3317,7 +3435,7 @@ def _load_fallback_model():
 def _agent_fallback_model(agent):
     """Return an agent's fallback chain without rehydrating deliberately empty chains."""
     if hasattr(agent, "_fallback_chain"):
-        return agent._fallback_chain or []
+        return getattr(agent, "_fallback_chain") or []
     if hasattr(agent, "_fallback_model"):
         return getattr(agent, "_fallback_model", None)
     return _load_fallback_model()
@@ -3526,7 +3644,8 @@ def _schedule_mcp_late_refresh(sid: str, agent) -> None:
 
     The agent snapshots ``agent.tools`` once at build time and never re-reads
     the registry (run_agent/agent_init). ``_make_agent`` briefly joins the
-    background MCP discovery thread (``wait_for_mcp_discovery``, ~0.75s) so
+    background MCP discovery thread (``wait_for_mcp_discovery``, bounded by the
+    ``mcp_discovery_timeout`` config value, default 1.5s) so
     already-spawning servers land in that snapshot — but a server that takes
     longer than the bound to connect (common for an HTTP MCP server on first
     connect) lands *after* the agent is built. Its tools are then absent from
@@ -3547,7 +3666,7 @@ def _schedule_mcp_late_refresh(sid: str, agent) -> None:
     as today. No-op when discovery already finished before the agent build.
     """
     try:
-        from tui_gateway.entry import join_mcp_discovery, mcp_discovery_in_flight
+        from tui_gateway.entry import mcp_discovery_in_flight, join_mcp_discovery
     except Exception:
         return
     if not mcp_discovery_in_flight():
@@ -3605,8 +3724,8 @@ def _make_agent(
     reasoning_config_override: dict | None = None,
     service_tier_override: str | None = None,
 ):
-    from prostor_cli.runtime_provider import resolve_runtime_provider
     from run_agent import AIAgent
+    from prostor_cli.runtime_provider import resolve_runtime_provider
 
     # MCP tool discovery runs in a background daemon thread at startup so a
     # dead server can't freeze the shell.  The agent snapshots its tool list
@@ -3810,9 +3929,9 @@ def _init_session(
         # Defer hard-failure to slash.exec; chat still works without slash worker.
         _sessions[sid]["slash_worker"] = None
     try:
-        from tools.approval import load_permanent_allowlist, register_gateway_notify
+        from tools.approval import register_gateway_notify, load_permanent_allowlist
 
-        register_gateway_notify(key, lambda data: _emit("approval.request", sid, data))
+        register_gateway_notify(key, lambda data: _emit_approval_request(sid, data))
         load_permanent_allowlist()
     except Exception:
         pass
@@ -3863,9 +3982,7 @@ def _resolve_checkpoint_hash(mgr, cwd: str, ref: str) -> str:
 
 def _enrich_with_attached_images(user_text: str, image_paths: list[str]) -> str:
     """Pre-analyze attached images via vision and prepend descriptions to user text."""
-    import asyncio
-    import json as _json
-
+    import asyncio, json as _json
     from tools.vision_tools import vision_analyze_tool
 
     prompt = (
@@ -5010,6 +5127,7 @@ def _(rid, params: dict) -> dict:
                 session["pending_title"] = None
         except Exception:
             resolved_title = fallback
+        _emit_session_info_for_session(params.get("session_id", ""), session)
         return _ok(
             rid,
             {
@@ -5023,11 +5141,13 @@ def _(rid, params: dict) -> dict:
     try:
         if db.set_session_title(key, title):
             session["pending_title"] = None
+            _emit_session_info_for_session(params.get("session_id", ""), session)
             return _ok(rid, {"pending": False, "title": title})
         # rowcount == 0 can mean "same value" as well as "missing row".
         existing_row = db.get_session(key)
         if existing_row:
             session["pending_title"] = None
+            _emit_session_info_for_session(params.get("session_id", ""), session)
             return _ok(
                 rid,
                 {
@@ -5049,10 +5169,12 @@ def _(rid, params: dict) -> dict:
         with _session_db(session) as scoped_db:
             if scoped_db is not None and scoped_db.set_session_title(key, title):
                 session["pending_title"] = None
+                _emit_session_info_for_session(params.get("session_id", ""), session)
                 return _ok(rid, {"pending": False, "title": title})
         # Row creation didn't take (DB unavailable, or a concurrent writer) —
         # fall back to queuing so the post-turn apply block can still recover.
         session["pending_title"] = title
+        _emit_session_info_for_session(params.get("session_id", ""), session)
         return _ok(rid, {"pending": True, "title": title})
     except ValueError as e:
         return _err(rid, 4022, str(e))
@@ -5369,8 +5491,8 @@ def _(rid, params: dict) -> dict:
     supplied, the server-side core mints a fresh one and returns it so the TUI can
     reuse it on retry of the SAME purchase.
     """
-    from agent.billing_view import new_idempotency_key
     from prostor_cli.nous_billing import BillingError, post_charge
+    from agent.billing_view import new_idempotency_key
 
     amount = params.get("amount_usd")
     if amount is None:
@@ -5843,10 +5965,10 @@ def _(rid, params: dict) -> dict:
 @method("delegation.status")
 def _(rid, params: dict) -> dict:
     from tools.delegate_tool import (
-        _get_max_concurrent_children,
-        _get_max_spawn_depth,
         is_spawn_paused,
         list_active_subagents,
+        _get_max_concurrent_children,
+        _get_max_spawn_depth,
     )
 
     return _ok(
@@ -6246,7 +6368,7 @@ def _notification_poller_loop(
     even if the process was started by a different session. This matches
     CLI/gateway behavior (single session per process).
     """
-    from tools.process_registry import format_process_notification, process_registry
+    from tools.process_registry import process_registry, format_process_notification
 
     _emitted = set()  # dedup re-queued events so same completion isn't emitted 50 times while session is busy
     while not stop_event.is_set() and not session.get("_finalized"):
@@ -6441,13 +6563,13 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             run_message: Any = prompt
             if images:
                 try:
+                    from agent.image_routing import (
+                        decide_image_input_mode,
+                        build_native_content_parts,
+                    )
                     from agent.auxiliary_client import (
                         _read_main_model,
                         _read_main_provider,
-                    )
-                    from agent.image_routing import (
-                        build_native_content_parts,
-                        decide_image_input_mode,
                     )
                     from prostor_cli.config import load_config as _tui_load_config
 
@@ -6609,9 +6731,15 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                             default_max_turns=goal_max_turns,
                         )
                         if goal_mgr.is_active():
+                            try:
+                                from prostor_cli.goals import gather_background_processes as _gather_bg
+                                _bg_procs = _gather_bg()
+                            except Exception:
+                                _bg_procs = None
                             decision = goal_mgr.evaluate_after_turn(
                                 raw,
                                 user_initiated=True,
+                                background_processes=_bg_procs,
                             )
                             verdict_msg = decision.get("message") or ""
                             if verdict_msg:
@@ -7894,6 +8022,45 @@ def _(rid, params: dict) -> dict:
                     session["show_reasoning"] = False
                 return _ok(rid, {"key": key, "value": "hide"})
 
+            # /reasoning full | clamp — parity with the classic CLI's
+            # reasoning_full toggle. The TUI renders thinking as an
+            # expand/collapse section rather than a fixed 10-line recap, so
+            # full maps to sections.thinking=expanded and clamp to collapsed.
+            # display.reasoning_full is persisted too so the config key stays
+            # consistent across the CLI and TUI surfaces.
+            if arg in {"full", "all"}:
+                cfg = _load_cfg()
+                display = (
+                    cfg.get("display") if isinstance(cfg.get("display"), dict) else {}
+                )
+                sections = (
+                    display.get("sections")
+                    if isinstance(display.get("sections"), dict)
+                    else {}
+                )
+                display["reasoning_full"] = True
+                sections["thinking"] = "expanded"
+                display["sections"] = sections
+                cfg["display"] = display
+                _save_cfg(cfg)
+                return _ok(rid, {"key": key, "value": "full"})
+            if arg in {"clamp", "collapse", "short"}:
+                cfg = _load_cfg()
+                display = (
+                    cfg.get("display") if isinstance(cfg.get("display"), dict) else {}
+                )
+                sections = (
+                    display.get("sections")
+                    if isinstance(display.get("sections"), dict)
+                    else {}
+                )
+                display["reasoning_full"] = False
+                sections["thinking"] = "collapsed"
+                display["sections"] = sections
+                cfg["display"] = display
+                _save_cfg(cfg)
+                return _ok(rid, {"key": key, "value": "clamp"})
+
             parsed = parse_reasoning_effort(arg)
             if parsed is None:
                 return _err(rid, 4002, f"unknown reasoning value: {value}")
@@ -8250,9 +8417,9 @@ def _(rid, params: dict) -> dict:
     surface onboarding before the user submits a doomed prompt.
     """
     try:
+        from prostor_cli.runtime_provider import resolve_runtime_provider
         from prostor_cli.auth import has_usable_secret
         from prostor_cli.main import _has_any_provider_configured
-        from prostor_cli.runtime_provider import resolve_runtime_provider
 
         runtime = resolve_runtime_provider(requested=None)
         provider_configured = bool(_has_any_provider_configured())
@@ -8414,7 +8581,7 @@ def _(rid, params: dict) -> dict:
                     },
                 )
 
-        from tools.mcp_tool import discover_mcp_tools, shutdown_mcp_servers
+        from tools.mcp_tool import shutdown_mcp_servers, discover_mcp_tools
 
         shutdown_mcp_servers()
         discover_mcp_tools()
@@ -8748,8 +8915,8 @@ def _(rid, params: dict) -> dict:
 
     try:
         from agent.skill_commands import (
-            build_skill_invocation_message,
             scan_skill_commands,
+            build_skill_invocation_message,
         )
 
         cmds = scan_skill_commands()
@@ -9457,12 +9624,12 @@ def _(rid, params: dict) -> dict:
         return _ok(rid, {"items": []})
 
     try:
+        from prostor_cli.commands import SlashCommandCompleter
         from prompt_toolkit.document import Document
         from prompt_toolkit.formatted_text import to_plain_text
 
-        from agent.skill_bundles import get_skill_bundles
         from agent.skill_commands import get_skill_commands
-        from prostor_cli.commands import SlashCommandCompleter
+        from agent.skill_bundles import get_skill_bundles
 
         completer = SlashCommandCompleter(
             skill_commands_provider=lambda: get_skill_commands(),
@@ -9733,9 +9900,49 @@ def _mirror_slash_side_effects(sid: str, session: dict, command: str) -> str:
             agent.ephemeral_system_prompt = new_prompt or None
             agent._cached_system_prompt = None
         elif name == "compress" and agent:
+            # Mirror the session.compress RPC: build a before/after summary so
+            # the user gets feedback (#46686). The slash path previously just
+            # compressed + emitted session.info and returned "", so the TUI
+            # showed no "compressed N → M messages / ~X → ~Y tokens" stats
+            # while CLI and gateway both did.
+            from agent.manual_compression_feedback import summarize_manual_compression
+            from agent.model_metadata import estimate_request_tokens_rough
+
+            with session["history_lock"]:
+                _before_messages = list(session.get("history", []))
+            _before_count = len(_before_messages)
+            _sys_prompt = getattr(agent, "_cached_system_prompt", "") or ""
+            _tools = getattr(agent, "tools", None) or None
+            _before_tokens = (
+                estimate_request_tokens_rough(
+                    _before_messages, system_prompt=_sys_prompt, tools=_tools
+                )
+                if _before_count
+                else 0
+            )
+
             _compress_session_history(session, arg)
             _sync_session_key_after_compress(sid, session)
+
+            with session["history_lock"]:
+                _after_messages = list(session.get("history", []))
+            _sys_prompt_after = getattr(agent, "_cached_system_prompt", "") or _sys_prompt
+            _tools_after = getattr(agent, "tools", None) or _tools
+            _after_tokens = (
+                estimate_request_tokens_rough(
+                    _after_messages, system_prompt=_sys_prompt_after, tools=_tools_after
+                )
+                if _after_messages
+                else 0
+            )
             _emit("session.info", sid, _session_info(agent, session))
+            _fb = summarize_manual_compression(
+                _before_messages, _after_messages, _before_tokens, _after_tokens
+            )
+            _lines = [_fb["headline"], _fb["token_line"]]
+            if _fb.get("note"):
+                _lines.append(_fb["note"])
+            return "\n".join(_lines)
         elif name == "fast" and agent:
             mode = arg.lower()
             if mode in {"fast", "on"}:
@@ -10355,10 +10562,10 @@ def _(rid, params: dict) -> dict:
 
 def _browser_connect(rid, params: dict) -> dict:
     import platform
-    from urllib.parse import urlparse
 
     from prostor_cli.browser_connect import DEFAULT_BROWSER_CDP_URL
     from tools.browser_tool import cleanup_all_browsers
+    from urllib.parse import urlparse
 
     raw_url = params.get("url")
     if raw_url is not None and not isinstance(raw_url, str):
@@ -10571,7 +10778,7 @@ def _(rid, params: dict) -> dict:
 @method("tools.show")
 def _(rid, params: dict) -> dict:
     try:
-        from model_tools import get_tool_definitions, get_toolset_for_tool
+        from model_tools import get_toolset_for_tool, get_tool_definitions
 
         session = _sessions.get(params.get("session_id", ""))
         enabled = (

@@ -7,21 +7,76 @@ from unittest.mock import patch
 import pytest
 
 from gateway.platforms.base import (
-    GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE,
     BasePlatformAdapter,
+    GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE,
     MessageEvent,
-    _log_safe_path,
-    _prefix_within_utf16_limit,
+    cache_audio_from_bytes,
+    cache_image_from_bytes,
+    cache_video_from_bytes,
     safe_url_for_log,
     utf16_len,
+    validate_inbound_media_size,
+    _log_safe_path,
+    _prefix_within_utf16_limit,
 )
+
+
+class TestInboundMediaSizeCap:
+    """gateway.max_inbound_media_bytes caps inbound media buffered into RAM (#13145)."""
+
+    _PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 64
+
+    def test_default_cap_is_128_mib(self, monkeypatch):
+        # No config override -> default. Patch loader to return empty config.
+        import gateway.platforms.base as base
+        monkeypatch.setattr(base, "get_inbound_media_max_bytes", lambda: base.DEFAULT_INBOUND_MEDIA_MAX_BYTES)
+        assert base.DEFAULT_INBOUND_MEDIA_MAX_BYTES == 128 * 1024 * 1024
+
+    def test_image_bytes_rejected_when_oversized(self, monkeypatch):
+        import gateway.platforms.base as base
+        monkeypatch.setattr(base, "get_inbound_media_max_bytes", lambda: 16)
+        with pytest.raises(ValueError, match="Inbound image payload is too large"):
+            cache_image_from_bytes(self._PNG, ext=".png")
+
+    def test_audio_bytes_rejected_when_oversized(self, monkeypatch):
+        import gateway.platforms.base as base
+        monkeypatch.setattr(base, "get_inbound_media_max_bytes", lambda: 4)
+        with pytest.raises(ValueError, match="Inbound audio payload is too large"):
+            cache_audio_from_bytes(b"x" * 8, ext=".ogg")
+
+    def test_video_bytes_rejected_when_oversized(self, monkeypatch):
+        # Video was the gap in the original report — verify it's covered.
+        import gateway.platforms.base as base
+        monkeypatch.setattr(base, "get_inbound_media_max_bytes", lambda: 4)
+        with pytest.raises(ValueError, match="Inbound video payload is too large"):
+            cache_video_from_bytes(b"x" * 8, ext=".mp4")
+
+    def test_legit_image_accepted_under_cap(self, monkeypatch):
+        import gateway.platforms.base as base
+        monkeypatch.setattr(base, "get_inbound_media_max_bytes", lambda: 128 * 1024 * 1024)
+        path = cache_image_from_bytes(self._PNG, ext=".png")
+        assert os.path.exists(path)
+        assert os.path.getsize(path) == len(self._PNG)
+
+    def test_cap_of_zero_disables_check(self, monkeypatch):
+        import gateway.platforms.base as base
+        monkeypatch.setattr(base, "get_inbound_media_max_bytes", lambda: 0)
+        # A would-be-oversized video passes through when the cap is disabled.
+        path = cache_video_from_bytes(b"x" * 5000, ext=".mp4")
+        assert os.path.exists(path)
+
+    def test_validate_helper_respects_explicit_max_bytes(self):
+        # max_bytes arg overrides the configured cap.
+        validate_inbound_media_size(100, media_type="image", max_bytes=200)  # ok
+        with pytest.raises(ValueError, match="too large"):
+            validate_inbound_media_size(300, media_type="image", max_bytes=200)
 
 
 class TestSecretCaptureGuidance:
     def test_gateway_secret_capture_message_points_to_local_setup(self):
         message = GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE
         assert "local cli" in message.lower()
-        assert "~/.prostor/.env" in message
+        assert "~/.hermes/.env" in message
 
 
 class TestSafeUrlForLog:
@@ -489,7 +544,7 @@ class TestMediaInsideSerializedJson:
     def test_media_in_embedded_serialized_reply_not_extracted(self):
         """A serialized tool result that embeds a prior reply's MEDIA: tag."""
         content = (
-            '{"content":"previous reply MEDIA:/Users/ex/.prostor/media/'
+            '{"content":"previous reply MEDIA:/Users/ex/.hermes/media/'
             'generated/stale.png and more text"}'
         )
         media, _ = BasePlatformAdapter.extract_media(content)
@@ -604,11 +659,11 @@ class TestMediaDeliveryPathValidation:
         # recency window + denylist). Force strict on so they keep
         # exercising the legacy path even though the public default
         # flipped to off in 2026-05.
-        monkeypatch.setenv("PROSTOR_MEDIA_DELIVERY_STRICT", "1")
+        monkeypatch.setenv("HERMES_MEDIA_DELIVERY_STRICT", "1")
         # Disable recency-based trust by default so the original allowlist
         # tests continue to exercise the strict-allowlist path. Tests that
         # specifically cover recency trust re-enable it themselves.
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_FILES", "0")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "0")
 
     def test_allows_existing_file_inside_safe_root(self, tmp_path, monkeypatch):
         root = tmp_path / "media-cache"
@@ -664,7 +719,7 @@ class TestMediaDeliveryPathValidation:
         media_file.parent.mkdir(parents=True)
         media_file.write_bytes(b"%PDF-1.4")
         self._patch_roots(monkeypatch)
-        monkeypatch.setenv("PROSTOR_MEDIA_ALLOW_DIRS", str(extra_root))
+        monkeypatch.setenv("HERMES_MEDIA_ALLOW_DIRS", str(extra_root))
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(media_file)) == str(media_file.resolve())
 
@@ -677,9 +732,9 @@ class TestMediaDeliveryPathValidation:
         allowlist are accepted because the file's mtime is within the window.
         """
         self._patch_roots(monkeypatch)  # zero cache allowlist
-        monkeypatch.delenv("PROSTOR_MEDIA_ALLOW_DIRS", raising=False)
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_FILES", "1")
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_SECONDS", "600")
+        monkeypatch.delenv("HERMES_MEDIA_ALLOW_DIRS", raising=False)
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "1")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_SECONDS", "600")
 
         fresh = tmp_path / "scratch" / "report.pdf"
         fresh.parent.mkdir(parents=True)
@@ -695,9 +750,9 @@ class TestMediaDeliveryPathValidation:
         the trust window.
         """
         self._patch_roots(monkeypatch)
-        monkeypatch.delenv("PROSTOR_MEDIA_ALLOW_DIRS", raising=False)
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_FILES", "1")
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_SECONDS", "60")
+        monkeypatch.delenv("HERMES_MEDIA_ALLOW_DIRS", raising=False)
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "1")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_SECONDS", "60")
 
         stale = tmp_path / "stale.pdf"
         stale.write_bytes(b"%PDF-1.4")
@@ -709,8 +764,8 @@ class TestMediaDeliveryPathValidation:
     def test_recency_trust_disabled_falls_back_to_pure_allowlist(self, tmp_path, monkeypatch):
         """Setting trust_recent_files=false reverts to pre-existing strict behavior."""
         self._patch_roots(monkeypatch)
-        monkeypatch.delenv("PROSTOR_MEDIA_ALLOW_DIRS", raising=False)
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_FILES", "0")
+        monkeypatch.delenv("HERMES_MEDIA_ALLOW_DIRS", raising=False)
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "0")
 
         fresh = tmp_path / "report.pdf"
         fresh.write_bytes(b"%PDF-1.4")  # mtime = now
@@ -726,9 +781,9 @@ class TestMediaDeliveryPathValidation:
         ~/.ssh, ~/.aws, etc.
         """
         self._patch_roots(monkeypatch)
-        monkeypatch.delenv("PROSTOR_MEDIA_ALLOW_DIRS", raising=False)
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_FILES", "1")
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_SECONDS", "600")
+        monkeypatch.delenv("HERMES_MEDIA_ALLOW_DIRS", raising=False)
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "1")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_SECONDS", "600")
 
         # Simulate $HOME so ~/.ssh resolves into our tmp dir.
         fake_home = tmp_path / "home"
@@ -744,13 +799,13 @@ class TestMediaDeliveryPathValidation:
         """The motivating case: agent produces a PDF in a project directory.
 
         Reproduces the Discord-PDF-not-delivered bug. Before recency trust,
-        files outside ~/.prostor/cache/* were silently dropped, leaving the
+        files outside ~/.hermes/cache/* were silently dropped, leaving the
         user with a raw filepath in chat instead of an attachment.
         """
         self._patch_roots(monkeypatch)
-        monkeypatch.delenv("PROSTOR_MEDIA_ALLOW_DIRS", raising=False)
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_FILES", "1")
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_SECONDS", "600")
+        monkeypatch.delenv("HERMES_MEDIA_ALLOW_DIRS", raising=False)
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "1")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_SECONDS", "600")
 
         project = tmp_path / "my-project"
         report = project / "build" / "weekly-report.pdf"
@@ -762,9 +817,9 @@ class TestMediaDeliveryPathValidation:
     def test_filter_keeps_recently_produced_files(self, tmp_path, monkeypatch):
         """End-to-end: filter_local_delivery_paths routes a fresh PDF through."""
         self._patch_roots(monkeypatch)
-        monkeypatch.delenv("PROSTOR_MEDIA_ALLOW_DIRS", raising=False)
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_FILES", "1")
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_SECONDS", "600")
+        monkeypatch.delenv("HERMES_MEDIA_ALLOW_DIRS", raising=False)
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "1")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_SECONDS", "600")
 
         fresh = tmp_path / "report.pdf"
         fresh.write_bytes(b"%PDF-1.4")
@@ -792,8 +847,8 @@ class TestMediaDeliveryDefaultMode:
         )
         # Pin strict OFF — the public default. Tests that exercise the
         # strict path live in TestMediaDeliveryPathValidation.
-        monkeypatch.delenv("PROSTOR_MEDIA_DELIVERY_STRICT", raising=False)
-        monkeypatch.delenv("PROSTOR_MEDIA_ALLOW_DIRS", raising=False)
+        monkeypatch.delenv("HERMES_MEDIA_DELIVERY_STRICT", raising=False)
+        monkeypatch.delenv("HERMES_MEDIA_ALLOW_DIRS", raising=False)
 
     def test_accepts_stale_file_outside_allowlist(self, tmp_path, monkeypatch):
         """The motivating case — agent says ``MEDIA:/home/user/notes.md``
@@ -853,73 +908,172 @@ class TestMediaDeliveryDefaultMode:
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(secret)) is None
 
-    def test_denylist_blocks_prostor_credentials(self, tmp_path, monkeypatch):
-        """~/.prostor/.env and ~/.prostor/auth.json stay blocked even in
+    def test_denylist_blocks_hermes_credentials(self, tmp_path, monkeypatch):
+        """~/.hermes/.env and ~/.hermes/auth.json stay blocked even in
         default mode. They live under $HOME (not the system prefix list)
         so this exercises the home-relative denied paths.
         """
         self._patch_roots(monkeypatch)
 
         fake_home = tmp_path / "home"
-        prostor_dir = fake_home / ".prostor"
-        prostor_dir.mkdir(parents=True)
-        env_file = prostor_dir / ".env"
+        hermes_dir = fake_home / ".hermes"
+        hermes_dir.mkdir(parents=True)
+        env_file = hermes_dir / ".env"
         env_file.write_text("OPENAI_API_KEY=sk-...")
         monkeypatch.setenv("HOME", str(fake_home))
         monkeypatch.setattr(
-            "gateway.platforms.base._PROSTOR_HOME",
-            prostor_dir,
+            "gateway.platforms.base._HERMES_HOME",
+            hermes_dir,
         )
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(env_file)) is None
 
-    def test_denylist_blocks_prostor_config_in_active_profile(self, tmp_path, monkeypatch):
+    def test_denylist_blocks_hermes_config_in_active_profile(self, tmp_path, monkeypatch):
         """The active profile config stays blocked in default mode."""
         self._patch_roots(monkeypatch)
 
         fake_home = tmp_path / "home"
-        prostor_dir = fake_home / ".prostor"
-        prostor_dir.mkdir(parents=True)
-        config_file = prostor_dir / "config.yaml"
+        hermes_dir = fake_home / ".hermes"
+        hermes_dir.mkdir(parents=True)
+        config_file = hermes_dir / "config.yaml"
         config_file.write_text("model:\n  provider: openai\n")
         monkeypatch.setenv("HOME", str(fake_home))
         monkeypatch.setattr(
-            "gateway.platforms.base._PROSTOR_HOME",
-            prostor_dir,
+            "gateway.platforms.base._HERMES_HOME",
+            hermes_dir,
         )
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(config_file)) is None
 
-    def test_denylist_blocks_shared_prostor_root_config_for_profiles(self, tmp_path, monkeypatch):
-        """Profile-mode gateways must still block the shared Prostor root config."""
+    def test_denylist_blocks_shared_hermes_root_config_for_profiles(self, tmp_path, monkeypatch):
+        """Profile-mode gateways must still block the shared Hermes root config."""
         self._patch_roots(monkeypatch)
 
         fake_home = tmp_path / "home"
-        profile_home = fake_home / ".prostor" / "profiles" / "work"
+        profile_home = fake_home / ".hermes" / "profiles" / "work"
         profile_home.mkdir(parents=True)
-        prostor_root = fake_home / ".prostor"
-        config_file = prostor_root / "config.yaml"
+        hermes_root = fake_home / ".hermes"
+        config_file = hermes_root / "config.yaml"
         config_file.write_text("profiles:\n  active: work\n")
         monkeypatch.setenv("HOME", str(fake_home))
         monkeypatch.setattr(
-            "gateway.platforms.base._PROSTOR_HOME",
+            "gateway.platforms.base._HERMES_HOME",
             profile_home,
         )
         monkeypatch.setattr(
-            "gateway.platforms.base._PROSTOR_ROOT",
-            prostor_root,
+            "gateway.platforms.base._HERMES_ROOT",
+            hermes_root,
         )
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(config_file)) is None
 
+    def test_denylist_blocks_google_token_default_mode(self, tmp_path, monkeypatch):
+        """Integration credentials at the HERMES_HOME root (google_token.json)
+        must never be deliverable, even though they aren't the historically
+        enumerated .env/auth.json/config.yaml files. Regression for a
+        refreshed google_token.json being auto-attached to a Slack reply
+        (#50912).
+        """
+        self._patch_roots(monkeypatch)
+
+        fake_home = tmp_path / "home"
+        hermes_dir = fake_home / ".hermes"
+        hermes_dir.mkdir(parents=True)
+        token = hermes_dir / "google_token.json"
+        token.write_text('{"access_token": "***", "refresh_token": "***"}')
+        monkeypatch.setenv("HOME", str(fake_home))
+        monkeypatch.setattr("gateway.platforms.base._HERMES_HOME", hermes_dir)
+        monkeypatch.setattr("gateway.platforms.base._HERMES_ROOT", hermes_dir)
+
+        assert BasePlatformAdapter.validate_media_delivery_path(str(token)) is None
+
+    def test_denylist_blocks_google_token_even_when_freshly_refreshed(self, tmp_path, monkeypatch):
+        """The exploit was that the Google integration rewrites
+        google_token.json every turn, bumping its mtime to ~now, so the
+        strict-mode recency window (trust_recent_files) kept re-trusting it
+        and it re-sent on every reply. An explicit denylist entry must win
+        over recency trust.
+        """
+        self._patch_roots(monkeypatch)  # zero cache allowlist, strict mode on
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "1")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_SECONDS", "600")
+
+        fake_home = tmp_path / "home"
+        hermes_dir = fake_home / ".hermes"
+        hermes_dir.mkdir(parents=True)
+        token = hermes_dir / "google_token.json"
+        token.write_text('{"access_token": "***"}')  # mtime = now → "recent"
+        monkeypatch.setenv("HOME", str(fake_home))
+        monkeypatch.setattr("gateway.platforms.base._HERMES_HOME", hermes_dir)
+        monkeypatch.setattr("gateway.platforms.base._HERMES_ROOT", hermes_dir)
+
+        assert BasePlatformAdapter.validate_media_delivery_path(str(token)) is None
+
+    def test_denylist_blocks_pairing_directory_contents(self, tmp_path, monkeypatch):
+        """Files under ~/.hermes/pairing/ (platform pairing tokens) are
+        credential material and must not be deliverable.
+        """
+        self._patch_roots(monkeypatch)
+
+        fake_home = tmp_path / "home"
+        hermes_dir = fake_home / ".hermes"
+        pairing = hermes_dir / "pairing"
+        pairing.mkdir(parents=True)
+        token = pairing / "telegram-approved.json"
+        token.write_text('{"approved": ["123"]}')
+        monkeypatch.setenv("HOME", str(fake_home))
+        monkeypatch.setattr("gateway.platforms.base._HERMES_HOME", hermes_dir)
+        monkeypatch.setattr("gateway.platforms.base._HERMES_ROOT", hermes_dir)
+
+        assert BasePlatformAdapter.validate_media_delivery_path(str(token)) is None
+
+    def test_hermes_cache_still_delivers_under_denied_home(self, tmp_path, monkeypatch):
+        """The targeted credential denylist must not break legitimate cache
+        deliveries: a generated artifact under the allowlisted cache root is
+        matched before the denylist and still delivers.
+        """
+        fake_home = tmp_path / "home"
+        hermes_dir = fake_home / ".hermes"
+        cache_dir = hermes_dir / "cache" / "documents"
+        cache_dir.mkdir(parents=True)
+        artifact = cache_dir / "report.pdf"
+        artifact.write_bytes(b"%PDF-1.4")
+        self._patch_roots(monkeypatch, cache_dir)
+        monkeypatch.setenv("HOME", str(fake_home))
+        monkeypatch.setattr("gateway.platforms.base._HERMES_HOME", hermes_dir)
+        monkeypatch.setattr("gateway.platforms.base._HERMES_ROOT", hermes_dir)
+
+        assert BasePlatformAdapter.validate_media_delivery_path(str(artifact)) == str(artifact.resolve())
+
+    def test_denylist_blocks_non_cache_file_under_hermes_home(self, tmp_path, monkeypatch):
+        """A non-credential file the agent wrote directly under ~/.hermes
+        (not in a cache subdir) is still deliverable via recency trust — we
+        did NOT blanket-deny the tree (per #32090/#34425). This guards against
+        accidentally re-introducing the rejected whole-tree deny.
+        """
+        self._patch_roots(monkeypatch)  # strict mode on
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "1")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_SECONDS", "600")
+
+        fake_home = tmp_path / "home"
+        hermes_dir = fake_home / ".hermes"
+        hermes_dir.mkdir(parents=True)
+        artifact = hermes_dir / "adhoc_report.pdf"
+        artifact.write_bytes(b"%PDF-1.4")  # fresh mtime
+        monkeypatch.setenv("HOME", str(fake_home))
+        monkeypatch.setattr("gateway.platforms.base._HERMES_HOME", hermes_dir)
+        monkeypatch.setattr("gateway.platforms.base._HERMES_ROOT", hermes_dir)
+
+        assert BasePlatformAdapter.validate_media_delivery_path(str(artifact)) == str(artifact.resolve())
+
     def test_strict_mode_envvar_restores_legacy_behavior(self, tmp_path, monkeypatch):
-        """Setting PROSTOR_MEDIA_DELIVERY_STRICT=1 reactivates the older
+        """Setting HERMES_MEDIA_DELIVERY_STRICT=1 reactivates the older
         allowlist+recency logic. A stale file outside the allowlist is
         rejected.
         """
         self._patch_roots(monkeypatch)
-        monkeypatch.setenv("PROSTOR_MEDIA_DELIVERY_STRICT", "1")
-        monkeypatch.setenv("PROSTOR_MEDIA_TRUST_RECENT_FILES", "0")
+        monkeypatch.setenv("HERMES_MEDIA_DELIVERY_STRICT", "1")
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "0")
 
         stale = tmp_path / "old.pdf"
         stale.write_bytes(b"%PDF-1.4")
@@ -929,16 +1083,16 @@ class TestMediaDeliveryDefaultMode:
         assert BasePlatformAdapter.validate_media_delivery_path(str(stale)) is None
 
     def test_strict_mode_truthy_aliases(self, monkeypatch, tmp_path):
-        """``PROSTOR_MEDIA_DELIVERY_STRICT=true|yes|on|1`` all enable strict mode."""
+        """``HERMES_MEDIA_DELIVERY_STRICT=true|yes|on|1`` all enable strict mode."""
         self._patch_roots(monkeypatch)
         from gateway.platforms.base import _media_delivery_strict_mode
 
         for raw in ("1", "true", "TRUE", "yes", "on"):
-            monkeypatch.setenv("PROSTOR_MEDIA_DELIVERY_STRICT", raw)
+            monkeypatch.setenv("HERMES_MEDIA_DELIVERY_STRICT", raw)
             assert _media_delivery_strict_mode() is True
 
         for raw in ("0", "false", "no", "off", ""):
-            monkeypatch.setenv("PROSTOR_MEDIA_DELIVERY_STRICT", raw)
+            monkeypatch.setenv("HERMES_MEDIA_DELIVERY_STRICT", raw)
             assert _media_delivery_strict_mode() is False
 
     def test_filter_passes_default_files_through(self, tmp_path, monkeypatch):
@@ -1000,23 +1154,23 @@ class TestMediaDeliveryDefaultMode:
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(key)) is None
 
-    def test_root_home_prostor_env_still_blocked(self, tmp_path, monkeypatch):
-        """``~/.prostor/.env`` stays blocked under the $HOME exception — it is a
+    def test_root_home_hermes_env_still_blocked(self, tmp_path, monkeypatch):
+        """``~/.hermes/.env`` stays blocked under the $HOME exception — it is a
         more-specific denied path, not reachable just because home is allowed.
         """
         self._patch_roots(monkeypatch)
 
         fake_home = tmp_path / "root"
-        prostor_dir = fake_home / ".prostor"
-        prostor_dir.mkdir(parents=True)
-        env_file = prostor_dir / ".env"
+        hermes_dir = fake_home / ".hermes"
+        hermes_dir.mkdir(parents=True)
+        env_file = hermes_dir / ".env"
         env_file.write_text("OPENROUTER_API_KEY=sk-...")
         monkeypatch.setenv("HOME", str(fake_home))
         monkeypatch.setattr(
             "gateway.platforms.base._MEDIA_DELIVERY_DENIED_PREFIXES",
             (str(fake_home),),
         )
-        monkeypatch.setattr("gateway.platforms.base._PROSTOR_HOME", prostor_dir)
+        monkeypatch.setattr("gateway.platforms.base._HERMES_HOME", hermes_dir)
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(env_file)) is None
 
@@ -1218,24 +1372,24 @@ class TestTruncateMessage:
 
 class TestGetHumanDelay:
     def test_off_mode(self):
-        with patch.dict(os.environ, {"PROSTOR_HUMAN_DELAY_MODE": "off"}):
+        with patch.dict(os.environ, {"HERMES_HUMAN_DELAY_MODE": "off"}):
             assert BasePlatformAdapter._get_human_delay() == 0.0
 
     def test_default_is_off(self):
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("PROSTOR_HUMAN_DELAY_MODE", None)
+            os.environ.pop("HERMES_HUMAN_DELAY_MODE", None)
             assert BasePlatformAdapter._get_human_delay() == 0.0
 
     def test_natural_mode_range(self):
-        with patch.dict(os.environ, {"PROSTOR_HUMAN_DELAY_MODE": "natural"}):
+        with patch.dict(os.environ, {"HERMES_HUMAN_DELAY_MODE": "natural"}):
             delay = BasePlatformAdapter._get_human_delay()
             assert 0.8 <= delay <= 2.5
 
     def test_natural_mode_ignores_malformed_custom_env_vars(self):
         env = {
-            "PROSTOR_HUMAN_DELAY_MODE": "natural",
-            "PROSTOR_HUMAN_DELAY_MIN_MS": "oops",
-            "PROSTOR_HUMAN_DELAY_MAX_MS": "still-bad",
+            "HERMES_HUMAN_DELAY_MODE": "natural",
+            "HERMES_HUMAN_DELAY_MIN_MS": "oops",
+            "HERMES_HUMAN_DELAY_MAX_MS": "still-bad",
         }
         with patch.dict(os.environ, env):
             delay = BasePlatformAdapter._get_human_delay()
@@ -1243,9 +1397,9 @@ class TestGetHumanDelay:
 
     def test_custom_mode_uses_env_vars(self):
         env = {
-            "PROSTOR_HUMAN_DELAY_MODE": "custom",
-            "PROSTOR_HUMAN_DELAY_MIN_MS": "100",
-            "PROSTOR_HUMAN_DELAY_MAX_MS": "200",
+            "HERMES_HUMAN_DELAY_MODE": "custom",
+            "HERMES_HUMAN_DELAY_MIN_MS": "100",
+            "HERMES_HUMAN_DELAY_MAX_MS": "200",
         }
         with patch.dict(os.environ, env):
             delay = BasePlatformAdapter._get_human_delay()
@@ -1253,9 +1407,9 @@ class TestGetHumanDelay:
 
     def test_custom_mode_tolerates_malformed_env_vars(self):
         env = {
-            "PROSTOR_HUMAN_DELAY_MODE": "custom",
-            "PROSTOR_HUMAN_DELAY_MIN_MS": "oops",
-            "PROSTOR_HUMAN_DELAY_MAX_MS": "still-bad",
+            "HERMES_HUMAN_DELAY_MODE": "custom",
+            "HERMES_HUMAN_DELAY_MIN_MS": "oops",
+            "HERMES_HUMAN_DELAY_MAX_MS": "still-bad",
         }
         with patch.dict(os.environ, env):
             # falls back to the custom-mode defaults instead of crashing
@@ -1407,7 +1561,6 @@ class TestProxyKwargsForAiohttp:
     def test_http_proxy_uses_connector_when_aiohttp_socks_available(self):
         pytest.importorskip("aiohttp_socks")
         from unittest.mock import MagicMock
-
         from gateway.platforms.base import proxy_kwargs_for_aiohttp
 
         sentinel = MagicMock(name="ProxyConnector")
@@ -1422,7 +1575,6 @@ class TestProxyKwargsForAiohttp:
     def test_socks_proxy_uses_connector(self):
         pytest.importorskip("aiohttp_socks")
         from unittest.mock import MagicMock
-
         from gateway.platforms.base import proxy_kwargs_for_aiohttp
 
         sentinel = MagicMock(name="ProxyConnector")
@@ -1446,8 +1598,8 @@ class TestMediaDeliveryDiagnosability:
     def test_rejected_path_appears_in_log(self, tmp_path, caplog):
         outside = tmp_path / "outside.ogg"
         outside.write_bytes(b"OggS")
-        with patch.dict(os.environ, {"PROSTOR_MEDIA_DELIVERY_STRICT": "1",
-                                     "PROSTOR_MEDIA_TRUST_RECENT_FILES": "0"}), \
+        with patch.dict(os.environ, {"HERMES_MEDIA_DELIVERY_STRICT": "1",
+                                     "HERMES_MEDIA_TRUST_RECENT_FILES": "0"}), \
                 patch("gateway.platforms.base.MEDIA_DELIVERY_SAFE_ROOTS", ()):
             with caplog.at_level("WARNING"):
                 out = BasePlatformAdapter.filter_media_delivery_paths([(str(outside), False)])
@@ -1459,7 +1611,7 @@ class TestMediaDeliveryDiagnosability:
         """One crafted ~\\x00 path must not drop every other attachment."""
         good = tmp_path / "good.png"
         good.write_bytes(b"\x89PNG")
-        monkeypatch.setenv("PROSTOR_MEDIA_DELIVERY_STRICT", "0")
+        monkeypatch.setenv("HERMES_MEDIA_DELIVERY_STRICT", "0")
         out = BasePlatformAdapter.filter_media_delivery_paths([
             ("~\x00evil.png", False),
             (str(good), False),

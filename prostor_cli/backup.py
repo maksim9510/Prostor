@@ -1,5 +1,5 @@
 """
-Backup and import commands for prostor CLI.
+Backup and import commands for Prostor CLI.
 
 `prostor backup` creates a zip archive of the entire ~/.prostor/ directory
 (excluding the prostor-agent repo and transient files).
@@ -17,11 +17,11 @@ import sys
 import tempfile
 import time
 import zipfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
-from prostor_constants import display_prostor_home, get_default_prostor_root, get_prostor_home
+from prostor_constants import get_default_prostor_root, get_prostor_home, display_prostor_home
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,89 @@ _IMPORT_SKIP_NAMES = {
 
 # zipfile.open() drops Unix mode bits on extract; restore tightens these to 0600.
 _SECRET_FILE_NAMES = {".env", "auth.json", "state.db"}
+
+# Reserved archive subtree for provider state that lives OUTSIDE PROSTOR_HOME
+# (e.g. ~/.honcho, ~/.hindsight). The active memory provider declares these via
+# MemoryProvider.backup_paths(); they're stored under this prefix encoded
+# relative to the user's home directory, and restored to their original
+# home-relative location on import. Anything not under home is skipped.
+_EXTERNAL_PREFIX = "_external/"
+
+
+def _collect_memory_provider_external_paths() -> List[Path]:
+    """Return existing absolute paths the active memory provider stores
+    outside PROSTOR_HOME, resolved from config only (no network, no init).
+
+    Reads ``memory.provider`` from config, loads just that provider, and asks
+    it for ``backup_paths()``. Returns an empty list when no external provider
+    is active or the provider can't be loaded — backup must never fail because
+    of a flaky plugin.
+    """
+    try:
+        from plugins.memory import _get_active_memory_provider, load_memory_provider
+    except Exception:
+        return []
+
+    try:
+        active = _get_active_memory_provider()
+    except Exception:
+        active = None
+    if not active:
+        return []
+
+    try:
+        provider = load_memory_provider(active)
+    except Exception:
+        provider = None
+    if provider is None:
+        return []
+
+    try:
+        declared = provider.backup_paths() or []
+    except Exception as exc:
+        logger.warning("backup_paths() failed for memory provider %r: %s", active, exc)
+        return []
+
+    out: List[Path] = []
+    seen: set = set()
+    for raw in declared:
+        try:
+            p = Path(raw).expanduser()
+        except Exception:
+            continue
+        if not p.exists():
+            continue
+        try:
+            resolved = p.resolve()
+        except (OSError, ValueError):
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        out.append(p)
+    return out
+
+
+def _iter_external_files(base: Path) -> List[Path]:
+    """Yield regular files under *base* (a file or a directory), skipping
+    symlinks, caches, and pyc files. *base* itself may be a file."""
+    files: List[Path] = []
+    if base.is_file() and not base.is_symlink():
+        files.append(base)
+        return files
+    if not base.is_dir():
+        return files
+    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+        dp = Path(dirpath)
+        dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIRS]
+        for fname in filenames:
+            fpath = dp / fname
+            if fpath.is_symlink():
+                continue
+            if fpath.name in _EXCLUDED_NAMES or fpath.name.endswith(_EXCLUDED_SUFFIXES):
+                continue
+            files.append(fpath)
+    return files
 
 
 def _should_exclude(rel_path: Path) -> bool:
@@ -262,12 +345,36 @@ def run_backup(args) -> None:
 
             files_to_add.append((fpath, rel))
 
-    if not files_to_add:
+    # External memory-provider state (e.g. ~/.honcho, ~/.hindsight) lives
+    # outside PROSTOR_HOME, so the walk above never sees it. Ask the active
+    # provider for its declared paths and stage them under the reserved
+    # ``_external/`` arc prefix, encoded relative to the user's home dir.
+    # Only paths under home are captured (security + portability); anything
+    # else is skipped with a note.
+    home_dir = Path.home().resolve()
+    external_to_add: list[tuple[Path, str]] = []  # (absolute, arcname)
+    skipped_external: list[str] = []
+    for base in _collect_memory_provider_external_paths():
+        try:
+            base_resolved = base.resolve()
+            base_resolved.relative_to(home_dir)
+        except (ValueError, OSError):
+            skipped_external.append(str(base))
+            continue
+        for fpath in _iter_external_files(base):
+            try:
+                rel_to_home = fpath.resolve().relative_to(home_dir)
+            except (ValueError, OSError):
+                continue
+            arcname = _EXTERNAL_PREFIX + rel_to_home.as_posix()
+            external_to_add.append((fpath, arcname))
+
+    if not files_to_add and not external_to_add:
         print("No files to back up.")
         return
 
     # Create the zip
-    file_count = len(files_to_add)
+    file_count = len(files_to_add) + len(external_to_add)
     print(f"Backing up {file_count} files ...")
 
     total_bytes = 0
@@ -306,6 +413,17 @@ def run_backup(args) -> None:
             if i % 500 == 0:
                 print(f"  {i}/{file_count} files ...")
 
+        # External memory-provider state, stored under the ``_external/`` arc
+        # prefix. These never include ``.db`` files in practice (config/env
+        # blobs), so a straight zf.write is fine.
+        for abs_path, arcname in external_to_add:
+            try:
+                zf.write(abs_path, arcname=arcname)
+                total_bytes += abs_path.stat().st_size
+            except (PermissionError, OSError, ValueError) as exc:
+                errors.append(f"  {arcname}: {exc}")
+                continue
+
     elapsed = time.monotonic() - t0
     zip_size = out_path.stat().st_size
 
@@ -317,8 +435,22 @@ def run_backup(args) -> None:
     print(f"  Compressed:  {_format_size(zip_size)}")
     print(f"  Time:        {elapsed:.1f}s")
 
+    if external_to_add:
+        print(
+            f"\n  Included {len(external_to_add)} memory-provider file(s) "
+            f"stored outside {display_prostor_home()}."
+        )
+
+    if skipped_external:
+        print(
+            f"\n  Skipped {len(skipped_external)} memory-provider path(s) "
+            f"outside your home directory (not portable):"
+        )
+        for p in sorted(skipped_external)[:10]:
+            print(f"    {p}")
+
     if skipped_dirs:
-        print("\n  Excluded directories:")
+        print(f"\n  Excluded directories:")
         for d in sorted(skipped_dirs):
             print(f"    {d}/")
 
@@ -442,10 +574,44 @@ def run_import(args) -> None:
 
         errors = []
         restored = 0
+        restored_external = 0
         skipped_runtime: list[str] = []
+        home_dir = Path.home().resolve()
         t0 = time.monotonic()
 
         for member in members:
+            # External memory-provider state captured under the reserved
+            # ``_external/`` arc prefix restores to its original home-relative
+            # location (e.g. ~/.honcho/config.json), NOT under PROSTOR_HOME.
+            if member.startswith(_EXTERNAL_PREFIX):
+                ext_rel = member[len(_EXTERNAL_PREFIX):]
+                if not ext_rel:
+                    continue
+                target = home_dir / ext_rel
+                # Security: the resolved target must stay under the home dir.
+                try:
+                    target.resolve().relative_to(home_dir)
+                except ValueError:
+                    errors.append(f"  {member}: path traversal blocked")
+                    continue
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member) as src, open(target, "wb") as dst:
+                        dst.write(src.read())
+                    # External provider configs commonly hold credentials.
+                    if target.suffix in {".json", ".env", ".conf"} or target.name in _SECRET_FILE_NAMES:
+                        try:
+                            os.chmod(target, 0o600)
+                        except OSError:
+                            pass
+                    restored += 1
+                    restored_external += 1
+                except (PermissionError, OSError) as exc:
+                    errors.append(f"  {member}: {exc}")
+                if restored % 500 == 0:
+                    print(f"  {restored}/{file_count} files ...")
+                continue
+
             # Strip prefix if detected
             if prefix and member.startswith(prefix):
                 rel = member[len(prefix):]
@@ -494,6 +660,12 @@ def run_import(args) -> None:
         print(f"Import complete: {restored} files restored in {elapsed:.1f}s")
         print(f"  Target: {display_prostor_home()}")
 
+        if restored_external:
+            print(
+                f"\n  Restored {restored_external} memory-provider file(s) to "
+                f"their original location(s) outside {display_prostor_home()}."
+            )
+
         if errors:
             print(f"\n  Warnings ({len(errors)} files skipped):")
             for e in errors[:10]:
@@ -517,10 +689,8 @@ def run_import(args) -> None:
         if profiles_dir.is_dir():
             try:
                 from prostor_cli.profiles import (
-                    _get_wrapper_dir,
-                    _is_wrapper_dir_in_path,
-                    check_alias_collision,
-                    create_wrapper_script,
+                    create_wrapper_script, check_alias_collision,
+                    _is_wrapper_dir_in_path, _get_wrapper_dir,
                 )
                 for entry in sorted(profiles_dir.iterdir()):
                     if not entry.is_dir():
@@ -551,8 +721,8 @@ def run_import(args) -> None:
             except ImportError:
                 # prostor_cli.profiles might not be available (fresh install)
                 if any(profiles_dir.iterdir()):
-                    print("\n  Profiles detected but aliases could not be created.")
-                    print("  Run: prostor profile list  (after installing prostor)")
+                    print(f"\n  Profiles detected but aliases could not be created.")
+                    print(f"  Run: prostor profile list  (after installing prostor)")
 
         # Guidance
         print()
@@ -602,16 +772,16 @@ _QUICK_SNAPSHOTS_DIR = "state-snapshots"
 _QUICK_DEFAULT_KEEP = 20
 
 
-def _quick_snapshot_root(prostor_home: Path | None = None) -> Path:
+def _quick_snapshot_root(prostor_home: Optional[Path] = None) -> Path:
     home = prostor_home or get_prostor_home()
     return home / _QUICK_SNAPSHOTS_DIR
 
 
 def create_quick_snapshot(
-    label: str | None = None,
-    prostor_home: Path | None = None,
-    keep: int | None = None,
-) -> str | None:
+    label: Optional[str] = None,
+    prostor_home: Optional[Path] = None,
+    keep: Optional[int] = None,
+) -> Optional[str]:
     """Create a quick state snapshot of critical files.
 
     Copies STATE_FILES to a timestamped directory under state-snapshots/.
@@ -623,12 +793,12 @@ def create_quick_snapshot(
     home = prostor_home or get_prostor_home()
     root = _quick_snapshot_root(home)
 
-    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     snap_id = f"{ts}-{label}" if label else ts
     snap_dir = root / snap_id
     snap_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest: dict[str, int] = {}  # rel_path -> file size
+    manifest: Dict[str, int] = {}  # rel_path -> file size
 
     for rel in _QUICK_STATE_FILES:
         src = home / rel
@@ -695,8 +865,8 @@ def create_quick_snapshot(
 
 def list_quick_snapshots(
     limit: int = 20,
-    prostor_home: Path | None = None,
-) -> list[dict[str, Any]]:
+    prostor_home: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
     """List existing quick state snapshots, most recent first."""
     root = _quick_snapshot_root(prostor_home)
     if not root.exists():
@@ -721,7 +891,7 @@ def list_quick_snapshots(
 
 def restore_quick_snapshot(
     snapshot_id: str,
-    prostor_home: Path | None = None,
+    prostor_home: Optional[Path] = None,
 ) -> bool:
     """Restore state from a quick snapshot.
 
@@ -730,7 +900,21 @@ def restore_quick_snapshot(
     """
     home = prostor_home or get_prostor_home()
     root = _quick_snapshot_root(home)
+
+    # Security: reject snapshot_id values that contain path separators or
+    # traversal sequences so that `root / snapshot_id` stays inside root.
+    if not snapshot_id or "/" in snapshot_id or "\\" in snapshot_id or snapshot_id in (".", ".."):
+        logger.error("Invalid snapshot_id: %s", snapshot_id)
+        return False
+
     snap_dir = root / snapshot_id
+
+    # Confirm the resolved path is still inside root (handles symlinks etc.)
+    try:
+        snap_dir.resolve().relative_to(root.resolve())
+    except ValueError:
+        logger.error("Snapshot path traversal blocked for id: %s", snapshot_id)
+        return False
 
     if not snap_dir.is_dir():
         return False
@@ -744,11 +928,24 @@ def restore_quick_snapshot(
 
     restored = 0
     for rel in meta.get("files", {}):
+        # Security: reject absolute paths and traversals in manifest entries
         src = snap_dir / rel
-        if not src.exists():
+        try:
+            src.resolve().relative_to(snap_dir.resolve())
+        except ValueError:
+            logger.error("Manifest path traversal blocked: %s", rel)
             continue
 
         dst = home / rel
+        try:
+            dst.resolve().relative_to(home.resolve())
+        except ValueError:
+            logger.error("Manifest path traversal blocked: %s", rel)
+            continue
+
+        if not src.exists():
+            continue
+
         dst.parent.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -773,7 +970,7 @@ def restore_quick_snapshot(
 _CRON_JOBS_REL = "cron/jobs.json"
 
 
-def _count_cron_jobs(path: Path) -> int | None:
+def _count_cron_jobs(path: Path) -> Optional[int]:
     """Return the number of cron jobs stored in ``path``.
 
     The canonical on-disk shape is ``{"jobs": [...]}`` (see ``cron/jobs.py``).
@@ -788,7 +985,7 @@ def _count_cron_jobs(path: Path) -> int | None:
     if not path.is_file():
         return None
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return None
@@ -802,8 +999,8 @@ def _count_cron_jobs(path: Path) -> int | None:
 
 def restore_cron_jobs_if_emptied(
     snapshot_id: str,
-    prostor_home: Path | None = None,
-) -> dict[str, Any] | None:
+    prostor_home: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
     """Safety net for silent cron-job loss across ``prostor update``.
 
     Config-version migrations have been observed to leave ``cron/jobs.json``
@@ -891,7 +1088,7 @@ def _prune_quick_snapshots(root: Path, keep: int = _QUICK_DEFAULT_KEEP) -> int:
 
 def prune_quick_snapshots(
     keep: int = _QUICK_DEFAULT_KEEP,
-    prostor_home: Path | None = None,
+    prostor_home: Optional[Path] = None,
 ) -> int:
     """Manually prune quick snapshots. Returns count deleted."""
     return _prune_quick_snapshots(_quick_snapshot_root(prostor_home), keep=keep)
@@ -914,7 +1111,7 @@ def run_quick_backup(args) -> None:
 # Shared full-zip backup helper
 # ---------------------------------------------------------------------------
 
-def _write_full_zip_backup(out_path: Path, prostor_root: Path) -> Path | None:
+def _write_full_zip_backup(out_path: Path, prostor_root: Path) -> Optional[Path]:
     """Write a full zip snapshot of ``prostor_root`` to ``out_path``.
 
     Uses the same exclusion rules and SQLite safe-copy as :func:`run_backup`.
@@ -990,7 +1187,7 @@ _PRE_UPDATE_PREFIX = "pre-update-"
 _PRE_UPDATE_DEFAULT_KEEP = 5
 
 
-def _pre_update_backup_dir(prostor_home: Path | None = None) -> Path:
+def _pre_update_backup_dir(prostor_home: Optional[Path] = None) -> Path:
     home = prostor_home or get_prostor_home()
     return home / _PRE_UPDATE_BACKUPS_DIR
 
@@ -1033,9 +1230,9 @@ def _prune_pre_update_backups(backup_dir: Path, keep: int) -> int:
 
 
 def create_pre_update_backup(
-    prostor_home: Path | None = None,
+    prostor_home: Optional[Path] = None,
     keep: int = _PRE_UPDATE_DEFAULT_KEEP,
-) -> Path | None:
+) -> Optional[Path]:
     """Create a full zip backup of PROSTOR_HOME under ``backups/``.
 
     Mirrors :func:`run_backup` (same exclusion rules, same SQLite safe-copy)
@@ -1105,9 +1302,9 @@ def _prune_pre_migration_backups(backup_dir: Path, keep: int) -> int:
 
 
 def create_pre_migration_backup(
-    prostor_home: Path | None = None,
+    prostor_home: Optional[Path] = None,
     keep: int = _PRE_MIGRATION_DEFAULT_KEEP,
-) -> Path | None:
+) -> Optional[Path]:
     """Create a full zip backup of PROSTOR_HOME under ``backups/`` before a
     ``prostor claw migrate`` apply.
 

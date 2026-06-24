@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from prostor_cli import kanban_db as kb
 
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -31,7 +32,7 @@ def _load_plugin_router():
     assert plugin_file.exists(), f"plugin file missing: {plugin_file}"
 
     spec = importlib.util.spec_from_file_location(
-        "prostor_dashboard_plugin_kanban_test", plugin_file,
+        "hermes_dashboard_plugin_kanban_test", plugin_file,
     )
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
@@ -42,10 +43,10 @@ def _load_plugin_router():
 
 @pytest.fixture
 def kanban_home(tmp_path, monkeypatch):
-    """Isolated PROSTOR_HOME with an empty kanban DB."""
-    home = tmp_path / ".prostor"
+    """Isolated HERMES_HOME with an empty kanban DB."""
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
     return home
@@ -157,7 +158,7 @@ def test_board_query_param_default_overrides_current_board_pointer(client):
     pointer targets a non-default board.
 
     Regression: selecting the Default board in the dashboard must not fall
-    through to whichever board ``prostor kanban boards switch`` last pinned.
+    through to whichever board ``hermes kanban boards switch`` last pinned.
     """
     default_task = client.post(
         "/api/plugins/kanban/tasks",
@@ -244,6 +245,19 @@ def test_dashboard_initial_board_uses_backend_current_when_unpinned():
     assert "if (!storedBoard && !board && data && data.current)" in js
     assert "setBoard(data.current);" in js
     assert 'readSelectedBoard() || "default"' not in js
+
+
+def test_dashboard_markdown_html_is_sanitized_before_render():
+    """Markdown rendering must sanitize HTML before dangerouslySetInnerHTML."""
+
+    repo_root = Path(__file__).resolve().parents[2]
+    bundle = repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
+    js = bundle.read_text()
+
+    assert "function sanitizeMarkdownHtml(html)" in js
+    assert "MARKDOWN_ALLOWED_TAGS" in js
+    assert "sanitizeMarkdownHtml(renderMarkdown(props.source || \"\"))" in js
+    assert "dangerouslySetInnerHTML: { __html: renderMarkdown(props.source || \"\") }" not in js
 
 
 # ---------------------------------------------------------------------------
@@ -711,12 +725,12 @@ def test_board_progress_rollup(client):
 
 def test_board_auto_initializes_missing_db(tmp_path, monkeypatch):
     """If kanban.db doesn't exist yet, GET /board must create it, not 500."""
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
-    monkeypatch.delenv("PROSTOR_KANBAN_BOARD", raising=False)
-    monkeypatch.delenv("PROSTOR_KANBAN_DB", raising=False)
-    monkeypatch.delenv("PROSTOR_KANBAN_HOME", raising=False)
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.delenv("HERMES_KANBAN_BOARD", raising=False)
+    monkeypatch.delenv("HERMES_KANBAN_DB", raising=False)
+    monkeypatch.delenv("HERMES_KANBAN_HOME", raising=False)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     # Deliberately DO NOT call kb.init_db().
 
@@ -739,17 +753,16 @@ def test_ws_events_rejects_when_token_required(tmp_path, monkeypatch):
     delegates to web_server._ws_auth_ok, so we stub that with the real
     loopback-token semantics (auth_required False → constant-time token
     compare)."""
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
 
     # Stub web_server with a loopback-mode _ws_auth_ok (auth_required False →
     # accept only the correct ?token=). Mirrors the real gate's loopback path.
-    import types
-
     import prostor_cli
+    import types
 
     def _fake_ws_auth_ok(ws):
         return ws.query_params.get("token", "") == "secret-xyz"
@@ -791,15 +804,14 @@ def test_ws_events_accepts_gated_ticket(tmp_path, monkeypatch):
     for the hosted-dashboard bug where the kanban live-events WS 1008'd on
     every gated deployment because its bespoke check only knew _SESSION_TOKEN.
     We stub _ws_auth_ok with the real gated semantics (ticket-only)."""
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
 
-    import types
-
     import prostor_cli
+    import types
 
     def _fake_ws_auth_ok(ws):
         # Gated mode: only a known ticket is accepted; token path rejected.
@@ -839,9 +851,9 @@ def test_ws_events_board_query_param_default_overrides_current_board_pointer(tmp
     selects Default, the websocket must not subscribe to the CLI's current
     non-default board.
     """
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
 
@@ -860,9 +872,8 @@ def test_ws_events_board_query_param_default_overrides_current_board_pointer(tmp
 
     kb.set_current_board("other")
 
-    import types
-
     import prostor_cli
+    import types
 
     stub = types.SimpleNamespace(
         _SESSION_TOKEN="secret-xyz",
@@ -897,9 +908,9 @@ def test_ws_events_swallows_cancellation_on_shutdown(tmp_path, monkeypatch):
     """
     import asyncio
 
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
 
@@ -1171,7 +1182,7 @@ def test_config_returns_defaults_when_section_missing(client):
 
 
 def test_config_reads_dashboard_kanban_section(tmp_path, monkeypatch, client):
-    home = Path(os.environ["PROSTOR_HOME"])
+    home = Path(os.environ["HERMES_HOME"])
     (home / "config.yaml").write_text(
         "dashboard:\n"
         "  kanban:\n"
@@ -1343,6 +1354,7 @@ def test_event_dict_includes_run_id(client):
     assert comp[0]["run_id"] == run_id
 
 
+
 # ---------------------------------------------------------------------------
 # Per-task force-loaded skills via REST
 # ---------------------------------------------------------------------------
@@ -1395,6 +1407,7 @@ def test_create_task_with_toolset_name_in_skills_is_rejected(client):
     assert "toolset name" in r.json()["detail"]
 
 
+
 # ---------------------------------------------------------------------------
 # Dispatcher-presence warning in POST /tasks response
 # ---------------------------------------------------------------------------
@@ -1405,7 +1418,7 @@ def test_create_task_includes_warning_when_no_dispatcher(client, monkeypatch):
     # Force the dispatcher probe to report "not running".
     monkeypatch.setattr(
         "prostor_cli.kanban._check_dispatcher_presence",
-        lambda: (False, "No gateway is running — start `prostor gateway start`."),
+        lambda: (False, "No gateway is running — start `hermes gateway start`."),
     )
     r = client.post(
         "/api/plugins/kanban/tasks",
@@ -1540,6 +1553,7 @@ def test_create_task_probe_error_does_not_break_create(client, monkeypatch):
     )
     assert r.status_code == 200
     assert r.json()["task"]["title"] == "resilient"
+
 
 
 # ---------------------------------------------------------------------------
@@ -2039,7 +2053,7 @@ def test_board_exposes_diagnostics_list_and_summary(client):
     try:
         t = kb.create_task(conn, title="crashy", assignee="worker")
         # Simulate 2 consecutive crashes -> repeated_crashes error diag
-        for _i in range(2):
+        for i in range(2):
             conn.execute(
                 "INSERT INTO task_runs (task_id, status, outcome, started_at, "
                 "ended_at, error) VALUES (?, 'crashed', 'crashed', ?, ?, ?)",
@@ -2216,7 +2230,7 @@ def test_dashboard_bulk_actions_include_reclaim_first():
     dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
 
     assert "reclaim_first: reclaimFirst" in dist
-    assert "prostor-kanban-bulk-reclaim-first" in dist
+    assert "hermes-kanban-bulk-reclaim-first" in dist
     assert '"→ todo"' in dist
     assert '"Block"' in dist
     assert '"Unblock"' in dist
@@ -2248,6 +2262,6 @@ def test_dashboard_failed_card_highlight_class_exists():
     js = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
     css = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "style.css").read_text()
 
-    assert "prostor-kanban-card--failed" in js
-    assert "prostor-kanban-card--failed" in css
+    assert "hermes-kanban-card--failed" in js
+    assert "hermes-kanban-card--failed" in css
     assert "failedIds" in js
