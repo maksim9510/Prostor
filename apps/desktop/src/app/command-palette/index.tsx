@@ -8,7 +8,7 @@ import { HUD_HEADING, HUD_ITEM, HUD_POSITION, HUD_SURFACE, HUD_TEXT } from '@/ap
 import { setTerminalTakeover } from '@/app/right-sidebar/store'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { KbdCombo } from '@/components/ui/kbd'
-import { getHermesConfigRecord, listAllProfileSessions } from '@/hermes'
+import { getProstorConfigRecord, listAllProfileSessions } from '@/prostor'
 import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
@@ -220,7 +220,7 @@ export function CommandPalette() {
   // the palette is open. react-query handles caching/dedup/staleness.
   const configQuery = useQuery({
     queryKey: ['command-palette', 'config'],
-    queryFn: getHermesConfigRecord,
+    queryFn: getProstorConfigRecord,
     enabled: open
   })
 

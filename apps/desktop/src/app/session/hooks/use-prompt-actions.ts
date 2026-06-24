@@ -2,7 +2,7 @@ import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
-import { getProfiles, transcribeAudio } from '@/hermes'
+import { getProfiles, transcribeAudio } from '@/prostor'
 import { translateNow, type Translations, useI18n } from '@/i18n'
 import { stripAnsi } from '@/lib/ansi'
 import { branchGroupForUser, type ChatMessage, chatMessageText, textPart } from '@/lib/chat-messages'
