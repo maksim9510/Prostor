@@ -115,8 +115,8 @@ gateway:
     session_only:          "⚡ ✓ Priority Processing: **{label}** (только этот сеанс)"
     label_fast:            "FAST"
     label_normal:          "NORMAL"
-    status_fast:           "fast"
-    status_normal:         "normal"
+    status_fast:           "быстро"
+    status_normal:         "обычно"
 
   footer:
     status:                "📎 Нижний колонтитул среды выполнения: **{state}**\nПоля: `{fields}`\nПлатформа: `{platform}`"
@@ -259,7 +259,7 @@ Future messages in this room will use that transcript until `/reset` or another 
 
   status:
     header:                "📊 **Состояние Prostor Gateway**"
-    matrix_scope_header:   "**Matrix scope:**"
+    matrix_scope_header:   "**Область Matrix:**"
     matrix_scope_room:     "  room: {room}"
     matrix_scope_room_id:  "  room_id: {room_id}"
     matrix_scope_thread:   "  thread_id: {thread_id}"
@@ -271,8 +271,8 @@ Future messages in this room will use that transcript until `/reset` or another 
     last_activity:         "**Последняя активность:** {timestamp}"
     model:                 "**Model:** `{model}`"
     model_provider:        "**Model:** `{model}` ({provider})"
-    context:               "**Context:** {used} / {total} ({pct}%)"
-    context_used:          "**Context:** ~{used} tokens"
+    context:               "**Контекст:** {used} / {total} ({pct}%)"
+    context_used:          "**Контекст:** ~{used} токенов"
     tokens:                "**Токены:** {tokens}"
     agent_running:         "**Агент активен:** {state}"
     state_yes:             "Да ⚡"
