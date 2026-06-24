@@ -240,7 +240,7 @@ describe('applyUpdates terminal state', () => {
     resetUpdateApplyState()
     $updateOverlayOpen.set(true)
     ;(globalThis as unknown as { window: unknown }).window = {
-      hermesDesktop: { updates: { apply: applyMock } }
+      prostorDesktop: { updates: { apply: applyMock } }
     }
     vi.useRealTimers()
   })

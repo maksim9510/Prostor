@@ -462,7 +462,7 @@ export function cancelOAuthSession(sessionId: string): Promise<{ ok: boolean }> 
 // Memory-provider OAuth connect (provider-keyed; 404s for providers without an
 // OAuth flow). Profile-scoped: the grant lands in the active profile's config.
 export function startMemoryProviderOAuth(provider: string): Promise<MemoryProviderOAuthStatus> {
-  return window.hermesDesktop.api<MemoryProviderOAuthStatus>({
+  return window.prostorDesktop.api<MemoryProviderOAuthStatus>({
     ...profileScoped(),
     path: `/api/memory/providers/${encodeURIComponent(provider)}/oauth/start`,
     method: 'POST'
@@ -470,7 +470,7 @@ export function startMemoryProviderOAuth(provider: string): Promise<MemoryProvid
 }
 
 export function getMemoryProviderOAuthStatus(provider: string): Promise<MemoryProviderOAuthStatus> {
-  return window.hermesDesktop.api<MemoryProviderOAuthStatus>({
+  return window.prostorDesktop.api<MemoryProviderOAuthStatus>({
     ...profileScoped(),
     path: `/api/memory/providers/${encodeURIComponent(provider)}/oauth/status`
   })
@@ -540,14 +540,14 @@ export function runToolsetPostSetup(name: string, key: string): Promise<ActionRe
 }
 
 export function getComputerUseStatus(): Promise<ComputerUseStatus> {
-  return window.hermesDesktop.api<ComputerUseStatus>({
+  return window.prostorDesktop.api<ComputerUseStatus>({
     ...profileScoped(),
     path: '/api/tools/computer-use/status'
   })
 }
 
 export function grantComputerUsePermissions(): Promise<ActionResponse> {
-  return window.hermesDesktop.api<ActionResponse>({
+  return window.prostorDesktop.api<ActionResponse>({
     ...profileScoped(),
     path: '/api/tools/computer-use/permissions/grant',
     method: 'POST'

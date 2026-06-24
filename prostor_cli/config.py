@@ -447,7 +447,7 @@ def detect_install_method(project_root: Optional[Path] = None) -> str:
 def _running_in_container() -> bool:
     """Thin wrapper around ``hermes_constants.is_container`` (import-safe)."""
     try:
-        from hermes_constants import is_container
+        from prostor_constants import is_container
 
         return is_container()
     except Exception:
@@ -633,7 +633,7 @@ def get_container_exec_info() -> Optional[dict]:
     if os.environ.get("HERMES_DEV") == "1":
         return None
 
-    from hermes_constants import is_container
+    from prostor_constants import is_container
     if is_container():
         return None
 
@@ -668,8 +668,8 @@ def get_container_exec_info() -> Optional[dict]:
 # Config paths
 # =============================================================================
 
-# Re-export from hermes_constants — canonical definition lives there.
-from hermes_constants import get_hermes_home  # noqa: F811,E402
+# Re-export from prostor_constants — canonical definition lives there.
+from prostor_constants import get_hermes_home  # noqa: F811,E402
 from utils import atomic_replace
 
 def get_config_path() -> Path:
