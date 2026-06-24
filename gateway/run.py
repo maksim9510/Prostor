@@ -705,6 +705,7 @@ from gateway.session import (
 from gateway.shutdown_mixin import GatewayShutdownMixin
 from gateway.slash_commands import GatewaySlashCommandsMixin
 from gateway.telegram_topic_mixin import GatewayTelegramTopicMixin
+from gateway.queue_mixin import GatewayQueueMixin
 from gateway.whatsapp_identity import (
     canonical_whatsapp_identifier as _canonical_whatsapp_identifier,  # noqa: F401
 )
@@ -748,7 +749,7 @@ def _gateway_runner_ref():
     return None
 
 
-class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayTelegramTopicMixin, GatewayAdapterLifecycleMixin, GatewayPlatformStatusMixin, GatewayVoiceMixin, GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, GatewaySlashCommandsMixin, GatewayShutdownMixin, GatewayRestartMixin, GatewayMediaMixin):
+class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayTelegramTopicMixin, GatewayAdapterLifecycleMixin, GatewayPlatformStatusMixin, GatewayVoiceMixin, GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, GatewaySlashCommandsMixin, GatewayQueueMixin, GatewayShutdownMixin, GatewayRestartMixin, GatewayMediaMixin):
     """
     Main gateway controller.
 
