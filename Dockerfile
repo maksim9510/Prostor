@@ -7,7 +7,7 @@ FROM ghcr.io/astral-sh/uv:0.11.23-python3.13-trixie@sha256:aa1cb04101f7c3f1bc49c
 # our Debian 13 (trixie, glibc 2.41) runtime.  Bumping to a new Node major
 # is a one-line ARG change; see #4977.
 FROM node:26-bookworm-slim@sha256:9898bb74f4ee319780e87819df703b3633113bc3422f151fd11155cf974a2749 AS node_source
-FROM debian:13.4
+FROM debian:13.5
 
 # Disable Python stdout buffering to ensure logs are printed immediately.
 # Do not write .pyc files at runtime: /opt/prostor is immutable in the
