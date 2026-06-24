@@ -13,8 +13,6 @@
   <a href="https://nousresearch.com"><img src="https://img.shields.io/badge/Создано%20в-Nous%20Research-blueviolet?style=for-the-badge" alt="Built by Nous Research"></a>
 </p>
 
-  <a href="https://nousresearch.com"><img src="https://img.shields.io/badge/Создано%20в-Nous%20Research-blueviolet?style=for-the-badge" alt="Built by Nous Research"></a>
-</p>
 
 <p align="center">
   <a href="https://github.com/maksim9510/Prostor/releases/latest"><img src="https://img.shields.io/github/v/release/maksim9510/Prostor?style=flat-square&logo=github&logoColor=white&color=blue" alt="Latest Release"/></a>
