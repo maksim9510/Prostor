@@ -4,6 +4,7 @@ import prostor_cli.model_switch as ms
 from prostor_cli.model_switch import DirectAlias
 from prostor_cli.runtime_provider import _resolve_named_custom_runtime
 
+
 def test_ensure_direct_aliases_mutates_in_place(monkeypatch):
     """_ensure_direct_aliases mutates DIRECT_ALIASES in place (guards against rebinding regression)."""
     # Ensure we start with an empty but existing dict to check for mutation vs rebinding
@@ -21,6 +22,7 @@ def test_ensure_direct_aliases_mutates_in_place(monkeypatch):
     assert "my-custom-alias" in ms.DIRECT_ALIASES
     assert ms.DIRECT_ALIASES["my-custom-alias"].model == "custom-model:v1"
 
+
 def test_chat_provider_argparse_acceptance(monkeypatch):
     """chat --provider <user-defined> is accepted by argparse (guards against restrictive choices)."""
     recorded: dict[str, str] = {}
@@ -36,6 +38,7 @@ def test_chat_provider_argparse_acceptance(monkeypatch):
     main()
 
     assert recorded["provider"] == "my-custom-key"
+
 
 def test_resolve_named_custom_runtime_honors_explicit_base_url(monkeypatch):
     """_resolve_named_custom_runtime honors (provider='custom', explicit_base_url=...)."""

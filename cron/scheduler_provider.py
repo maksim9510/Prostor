@@ -111,7 +111,7 @@ class CronScheduler(ABC):
         return None
 
 
-def resolve_cron_scheduler() -> "CronScheduler":
+def resolve_cron_scheduler() -> CronScheduler:
     """Return the active cron scheduler provider.
 
     Reads ``cron.provider`` from config. Empty/absent → built-in. A named
@@ -165,6 +165,7 @@ class InProcessCronScheduler(CronScheduler):
 
     def start(self, stop_event, *, adapters=None, loop=None, interval=60):
         import logging
+
         from cron.scheduler import tick as cron_tick
 
         logger = logging.getLogger("cron.scheduler_provider")

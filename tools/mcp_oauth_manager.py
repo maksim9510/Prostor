@@ -38,7 +38,7 @@ import asyncio
 import logging
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +69,11 @@ class _ProviderEntry:
     """
 
     server_url: str
-    oauth_config: Optional[dict]
-    provider: Optional[Any] = None
+    oauth_config: dict | None
+    provider: Any | None = None
     last_mtime_ns: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    pending_401: dict[str, "asyncio.Future[bool]"] = field(default_factory=dict)
+    pending_401: dict[str, asyncio.Future[bool]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ class _ProviderEntry:
 # ---------------------------------------------------------------------------
 
 
-def _make_prostor_provider_class() -> Optional[type]:
+def _make_prostor_provider_class() -> type | None:
     """Lazy-import the SDK base class and return our subclass.
 
     Wrapped in a function so this module imports cleanly even when the
@@ -328,7 +328,7 @@ def _make_prostor_provider_class() -> Optional[type]:
 
 
 # Cached at import time. Tested and used by :class:`MCPOAuthManager`.
-_PROSTOR_PROVIDER_CLS: Optional[type] = _make_prostor_provider_class()
+_PROSTOR_PROVIDER_CLS: type | None = _make_prostor_provider_class()
 
 
 # ---------------------------------------------------------------------------
@@ -354,8 +354,8 @@ class MCPOAuthManager:
         self,
         server_name: str,
         server_url: str,
-        oauth_config: Optional[dict],
-    ) -> Optional[Any]:
+        oauth_config: dict | None,
+    ) -> Any | None:
         """Return a cached OAuth provider for ``server_name`` or build one.
 
         Idempotent: repeat calls with the same name return the same instance.
@@ -389,7 +389,7 @@ class MCPOAuthManager:
         self,
         server_name: str,
         entry: _ProviderEntry,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """Build the underlying OAuth provider.
 
         Constructs :class:`ProstorMCPOAuthProvider` directly using the helpers
@@ -407,9 +407,9 @@ class MCPOAuthManager:
 
         # Local imports avoid circular deps at module import time.
         from tools.mcp_oauth import (
-            ProstorTokenStorage,
-            OAuthNonInteractiveError,
             _OAUTH_AVAILABLE,
+            OAuthNonInteractiveError,
+            ProstorTokenStorage,
             _build_client_metadata,
             _configure_callback_port,
             _is_interactive,
@@ -508,7 +508,7 @@ class MCPOAuthManager:
     async def handle_401(
         self,
         server_name: str,
-        failed_access_token: Optional[str] = None,
+        failed_access_token: str | None = None,
     ) -> bool:
         """Handle a 401 from a tool call, deduplicated across concurrent callers.
 
@@ -589,7 +589,7 @@ class MCPOAuthManager:
 # ---------------------------------------------------------------------------
 
 
-_MANAGER: Optional[MCPOAuthManager] = None
+_MANAGER: MCPOAuthManager | None = None
 _MANAGER_LOCK = threading.Lock()
 
 

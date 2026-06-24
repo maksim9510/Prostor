@@ -487,8 +487,10 @@ class TestSandboxWritesUtf8:
         sandbox does, and it must succeed even when the stub contains
         em-dashes (which it does — check the transport-header docstring).
         """
+        import ast
+        import tempfile
+
         from tools.code_execution_tool import generate_prostor_tools_module
-        import tempfile, ast
         stub = generate_prostor_tools_module(
             ["terminal", "read_file", "write_file"], transport="uds"
         )
@@ -527,8 +529,9 @@ class TestSandboxWritesUtf8:
         test ever starts failing (i.e. default write succeeds), it means
         Python's default encoding has changed and the explicit UTF-8
         requirement may be obsolete — reconsider the fix."""
-        from tools.code_execution_tool import generate_prostor_tools_module
         import tempfile
+
+        from tools.code_execution_tool import generate_prostor_tools_module
 
         stub = generate_prostor_tools_module(["terminal"], transport="uds")
         # Find a non-ASCII character we can use to prove the corruption.

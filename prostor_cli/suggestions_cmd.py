@@ -15,7 +15,7 @@ Subcommands:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _fmt_pending(pending: list) -> str:
     return "\n".join(lines)
 
 
-def _resolve_origin() -> Optional[Dict[str, Any]]:
+def _resolve_origin() -> dict[str, Any] | None:
     """Best-effort current-chat origin from session env (CLI and gateway both set it).
 
     Mirrors cron's ``_origin_from_env`` so an accepted suggestion's job delivers
@@ -66,7 +66,7 @@ def _resolve_origin() -> Optional[Dict[str, Any]]:
 def handle_suggestions_command(
     args: str,
     *,
-    origin: Optional[Dict[str, Any]] = None,
+    origin: dict[str, Any] | None = None,
     surface: str = "cli",
 ) -> str:
     """Dispatch a ``/suggestions`` invocation. Returns text to show the user.

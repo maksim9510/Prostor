@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import Optional
 
 from agent.models_dev import ModelInfo
-
 
 INPUT_COST_WARNING_THRESHOLD = Decimal("20")
 OUTPUT_COST_WARNING_THRESHOLD = Decimal("100")
@@ -21,13 +19,13 @@ class ExpensiveModelWarning:
 
     model: str
     provider: str
-    input_cost_per_million: Optional[Decimal]
-    output_cost_per_million: Optional[Decimal]
+    input_cost_per_million: Decimal | None
+    output_cost_per_million: Decimal | None
     source: str
     message: str
 
 
-def _to_decimal(value: object) -> Optional[Decimal]:
+def _to_decimal(value: object) -> Decimal | None:
     if value is None:
         return None
     try:
@@ -36,15 +34,15 @@ def _to_decimal(value: object) -> Optional[Decimal]:
         return None
 
 
-def _format_money(value: Optional[Decimal]) -> str:
+def _format_money(value: Decimal | None) -> str:
     if value is None:
         return "unknown"
     return f"${value:.2f}/M"
 
 
 def _pricing_from_model_info(
-    model_info: Optional[ModelInfo],
-) -> tuple[Optional[Decimal], Optional[Decimal], str]:
+    model_info: ModelInfo | None,
+) -> tuple[Decimal | None, Decimal | None, str]:
     if model_info is None or not model_info.has_cost_data():
         return None, None, ""
     return (
@@ -57,11 +55,11 @@ def _pricing_from_model_info(
 def expensive_model_warning(
     model_name: str,
     *,
-    provider: Optional[str] = None,
-    base_url: Optional[str] = None,
-    api_key: Optional[str] = None,
-    model_info: Optional[ModelInfo] = None,
-) -> Optional[ExpensiveModelWarning]:
+    provider: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model_info: ModelInfo | None = None,
+) -> ExpensiveModelWarning | None:
     """Return a warning payload when known pricing exceeds safety thresholds.
 
     The guard only triggers when pricing is known. Callers should use this after

@@ -29,7 +29,6 @@ from sync_upstream.rebrand import (  # noqa: E402
     sha256,
 )
 
-
 # Reverse of rebrand rules — used to compute pre_hash from current post-form.
 # Order matters: longest patterns first to avoid partial matches.
 REVERSE_REBRAND_RULES: list[tuple[re.Pattern[str], str]] = [

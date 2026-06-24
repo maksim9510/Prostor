@@ -11,12 +11,13 @@ import asyncio
 import json
 import logging
 import tempfile
+from collections.abc import Callable
 from concurrent.futures import TimeoutError as FutureTimeout
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from itertools import count
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +243,7 @@ def make_acp_edit_approval_requester(
 
     def _requester(proposal: EditProposal) -> bool:
         from acp.schema import PermissionOption
+
         from agent.async_utils import safe_schedule_threadsafe
 
         if auto_approve_getter is not None:

@@ -27,7 +27,6 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ logger = logging.getLogger(__name__)
 # setup_worktree, read+cleared by cleanup_worktree). Same shape as
 # cli.py's original ``_active_worktree`` global — the cli.py re-export
 # below keeps callers in cli.py reading this dict unchanged.
-active_worktree: Optional[dict] = None
+active_worktree: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +64,7 @@ def normalize_git_bash_path(p: str) -> str:
     return p
 
 
-def git_repo_root() -> Optional[str]:
+def git_repo_root() -> str | None:
     """Return the git repo root for CWD, or None if not in a repo.
 
     Runs through :func:`normalize_git_bash_path` so callers can pass
@@ -98,7 +97,7 @@ def path_is_within_root(path: Path, root: Path) -> bool:
 # Worktree lifecycle
 # ---------------------------------------------------------------------------
 
-def setup_worktree(repo_root: str = None) -> Optional[dict]:
+def setup_worktree(repo_root: str = None) -> dict | None:
     """Create an isolated git worktree for this CLI session.
 
     Returns a dict with worktree metadata on success, None on failure.

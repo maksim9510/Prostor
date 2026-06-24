@@ -1,14 +1,13 @@
 """Tests for prostor claw commands."""
 
-from argparse import Namespace
 import subprocess
+from argparse import Namespace
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from prostor_cli import claw as claw_mod
-
 
 # ---------------------------------------------------------------------------
 # _find_migration_script

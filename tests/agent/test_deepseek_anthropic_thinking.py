@@ -111,7 +111,7 @@ class TestDeepSeekAnthropicPreservesThinking:
 
         assistants = [m for m in converted if m["role"] == "assistant"]
         assert len(assistants) == 2
-        for assistant, expected in zip(assistants, ("r1", "r2")):
+        for assistant, expected in zip(assistants, ("r1", "r2"), strict=False):
             thinking = [
                 b for b in assistant["content"]
                 if isinstance(b, dict) and b.get("type") == "thinking"

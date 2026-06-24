@@ -14,14 +14,14 @@ The fix adds two safeguards:
    an ineffective compression so should_compress() anti-thrashing fires.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from agent.context_compressor import ContextCompressor, _CHARS_PER_TOKEN
-
+from agent.context_compressor import ContextCompressor
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_compressor(**kwargs) -> ContextCompressor:
     defaults = dict(

@@ -1,86 +1,64 @@
-from gateway.config_mixin import GatewayConfigMixin
-from gateway.session_mixin import GatewaySessionMixin
 from gateway.adapter_lifecycle_mixin import GatewayAdapterLifecycleMixin
-from gateway.platform_status_mixin import GatewayPlatformStatusMixin
-from gateway.voice_mixin import GatewayVoiceMixin
+from gateway.config_mixin import GatewayConfigMixin
 
 # ---- Functions extracted to gateway/helpers/ (#23 Phase 1) ----
 # All helpers below now live in gateway/helpers/*.py and are re-imported
 # at the top of this file. The originals have been removed to reduce
 # this file from ~17.5K to ~15.8K lines.
-
 from gateway.helpers import (
-    _ensure_windows_gateway_venv_imports,
-    _gateway_platform_value,
-    _non_conversational_metadata,
-    _is_transient_network_error,
-    _gateway_loop_exception_handler,
-    _redact_gateway_user_facing_secrets,
-    _gateway_provider_error_reply,
-    _looks_like_gateway_provider_error,
-    _sanitize_gateway_final_response,
-    _prepare_gateway_status_message,
-    render_notice_line,
-    _send_or_update_status_coro,
-    _resolve_progress_thread_id,
-    _has_platform_display_override,
-    _resolve_gateway_display_bool,
-    _coerce_gateway_timestamp,
-    _auto_continue_freshness_window,
-    _float_env,
-    _is_fresh_gateway_interruption,
-    _build_replay_entry,
-    _uses_telegram_observed_group_context,
-    _message_timestamps_enabled,
-    _build_gateway_agent_history,
-    _wrap_current_message_with_observed_context,
-    _last_transcript_timestamp,
-    _is_interrupted_tool_result,
-    _strip_interrupted_tool_tails,
-    _strip_dangling_tool_call_tail,
-    _is_auto_continue_noise,
-    _strip_auto_continue_noise,
-    _collect_auto_append_media_tags,
-    _home_target_env_var,
-    _home_thread_env_var,
-    _restart_notification_pending,
-    _planned_restart_notification_path,
-    _planned_restart_notification_pending,
-    _clear_planned_restart_notification,
-    _reload_runtime_env_preserving_config_authority,
-    _bridge_max_turns_from_config,
-    _current_max_iterations,
-    _profile_runtime_scope,
-    _resolve_runtime_agent_kwargs,
-    _try_resolve_fallback_provider,
-    _build_media_placeholder,
-    _build_document_context_note,
-    _format_duration,
-    _probe_audio_duration,
-    _dequeue_pending_event,
-    _is_control_interrupt_message,
-    _skill_slug_from_frontmatter,
-    _check_unavailable_skill,
-    _platform_config_key,
-    _teams_pipeline_plugin_enabled,
-    _load_gateway_config,
-    _load_gateway_runtime_config,
-    _resolve_gateway_model,
-    _resolve_prostor_bin,
-    _parse_session_key,
-    _format_gateway_process_notification,
-    _drain_gateway_watch_events,
-    _normalize_empty_agent_response,
-    _should_clear_resume_pending_after_turn,
-    _preserve_queued_followup_history_offset,
-    _dispose_unused_adapter,
     _GATEWAY_AUTH_ERROR_RE,
     _GATEWAY_RATE_LIMIT_RE,
     _GATEWAY_SECRET_PATTERNS,
-    _GATEWAY_PROVIDER_ERROR_SHAPE_RE,
-    _TELEGRAM_NOISY_STATUS_RE,
     _TELEGRAM_COMMAND_MENTION_RE,
+    _TELEGRAM_NOISY_STATUS_RE,
+    _auto_continue_freshness_window,
+    _build_document_context_note,
+    _build_gateway_agent_history,
+    _build_media_placeholder,
+    _check_unavailable_skill,
+    _clear_planned_restart_notification,
+    _collect_auto_append_media_tags,
+    _current_max_iterations,
+    _dequeue_pending_event,
+    _dispose_unused_adapter,
+    _drain_gateway_watch_events,
+    _ensure_windows_gateway_venv_imports,
+    _float_env,
+    _format_gateway_process_notification,
+    _gateway_loop_exception_handler,
+    _home_target_env_var,
+    _is_control_interrupt_message,
+    _is_fresh_gateway_interruption,
+    _last_transcript_timestamp,
+    _load_gateway_config,
+    _load_gateway_runtime_config,
+    _message_timestamps_enabled,
+    _non_conversational_metadata,
+    _normalize_empty_agent_response,
+    _parse_session_key,
+    _planned_restart_notification_path,
+    _planned_restart_notification_pending,
+    _platform_config_key,
+    _prepare_gateway_status_message,
+    _preserve_queued_followup_history_offset,
+    _probe_audio_duration,
+    _profile_runtime_scope,
+    _redact_gateway_user_facing_secrets,
+    _resolve_gateway_display_bool,
+    _resolve_gateway_model,
+    _resolve_progress_thread_id,
+    _resolve_prostor_bin,
+    _resolve_runtime_agent_kwargs,
+    _sanitize_gateway_final_response,
+    _send_or_update_status_coro,
+    _should_clear_resume_pending_after_turn,
+    _teams_pipeline_plugin_enabled,
+    _wrap_current_message_with_observed_context,
+    render_notice_line,
 )
+from gateway.platform_status_mixin import GatewayPlatformStatusMixin
+from gateway.session_mixin import GatewaySessionMixin
+from gateway.voice_mixin import GatewayVoiceMixin
 
 """
 Gateway runner - entry point for messaging platform integrations.
@@ -92,7 +70,7 @@ This module provides:
 Usage:
     # Start the gateway
     python -m gateway.run
-    
+
     # Or from CLI
     python cli.py --gateway
 """
@@ -116,16 +94,16 @@ import logging
 import os
 import re
 import shlex
-import sys
 import signal
+import sys
 import tempfile
 import threading
 import time
 from collections import OrderedDict
 from contextvars import copy_context
-from pathlib import Path
 from datetime import datetime
-from typing import Dict, Optional, Any, List, Union
+from pathlib import Path
+from typing import Any, Optional, Union
 
 # account_usage imports the OpenAI SDK chain (~230 ms). Only needed by
 # /usage; we still import it at module top in the gateway because test
@@ -133,7 +111,6 @@ from typing import Dict, Optional, Any, List, Union
 # `gateway.run.fetch_account_usage` as a module-level attribute. The
 # gateway is a long-running daemon, so its boot cost matters less than
 # preserving the established test-patch surface.
-from agent.account_usage import fetch_account_usage, render_account_usage_lines
 from agent.async_utils import safe_schedule_threadsafe
 from agent.i18n import t
 from prostor_cli.config import cfg_get
@@ -387,18 +364,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Resolve Prostor home directory (respects PROSTOR_HOME override)
 from prostor_core import get_prostor_home
-from utils import atomic_json_write, atomic_yaml_write, base_url_host_matches, is_truthy_value
+from utils import atomic_json_write, is_truthy_value
+
 _prostor_home = get_prostor_home()
 
 # Load environment variables from ~/.prostor/.env first.
 # User-managed env files should override stale shell exports on restart.
 from dotenv import load_dotenv  # noqa: F401  # backward-compat for tests that monkeypatch this symbol
+
 from prostor_cli.env_loader import load_prostor_dotenv
+
 _env_path = _prostor_home / '.env'
 load_prostor_dotenv(prostor_home=_prostor_home, project_env=Path(__file__).resolve().parents[1] / '.env')
 
-
-from contextlib import contextmanager as _contextmanager
 
 
 # Platforms that bind a host TCP port (HTTP/webhook listeners). In a profile
@@ -671,27 +649,15 @@ if not _configured_cwd or _configured_cwd in {".", "auto", "cwd"}:
     _fallback = os.getenv("MESSAGING_CWD") or str(Path.home())
     os.environ["TERMINAL_CWD"] = _fallback
 
+from gateway.authz_mixin import GatewayAuthorizationMixin
 from gateway.config import (
-    Platform,
     _BUILTIN_PLATFORM_VALUES,
     GatewayConfig,
-    HomeChannel,
-    PlatformConfig,
+    Platform,
     load_gateway_config,
 )
-from gateway.session import (
-    SessionStore,
-    SessionSource,
-    SessionContext,
-    build_session_context,
-    build_session_context_prompt,
-    build_session_key,
-    is_shared_multi_user_session,
-)
 from gateway.delivery import DeliveryRouter
-from gateway.authz_mixin import GatewayAuthorizationMixin
 from gateway.kanban_watchers import GatewayKanbanWatchersMixin
-from gateway.slash_commands import GatewaySlashCommandsMixin
 from gateway.platforms.base import (
     BasePlatformAdapter,
     EphemeralReply,
@@ -705,14 +671,19 @@ from gateway.restart import (
     GATEWAY_SERVICE_RESTART_EXIT_CODE,
     parse_restart_drain_timeout,
 )
-
-
+from gateway.session import (
+    SessionContext,
+    SessionSource,
+    SessionStore,
+    build_session_context,
+    build_session_context_prompt,
+    build_session_key,
+    is_shared_multi_user_session,
+)
+from gateway.slash_commands import GatewaySlashCommandsMixin
 from gateway.whatsapp_identity import (
     canonical_whatsapp_identifier as _canonical_whatsapp_identifier,  # noqa: F401
-    expand_whatsapp_aliases as _expand_whatsapp_auth_aliases,
-    normalize_whatsapp_identifier as _normalize_whatsapp_identifier,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -747,7 +718,9 @@ _CONTROL_INTERRUPT_MESSAGES = frozenset(
 # Used by tools (e.g. send_message) that need to route through a live
 # adapter for plugin platforms.  Set in GatewayRunner.__init__().
 import weakref as _weakref
-_gateway_runner_ref: _weakref.ref = lambda: None
+
+def _gateway_runner_ref():
+    return None
 
 
 class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifecycleMixin, GatewayPlatformStatusMixin, GatewayVoiceMixin, GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, GatewaySlashCommandsMixin):
@@ -760,23 +733,23 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
     # Class-level defaults so partial construction in tests doesn't
     # blow up on attribute access.
-    _running_agents_ts: Dict[str, float] = {}
+    _running_agents_ts: dict[str, float] = {}
     _busy_input_mode: str = "interrupt"
     _busy_text_mode: str = "interrupt"
     _restart_drain_timeout: float = DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT
-    _exit_code: Optional[int] = None
+    _exit_code: int | None = None
     _draining: bool = False
     _restart_requested: bool = False
     _restart_task_started: bool = False
     _restart_detached: bool = False
     _restart_via_service: bool = False
-    _restart_command_source: Optional[SessionSource] = None
-    _stop_task: Optional[asyncio.Task] = None
-    _session_model_overrides: Dict[str, Dict[str, str]] = {}
-    _session_reasoning_overrides: Dict[str, Dict[str, Any]] = {}
+    _restart_command_source: SessionSource | None = None
+    _stop_task: asyncio.Task | None = None
+    _session_model_overrides: dict[str, dict[str, str]] = {}
+    _session_reasoning_overrides: dict[str, dict[str, Any]] = {}
     _startup_restore_in_progress: bool = False
 
-    def __init__(self, config: Optional[GatewayConfig] = None):
+    def __init__(self, config: GatewayConfig | None = None):
         global _gateway_runner_ref
         self.config = config or load_gateway_config()
         # Mark the process as a profile multiplexer when configured. This flips
@@ -788,13 +761,13 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             set_multiplex_active(bool(getattr(self.config, "multiplex_profiles", False)))
         except Exception:
             logger.debug("could not set multiplex-active flag", exc_info=True)
-        self.adapters: Dict[Platform, BasePlatformAdapter] = {}
+        self.adapters: dict[Platform, BasePlatformAdapter] = {}
         # Multi-profile multiplexing: adapters for NON-default profiles live
         # here, keyed by profile name then Platform. self.adapters stays the
         # default/active profile's map so the ~93 existing self.adapters[...]
         # sites are untouched when multiplexing is off (this dict is empty).
         # Populated by _start_secondary_profile_adapters().
-        self._profile_adapters: Dict[str, Dict[Platform, BasePlatformAdapter]] = {}
+        self._profile_adapters: dict[str, dict[Platform, BasePlatformAdapter]] = {}
         self._warn_if_docker_media_delivery_is_risky()
         _gateway_runner_ref = _weakref.ref(self)
 
@@ -819,12 +792,12 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         )
         self.delivery_router = DeliveryRouter(self.config)
         self._running = False
-        self._gateway_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._gateway_loop: asyncio.AbstractEventLoop | None = None
         self._shutdown_event = asyncio.Event()
         self._exit_cleanly = False
         self._exit_with_failure = False
-        self._exit_reason: Optional[str] = None
-        self._exit_code: Optional[int] = None
+        self._exit_reason: str | None = None
+        self._exit_code: int | None = None
         self._draining = False
         self._restart_requested = False
         # Set by shutdown_signal_handler when a SIGTERM/SIGINT arrived
@@ -840,15 +813,15 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         self._restart_task_started = False
         self._restart_detached = False
         self._restart_via_service = False
-        self._restart_command_source: Optional[SessionSource] = None
-        self._stop_task: Optional[asyncio.Task] = None
+        self._restart_command_source: SessionSource | None = None
+        self._stop_task: asyncio.Task | None = None
 
         # Track running agents per session for interrupt support
         # Key: session_key, Value: AIAgent instance
-        self._running_agents: Dict[str, Any] = {}
-        self._running_agents_ts: Dict[str, float] = {}  # start timestamp per session
-        self._active_session_leases: Dict[str, Any] = {}
-        self._pending_messages: Dict[str, str] = {}  # Queued messages during interrupt
+        self._running_agents: dict[str, Any] = {}
+        self._running_agents_ts: dict[str, float] = {}  # start timestamp per session
+        self._active_session_leases: dict[str, Any] = {}
+        self._pending_messages: dict[str, str] = {}  # Queued messages during interrupt
         # Last successfully-resolved (non-empty) model, keyed by session. Used
         # as a fallback when a fresh config read transiently returns an empty
         # model (e.g. an mtime-keyed config-cache miss during a post-interrupt
@@ -856,7 +829,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # every API call fails HTTP 400 "No models provided" — the session goes
         # silent until the user manually re-sends. See #35314. ``"*"`` holds a
         # process-wide last-known-good for sessions seen for the first time.
-        self._last_resolved_model: Dict[str, str] = {}
+        self._last_resolved_model: dict[str, str] = {}
         # Overflow buffer for explicit /queue commands.  The adapter-level
         # _pending_messages dict is a single slot per session (designed for
         # "next-turn" follow-ups where repeated sends collapse into one
@@ -866,23 +839,23 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # are promoted one-at-a-time after each run's drain.  Cleared on
         # /new and /reset.  /model and other mid-session operations
         # preserve the queue.
-        self._queued_events: Dict[str, List[MessageEvent]] = {}
-        self._pending_native_image_paths_by_session: Dict[str, List[str]] = {}
-        self._busy_ack_ts: Dict[str, float] = {}  # last busy-ack timestamp per session (debounce)
-        self._session_run_generation: Dict[str, int] = {}
+        self._queued_events: dict[str, list[MessageEvent]] = {}
+        self._pending_native_image_paths_by_session: dict[str, list[str]] = {}
+        self._busy_ack_ts: dict[str, float] = {}  # last busy-ack timestamp per session (debounce)
+        self._session_run_generation: dict[str, int] = {}
         # Startup restore gate: while restart-interrupted sessions are being
         # auto-resumed, real inbound messages are queued instead of competing
         # with the synthetic resume turns for the same session.  The queued
         # events drain only after all startup resume tasks have finished.
         self._startup_restore_in_progress = False
-        self._startup_restore_queue: List[MessageEvent] = []
-        self._startup_restore_tasks: List[asyncio.Task] = []
+        self._startup_restore_queue: list[MessageEvent] = []
+        self._startup_restore_tasks: list[asyncio.Task] = []
         # LRU cache of live SessionSources keyed by session_key. Used by
         # fallback routing paths (shutdown notifications, synthetic
         # background-process events) when the persisted origin is missing
         # and _parse_session_key can't recover thread_id. Capped so it
         # cannot grow unbounded over a long-running gateway lifetime.
-        self._session_sources: "OrderedDict[str, SessionSource]" = OrderedDict()
+        self._session_sources: OrderedDict[str, SessionSource] = OrderedDict()
         self._session_sources_max = 512
 
         # Cache AIAgent instances per session to preserve prompt caching.
@@ -896,30 +869,30 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # eviction).  Hard cap via _AGENT_CACHE_MAX_SIZE, idle TTL enforced
         # from _session_expiry_watcher().
         import threading as _threading
-        self._agent_cache: "OrderedDict[str, tuple]" = OrderedDict()
+        self._agent_cache: OrderedDict[str, tuple] = OrderedDict()
         self._agent_cache_lock = _threading.Lock()
 
         # Per-session model overrides from /model command.
         # Key: session_key, Value: dict with model/provider/api_key/base_url/api_mode
-        self._session_model_overrides: Dict[str, Dict[str, str]] = {}
+        self._session_model_overrides: dict[str, dict[str, str]] = {}
         # Per-session reasoning effort overrides from /reasoning.
         # Key: session_key, Value: parsed reasoning config dict.
-        self._session_reasoning_overrides: Dict[str, Dict[str, Any]] = {}
+        self._session_reasoning_overrides: dict[str, dict[str, Any]] = {}
         self._kanban_notifier_profile = self._active_profile_name()
         # Teams meeting pipeline runtime (bound later when msgraph_webhook adapter exists).
         self._teams_pipeline_runtime = None
-        self._teams_pipeline_runtime_error: Optional[str] = None
+        self._teams_pipeline_runtime_error: str | None = None
         # Track pending exec approvals per session
         # Key: session_key, Value: {"command": str, "pattern_key": str, ...}
-        self._pending_approvals: Dict[str, Dict[str, Any]] = {}
+        self._pending_approvals: dict[str, dict[str, Any]] = {}
 
         # Track platforms that failed to connect for background reconnection.
         # Key: Platform enum, Value: {"config": platform_config, "attempts": int, "next_retry": float}
-        self._failed_platforms: Dict[Platform, Dict[str, Any]] = {}
+        self._failed_platforms: dict[Platform, dict[str, Any]] = {}
 
         # Track pending /update prompt responses per session.
         # Key: session_key, Value: True when a prompt is waiting for user input.
-        self._update_prompt_pending: Dict[str, bool] = {}
+        self._update_prompt_pending: dict[str, bool] = {}
 
         # Slash-confirm state lives in tools.slash_confirm (module-level),
         # so platform adapters can resolve callbacks without a backref to
@@ -1027,11 +1000,11 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         self.hooks = HookRegistry()
 
         # Per-chat voice reply mode: "off" | "voice_only" | "all"
-        self._voice_mode: Dict[str, str] = self._load_voice_modes()
+        self._voice_mode: dict[str, str] = self._load_voice_modes()
         # Recent voice transcripts per (guild,user) for duplicate suppression.
         # Protects against the same utterance being emitted twice by the voice
         # capture / STT pipeline, which otherwise produces a second delayed reply.
-        self._recent_voice_transcripts: Dict[tuple[int, int], List[tuple[float, str]]] = {}
+        self._recent_voice_transcripts: dict[tuple[int, int], list[tuple[float, str]]] = {}
 
         # Track background tasks to prevent garbage collection mid-execution
         self._background_tasks: set = set()
@@ -1084,7 +1057,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             return
 
         raw_volumes = os.getenv("TERMINAL_DOCKER_VOLUMES", "").strip()
-        volumes: List[str] = []
+        volumes: list[str] = []
         if raw_volumes:
             try:
                 parsed = json.loads(raw_volumes)
@@ -1144,7 +1117,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                 await adapter.disconnect()
             else:
                 await asyncio.wait_for(adapter.disconnect(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Timed out after %.1fs while disconnecting %s adapter; continuing shutdown",
                 timeout,
@@ -1194,7 +1167,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             return await adapter.connect()
         try:
             return await asyncio.wait_for(adapter.connect(), timeout=timeout)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise TimeoutError(
                 f"{platform.value} connect timed out after {timeout:g}s"
             ) from exc
@@ -1208,11 +1181,11 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         return self._exit_with_failure
 
     @property
-    def exit_reason(self) -> Optional[str]:
+    def exit_reason(self) -> str | None:
         return self._exit_reason
 
     @property
-    def exit_code(self) -> Optional[int]:
+    def exit_code(self) -> int | None:
         return self._exit_code
 
     def _session_key_for_source(self, source: SessionSource) -> str:
@@ -1330,7 +1303,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             "existing topic only if you want to replace that topic's current session."
         )
 
-    def _telegram_topic_new_header(self, source: SessionSource) -> Optional[str]:
+    def _telegram_topic_new_header(self, source: SessionSource) -> str | None:
         if not self._is_telegram_topic_lane(source):
             return None
         return (
@@ -1386,7 +1359,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     def _recover_telegram_topic_thread_id(
         self,
         source: SessionSource,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Pin DM-topic routing to the user's last-active topic.
 
         Telegram can omit ``message_thread_id`` or surface General (``1``)
@@ -1466,9 +1439,9 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     def _resolve_session_agent_runtime(
         self,
         *,
-        source: Optional[SessionSource] = None,
-        session_key: Optional[str] = None,
-        user_config: Optional[dict] = None,
+        source: SessionSource | None = None,
+        session_key: str | None = None,
+        user_config: dict | None = None,
     ) -> tuple[str, dict]:
         """Resolve model/runtime for a session, honoring session-scoped /model overrides.
 
@@ -1827,7 +1800,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             logger.debug("goal continuation: active-state recheck failed: %s", exc)
             return False
 
-    def _update_runtime_status(self, gateway_state: Optional[str] = None, exit_reason: Optional[str] = None) -> None:
+    def _update_runtime_status(self, gateway_state: str | None = None, exit_reason: str | None = None) -> None:
         try:
             from gateway.status import write_runtime_status
             write_runtime_status(
@@ -1843,9 +1816,9 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         self,
         platform: str,
         *,
-        platform_state: Optional[str] = None,
-        error_code: Optional[str] = None,
-        error_message: Optional[str] = None,
+        platform_state: str | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         try:
             from gateway.status import write_runtime_status
@@ -1928,9 +1901,9 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         return True
 
     @staticmethod
-    def _load_prefill_messages() -> List[Dict[str, Any]]:
+    def _load_prefill_messages() -> list[dict[str, Any]]:
         """Load ephemeral prefill messages from config or env var.
-        
+
         Checks PROSTOR_PREFILL_MESSAGES_FILE env var first, then falls back to
         the top-level prefill_messages_file key in ~/.prostor/config.yaml.
         agent.prefill_messages_file is accepted as a legacy fallback.
@@ -1951,7 +1924,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             logger.warning("Prefill messages file not found: %s", path)
             return []
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             if not isinstance(data, list):
                 logger.warning("Prefill messages file must contain a JSON array: %s", path)
@@ -1964,7 +1937,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     @staticmethod
     def _load_ephemeral_system_prompt() -> str:
         """Load ephemeral system prompt from config or env var.
-        
+
         Checks PROSTOR_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
         agent.system_prompt in ~/.prostor/config.yaml.
         """
@@ -2019,8 +1992,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     def _resolve_session_reasoning_config(
         self,
         *,
-        source: Optional[SessionSource] = None,
-        session_key: Optional[str] = None,
+        source: SessionSource | None = None,
+        session_key: str | None = None,
     ) -> dict | None:
         """Resolve reasoning effort for a session, honoring session overrides."""
         resolved_session_key = session_key
@@ -2038,7 +2011,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     def _set_session_reasoning_override(
         self,
         session_key: str,
-        reasoning_config: Optional[dict],
+        reasoning_config: dict | None,
     ) -> None:
         """Set or clear the session-scoped reasoning override."""
         if not session_key:
@@ -2197,14 +2170,14 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             pass
         return None
 
-    def _snapshot_running_agents(self) -> Dict[str, Any]:
+    def _snapshot_running_agents(self) -> dict[str, Any]:
         return {
             session_key: agent
             for session_key, agent in self._running_agents.items()
             if agent is not _AGENT_PENDING_SENTINEL
         }
 
-    def _get_max_concurrent_sessions(self) -> Optional[int]:
+    def _get_max_concurrent_sessions(self) -> int | None:
         """Return the configured active chat session cap, if enabled."""
         try:
             from prostor_cli.active_sessions import resolve_max_concurrent_sessions
@@ -2213,7 +2186,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         except Exception:
             return None
 
-    def _active_session_limit_message(self, session_key: str) -> Optional[str]:
+    def _active_session_limit_message(self, session_key: str) -> str | None:
         """Return a user-facing rejection when starting a new session exceeds the cap."""
         max_sessions = self._get_max_concurrent_sessions()
         if max_sessions is None:
@@ -2232,7 +2205,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         self,
         session_key: str,
         source: SessionSource,
-    ) -> tuple[Any, Optional[str]]:
+    ) -> tuple[Any, str | None]:
         """Claim a cross-process active-session slot for a new gateway turn."""
         if session_key in getattr(self, "_running_agents", {}):
             return None, None
@@ -2605,7 +2578,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
         return True
 
-    async def _drain_active_agents(self, timeout: float) -> tuple[Dict[str, Any], bool]:
+    async def _drain_active_agents(self, timeout: float) -> tuple[dict[str, Any], bool]:
         snapshot = self._snapshot_running_agents()
         last_active_count = self._running_agent_count()
         last_status_at = 0.0
@@ -2664,7 +2637,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         )
         msg = f"⚠️ Gateway {action} — {hint}"
 
-        notified: set[tuple[str, str, Optional[str]]] = set()
+        notified: set[tuple[str, str, str | None]] = set()
         for session_key in active:
             source = None
             try:
@@ -2818,7 +2791,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                     e,
                 )
 
-    def _finalize_shutdown_agents(self, active_agents: Dict[str, Any]) -> None:
+    def _finalize_shutdown_agents(self, active_agents: dict[str, Any]) -> None:
         for agent in active_agents.values():
             try:
                 from prostor_cli.plugins import invoke_hook as _invoke_hook
@@ -2991,6 +2964,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # that triggered the /restart command closing its console.
         if sys.platform == "win32":
             import textwrap
+
             from prostor_cli._subprocess_compat import windows_detach_popen_kwargs
 
             cmd_argv = [*prostor_cmd, "gateway", "restart"]
@@ -3263,7 +3237,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             # Mark this replay so _handle_message does not queue it again while
             # the restore gate remains closed for any fresh inbound arrivals.
             try:
-                setattr(event, "_prostor_startup_restore_replay", True)
+                event._prostor_startup_restore_replay = True
             except Exception:
                 pass
             await adapter.handle_message(event)
@@ -3388,7 +3362,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     async def start(self) -> bool:
         """
         Start the gateway and all configured platform adapters.
-        
+
         Returns True if at least one adapter connected successfully.
         """
         logger.info("Starting Prostor Gateway...")
@@ -3607,8 +3581,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # hooks_auto_accept here would just duplicate that lookup.
         # Failures are logged but must never block gateway startup.
         try:
-            from prostor_cli.config import load_config
             from agent.shell_hooks import register_from_config
+            from prostor_cli.config import load_config
             register_from_config(load_config(), accept_hooks=False)
         except Exception:
             logger.debug(
@@ -4050,11 +4024,11 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                 logger.debug("Handoff watcher tick error: %s", exc, exc_info=True)
             await asyncio.sleep(interval)
 
-    async def _process_handoff(self, row: Dict[str, Any]) -> None:
+    async def _process_handoff(self, row: dict[str, Any]) -> None:
         """Execute one handoff row. Raises on failure (caller marks failed)."""
         from gateway.config import Platform
-        from gateway.session import SessionSource, build_session_key
         from gateway.platforms.base import MessageEvent
+        from gateway.session import SessionSource, build_session_key
 
         cli_session_id = row["id"]
         platform_name = (row.get("handoff_platform") or "").strip().lower()
@@ -4202,7 +4176,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # Send the agent's reply to the destination. Route to the new
         # thread if we created one; otherwise the configured home channel
         # (which may itself carry a thread_id).
-        send_metadata: Dict[str, Any] = {}
+        send_metadata: dict[str, Any] = {}
         if effective_thread_id:
             send_metadata["thread_id"] = effective_thread_id
         try:
@@ -4909,7 +4883,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                 _phase_elapsed(),
             )
 
-            from gateway.status import remove_pid_file, release_gateway_runtime_lock
+            from gateway.status import release_gateway_runtime_lock, remove_pid_file
             remove_pid_file()
             release_gateway_runtime_lock()
 
@@ -5029,7 +5003,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             return 0
 
         try:
-            from prostor_cli.profiles import profiles_to_serve, get_active_profile_name
+            from prostor_cli.profiles import get_active_profile_name, profiles_to_serve
         except Exception:
             return 0
 
@@ -5038,7 +5012,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # (platform, token-fingerprint) -> profile that claimed it. Detects two
         # profiles trying to poll the same bot credential (impossible to do
         # concurrently). Seed with the active profile's adapters.
-        claimed: Dict[tuple, str] = {}
+        claimed: dict[tuple, str] = {}
         for _plat, _ad in self.adapters.items():
             fp = self._adapter_credential_fingerprint(_ad)
             if fp is not None:
@@ -5073,7 +5047,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         return connected
 
     async def _start_one_profile_adapters(
-        self, profile_name: str, profile_home: "Path", claimed: Dict[tuple, str]
+        self, profile_name: str, profile_home: "Path", claimed: dict[tuple, str]
     ) -> int:
         """Create+connect one profile's adapters under its runtime scope."""
         from gateway.config import load_gateway_config
@@ -5160,7 +5134,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         return _handler
 
     @staticmethod
-    def _adapter_credential_fingerprint(adapter: Any) -> Optional[str]:
+    def _adapter_credential_fingerprint(adapter: Any) -> str | None:
         """Return a stable, log-safe fingerprint of an adapter's credential.
 
         Used only to detect two profiles claiming the same bot token. Returns a
@@ -5180,10 +5154,10 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         return hashlib.sha256(("prostor-mux:" + token).encode("utf-8")).hexdigest()[:16]
 
     def _create_adapter(
-        self, 
-        platform: Platform, 
+        self,
+        platform: Platform,
         config: Any
-    ) -> Optional[BasePlatformAdapter]:
+    ) -> BasePlatformAdapter | None:
         """Create the appropriate adapter for a platform.
 
         Checks the platform_registry first (plugin adapters), then falls
@@ -5291,7 +5265,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             return QQAdapter(config)
 
         elif platform == Platform.YUANBAO:
-            from gateway.platforms.yuanbao import YuanbaoAdapter, WEBSOCKETS_AVAILABLE
+            from gateway.platforms.yuanbao import WEBSOCKETS_AVAILABLE, YuanbaoAdapter
             if not WEBSOCKETS_AVAILABLE:
                 logger.warning("Yuanbao: websockets not installed. Run: pip install websockets")
                 return None
@@ -5330,10 +5304,10 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
         await adapter.send(source.chat_id, content, metadata=metadata)
 
-    async def _handle_message(self, event: MessageEvent) -> Optional[str]:
+    async def _handle_message(self, event: MessageEvent) -> str | None:
         """
         Handle an incoming message from any platform.
-        
+
         This is the core message processing pipeline:
         1. Check user authorization
         2. Check for commands (/new, /reset, etc.)
@@ -5669,6 +5643,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             # Resolve the command once for all early-intercept checks below.
             from prostor_cli.commands import (
                 ACTIVE_SESSION_BYPASS_COMMANDS as _DEDICATED_HANDLERS,
+            )
+            from prostor_cli.commands import (
                 resolve_command as _resolve_cmd_inner,
             )
             _evt_cmd = event.get_command()
@@ -6012,6 +5988,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         from prostor_cli.commands import (
             GATEWAY_KNOWN_COMMANDS,
             is_gateway_known_command,
+        )
+        from prostor_cli.commands import (
             resolve_command as _resolve_cmd,
         )
 
@@ -6365,7 +6343,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                                 from agent.redact import redact_sensitive_text
                                 output = redact_sensitive_text(output)
                             return output if output else "Command returned no output."
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             return "Quick command timed out (30s)."
                         except Exception as e:
                             return f"Quick command error: {e}"
@@ -6437,8 +6415,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         if command and not locals().get("_bundle_handled", False):
             try:
                 from agent.skill_commands import (
-                    get_skill_commands,
                     build_skill_invocation_message,
+                    get_skill_commands,
                     resolve_skill_command_key,
                 )
                 skill_cmds = get_skill_commands()
@@ -6576,8 +6554,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         *,
         event: MessageEvent,
         source: SessionSource,
-        history: List[Dict[str, Any]],
-    ) -> Optional[str]:
+        history: list[dict[str, Any]],
+    ) -> str | None:
         """Prepare inbound event text for the agent.
 
         Keep the normal inbound path and the queued follow-up path on the same
@@ -6759,6 +6737,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
         if event.media_urls and event.message_type == MessageType.DOCUMENT:
             import mimetypes as _mimetypes
+
             from tools.credential_files import to_agent_visible_cache_path
 
             _TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".log", ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg"}
@@ -6848,7 +6827,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
         return message_text
 
-    def _consume_pending_native_image_paths(self, session_key: str) -> List[str]:
+    def _consume_pending_native_image_paths(self, session_key: str) -> list[str]:
         pending_native = getattr(self, "_pending_native_image_paths_by_session", None)
         if not pending_native:
             return []
@@ -7096,7 +7075,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         if _is_new_session and _auto:
             _skill_names = [_auto] if isinstance(_auto, str) else list(_auto)
             try:
-                from agent.skill_commands import _load_skill_payload, _build_skill_message
+                from agent.skill_commands import _build_skill_message, _load_skill_payload
                 _combined_parts: list[str] = []
                 _loaded_names: list[str] = []
                 for _sname in _skill_names:
@@ -7546,12 +7525,16 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # human-readable prefix the model sees) is gated behind
         # gateway.message_timestamps.enabled — default OFF.
         try:
-            from prostor_time import get_timezone as _get_evt_tz
             from gateway.message_timestamps import (
                 coerce_message_timestamp as _coerce_msg_ts,
+            )
+            from gateway.message_timestamps import (
                 render_user_content_with_timestamp as _render_msg_ts,
+            )
+            from gateway.message_timestamps import (
                 strip_leading_message_timestamps as _strip_msg_ts,
             )
+            from prostor_time import get_timezone as _get_evt_tz
             _evt_tz = _get_evt_tz()
             _evt_ts = getattr(event, "timestamp", None)
             if message_text and isinstance(message_text, str):
@@ -8190,7 +8173,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         users can immediately see if context detection went wrong (e.g.
         local models falling to the 128K default).
         """
-        from agent.model_metadata import get_model_context_length, DEFAULT_FALLBACK_CONTEXT
+        from agent.model_metadata import DEFAULT_FALLBACK_CONTEXT, get_model_context_length
 
         model = _resolve_gateway_model()
         config_context_length = None
@@ -8304,7 +8287,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
     def _check_slash_access(
         self, source: SessionSource, canonical_cmd: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Return a denial message if ``source`` cannot run ``canonical_cmd``,
         else None. Used by both the cold and running-agent dispatch paths
         in ``_handle_message`` so admin/user gating can't be bypassed by
@@ -8675,7 +8658,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             logger.debug("goal continuation: enqueue failed: %s", exc)
 
     @staticmethod
-    def _get_guild_id(event: MessageEvent) -> Optional[int]:
+    def _get_guild_id(event: MessageEvent) -> int | None:
         """Extract Discord guild_id from the raw message object."""
         raw = getattr(event, "raw_message", None)
         if raw is None:
@@ -8947,7 +8930,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         audio_path = None
         actual_path = None
         try:
-            from tools.tts_tool import text_to_speech_tool, _strip_markdown_for_tts
+            from tools.tts_tool import _strip_markdown_for_tts, text_to_speech_tool
 
             tts_text = _strip_markdown_for_tts(text[:4000])
             if not tts_text:
@@ -9001,7 +8984,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                     thread_meta["notify"] = True
                 else:
                     thread_meta = {"notify": True}
-                send_kwargs: Dict[str, Any] = {
+                send_kwargs: dict[str, Any] = {
                     "chat_id": event.source.chat_id,
                     "audio_path": actual_path,
                     "reply_to": reply_anchor,
@@ -9143,9 +9126,9 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         prompt: str,
         source: "SessionSource",
         task_id: str,
-        event_message_id: Optional[str] = None,
-        media_urls: Optional[List[str]] = None,
-        media_types: Optional[List[str]] = None,
+        event_message_id: str | None = None,
+        media_urls: list[str] | None = None,
+        media_types: list[str] | None = None,
     ) -> None:
         """Execute a background agent task and deliver the result to the chat."""
         from run_agent import AIAgent
@@ -9772,7 +9755,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         """
         loop = asyncio.get_running_loop()
         try:
-            from tools.mcp_tool import shutdown_mcp_servers, discover_mcp_tools, _servers, _lock
+            from tools.mcp_tool import _lock, _servers, discover_mcp_tools, shutdown_mcp_servers
 
             # Capture old server names before shutdown
             with _lock:
@@ -9982,7 +9965,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         title: str,
         message: str,
         handler,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Ask the user to confirm an expensive slash command.
 
         ``handler`` is an async callable ``handler(choice: str) -> str``
@@ -10042,7 +10025,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # Text fallback — return the prompt message as the direct reply.
         return message
 
-    def _read_user_config(self) -> Dict[str, Any]:
+    def _read_user_config(self) -> dict[str, Any]:
         """Read the user's raw config.yaml (cached) for gate lookups.
 
         Used by slash-confirm gates that must reflect on-disk state changes
@@ -10058,8 +10041,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     def _thread_metadata_for_source(
         self,
         source,
-        reply_to_message_id: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        reply_to_message_id: str | None = None,
+    ) -> dict[str, Any] | None:
         """Build the metadata dict platforms need for thread-aware replies."""
         return self._thread_metadata_for_target(
             getattr(source, "platform", None),
@@ -10071,18 +10054,18 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
     def _thread_metadata_for_target(
         self,
-        platform: Optional[Platform],
-        chat_id: Optional[str],
-        thread_id: Optional[str],
+        platform: Platform | None,
+        chat_id: str | None,
+        thread_id: str | None,
         *,
-        chat_type: Optional[str] = None,
-        reply_to_message_id: Optional[str] = None,
-        adapter: Optional[Any] = None,
-    ) -> Optional[Dict[str, Any]]:
+        chat_type: str | None = None,
+        reply_to_message_id: str | None = None,
+        adapter: Any | None = None,
+    ) -> dict[str, Any] | None:
         """Build thread metadata for synthetic sends that only have routing state."""
         if thread_id is None:
             return None
-        metadata: Dict[str, Any] = {"thread_id": thread_id}
+        metadata: dict[str, Any] = {"thread_id": thread_id}
         if self._is_telegram_dm_topic_target(
             platform,
             chat_id,
@@ -10103,12 +10086,12 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
     @staticmethod
     def _is_telegram_dm_topic_target(
-        platform: Optional[Platform],
-        chat_id: Optional[str],
-        thread_id: Optional[str],
+        platform: Platform | None,
+        chat_id: str | None,
+        thread_id: str | None,
         *,
-        chat_type: Optional[str] = None,
-        adapter: Optional[Any] = None,
+        chat_type: str | None = None,
+        adapter: Any | None = None,
     ) -> bool:
         """Return True when a target is a Telegram private DM topic lane."""
         if platform != Platform.TELEGRAM or thread_id is None:
@@ -10134,7 +10117,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         return False
 
     @staticmethod
-    def _reply_anchor_for_event(event: MessageEvent) -> Optional[str]:
+    def _reply_anchor_for_event(event: MessageEvent) -> str | None:
         """Return the platform-specific reply anchor for GatewayRunner sends."""
         return _reply_anchor_for_event(event)
 
@@ -10303,7 +10286,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                     else:
                         await adapter.send(
                             chat_id,
-                            "❌ Prostor update failed (exit code {}).".format(exit_code),
+                            f"❌ Prostor update failed (exit code {exit_code}).",
                             metadata=_non_conversational_metadata(metadata, platform=platform),
                         )
                     logger.info("Update finished (exit=%s), notified %s", exit_code, session_key)
@@ -10521,7 +10504,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
         return True
 
-    async def _send_restart_notification(self) -> Optional[tuple[str, str, Optional[str]]]:
+    async def _send_restart_notification(self) -> tuple[str, str, str | None] | None:
         """Notify the chat that initiated /restart that the gateway is back."""
         notify_path = _prostor_home / ".restart_notify.json"
         if not notify_path.exists():
@@ -10596,15 +10579,15 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     async def _send_home_channel_startup_notifications(
         self,
         *,
-        skip_targets: Optional[set[tuple[str, str, Optional[str]]]] = None,
-    ) -> set[tuple[str, str, Optional[str]]]:
+        skip_targets: set[tuple[str, str, str | None]] | None = None,
+    ) -> set[tuple[str, str, str | None]]:
         """Notify configured home channels that the gateway is back online.
 
         The notification is best-effort and sent once per connected platform
         home channel. ``skip_targets`` lets startup avoid duplicate messages
         when a more specific restart notification is queued for the same chat.
         """
-        delivered: set[tuple[str, str, Optional[str]]] = set()
+        delivered: set[tuple[str, str, str | None]] = set()
         skipped = skip_targets or set()
         message = "♻️ Gateway online — Prostor is back and ready."
 
@@ -10716,8 +10699,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         tracks ``/model`` switches automatically on the next message.
         """
         try:
-            from agent.image_routing import decide_image_input_mode
             from agent.auxiliary_client import _read_main_model, _read_main_provider
+            from agent.image_routing import decide_image_input_mode
             from prostor_cli.config import load_config
 
             cfg = load_config()
@@ -10731,7 +10714,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     async def _enrich_message_with_vision(
         self,
         user_text: str,
-        image_paths: List[str],
+        image_paths: list[str],
     ) -> str:
         """
         Auto-analyze user-attached images with the vision tool and prepend
@@ -10749,8 +10732,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         Returns:
             The enriched message string with vision descriptions prepended.
         """
-        from tools.vision_tools import vision_analyze_tool
         from agent.memory_manager import sanitize_context
+        from tools.vision_tools import vision_analyze_tool
 
         analysis_prompt = (
             "Describe everything visible in this image in thorough detail. "
@@ -10800,8 +10783,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     async def _enrich_message_with_transcription(
         self,
         user_text: str,
-        audio_paths: List[str],
-    ) -> tuple[str, List[str]]:
+        audio_paths: list[str],
+    ) -> tuple[str, list[str]]:
         """
         Auto-transcribe user voice/audio messages using the configured STT provider
         and prepend the transcript to the message text.
@@ -10843,7 +10826,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         from tools.transcription_tools import transcribe_audio
 
         enriched_parts = []
-        successful_transcripts: List[str] = []
+        successful_transcripts: list[str] = []
         for path in audio_paths:
             try:
                 logger.debug("Transcribing user voice: %s", path)
@@ -10925,7 +10908,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
 
         text = event.text or ""
 
-        audio_paths: List[str] = []
+        audio_paths: list[str] = []
         media_urls = getattr(event, "media_urls", None) or []
         media_types = getattr(event, "media_types", None) or []
         for i, path in enumerate(media_urls):
@@ -11199,7 +11182,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             if session.exited:
                 # --- Agent-triggered completion: inject synthetic message ---
                 # Skip if the agent already consumed the result via wait/poll/log
-                from tools.process_registry import format_process_notification, process_registry as _pr_check
+                from tools.process_registry import format_process_notification
+                from tools.process_registry import process_registry as _pr_check
                 if agent_notify and not _pr_check.is_completion_consumed(session_id):
                     from tools.ansi_strip import strip_ansi
                     _raw = strip_ansi(session.output_buffer) if session.output_buffer else ""
@@ -11401,7 +11385,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         schemas at construction time, so a registry generation change must
         rebuild the agent before the next turn.
         """
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         cfg = user_config if isinstance(user_config, dict) else {}
         for section, key in cls._CACHE_BUSTING_CONFIG_KEYS:
             section_val = cfg.get(section)
@@ -11463,7 +11447,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         Per-user agent rebuilds in shared threads trade prompt-cache
         warmth for correct memory attribution.
         """
-        import hashlib, json as _j
+        import hashlib
+        import json as _j
 
         # Fingerprint the FULL credential string instead of using a short
         # prefix. OAuth/JWT-style tokens frequently share a common prefix
@@ -11524,7 +11509,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         self,
         session_key: str,
         *,
-        run_generation: Optional[int] = None,
+        run_generation: int | None = None,
     ) -> bool:
         """Pop ALL per-running-agent state entries for ``session_key``.
 
@@ -11663,7 +11648,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         try:
             interrupt_event = getattr(adapter, "_active_sessions", {}).get(session_key)
             if interrupt_event is not None:
-                setattr(interrupt_event, "_prostor_run_generation", int(generation))
+                interrupt_event._prostor_run_generation = int(generation)
         except Exception:
             pass
 
@@ -11693,7 +11678,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             self._release_running_agent_state(session_key)
 
     def _refresh_agent_cache_message_count(
-        self, session_key: str, session_id: Optional[str]
+        self, session_key: str, session_id: str | None
     ) -> None:
         """Re-baseline a cached agent's stored message_count after THIS turn.
 
@@ -11901,7 +11886,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # temporarily over cap; it will re-check on the next insert,
         # after active turns have finished.
         excess = max(0, len(_cache) - _AGENT_CACHE_MAX_SIZE)
-        evict_plan: List[tuple] = []  # [(key, agent), ...]
+        evict_plan: list[tuple] = []  # [(key, agent), ...]
         if excess > 0:
             ordered_keys = list(_cache.keys())
             for key in ordered_keys[:excess]:
@@ -11951,7 +11936,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         if _cache is None or _lock is None:
             return 0
         now = time.time()
-        to_evict: List[tuple] = []
+        to_evict: list[tuple] = []
         running_ids = {
             id(a)
             for a in getattr(self, "_running_agents", {}).values()
@@ -11988,7 +11973,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
     # Proxy mode: forward messages to a remote Prostor API server
     # ------------------------------------------------------------------
 
-    def _get_proxy_url(self) -> Optional[str]:
+    def _get_proxy_url(self) -> str | None:
         """Return the proxy URL if proxy mode is configured, else None.
 
         Checks GATEWAY_PROXY_URL env var first (convenient for Docker),
@@ -12007,13 +11992,13 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         self,
         message: str,
         context_prompt: str,
-        history: List[Dict[str, Any]],
+        history: list[dict[str, Any]],
         source: "SessionSource",
         session_id: str,
         session_key: str = None,
-        run_generation: Optional[int] = None,
-        event_message_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        run_generation: int | None = None,
+        event_message_id: str | None = None,
+    ) -> dict[str, Any]:
         """Forward the message to a remote Prostor API server instead of
         running a local AIAgent.
 
@@ -12027,7 +12012,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         skills, and a unified session store.
         """
         try:
-            from aiohttp import ClientSession as _AioClientSession, ClientTimeout
+            from aiohttp import ClientSession as _AioClientSession
+            from aiohttp import ClientTimeout
         except ImportError:
             return {
                 "final_response": "⚠️ Proxy mode requires aiohttp. Install with: pip install aiohttp",
@@ -12063,7 +12049,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # We always include the current message.  For history, send a
         # compact version (text-only user/assistant turns) — the remote
         # handles tool replay and system prompts.
-        api_messages: List[Dict[str, str]] = []
+        api_messages: list[dict[str, str]] = []
 
         if context_prompt:
             api_messages.append({"role": "system", "content": context_prompt})
@@ -12077,7 +12063,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         api_messages.append({"role": "user", "content": message})
 
         # HTTP headers ---------------------------------------------------
-        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        headers: dict[str, str] = {"Content-Type": "application/json"}
         if proxy_key:
             headers["Authorization"] = f"Bearer {proxy_key}"
         if session_id:
@@ -12108,7 +12094,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             else bool(_plat_streaming)
         )
 
-        _thread_metadata: Optional[Dict[str, Any]] = self._thread_metadata_for_source(source, event_message_id)
+        _thread_metadata: dict[str, Any] | None = self._thread_metadata_for_source(source, event_message_id)
 
         if _streaming_enabled:
             try:
@@ -12250,7 +12236,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             if stream_task:
                 try:
                     await asyncio.wait_for(stream_task, timeout=5.0)
-                except (asyncio.TimeoutError, asyncio.CancelledError):
+                except (TimeoutError, asyncio.CancelledError):
                     stream_task.cancel()
 
         _elapsed = time.time() - _start
@@ -12293,17 +12279,17 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         self,
         message: str,
         context_prompt: str,
-        history: List[Dict[str, Any]],
+        history: list[dict[str, Any]],
         source: SessionSource,
         session_id: str,
         session_key: str = None,
-        run_generation: Optional[int] = None,
+        run_generation: int | None = None,
         _interrupt_depth: int = 0,
-        event_message_id: Optional[str] = None,
-        channel_prompt: Optional[str] = None,
-        persist_user_message: Optional[str] = None,
-        persist_user_timestamp: Optional[float] = None,
-    ) -> Dict[str, Any]:
+        event_message_id: str | None = None,
+        channel_prompt: str | None = None,
+        persist_user_message: str | None = None,
+        persist_user_timestamp: float | None = None,
+    ) -> dict[str, Any]:
         """Profile-scoping wrapper around the agent run.
 
         When multiplexing is active, resolve the inbound source's profile and
@@ -12351,26 +12337,26 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         self,
         message: str,
         context_prompt: str,
-        history: List[Dict[str, Any]],
+        history: list[dict[str, Any]],
         source: SessionSource,
         session_id: str,
         session_key: str = None,
-        run_generation: Optional[int] = None,
+        run_generation: int | None = None,
         _interrupt_depth: int = 0,
-        event_message_id: Optional[str] = None,
-        channel_prompt: Optional[str] = None,
-        persist_user_message: Optional[str] = None,
-        persist_user_timestamp: Optional[float] = None,
-    ) -> Dict[str, Any]:
+        event_message_id: str | None = None,
+        channel_prompt: str | None = None,
+        persist_user_message: str | None = None,
+        persist_user_timestamp: float | None = None,
+    ) -> dict[str, Any]:
         """
         Run the agent with the given message and context.
-        
+
         Returns the full result dict from run_conversation, including:
           - "final_response": str (the text to send back)
           - "messages": list (full conversation including tool calls)
           - "api_calls": int
           - "completed": bool
-        
+
         This is run in a thread pool to not block the event loop.
         Supports interruption via new messages.
         """
@@ -12387,8 +12373,9 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                 event_message_id=event_message_id,
             )
 
-        from run_agent import AIAgent
         import queue
+
+        from run_agent import AIAgent
 
         def _run_still_current() -> bool:
             if run_generation is None or not session_key:
@@ -12495,7 +12482,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
         # tool-progress text gate), at most once per turn.  No-op on every
         # other platform / when not in a voice channel.
         _voice_ack_fired = [False]
-        _voice_ack_guild: List[Optional[int]] = [None]
+        _voice_ack_guild: list[int | None] = [None]
         if source.platform == Platform.DISCORD:
             _va = self.adapters.get(Platform.DISCORD)
             # source.chat_id is the linked text channel; resolve the guild whose
@@ -12544,7 +12531,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             # Adapter doesn't support deletion — silently disable.
             _cleanup_progress = False
             _cleanup_adapter = None
-        _cleanup_msg_ids: List[str] = []
+        _cleanup_msg_ids: list[str] = []
         # First-touch onboarding latch: fires at most once per run, even if
         # several tools exceed the threshold.
         long_tool_hint_fired = [False]
@@ -13148,7 +13135,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             # sent via the reply API with reply_in_thread=true. Status/interim,
             # approval, and stream-consumer paths usually only receive metadata,
             # so carry the triggering message id as a Feishu-specific fallback.
-            _status_thread_metadata: Optional[Dict[str, Any]] = {
+            _status_thread_metadata: dict[str, Any] | None = {
                 "thread_id": _progress_thread_id,
                 "reply_to_message_id": event_message_id,
             }
@@ -13580,8 +13567,9 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             # rather than hang forever).
             # ------------------------------------------------------------------
             def _clarify_callback_sync(question: str, choices) -> str:
-                from tools import clarify_gateway as _clarify_mod
                 import uuid as _uuid
+
+                from tools import clarify_gateway as _clarify_mod
 
                 if not _status_adapter:
                     return ""
@@ -13786,8 +13774,8 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             # Keep real user text separate from API-only recovery guidance.  If
             # an auto-continue note is prepended below, persist the original
             # message so stale guidance never replays as user-authored text.
-            _persist_user_message_override: Optional[Any] = persist_user_message
-            _persist_user_timestamp_override: Optional[float] = persist_user_timestamp
+            _persist_user_message_override: Any | None = persist_user_message
+            _persist_user_timestamp_override: float | None = persist_user_timestamp
 
             # Prepend pending model switch note so the model knows about the switch
             _pending_notes = getattr(self, '_pending_model_notes', {})
@@ -14342,7 +14330,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
             # instead of spamming a new "Still working" bubble every
             # interval. Falls back to send-new when edit fails or isn't
             # supported by the adapter.
-            _heartbeat_msg_id: Optional[str] = None
+            _heartbeat_msg_id: str | None = None
             while True:
                 await asyncio.sleep(_NOTIFY_INTERVAL)
                 _elapsed_mins = int((time.time() - _notify_start) // 60)
@@ -14747,7 +14735,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                     if _sc and stream_task:
                         try:
                             await asyncio.wait_for(stream_task, timeout=5.0)
-                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                        except (TimeoutError, asyncio.CancelledError):
                             stream_task.cancel()
                             try:
                                 await stream_task
@@ -14886,7 +14874,7 @@ class GatewayRunner(GatewayConfigMixin, GatewaySessionMixin, GatewayAdapterLifec
                 else:
                     try:
                         await asyncio.wait_for(stream_task, timeout=5.0)
-                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                    except (TimeoutError, asyncio.CancelledError):
                         stream_task.cancel()
                         try:
                             await stream_task
@@ -15129,7 +15117,7 @@ def _start_gateway_housekeeping(stop_event: threading.Event, adapters=None, loop
     hour, and polls the curator hourly (its inner gate enforces the real
     weekly cadence).
     """
-    from gateway.platforms.base import cleanup_image_cache, cleanup_document_cache
+    from gateway.platforms.base import cleanup_document_cache, cleanup_image_cache
     from prostor_cli.debug import _sweep_expired_pastes
 
     IMAGE_CACHE_EVERY = 60   # ticks — once per hour at default 60s interval
@@ -15219,14 +15207,14 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
     InProcessCronScheduler().start(stop_event, adapters=adapters, loop=loop, interval=interval)
 
 
-async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = False, verbosity: Optional[int] = 0) -> bool:
+async def start_gateway(config: GatewayConfig | None = None, replace: bool = False, verbosity: int | None = 0) -> bool:
     """
     Start the gateway and run until interrupted.
-    
+
     This is the main entry point for running the gateway.
     Returns True if the gateway ran successfully, False if it failed to start.
     A False return causes a non-zero exit code so systemd can auto-restart.
-    
+
     Args:
         config: Optional gateway configuration override.
         replace: If True, kill any existing gateway instance before starting.
@@ -15240,8 +15228,8 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     # allow concurrent instances without tripping this guard.
     from gateway.status import (
         acquire_gateway_runtime_lock,
-        get_running_pid,
         get_process_start_time,
+        get_running_pid,
         release_gateway_runtime_lock,
         remove_pid_file,
         terminate_pid,
@@ -15379,7 +15367,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     # Centralized logging — agent.log (INFO+), errors.log (WARNING+),
     # and gateway.log (INFO+, gateway-component records only).
     # Idempotent, so repeated calls from AIAgent.__init__ won't duplicate.
-    from prostor_logging import setup_logging, _safe_stderr
+    from prostor_logging import _safe_stderr, setup_logging
     setup_logging(prostor_home=_prostor_home, mode="gateway")
 
     # Optional stderr handler — level driven by -v/-q flags on the CLI.
@@ -15564,7 +15552,8 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     # Telegram polling, Discord gateway sockets, etc. The loser exits
     # cleanly before touching any external service.
     import atexit
-    from gateway.status import write_pid_file, remove_pid_file, get_running_pid
+
+    from gateway.status import get_running_pid, remove_pid_file, write_pid_file
     _current_pid = get_running_pid()
     if _current_pid is not None and _current_pid != os.getpid():
         logger.error(

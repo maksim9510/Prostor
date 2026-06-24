@@ -25,7 +25,6 @@ import logging
 import os
 import sys
 from contextlib import redirect_stderr, redirect_stdout
-from typing import Optional
 
 from prostor_cli.fallback_config import get_fallback_chain
 
@@ -124,8 +123,8 @@ def _validate_explicit_toolsets(toolsets: object = None) -> tuple[list[str] | No
 
 def run_oneshot(
     prompt: str,
-    model: Optional[str] = None,
-    provider: Optional[str] = None,
+    model: str | None = None,
+    provider: str | None = None,
     toolsets: object = None,
 ) -> int:
     """Execute a single prompt and print only the final content block.
@@ -177,7 +176,7 @@ def run_oneshot(
     real_stderr = sys.stderr
     devnull = open(os.devnull, "w", encoding="utf-8")
 
-    response: Optional[str] = None
+    response: str | None = None
     failure: BaseException | None = None
     try:
         with redirect_stdout(devnull), redirect_stderr(devnull):
@@ -244,8 +243,8 @@ def _create_session_db_for_oneshot():
 
 def _run_agent(
     prompt: str,
-    model: Optional[str] = None,
-    provider: Optional[str] = None,
+    model: str | None = None,
+    provider: str | None = None,
     toolsets: object = None,
     use_config_toolsets: bool = True,
 ) -> str:
@@ -280,7 +279,7 @@ def _run_agent(
     # the user's configured default provider, which may not host the model
     # the caller just asked for.
     effective_provider = (provider or "").strip() or None
-    explicit_base_url_from_alias: Optional[str] = None
+    explicit_base_url_from_alias: str | None = None
     if effective_provider is None and (model or env_model):
         # Only auto-detect when the model was explicitly requested via arg or
         # env var (not when it came from config — that's the "use my defaults"

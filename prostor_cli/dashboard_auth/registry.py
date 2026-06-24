@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import List, Optional
 
 from prostor_cli.dashboard_auth.base import (
     DashboardAuthProvider,
@@ -40,13 +39,13 @@ def register_provider(provider: DashboardAuthProvider) -> None:
     )
 
 
-def get_provider(name: str) -> Optional[DashboardAuthProvider]:
+def get_provider(name: str) -> DashboardAuthProvider | None:
     """Return the registered provider for ``name``, or None if unknown."""
     with _lock:
         return _providers.get(name)
 
 
-def list_providers() -> List[DashboardAuthProvider]:
+def list_providers() -> list[DashboardAuthProvider]:
     """All registered providers, in registration order."""
     with _lock:
         return list(_providers.values())

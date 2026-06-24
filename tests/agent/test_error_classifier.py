@@ -1,18 +1,19 @@
 """Tests for agent.error_classifier — structured API error classification."""
 
 import pytest
+
 from agent.error_classifier import (
     ClassifiedError,
     FailoverReason,
-    classify_api_error,
-    _extract_status_code,
+    _classify_402,
     _extract_error_body,
     _extract_error_code,
-    _classify_402,
+    _extract_status_code,
+    classify_api_error,
 )
 
-
 # ── Helper: mock API errors ────────────────────────────────────────────
+
 
 class MockAPIError(Exception):
     """Simulates an OpenAI SDK APIStatusError."""
@@ -1559,6 +1560,7 @@ class TestSSLTransientPatterns:
         assert result.retryable is True
 
 # ── Test: RateLimitError without status_code (Copilot/GitHub Models) ──────────
+
 
 class TestRateLimitErrorWithoutStatusCode:
     """Regression tests for the Copilot/GitHub Models edge case where the

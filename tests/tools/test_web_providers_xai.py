@@ -449,6 +449,7 @@ class TestXAIProviderSearchErrors:
 
     def test_http_error_returns_failure(self):
         import httpx
+
         from plugins.web.xai import provider as xai_provider
 
         bad = MagicMock()
@@ -466,6 +467,7 @@ class TestXAIProviderSearchErrors:
 
     def test_request_error_returns_failure(self):
         import httpx
+
         from plugins.web.xai import provider as xai_provider
 
         with patch.object(xai_provider, "resolve_xai_http_credentials", return_value=_creds()), \
@@ -500,6 +502,7 @@ class TestXAIProviderSearchErrors:
         ``httpx.post`` to be called twice with two different Bearer tokens.
         """
         import httpx
+
         from plugins.web.xai import provider as xai_provider
 
         bad = MagicMock()
@@ -541,6 +544,7 @@ class TestXAIProviderSearchErrors:
     def test_401_on_env_var_path_does_not_retry(self):
         """Env-var (XAI_API_KEY) creds can't be refreshed — must not retry."""
         import httpx
+
         from plugins.web.xai import provider as xai_provider
 
         bad = MagicMock()
@@ -574,6 +578,7 @@ class TestXAIProviderSearchErrors:
         """If the force-refresh returns the same token (refresh-token also
         dead), don't loop — surface the 401 to the caller."""
         import httpx
+
         from plugins.web.xai import provider as xai_provider
 
         bad = MagicMock()
@@ -611,6 +616,7 @@ class TestXAIProviderSearchErrors:
         """Only 401 is retryable — 429 / 500 / 503 must fail fast so the
         agent (or upstream rate-limiter) decides what to do."""
         import httpx
+
         from plugins.web.xai import provider as xai_provider
 
         bad = MagicMock()

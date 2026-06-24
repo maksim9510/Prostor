@@ -24,17 +24,17 @@ Pure helpers that read the agent's state.  AIAgent keeps thin forwarders.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY,
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
-    PROSTOR_AGENT_HELP_GUIDANCE,
     KANBAN_GUIDANCE,
     MEMORY_GUIDANCE,
     OPENAI_MODEL_EXECUTION_GUIDANCE,
     PARALLEL_TOOL_CALL_GUIDANCE,
     PLATFORM_HINTS,
+    PROSTOR_AGENT_HELP_GUIDANCE,
     SESSION_SEARCH_GUIDANCE,
     SKILLS_GUIDANCE,
     STEER_CHANNEL_NOTE,
@@ -110,7 +110,7 @@ def _resolve_platform_hint(agent: Any, platform_key: str, default_hint: str) -> 
     return base
 
 
-def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) -> Dict[str, str]:
+def build_system_prompt_parts(agent: Any, system_message: str | None = None) -> dict[str, str]:
     """Assemble the system prompt as three ordered parts.
 
     Returns a dict with three keys:
@@ -137,7 +137,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # to it (dynamic cap — see prompt_builder._dynamic_context_file_max_chars).
     # None falls back to the historical flat default. This value is stable for
     # the life of the conversation, so it does not threaten prompt caching.
-    _ctx_len: Optional[int] = None
+    _ctx_len: int | None = None
     _cc = getattr(agent, "context_compressor", None)
     if _cc is not None:
         _cc_len = getattr(_cc, "context_length", None)
@@ -145,7 +145,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _ctx_len = _cc_len
 
     # ── Stable tier ────────────────────────────────────────────────
-    stable_parts: List[str] = []
+    stable_parts: list[str] = []
 
     # Try SOUL.md as primary identity unless the caller explicitly skipped it.
     # Some execution modes (cron) still want PROSTOR_HOME persona while keeping
@@ -400,7 +400,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         stable_parts.append(_effective_hint)
 
     # ── Context tier (cwd-dependent, may change between sessions) ─
-    context_parts: List[str] = []
+    context_parts: list[str] = []
 
     # Note: ephemeral_system_prompt is NOT included here. It's injected at
     # API-call time only so it stays out of the cached/stored system prompt.
@@ -419,7 +419,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             context_parts.append(context_files_prompt)
 
     # ── Volatile tier (changes per session/turn — never cached) ───
-    volatile_parts: List[str] = []
+    volatile_parts: list[str] = []
 
     if agent._memory_store:
         if agent._memory_enabled:
@@ -465,7 +465,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     }
 
 
-def build_system_prompt(agent: Any, system_message: Optional[str] = None) -> str:
+def build_system_prompt(agent: Any, system_message: str | None = None) -> str:
     """Assemble the full system prompt from all layers.
 
     Called once per session (cached on ``agent._cached_system_prompt``) and

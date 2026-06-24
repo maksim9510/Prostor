@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from prostor_cli.model_switch import list_authenticated_providers
 
-
 # Minimum set of models that must be present for opencode-go no matter
 # whether the picker sourced its list from curated-only or curated+models.dev.
 # The curated list in prostor_cli/models.py defines the floor; models.dev only

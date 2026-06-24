@@ -42,14 +42,15 @@ import os
 import sys
 import threading
 import types
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any
 
-from prostor_constants import get_prostor_home
-from utils import env_var_enabled
 from prostor_cli.config import cfg_get
 from prostor_cli.middleware import OBSERVER_SCHEMA_VERSION, VALID_MIDDLEWARE
+from prostor_constants import get_prostor_home
+from utils import env_var_enabled
 
 
 def get_bundled_plugins_dir() -> Path:
@@ -63,6 +64,7 @@ def get_bundled_plugins_dir() -> Path:
     if env_override:
         return Path(env_override)
     return Path(__file__).resolve().parent.parent / "plugins"
+
 
 try:
     import yaml
@@ -125,7 +127,7 @@ _install_plugin_debug_handler()
 # Constants
 # ---------------------------------------------------------------------------
 
-VALID_HOOKS: Set[str] = {
+VALID_HOOKS: set[str] = {
     "pre_tool_call",
     "post_tool_call",
     "transform_terminal_output",
@@ -195,7 +197,7 @@ def _get_disabled_plugins() -> set:
         return set()
 
 
-def _get_enabled_plugins() -> Optional[set]:
+def _get_enabled_plugins() -> set | None:
     """Read the enabled-plugins allow-list from config.yaml.
 
     Plugins are opt-in by default — only plugins whose name appears in
@@ -229,7 +231,7 @@ def _get_enabled_plugins() -> Optional[set]:
 # Data classes
 # ---------------------------------------------------------------------------
 
-_VALID_PLUGIN_KINDS: Set[str] = {"standalone", "backend", "exclusive", "platform", "model-provider"}
+_VALID_PLUGIN_KINDS: set[str] = {"standalone", "backend", "exclusive", "platform", "model-provider"}
 
 
 @dataclass
@@ -240,11 +242,11 @@ class PluginManifest:
     version: str = ""
     description: str = ""
     author: str = ""
-    requires_env: List[Union[str, Dict[str, Any]]] = field(default_factory=list)
-    provides_tools: List[str] = field(default_factory=list)
-    provides_hooks: List[str] = field(default_factory=list)
+    requires_env: list[str | dict[str, Any]] = field(default_factory=list)
+    provides_tools: list[str] = field(default_factory=list)
+    provides_hooks: list[str] = field(default_factory=list)
     source: str = ""        # "user", "project", or "entrypoint"
-    path: Optional[str] = None
+    path: str | None = None
     # Plugin kind — see plugins.py module docstring for semantics.
     # ``standalone`` (default): hooks/tools of its own; opt-in via
     #                           ``plugins.enabled``.
@@ -274,13 +276,13 @@ class LoadedPlugin:
     """Runtime state for a single loaded plugin."""
 
     manifest: PluginManifest
-    module: Optional[types.ModuleType] = None
-    tools_registered: List[str] = field(default_factory=list)
-    hooks_registered: List[str] = field(default_factory=list)
-    middleware_registered: List[str] = field(default_factory=list)
-    commands_registered: List[str] = field(default_factory=list)
+    module: types.ModuleType | None = None
+    tools_registered: list[str] = field(default_factory=list)
+    hooks_registered: list[str] = field(default_factory=list)
+    middleware_registered: list[str] = field(default_factory=list)
+    commands_registered: list[str] = field(default_factory=list)
     enabled: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +292,7 @@ class LoadedPlugin:
 class PluginContext:
     """Facade given to plugins so they can register tools and hooks."""
 
-    def __init__(self, manifest: PluginManifest, manager: "PluginManager"):
+    def __init__(self, manifest: PluginManifest, manager: PluginManager):
         self.manifest = manifest
         self._manager = manager
         # Lazy-built host-owned LLM facade — see ctx.llm property below.
@@ -572,7 +574,8 @@ class PluginContext:
         ``register_image_gen_provider``.
         """
         from prostor_cli.dashboard_auth import (
-            DashboardAuthProvider, register_provider,
+            DashboardAuthProvider,
+            register_provider,
         )
 
         if not isinstance(provider, DashboardAuthProvider):
@@ -799,7 +802,7 @@ class PluginContext:
                 setup_fn=irc_interactive_setup,
             )
         """
-        from gateway.platform_registry import platform_registry, PlatformEntry
+        from gateway.platform_registry import PlatformEntry, platform_registry
 
         entry_kwargs.setdefault("plugin_name", self.manifest.name)
         entry = PlatformEntry(
@@ -889,7 +892,7 @@ class PluginContext:
         *,
         display_name: str,
         description: str,
-        defaults: Optional[Dict[str, Any]] = None,
+        defaults: dict[str, Any] | None = None,
     ) -> None:
         """Register a plugin-defined auxiliary LLM task.
 
@@ -968,7 +971,7 @@ class PluginContext:
 
         # Normalize defaults — plugin owns the schema, but we ensure routing
         # fields exist with sensible types so consumers don't crash.
-        merged_defaults: Dict[str, Any] = {
+        merged_defaults: dict[str, Any] = {
             "provider": "auto",
             "model": "",
             "base_url": "",
@@ -1088,28 +1091,28 @@ class PluginManager:
     """Central manager that discovers, loads, and invokes plugins."""
 
     def __init__(self) -> None:
-        self._plugins: Dict[str, LoadedPlugin] = {}
-        self._hooks: Dict[str, List[Callable]] = {}
-        self._middleware: Dict[str, List[Callable]] = {}
-        self._plugin_tool_names: Set[str] = set()
-        self._plugin_platform_names: Set[str] = set()
-        self._cli_commands: Dict[str, dict] = {}
+        self._plugins: dict[str, LoadedPlugin] = {}
+        self._hooks: dict[str, list[Callable]] = {}
+        self._middleware: dict[str, list[Callable]] = {}
+        self._plugin_tool_names: set[str] = set()
+        self._plugin_platform_names: set[str] = set()
+        self._cli_commands: dict[str, dict] = {}
         self._context_engine = None  # Set by a plugin via register_context_engine()
-        self._plugin_commands: Dict[str, dict] = {}  # Slash commands registered by plugins
+        self._plugin_commands: dict[str, dict] = {}  # Slash commands registered by plugins
         self._discovered: bool = False
         self._cli_ref = None  # Set by CLI after plugin discovery
         # Plugin skill registry: qualified name → metadata dict.
-        self._plugin_skills: Dict[str, Dict[str, Any]] = {}
+        self._plugin_skills: dict[str, dict[str, Any]] = {}
         # Plugin-registered auxiliary tasks: key → {key, display_name,
         # description, defaults, plugin}. See PluginContext.register_auxiliary_task.
-        self._aux_tasks: Dict[str, Dict[str, Any]] = {}
+        self._aux_tasks: dict[str, dict[str, Any]] = {}
         # Slack Block Kit action handlers registered by plugins. Each entry
         # is (matcher, callback, plugin_name); the Slack adapter wires them
         # into its slack_bolt App at connect() time. ``matcher`` is whatever
         # ``app.action()`` accepts (a literal action_id string, a compiled
         # ``re.Pattern``, or a constraint dict); ``callback`` is an async
         # function with the slack_bolt signature ``(ack, body, action)``.
-        self._slack_action_handlers: List[tuple] = []
+        self._slack_action_handlers: list[tuple] = []
 
     # -----------------------------------------------------------------------
     # Public
@@ -1159,7 +1162,7 @@ class PluginManager:
 
     def _discover_and_load_inner(self) -> None:
         """The actual discovery sweep — see :meth:`discover_and_load`."""
-        manifests: List[PluginManifest] = []
+        manifests: list[PluginManifest] = []
 
         # 1. Bundled plugins (<repo>/plugins/<name>/)
         #
@@ -1222,7 +1225,7 @@ class PluginManager:
         # don't collide even when both manifests say ``name: openai``.
         disabled = _get_disabled_plugins()
         enabled = _get_enabled_plugins()  # None = opt-in default (nothing enabled)
-        winners: Dict[str, PluginManifest] = {}
+        winners: dict[str, PluginManifest] = {}
         for manifest in manifests:
             winners[manifest.key or manifest.name] = manifest
         for manifest in winners.values():
@@ -1290,8 +1293,8 @@ class PluginManager:
             if not is_enabled:
                 loaded = LoadedPlugin(manifest=manifest, enabled=False)
                 loaded.error = (
-                    "not enabled in config (run `prostor plugins enable {}` to activate)"
-                    .format(lookup_key)
+                    f"not enabled in config (run `prostor plugins enable {lookup_key}` to activate)"
+
                 )
                 self._plugins[lookup_key] = loaded
                 logger.debug(
@@ -1315,8 +1318,8 @@ class PluginManager:
         self,
         path: Path,
         source: str,
-        skip_names: Optional[Set[str]] = None,
-    ) -> List[PluginManifest]:
+        skip_names: set[str] | None = None,
+    ) -> list[PluginManifest]:
         """Read ``plugin.yaml`` manifests from subdirectories of *path*.
 
         Supports two layouts, mixed freely:
@@ -1341,17 +1344,17 @@ class PluginManager:
         path: Path,
         source: str,
         *,
-        skip_names: Optional[Set[str]],
+        skip_names: set[str] | None,
         prefix: str,
         depth: int,
-    ) -> List[PluginManifest]:
+    ) -> list[PluginManifest]:
         """Recursive implementation of :meth:`_scan_directory`.
 
         ``prefix`` is the category path already accumulated ("" at root,
         "image_gen" one level in). ``depth`` is the recursion depth; we
         cap at 2 so ``<root>/a/b/c/`` is ignored.
         """
-        manifests: List[PluginManifest] = []
+        manifests: list[PluginManifest] = []
         if not path.is_dir():
             return manifests
 
@@ -1398,7 +1401,7 @@ class PluginManager:
         plugin_dir: Path,
         source: str,
         prefix: str,
-    ) -> Optional[PluginManifest]:
+    ) -> PluginManifest | None:
         """Parse a single ``plugin.yaml`` into a :class:`PluginManifest`.
 
         Returns ``None`` on parse failure (logs a warning).
@@ -1487,9 +1490,9 @@ class PluginManager:
     # Entry-point scanning
     # -----------------------------------------------------------------------
 
-    def _scan_entry_points(self) -> List[PluginManifest]:
+    def _scan_entry_points(self) -> list[PluginManifest]:
         """Check ``importlib.metadata`` for pip-installed plugins."""
-        manifests: List[PluginManifest] = []
+        manifests: list[PluginManifest] = []
         try:
             eps = importlib.metadata.entry_points()
             # Python 3.12+ returns a SelectableGroups; earlier returns dict
@@ -1655,7 +1658,7 @@ class PluginManager:
     # Hook invocation
     # -----------------------------------------------------------------------
 
-    def invoke_hook(self, hook_name: str, **kwargs: Any) -> List[Any]:
+    def invoke_hook(self, hook_name: str, **kwargs: Any) -> list[Any]:
         """Call all registered callbacks for *hook_name*.
 
         Each callback is wrapped in its own try/except so a misbehaving
@@ -1677,7 +1680,7 @@ class PluginManager:
         """
         kwargs.setdefault("telemetry_schema_version", OBSERVER_SCHEMA_VERSION)
         callbacks = self._hooks.get(hook_name, [])
-        results: List[Any] = []
+        results: list[Any] = []
         for cb in callbacks:
             try:
                 ret = cb(**kwargs)
@@ -1700,7 +1703,7 @@ class PluginManager:
         """Return True when at least one callback is registered for middleware."""
         return bool(self._middleware.get(kind))
 
-    def invoke_middleware(self, kind: str, **kwargs: Any) -> List[Any]:
+    def invoke_middleware(self, kind: str, **kwargs: Any) -> list[Any]:
         """Call registered middleware callbacks for *kind*.
 
         Each callback is isolated so one plugin cannot break the base runtime
@@ -1708,7 +1711,7 @@ class PluginManager:
         documented by the caller-specific contract.
         """
         callbacks = self._middleware.get(kind, [])
-        results: List[Any] = []
+        results: list[Any] = []
         for cb in callbacks:
             try:
                 ret = cb(**kwargs)
@@ -1727,7 +1730,7 @@ class PluginManager:
     # Slack action handler accessor
     # -----------------------------------------------------------------------
 
-    def get_slack_action_handlers(self) -> List[tuple]:
+    def get_slack_action_handlers(self) -> list[tuple]:
         """Return the list of plugin-registered Slack action handlers.
 
         Each entry is a ``(action_id, callback, plugin_name)`` tuple.
@@ -1743,10 +1746,10 @@ class PluginManager:
     # Introspection
     # -----------------------------------------------------------------------
 
-    def list_plugins(self) -> List[Dict[str, Any]]:
+    def list_plugins(self) -> list[dict[str, Any]]:
         """Return a list of info dicts for all discovered plugins."""
-        result: List[Dict[str, Any]] = []
-        for key, loaded in sorted(self._plugins.items()):
+        result: list[dict[str, Any]] = []
+        for _key, loaded in sorted(self._plugins.items()):
             result.append(
                 {
                     "name": loaded.manifest.name,
@@ -1769,12 +1772,12 @@ class PluginManager:
     # Plugin skill lookups
     # -----------------------------------------------------------------------
 
-    def find_plugin_skill(self, qualified_name: str) -> Optional[Path]:
+    def find_plugin_skill(self, qualified_name: str) -> Path | None:
         """Return the ``Path`` to a plugin skill's SKILL.md, or ``None``."""
         entry = self._plugin_skills.get(qualified_name)
         return entry["path"] if entry else None
 
-    def list_plugin_skills(self, plugin_name: str) -> List[str]:
+    def list_plugin_skills(self, plugin_name: str) -> list[str]:
         """Return sorted bare names of all skills registered by *plugin_name*."""
         prefix = f"{plugin_name}:"
         return sorted(
@@ -1792,7 +1795,7 @@ class PluginManager:
 # Module-level singleton & convenience functions
 # ---------------------------------------------------------------------------
 
-_plugin_manager: Optional[PluginManager] = None
+_plugin_manager: PluginManager | None = None
 
 
 def get_plugin_manager() -> PluginManager:
@@ -1812,7 +1815,7 @@ def discover_plugins(force: bool = False) -> None:
     get_plugin_manager().discover_and_load(force=force)
 
 
-def invoke_hook(hook_name: str, **kwargs: Any) -> List[Any]:
+def invoke_hook(hook_name: str, **kwargs: Any) -> list[Any]:
     """Invoke a lifecycle hook on all loaded plugins.
 
     Returns a list of non-``None`` return values from plugin callbacks.
@@ -1820,7 +1823,7 @@ def invoke_hook(hook_name: str, **kwargs: Any) -> List[Any]:
     return get_plugin_manager().invoke_hook(hook_name, **kwargs)
 
 
-def invoke_middleware(kind: str, **kwargs: Any) -> List[Any]:
+def invoke_middleware(kind: str, **kwargs: Any) -> list[Any]:
     """Invoke registered middleware callbacks.
 
     Returns a list of non-``None`` return values from middleware callbacks.
@@ -1846,7 +1849,7 @@ _thread_tool_whitelist = threading.local()
 
 
 def set_thread_tool_whitelist(
-    allowed: Optional[Set[str]],
+    allowed: set[str] | None,
     deny_msg_fmt: str = "Tool '{tool_name}' denied: not in this thread's tool whitelist",
 ) -> None:
     _thread_tool_whitelist.allowed = allowed
@@ -1859,14 +1862,14 @@ def clear_thread_tool_whitelist() -> None:
 
 def get_pre_tool_call_block_message(
     tool_name: str,
-    args: Optional[Dict[str, Any]],
+    args: dict[str, Any] | None,
     task_id: str = "",
     session_id: str = "",
     tool_call_id: str = "",
     turn_id: str = "",
     api_request_id: str = "",
-    middleware_trace: Optional[List[Dict[str, Any]]] = None,
-) -> Optional[str]:
+    middleware_trace: list[dict[str, Any]] | None = None,
+) -> str | None:
     """Check ``pre_tool_call`` hooks for a blocking directive.
 
     Plugins that need to enforce policy (rate limiting, security
@@ -1922,7 +1925,7 @@ def get_plugin_context_engine():
     return _ensure_plugins_discovered()._context_engine
 
 
-def get_plugin_command_handler(name: str) -> Optional[Callable]:
+def get_plugin_command_handler(name: str) -> Callable | None:
     """Return the handler for a plugin-registered slash command, or ``None``."""
     entry = _ensure_plugins_discovered()._plugin_commands.get(name)
     return entry["handler"] if entry else None
@@ -1949,8 +1952,8 @@ def resolve_plugin_command_result(result: Any) -> Any:
     except RuntimeError:
         return asyncio.run(result)
 
-    outcome: Dict[str, Any] = {}
-    failure: Dict[str, BaseException] = {}
+    outcome: dict[str, Any] = {}
+    failure: dict[str, BaseException] = {}
     done = threading.Event()
 
     def _runner() -> None:
@@ -1977,7 +1980,7 @@ def resolve_plugin_command_result(result: Any) -> Any:
     return outcome.get("value")
 
 
-def get_plugin_commands() -> Dict[str, dict]:
+def get_plugin_commands() -> dict[str, dict]:
     """Return the full plugin commands dict (name → {handler, description, plugin}).
 
     Triggers idempotent plugin discovery so callers can use plugin commands
@@ -1986,7 +1989,7 @@ def get_plugin_commands() -> Dict[str, dict]:
     return _ensure_plugins_discovered()._plugin_commands
 
 
-def get_plugin_auxiliary_tasks() -> List[Dict[str, Any]]:
+def get_plugin_auxiliary_tasks() -> list[dict[str, Any]]:
     """Return all plugin-registered auxiliary tasks as a stable-ordered list.
 
     Each entry is the registration dict from
@@ -2001,7 +2004,7 @@ def get_plugin_auxiliary_tasks() -> List[Dict[str, Any]]:
     return [manager._aux_tasks[k] for k in sorted(manager._aux_tasks)]
 
 
-def get_plugin_toolsets() -> List[tuple]:
+def get_plugin_toolsets() -> list[tuple]:
     """Return plugin toolsets as ``(key, label, description)`` tuples.
 
     Used by the ``prostor tools`` TUI so plugin-provided toolsets appear
@@ -2017,8 +2020,8 @@ def get_plugin_toolsets() -> List[tuple]:
         return []
 
     # Group plugin tool names by their toolset
-    toolset_tools: Dict[str, List[str]] = {}
-    toolset_plugin: Dict[str, LoadedPlugin] = {}
+    toolset_tools: dict[str, list[str]] = {}
+    toolset_plugin: dict[str, LoadedPlugin] = {}
     for tool_name in manager._plugin_tool_names:
         entry = registry.get_entry(tool_name)
         if not entry:

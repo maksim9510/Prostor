@@ -8,20 +8,19 @@ after the agent finishes its current task — not silently dropped.
 import asyncio
 from unittest.mock import MagicMock
 
-
-from gateway.run import _dequeue_pending_event
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
-    PlatformConfig,
     Platform,
+    PlatformConfig,
 )
-
+from gateway.run import _dequeue_pending_event
 
 # ---------------------------------------------------------------------------
 # Minimal adapter for testing pending message storage
 # ---------------------------------------------------------------------------
+
 
 class _StubAdapter(BasePlatformAdapter):
     def __init__(self):

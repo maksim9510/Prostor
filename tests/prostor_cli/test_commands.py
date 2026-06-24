@@ -4,18 +4,18 @@ from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
 from prostor_cli.commands import (
-    COMMAND_REGISTRY,
-    COMMANDS,
-    COMMANDS_BY_CATEGORY,
-    CommandDef,
-    GATEWAY_KNOWN_COMMANDS,
-    SUBCOMMANDS,
-    SlashCommandAutoSuggest,
-    SlashCommandCompleter,
     _CMD_NAME_LIMIT,
     _SLACK_RESERVED_COMMANDS,
     _SLACK_VIA_PROSTOR_ONLY,
     _TG_NAME_LIMIT,
+    COMMAND_REGISTRY,
+    COMMANDS,
+    COMMANDS_BY_CATEGORY,
+    GATEWAY_KNOWN_COMMANDS,
+    SUBCOMMANDS,
+    CommandDef,
+    SlashCommandAutoSuggest,
+    SlashCommandCompleter,
     _clamp_command_names,
     _clamp_telegram_names,
     _sanitize_telegram_name,
@@ -711,7 +711,6 @@ class TestSubcommandCompletion:
 
     def test_tools_enable_completes_toolset_names(self, monkeypatch):
         """`/tools enable ` should suggest currently-disabled toolsets."""
-        from prostor_cli import commands as commands_mod
 
         # `web` is enabled, `spotify` is disabled — enabling should only offer
         # the disabled ones.
@@ -1158,6 +1157,7 @@ class TestTelegramMenuCommands:
     def test_includes_plugin_commands_via_lazy_discovery(self, tmp_path, monkeypatch):
         """Telegram menu generation should discover plugin slash commands on first access."""
         from unittest.mock import patch
+
         import prostor_cli.plugins as plugins_mod
 
         plugin_dir = tmp_path / "plugins" / "cmd-plugin"
@@ -1291,8 +1291,8 @@ class TestTelegramMenuCommands:
 
     def test_special_chars_in_skill_names_sanitized(self, tmp_path, monkeypatch):
         """Skills with +, /, or other special chars produce valid Telegram names."""
-        from unittest.mock import patch
         import re
+        from unittest.mock import patch
 
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
 

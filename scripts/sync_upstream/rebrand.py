@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-def safe_rglob(root: Path) -> "Iterator[Path]":
+def safe_rglob(root: Path) -> Iterator[Path]:
     """Recursive glob that survives Windows unicode / broken symlink paths.
 
     Python's Path.rglob calls os.scandir, which raises FileNotFoundError
@@ -36,6 +36,7 @@ def safe_rglob(root: Path) -> "Iterator[Path]":
                 continue
     except OSError:
         return
+
 
 # Allow running this script directly via `python scripts/sync_upstream/rebrand.py`
 # without requiring `pip install -e .` — adds the scripts/ dir to sys.path so
@@ -106,7 +107,7 @@ class Manifest:
     protected: set[str]
 
     @classmethod
-    def load(cls, path: Path) -> "Manifest":
+    def load(cls, path: Path) -> Manifest:
         if not path.exists():
             return cls(by_path={}, protected=set())
         data = json.loads(path.read_text(encoding="utf-8"))

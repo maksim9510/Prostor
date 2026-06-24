@@ -24,7 +24,7 @@ def prostor_home(monkeypatch, tmp_path):
     monkeypatch.setenv("PROSTOR_HOME", str(home))
     yield home
     try:
-        from tools.file_tools import clear_file_ops_cache, _read_tracker_lock, _read_tracker
+        from tools.file_tools import _read_tracker, _read_tracker_lock, clear_file_ops_cache
         clear_file_ops_cache()
         with _read_tracker_lock:
             _read_tracker.clear()
@@ -42,7 +42,7 @@ def prostor_home(monkeypatch, tmp_path):
 def fresh_tracker():
     """Reset the module-level tracker before each test so the count starts
     at zero regardless of prior test order."""
-    from tools.file_tools import _patch_failure_tracker, _patch_failure_lock
+    from tools.file_tools import _patch_failure_lock, _patch_failure_tracker
 
     with _patch_failure_lock:
         _patch_failure_tracker.clear()

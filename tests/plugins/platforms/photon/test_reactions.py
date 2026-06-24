@@ -7,8 +7,8 @@ Neither path spawns the Node sidecar or binds ports.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -28,10 +28,10 @@ def _make_adapter(monkeypatch: pytest.MonkeyPatch) -> PhotonAdapter:
     return PhotonAdapter(cfg)
 
 
-def _capture_sidecar(adapter: PhotonAdapter) -> List[Tuple[str, Dict[str, Any]]]:
-    calls: List[Tuple[str, Dict[str, Any]]] = []
+def _capture_sidecar(adapter: PhotonAdapter) -> list[tuple[str, dict[str, Any]]]:
+    calls: list[tuple[str, dict[str, Any]]] = []
 
-    async def _fake_call(path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    async def _fake_call(path: str, body: dict[str, Any]) -> dict[str, Any]:
         calls.append((path, body))
         return {"ok": True, "messageId": "msg-123", "reactionId": "react-1"}
 
@@ -41,8 +41,8 @@ def _capture_sidecar(adapter: PhotonAdapter) -> List[Tuple[str, Dict[str, Any]]]
 
 def _capture_handled(
     adapter: PhotonAdapter, monkeypatch: pytest.MonkeyPatch
-) -> List[MessageEvent]:
-    captured: List[MessageEvent] = []
+) -> list[MessageEvent]:
+    captured: list[MessageEvent] = []
 
     async def fake_handle(event: MessageEvent) -> None:
         captured.append(event)
@@ -63,7 +63,7 @@ def _message_event(adapter: PhotonAdapter) -> MessageEvent:
             user_name=None,
         ),
         message_id="target-msg-1",
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
     )
 
 
@@ -72,7 +72,7 @@ def _reaction_event(
     target_id: str = "bot-msg-1",
     target_direction: Any = "outbound",
     space_type: str = "dm",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "messageId": "reaction-evt-1",
         "platform": "iMessage",
@@ -127,7 +127,7 @@ async def test_remove_reaction_posts_unreact(monkeypatch: pytest.MonkeyPatch) ->
 async def test_reaction_failure_is_soft(monkeypatch: pytest.MonkeyPatch) -> None:
     adapter = _make_adapter(monkeypatch)
 
-    async def _boom(path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    async def _boom(path: str, body: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("sidecar down")
 
     adapter._sidecar_call = _boom  # type: ignore[assignment]

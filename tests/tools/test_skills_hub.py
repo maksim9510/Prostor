@@ -2,8 +2,7 @@
 
 import json
 import time
-from typing import List, Optional
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -11,26 +10,25 @@ import pytest
 from tools.skills_hub import (
     GitHubAuth,
     GitHubSource,
+    HubLockFile,
     LobeHubSource,
-    SkillsShSource,
-    UrlSource,
-    WellKnownSkillSource,
     OptionalSkillSource,
-    SkillSource,
     SkillBundle,
     SkillMeta,
-    HubLockFile,
+    SkillSource,
+    SkillsShSource,
     TapsManager,
+    UrlSource,
+    WellKnownSkillSource,
+    _skill_meta_to_dict,
+    append_audit_log,
     bundle_content_hash,
     check_for_skill_updates,
     create_source_router,
     parallel_search_sources,
-    unified_search,
-    append_audit_log,
-    _skill_meta_to_dict,
     quarantine_bundle,
+    unified_search,
 )
-
 
 # ---------------------------------------------------------------------------
 # GitHubSource._parse_frontmatter_quick
@@ -2224,15 +2222,15 @@ class _FakeSource(SkillSource):
     def source_id(self) -> str:
         return self._sid
 
-    def search(self, query: str, limit: int = 10) -> List[SkillMeta]:
+    def search(self, query: str, limit: int = 10) -> list[SkillMeta]:
         if self._sleep:
             time.sleep(self._sleep)
         return list(self._results)
 
-    def fetch(self, identifier: str) -> Optional[SkillBundle]:
+    def fetch(self, identifier: str) -> SkillBundle | None:
         return None
 
-    def inspect(self, identifier: str) -> Optional[SkillMeta]:
+    def inspect(self, identifier: str) -> SkillMeta | None:
         return None
 
 

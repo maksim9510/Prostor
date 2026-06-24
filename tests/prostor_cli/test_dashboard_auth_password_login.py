@@ -38,7 +38,6 @@ from prostor_cli.dashboard_auth.login_page import render_login_html
 from prostor_cli.dashboard_auth.routes import _reset_password_rate_limit
 from tests.prostor_cli.conftest_dashboard_auth import StubAuthProvider
 
-
 # ---------------------------------------------------------------------------
 # Test password provider — minimal, in-memory, signed tokens.
 # ---------------------------------------------------------------------------

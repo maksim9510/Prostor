@@ -28,21 +28,23 @@ Debug Mode:
 
 Usage:
     from web_tools import web_search_tool, web_extract_tool
-    
+
     # Search the web
     results = web_search_tool("Python machine learning libraries", limit=3)
-    
-    # Extract content from URLs  
+
+    # Extract content from URLs
     content = web_extract_tool(["https://example.com"], format="markdown")
 """
 
+import asyncio
 import json
 import logging
 import os
 import re
-import asyncio
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 import httpx  # noqa: F401 — kept at module top so tests can patch tools.web_tools.httpx
+
 # After the web-provider plugin migration (PR #25182), the Firecrawl SDK
 # proxy, client construction, and response-shape normalizers all live in
 # plugins.web.firecrawl.provider. We re-export the names that external
@@ -50,6 +52,7 @@ import httpx  # noqa: F401 — kept at module top so tests can patch tools.web_t
 # surface stays stable.
 if TYPE_CHECKING:
     from firecrawl import Firecrawl  # noqa: F401 — type hints only
+from plugins.web.exa.provider import _get_exa_client  # noqa: F401
 from plugins.web.firecrawl.provider import (
     Firecrawl,  # noqa: F401  # re-exported for tests that mock.patch("tools.web_tools.Firecrawl")
     _firecrawl_backend_help_suffix,
@@ -58,13 +61,7 @@ from plugins.web.firecrawl.provider import (
     _is_tool_gateway_ready,
     check_firecrawl_api_key,
 )
-# Tavily helpers re-exported for backward-compat with existing unit tests
-# (tests/tools/test_web_tools_tavily.py imports these names directly).
-from plugins.web.tavily.provider import (  # noqa: F401 — backward-compat names
-    _normalize_tavily_documents,
-    _normalize_tavily_search_results,
-    _tavily_request,
-)
+
 # Parallel + Exa clients re-exported for backward-compat with existing
 # unit tests (tests/tools/test_web_tools_config.py imports _get_parallel_client
 # / _get_async_parallel_client / _get_exa_client directly).
@@ -72,16 +69,25 @@ from plugins.web.parallel.provider import (  # noqa: F401 — backward-compat na
     _get_async_parallel_client,
     _get_parallel_client,
 )
-from plugins.web.exa.provider import _get_exa_client  # noqa: F401
+
+# Tavily helpers re-exported for backward-compat with existing unit tests
+# (tests/tools/test_web_tools_tavily.py imports these names directly).
+from plugins.web.tavily.provider import (  # noqa: F401 — backward-compat names
+    _normalize_tavily_documents,
+    _normalize_tavily_search_results,
+    _tavily_request,
+)
 
 # Module-level cache slots for the per-vendor clients. The plugins read/write
 # these via tools.web_tools so unit tests that reset
 # ``tools.web_tools._<vendor>_client = None`` between cases keep working.
-_firecrawl_client: Optional[Any] = None
-_firecrawl_client_config: Optional[Any] = None
-_parallel_client: Optional[Any] = None
-_async_parallel_client: Optional[Any] = None
-_exa_client: Optional[Any] = None
+_firecrawl_client: Any | None = None
+_firecrawl_client_config: Any | None = None
+_parallel_client: Any | None = None
+_async_parallel_client: Any | None = None
+_exa_client: Any | None = None
+
+import sys
 
 from agent.auxiliary_client import (
     async_call_llm,
@@ -89,12 +95,11 @@ from agent.auxiliary_client import (
     get_async_text_auxiliary_client,
 )
 from tools.debug_helpers import DebugSession
+
 # Imported solely so unit tests can monkeypatch these names on
 # tools.web_tools (the firecrawl plugin reads them via its own import chain).
 from tools.managed_tool_gateway import (  # noqa: F401 — backward-compat names for tests
     build_vendor_gateway_url,
-    peek_nous_access_token as _peek_nous_access_token,
-    read_nous_access_token as _read_nous_access_token,
     resolve_managed_tool_gateway,
 )
 from tools.tool_backend_helpers import (  # noqa: F401
@@ -103,7 +108,6 @@ from tools.tool_backend_helpers import (  # noqa: F401
     prefers_gateway,
 )
 from tools.url_safety import async_is_safe_url, normalize_url_for_request
-import sys
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +137,7 @@ def _env_value(name: str) -> str:
 def _has_env(name: str) -> bool:
     return bool(_env_value(name))
 
+
 def _load_web_config() -> dict:
     """Load the ``web:`` section from ~/.prostor/config.yaml."""
     try:
@@ -140,6 +145,7 @@ def _load_web_config() -> dict:
         return load_config().get("web", {})
     except (ImportError, Exception):
         return {}
+
 
 def _get_backend() -> str:
     """Determine which web backend to use (shared fallback).
@@ -307,6 +313,7 @@ def _web_requires_env() -> list[str]:
 
 DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION = 5000
 
+
 def _is_nous_auxiliary_client(client: Any) -> bool:
     """Return True when the resolved auxiliary backend is Nous Portal."""
     from urllib.parse import urlparse
@@ -316,13 +323,13 @@ def _is_nous_auxiliary_client(client: Any) -> bool:
     return host == "nousresearch.com" or host.endswith(".nousresearch.com")
 
 
-def _resolve_web_extract_auxiliary(model: Optional[str] = None) -> tuple[Optional[Any], Optional[str], Dict[str, Any]]:
+def _resolve_web_extract_auxiliary(model: str | None = None) -> tuple[Any | None, str | None, dict[str, Any]]:
     """Resolve the current web-extract auxiliary client, model, and extra body."""
     client, default_model = get_async_text_auxiliary_client("web_extract")
     configured_model = os.getenv("AUXILIARY_WEB_EXTRACT_MODEL", "").strip()
     effective_model = model or configured_model or default_model
 
-    extra_body: Dict[str, Any] = {}
+    extra_body: dict[str, Any] = {}
     if client is not None and _is_nous_auxiliary_client(client):
         from agent.auxiliary_client import get_auxiliary_extra_body
         from agent.portal_tags import nous_portal_tags
@@ -331,38 +338,39 @@ def _resolve_web_extract_auxiliary(model: Optional[str] = None) -> tuple[Optiona
     return client, effective_model, extra_body
 
 
-def _get_default_summarizer_model() -> Optional[str]:
+def _get_default_summarizer_model() -> str | None:
     """Return the current default model for web extraction summarization."""
     _, model, _ = _resolve_web_extract_auxiliary()
     return model
+
 
 _debug = DebugSession("web_tools", env_var="WEB_TOOLS_DEBUG")
 
 
 async def process_content_with_llm(
-    content: str, 
-    url: str = "", 
+    content: str,
+    url: str = "",
     title: str = "",
-    model: Optional[str] = None,
+    model: str | None = None,
     min_length: int = DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION
-) -> Optional[str]:
+) -> str | None:
     """
     Process web content using LLM to create intelligent summaries with key excerpts.
-    
-    This function uses Gemini 3 Flash Preview (or specified model) via OpenRouter API 
+
+    This function uses Gemini 3 Flash Preview (or specified model) via OpenRouter API
     to intelligently extract key information and create markdown summaries,
     significantly reducing token usage while preserving all important information.
-    
+
     For very large content (>500k chars), uses chunked processing with synthesis.
     For extremely large content (>2M chars), refuses to process entirely.
-    
+
     Args:
         content (str): The raw content to process
         url (str): The source URL (for context, optional)
         title (str): The page title (for context, optional)
         model (str): The model to use for processing (default: google/gemini-3-flash-preview)
         min_length (int): Minimum content length to trigger processing (default: 5000)
-        
+
     Returns:
         Optional[str]: Processed markdown content, or None if content too short or processing fails
     """
@@ -440,16 +448,16 @@ async def process_content_with_llm(
 
 
 async def _call_summarizer_llm(
-    content: str, 
-    context_str: str, 
-    model: Optional[str], 
+    content: str,
+    context_str: str,
+    model: str | None,
     max_tokens: int = 20000,
     is_chunk: bool = False,
     chunk_info: str = ""
-) -> Optional[str]:
+) -> str | None:
     """
     Make a single LLM call to summarize content.
-    
+
     Args:
         content: The content to summarize
         context_str: Context information (title, URL)
@@ -457,7 +465,7 @@ async def _call_summarizer_llm(
         max_tokens: Maximum output tokens
         is_chunk: Whether this is a chunk of a larger document
         chunk_info: Information about chunk position (e.g., "Chunk 2/5")
-        
+
     Returns:
         Summarized content or None on failure
     """
@@ -558,23 +566,23 @@ Create a markdown summary that captures all key information in a well-organized,
 
 
 async def _process_large_content_chunked(
-    content: str, 
-    context_str: str, 
-    model: Optional[str], 
+    content: str,
+    context_str: str,
+    model: str | None,
     chunk_size: int,
     max_output_size: int
-) -> Optional[str]:
+) -> str | None:
     """
     Process large content by chunking, summarizing each chunk in parallel,
     then synthesizing the summaries.
-    
+
     Args:
         content: The large content to process
         context_str: Context information
         model: Model to use
         chunk_size: Size of each chunk in characters
         max_output_size: Maximum final output size
-        
+
     Returns:
         Synthesized summary or None on failure
     """
@@ -587,14 +595,14 @@ async def _process_large_content_chunked(
     logger.info("Split into %d chunks of ~%d chars each", len(chunks), chunk_size)
 
     # Summarize each chunk in parallel
-    async def summarize_chunk(chunk_idx: int, chunk_content: str) -> tuple[int, Optional[str]]:
+    async def summarize_chunk(chunk_idx: int, chunk_content: str) -> tuple[int, str | None]:
         """Summarize a single chunk."""
         try:
             chunk_info = f"[Processing chunk {chunk_idx + 1} of {len(chunks)}]"
             summary = await _call_summarizer_llm(
-                chunk_content, 
-                context_str, 
-                model, 
+                chunk_content,
+                context_str,
+                model,
                 max_tokens=10000,
                 is_chunk=True,
                 chunk_info=chunk_info
@@ -643,7 +651,7 @@ async def _process_large_content_chunked(
 
     combined_summaries = "\n\n---\n\n".join(summaries)
 
-    synthesis_prompt = f"""You have been given summaries of different sections of a large document. 
+    synthesis_prompt = f"""You have been given summaries of different sections of a large document.
 Synthesize these into ONE cohesive, comprehensive summary that:
 1. Removes redundancy between sections
 2. Preserves all key facts, figures, and actionable information
@@ -716,16 +724,16 @@ Create a single, unified markdown summary."""
 def clean_base64_images(text: str) -> str:
     """
     Remove base64 encoded images from text to reduce token count and clutter.
-    
+
     This function finds and removes base64 encoded images in various formats:
     - (data:image/png;base64,...)
     - (data:image/jpeg;base64,...)
     - (data:image/svg+xml;base64,...)
     - data:image/[type];base64,... (without parentheses)
-    
+
     Args:
         text: The text content to clean
-        
+
     Returns:
         Cleaned text with base64 images replaced with placeholders
     """
@@ -793,11 +801,11 @@ def web_search_tool(query: str, limit: int = 5) -> str:
 
     Note: This function returns search result metadata only (URLs, titles, descriptions).
     Use web_extract_tool to get full content from specific URLs.
-    
+
     Args:
         query (str): The search query to look up
         limit (int): Maximum number of results to return (default: 5)
-    
+
     Returns:
         str: JSON string containing search results with the following structure:
              {
@@ -814,7 +822,7 @@ def web_search_tool(query: str, limit: int = 5) -> str:
                      ]
                  }
              }
-    
+
     Raises:
         Exception: If search fails or API key is not set
     """
@@ -847,6 +855,8 @@ def web_search_tool(query: str, limit: int = 5) -> str:
         _ensure_web_plugins_loaded()
         from agent.web_search_registry import (
             get_active_search_provider,
+        )
+        from agent.web_search_registry import (
             get_provider as _wsp_get_provider,
         )
 
@@ -892,10 +902,10 @@ def web_search_tool(query: str, limit: int = 5) -> str:
 
 
 async def web_extract_tool(
-    urls: List[str],
+    urls: list[str],
     format: str = None,
     use_llm_processing: bool = True,
-    model: Optional[str] = None,
+    model: str | None = None,
     min_length: int = DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION
 ) -> str:
     """
@@ -912,19 +922,20 @@ async def web_extract_tool(
         min_length (int): Minimum content length to trigger LLM processing (default: 5000)
 
     Security: URLs are checked for embedded secrets before fetching.
-    
+
     Returns:
         str: JSON string containing extracted content. If LLM processing is enabled and successful,
              the 'content' field will contain the processed markdown summary instead of raw content.
-    
+
     Raises:
         Exception: If extraction fails or API key is not set
     """
     # Block URLs containing embedded secrets (exfiltration prevention).
     # URL-decode first so percent-encoded secrets (%73k- = sk-) are caught.
-    from agent.redact import _PREFIX_RE
     from urllib.parse import unquote
-    normalized_urls: List[str] = []
+
+    from agent.redact import _PREFIX_RE
+    normalized_urls: list[str] = []
     for _url in urls:
         normalized_url = normalize_url_for_request(_url)
         if (
@@ -962,7 +973,7 @@ async def web_extract_tool(
 
         # ── SSRF protection — filter out private/internal URLs before any backend ──
         safe_urls = []
-        ssrf_blocked: List[Dict[str, Any]] = []
+        ssrf_blocked: list[dict[str, Any]] = []
         for url in normalized_urls:
             if not await async_is_safe_url(url):
                 ssrf_blocked.append({
@@ -988,6 +999,8 @@ async def web_extract_tool(
             _ensure_web_plugins_loaded()
             from agent.web_search_registry import (
                 get_active_extract_provider,
+            )
+            from agent.web_search_registry import (
                 get_provider as _wsp_get_provider,
             )
 

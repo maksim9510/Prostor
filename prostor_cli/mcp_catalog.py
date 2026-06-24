@@ -28,19 +28,19 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
-from prostor_constants import get_prostor_home, get_optional_mcps_dir
+from prostor_cli.cli_output import prompt as _prompt_input
 from prostor_cli.colors import Colors, color
 from prostor_cli.config import (
+    get_env_value,
     load_config,
     save_config,
-    get_env_value,
     save_env_value,
 )
-from prostor_cli.cli_output import prompt as _prompt_input
+from prostor_constants import get_optional_mcps_dir, get_prostor_home
 
 _MANIFEST_VERSION = 1
 
@@ -63,20 +63,20 @@ class EnvVarSpec:
 @dataclass
 class AuthSpec:
     type: str  # "api_key" | "oauth" | "none"
-    env: List[EnvVarSpec] = field(default_factory=list)
+    env: list[EnvVarSpec] = field(default_factory=list)
     # OAuth-specific (case 2: third-party provider like Google)
-    provider: Optional[str] = None
-    scopes: List[str] = field(default_factory=list)
-    env_var: Optional[str] = None
+    provider: str | None = None
+    scopes: list[str] = field(default_factory=list)
+    env_var: str | None = None
 
 
 @dataclass
 class TransportSpec:
     type: str  # "stdio" | "http"
-    command: Optional[str] = None
-    args: List[str] = field(default_factory=list)
-    url: Optional[str] = None
-    version: Optional[str] = None  # informational, pinned
+    command: str | None = None
+    args: list[str] = field(default_factory=list)
+    url: str | None = None
+    version: str | None = None  # informational, pinned
 
 
 @dataclass
@@ -88,7 +88,7 @@ class InstallSpec:
     type: str  # "git"
     url: str
     ref: str  # commit/tag/branch — pinned, never floats
-    bootstrap: List[str] = field(default_factory=list)
+    bootstrap: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -102,7 +102,7 @@ class ToolsSpec:
     # If declared, these tool names are pre-checked in the checklist (or
     # applied directly when probe fails). If None, all probed tools are
     # pre-checked (or no filter is written when probe fails).
-    default_enabled: Optional[List[str]] = None
+    default_enabled: list[str] | None = None
 
 
 @dataclass
@@ -113,7 +113,7 @@ class CatalogEntry:
     transport: TransportSpec
     auth: AuthSpec
     tools: ToolsSpec = field(default_factory=ToolsSpec)
-    install: Optional[InstallSpec] = None
+    install: InstallSpec | None = None
     post_install: str = ""
     manifest_path: Path = field(default_factory=Path)
 
@@ -150,7 +150,7 @@ def _parse_env_spec(raw: Any) -> EnvVarSpec:
 def _parse_manifest(path: Path) -> CatalogEntry:
     """Read and validate a manifest.yaml. Raise CatalogError on any problem."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except Exception as exc:
         raise CatalogError(f"failed to read {path}: {exc}") from exc
@@ -227,7 +227,7 @@ def _parse_manifest(path: Path) -> CatalogEntry:
             )
     tools_spec = ToolsSpec(default_enabled=default_enabled)
 
-    install: Optional[InstallSpec] = None
+    install: InstallSpec | None = None
     install_raw = data.get("install")
     if install_raw is not None:
         if not isinstance(install_raw, dict):
@@ -262,7 +262,7 @@ def _parse_manifest(path: Path) -> CatalogEntry:
     )
 
 
-def list_catalog() -> List[CatalogEntry]:
+def list_catalog() -> list[CatalogEntry]:
     """Return all valid catalog entries, sorted by name.
 
     Invalid manifests are skipped silently (CI tests catch them at PR time).
@@ -273,7 +273,7 @@ def list_catalog() -> List[CatalogEntry]:
     root = _catalog_root()
     if not root.exists():
         return []
-    entries: List[CatalogEntry] = []
+    entries: list[CatalogEntry] = []
     _CATALOG_DIAGNOSTICS.clear()
     for child in sorted(root.iterdir()):
         manifest = child / "manifest.yaml"
@@ -295,10 +295,10 @@ def list_catalog() -> List[CatalogEntry]:
 
 # Populated by list_catalog(). Inspected by the picker / catalog UIs so the
 # user gets actionable feedback instead of a silently-shorter list.
-_CATALOG_DIAGNOSTICS: List[tuple] = []
+_CATALOG_DIAGNOSTICS: list[tuple] = []
 
 
-def catalog_diagnostics() -> List[tuple]:
+def catalog_diagnostics() -> list[tuple]:
     """Diagnostics from the most recent :func:`list_catalog` call.
 
     Returns a list of ``(entry_name, kind, message)`` tuples where ``kind``
@@ -311,7 +311,7 @@ def catalog_diagnostics() -> List[tuple]:
     return list(_CATALOG_DIAGNOSTICS)
 
 
-def get_entry(name: str) -> Optional[CatalogEntry]:
+def get_entry(name: str) -> CatalogEntry | None:
     """Look up a single entry by name. ``official/<name>`` prefix accepted."""
     if name.startswith("official/"):
         name = name[len("official/"):]
@@ -324,7 +324,7 @@ def get_entry(name: str) -> Optional[CatalogEntry]:
 # ─── Status helpers ──────────────────────────────────────────────────────────
 
 
-def installed_servers() -> Dict[str, dict]:
+def installed_servers() -> dict[str, dict]:
     """Return current ``mcp_servers`` block from config.yaml."""
     cfg = load_config()
     servers = cfg.get("mcp_servers") or {}
@@ -356,7 +356,7 @@ def _install_root() -> Path:
     return root
 
 
-def _run_bootstrap(cwd: Path, commands: List[str]) -> None:
+def _run_bootstrap(cwd: Path, commands: list[str]) -> None:
     """Execute bootstrap commands in *cwd*. Raise CatalogError on first failure.
 
     Each command runs through the shell (so `&&` etc. work). The output is
@@ -423,7 +423,7 @@ def _do_git_install(entry: CatalogEntry) -> Path:
     return dest
 
 
-def _expand_install_dir(value: str, install_dir: Optional[Path]) -> str:
+def _expand_install_dir(value: str, install_dir: Path | None) -> str:
     if _INSTALL_DIR_VAR not in value:
         return value
     if install_dir is None:
@@ -433,10 +433,10 @@ def _expand_install_dir(value: str, install_dir: Optional[Path]) -> str:
     return value.replace(_INSTALL_DIR_VAR, str(install_dir))
 
 
-def _prompt_env_vars(specs: List[EnvVarSpec]) -> Dict[str, str]:
+def _prompt_env_vars(specs: list[EnvVarSpec]) -> dict[str, str]:
     """Walk the env spec list, prompting the user for each. Writes secrets and
     non-secrets alike to ~/.prostor/.env via save_env_value()."""
-    collected: Dict[str, str] = {}
+    collected: dict[str, str] = {}
     for spec in specs:
         existing = get_env_value(spec.name)
         if existing:
@@ -458,7 +458,7 @@ def _prompt_env_vars(specs: List[EnvVarSpec]) -> Dict[str, str]:
 
 
 def _build_server_config(
-    entry: CatalogEntry, install_dir: Optional[Path]
+    entry: CatalogEntry, install_dir: Path | None
 ) -> dict:
     """Translate a manifest into the ``mcp_servers.<name>`` block format used
     by prostor_cli/mcp_config.py."""
@@ -475,7 +475,7 @@ def _build_server_config(
     return cfg
 
 
-def _read_prior_tool_selection(name: str) -> Optional[List[str]]:
+def _read_prior_tool_selection(name: str) -> list[str] | None:
     """Return the user's prior `tools.include` for *name*, if any.
 
     Used during reinstalls so the install-time checklist starts pre-checked
@@ -493,7 +493,7 @@ def _read_prior_tool_selection(name: str) -> Optional[List[str]]:
     return None
 
 
-def _probe_tools(name: str) -> Optional[List[tuple]]:
+def _probe_tools(name: str) -> list[tuple] | None:
     """Connect to a freshly-configured MCP and list its tools.
 
     Returns a list of ``(tool_name, description)`` tuples on success, or
@@ -517,7 +517,7 @@ def _probe_tools(name: str) -> Optional[List[tuple]]:
         return None
 
 
-def _write_tools_include(name: str, include: Optional[List[str]]) -> None:
+def _write_tools_include(name: str, include: list[str] | None) -> None:
     """Persist or clear ``mcp_servers.<name>.tools.include``."""
     cfg = load_config()
     servers = cfg.setdefault("mcp_servers", {})
@@ -538,7 +538,7 @@ def _write_tools_include(name: str, include: Optional[List[str]]) -> None:
 
 
 def _apply_tool_selection(
-    entry: CatalogEntry, *, prior_selection: Optional[List[str]]
+    entry: CatalogEntry, *, prior_selection: list[str] | None
 ) -> None:
     """Probe the server and let the user pick which tools to enable.
 
@@ -691,7 +691,7 @@ def install_entry(entry: CatalogEntry, *, enable: bool = True) -> None:
         print(color(f"  Source: {entry.source}", Colors.DIM))
     print()
 
-    install_dir: Optional[Path] = None
+    install_dir: Path | None = None
     if entry.install is not None:
         install_dir = _do_git_install(entry)
 

@@ -9,13 +9,13 @@ from unittest.mock import patch
 import pytest
 
 from gateway.pairing import (
-    PairingStore,
     ALPHABET,
     CODE_LENGTH,
     CODE_TTL_SECONDS,
-    RATE_LIMIT_SECONDS,
-    MAX_PENDING_PER_PLATFORM,
     MAX_FAILED_ATTEMPTS,
+    MAX_PENDING_PER_PLATFORM,
+    RATE_LIMIT_SECONDS,
+    PairingStore,
     _secure_write,
 )
 

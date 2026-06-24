@@ -34,7 +34,7 @@ import tempfile
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from prostor_constants import get_prostor_home
 from prostor_time import now as _prostor_now
@@ -70,11 +70,11 @@ def _ensure_dir() -> None:
     CRON_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _load_raw() -> Dict[str, Any]:
+def _load_raw() -> dict[str, Any]:
     if not SUGGESTIONS_FILE.exists():
         return {"suggestions": []}
     try:
-        with open(SUGGESTIONS_FILE, "r", encoding="utf-8") as f:
+        with open(SUGGESTIONS_FILE, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("suggestions.json unreadable (%s); starting empty", e)
@@ -87,7 +87,7 @@ def _load_raw() -> Dict[str, Any]:
     return {"suggestions": []}
 
 
-def _save_raw(suggestions: List[Dict[str, Any]]) -> None:
+def _save_raw(suggestions: list[dict[str, Any]]) -> None:
     _ensure_dir()
     fd, tmp_path = tempfile.mkstemp(dir=str(SUGGESTIONS_FILE.parent), suffix=".tmp", prefix=".sugg_")
     try:
@@ -109,12 +109,12 @@ def _save_raw(suggestions: List[Dict[str, Any]]) -> None:
         raise
 
 
-def load_suggestions() -> List[Dict[str, Any]]:
+def load_suggestions() -> list[dict[str, Any]]:
     """Return all suggestion records (any status)."""
     return _load_raw().get("suggestions", [])
 
 
-def list_pending() -> List[Dict[str, Any]]:
+def list_pending() -> list[dict[str, Any]]:
     """Return pending suggestions in creation order (oldest first)."""
     return [s for s in load_suggestions() if s.get("status") == _STATUS_PENDING]
 
@@ -124,9 +124,9 @@ def add_suggestion(
     title: str,
     description: str,
     source: str,
-    job_spec: Dict[str, Any],
+    job_spec: dict[str, Any],
     dedup_key: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Register a pending suggestion. Returns the record, or None if skipped.
 
     Skipped when: the source is unknown, the same ``dedup_key`` was already
@@ -174,7 +174,7 @@ def add_suggestion(
         return record
 
 
-def get_suggestion(ref: str) -> Optional[Dict[str, Any]]:
+def get_suggestion(ref: str) -> dict[str, Any] | None:
     """Resolve a suggestion by id, 1-based pending index, or title (exact)."""
     suggestions = load_suggestions()
     # By id.
@@ -217,7 +217,7 @@ def dismiss_suggestion(ref: str) -> bool:
     return _set_status(s["id"], _STATUS_DISMISSED)
 
 
-def accept_suggestion(ref: str, *, origin: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def accept_suggestion(ref: str, *, origin: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Accept a suggestion: create the real cron job from its ``job_spec``.
 
     Returns the created cron job dict, or None if the suggestion isn't found /

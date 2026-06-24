@@ -35,7 +35,6 @@ from prostor_cli.dashboard_auth.ws_tickets import (
 )
 from tests.prostor_cli.conftest_dashboard_auth import StubAuthProvider
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

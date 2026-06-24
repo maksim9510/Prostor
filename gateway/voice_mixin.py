@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Dict
 
 from gateway.config import Platform
 
@@ -20,7 +19,7 @@ class GatewayVoiceMixin:
         """Return a platform-namespaced key for voice mode state."""
         return f"{platform.value}:{chat_id}"
 
-    def _load_voice_modes(self) -> Dict[str, str]:
+    def _load_voice_modes(self) -> dict[str, str]:
         try:
             data = json.loads(self._VOICE_MODE_PATH.read_text())
         except (FileNotFoundError, json.JSONDecodeError, OSError):

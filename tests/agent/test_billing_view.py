@@ -19,9 +19,9 @@ from decimal import Decimal
 import pytest
 
 import agent.billing_view as bv
+import prostor_cli.nous_billing as nb
 from agent.billing_view import (
     AutoReload,
-    BillingState,
     CardInfo,
     MonthlyCap,
     billing_state_from_payload,
@@ -31,7 +31,6 @@ from agent.billing_view import (
     parse_money,
     validate_charge_amount,
 )
-import prostor_cli.nous_billing as nb
 from prostor_cli.nous_billing import (
     BillingAuthError,
     BillingError,
@@ -40,7 +39,6 @@ from prostor_cli.nous_billing import (
     _raise_for_error,
     resolve_portal_base_url,
 )
-
 
 # ---------------------------------------------------------------------------
 # Decimal money

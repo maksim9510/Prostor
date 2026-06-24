@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # classify_sandbox_mirror_target — pure path-shape detection
 # ---------------------------------------------------------------------------

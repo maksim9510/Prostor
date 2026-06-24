@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict
 
 
 def has_xai_credentials() -> bool:
@@ -72,7 +71,7 @@ def prostor_xai_user_agent() -> str:
     return f"Prostor-Agent/{__version__}"
 
 
-def resolve_xai_http_credentials(*, force_refresh: bool = False) -> Dict[str, str]:
+def resolve_xai_http_credentials(*, force_refresh: bool = False) -> dict[str, str]:
     """Resolve bearer credentials for direct xAI HTTP endpoints.
 
     Prefers Prostor-managed xAI OAuth credentials when available, then falls back

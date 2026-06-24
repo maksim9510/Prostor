@@ -9,19 +9,19 @@ import yaml
 
 from prostor_cli.config import (
     DEFAULT_CONFIG,
+    _sanitize_env_lines,
     check_config_version,
-    get_prostor_home,
     ensure_prostor_home,
     get_compatible_custom_providers,
+    get_prostor_home,
     load_config,
     load_env,
     migrate_config,
     remove_env_value,
+    sanitize_env_file,
     save_config,
     save_env_value,
     save_env_value_secure,
-    sanitize_env_file,
-    _sanitize_env_lines,
 )
 
 
@@ -142,6 +142,7 @@ class TestLoadConfigParseFailure:
 
     def test_rewarns_after_file_edit(self, tmp_path, capsys):
         import time
+
         from prostor_cli import config as cfg_mod
         cfg_mod._CONFIG_PARSE_WARNED.clear()
 

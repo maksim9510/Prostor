@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -328,6 +327,7 @@ class TestGenerate:
 class TestGenerateErrors:
     def test_submit_http_error(self):
         import requests as req_lib
+
         from plugins.image_gen.krea import KreaImageGenProvider
 
         resp = req_lib.Response()
@@ -348,6 +348,7 @@ class TestGenerateErrors:
 
     def test_submit_timeout(self):
         import requests as req_lib
+
         from plugins.image_gen.krea import KreaImageGenProvider
 
         with patch(
@@ -360,6 +361,7 @@ class TestGenerateErrors:
 
     def test_submit_connection_error(self):
         import requests as req_lib
+
         from plugins.image_gen.krea import KreaImageGenProvider
 
         with patch(
@@ -454,6 +456,7 @@ class TestGenerateErrors:
     def test_url_download_failure_falls_back_to_bare_url(self):
         """Mirror of xAI behaviour — if local cache fails, return the URL."""
         import requests as req_lib
+
         from plugins.image_gen.krea import KreaImageGenProvider
 
         url = "https://krea.cdn/expired-soon.png"

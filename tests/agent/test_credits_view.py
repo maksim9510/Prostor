@@ -15,7 +15,7 @@ import pytest
 
 import agent.account_usage as account_usage
 from agent.account_usage import CreditsView, build_credits_view
-from prostor_cli.nous_account import NousPortalAccountInfo, NousPaidServiceAccessInfo
+from prostor_cli.nous_account import NousPaidServiceAccessInfo, NousPortalAccountInfo
 
 
 def _account(**kwargs) -> NousPortalAccountInfo:
@@ -194,7 +194,7 @@ def test_gateway_credits_fetch_exception_is_not_logged_in(monkeypatch):
 
 
 def test_credits_command_registered():
-    from prostor_cli.commands import resolve_command, COMMAND_REGISTRY
+    from prostor_cli.commands import COMMAND_REGISTRY, resolve_command
 
     cmd = resolve_command("credits")
     assert cmd is not None and cmd.name == "credits"

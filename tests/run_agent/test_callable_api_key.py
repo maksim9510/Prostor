@@ -31,7 +31,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # OpenAI SDK construction preserves the callable
 # ---------------------------------------------------------------------------
@@ -136,7 +135,7 @@ class TestNormalizeMainRuntimePreservesCallable:
         assert "model" not in normalized
 
     def test_unknown_field_dropped(self):
-        from agent.auxiliary_client import _normalize_main_runtime, _MAIN_RUNTIME_FIELDS
+        from agent.auxiliary_client import _MAIN_RUNTIME_FIELDS, _normalize_main_runtime
         normalized = _normalize_main_runtime({
             "provider": "azure-foundry",
             "api_key": "k",

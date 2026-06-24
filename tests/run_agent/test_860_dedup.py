@@ -12,10 +12,10 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-
 # ---------------------------------------------------------------------------
 # Test: _flush_messages_to_session_db only writes new messages
 # ---------------------------------------------------------------------------
+
 
 class TestFlushDeduplication:
     """Verify _flush_messages_to_session_db tracks what it already wrote."""

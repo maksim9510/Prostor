@@ -9,7 +9,6 @@ import yaml
 
 from agent import i18n
 
-
 LOCALES_DIR = Path(__file__).resolve().parents[2] / "locales"
 
 

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import acp
 from acp.schema import (
     ToolCallLocation,
-    ToolCallStart,
     ToolCallProgress,
+    ToolCallStart,
     ToolKind,
 )
 
@@ -18,7 +18,7 @@ from acp.schema import (
 # Map prostor tool names -> ACP ToolKind
 # ---------------------------------------------------------------------------
 
-TOOL_KIND_MAP: Dict[str, ToolKind] = {
+TOOL_KIND_MAP: dict[str, ToolKind] = {
     # File operations
     "read_file": "read",
     "write_file": "edit",
@@ -88,7 +88,7 @@ def make_tool_call_id() -> str:
     return f"tc-{uuid.uuid4().hex[:12]}"
 
 
-def build_tool_title(tool_name: str, args: Dict[str, Any]) -> str:
+def build_tool_title(tool_name: str, args: dict[str, Any]) -> str:
     """Build a human-readable title for a tool call."""
     if tool_name == "terminal":
         cmd = args.get("command", "")
@@ -184,7 +184,7 @@ def _text(content: str) -> Any:
     return acp.tool_content(acp.text_block(content))
 
 
-def _json_loads_maybe(value: Optional[str]) -> Any:
+def _json_loads_maybe(value: str | None) -> Any:
     if not isinstance(value, str):
         return value
     try:
@@ -202,7 +202,7 @@ def _json_loads_maybe(value: Optional[str]) -> Any:
         return None
 
 
-def _tool_result_failed(result: Optional[str], tool_name: str | None = None) -> bool:
+def _tool_result_failed(result: str | None, tool_name: str | None = None) -> bool:
     """Return True when a structured Prostor tool result clearly failed.
 
     Keep this deliberately conservative. Plain text can contain words like
@@ -253,7 +253,7 @@ def _fenced_text(text: str, language: str = "") -> str:
     return f"{fence}{language}\n{text}\n{fence}"
 
 
-def _format_todo_result(result: Optional[str]) -> Optional[str]:
+def _format_todo_result(result: str | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict) or not isinstance(data.get("todos"), list):
         return None
@@ -285,7 +285,7 @@ def _format_todo_result(result: Optional[str]) -> Optional[str]:
     return "\n".join(lines)
 
 
-def _format_read_file_result(result: Optional[str], args: Optional[Dict[str, Any]]) -> Optional[str]:
+def _format_read_file_result(result: str | None, args: dict[str, Any] | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return None
@@ -312,7 +312,7 @@ def _format_read_file_result(result: Optional[str], args: Optional[Dict[str, Any
     return _truncate_text(f"{header}\n\n{_fenced_text(content)}")
 
 
-def _format_search_files_result(result: Optional[str]) -> Optional[str]:
+def _format_search_files_result(result: str | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return None
@@ -371,7 +371,7 @@ def _format_search_files_result(result: Optional[str]) -> Optional[str]:
     return _truncate_text("\n".join(lines), limit=7000)
 
 
-def _format_execute_code_result(result: Optional[str]) -> Optional[str]:
+def _format_execute_code_result(result: str | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return result if isinstance(result, str) and result.strip() else None
@@ -399,7 +399,7 @@ def _extract_markdown_headings(content: str, limit: int = 8) -> list[str]:
     return headings
 
 
-def _format_skill_view_result(result: Optional[str]) -> Optional[str]:
+def _format_skill_view_result(result: str | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return None
@@ -432,7 +432,7 @@ def _format_skill_view_result(result: Optional[str]) -> Optional[str]:
     return "\n".join(lines)
 
 
-def _format_skill_manage_result(result: Optional[str], args: Optional[Dict[str, Any]]) -> Optional[str]:
+def _format_skill_manage_result(result: str | None, args: dict[str, Any] | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return None
@@ -462,7 +462,7 @@ def _format_skill_manage_result(result: Optional[str], args: Optional[Dict[str, 
     return "\n".join(lines)
 
 
-def _format_web_search_result(result: Optional[str]) -> Optional[str]:
+def _format_web_search_result(result: str | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return None
@@ -482,7 +482,7 @@ def _format_web_search_result(result: Optional[str]) -> Optional[str]:
     return _truncate_text("\n".join(lines))
 
 
-def _format_web_extract_result(result: Optional[str]) -> Optional[str]:
+def _format_web_extract_result(result: str | None) -> str | None:
     """Return only web_extract errors for ACP; success stays compact via title."""
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
@@ -513,7 +513,7 @@ def _format_web_extract_result(result: Optional[str]) -> Optional[str]:
     return "\n".join(lines)
 
 
-def _format_process_result(result: Optional[str], args: Optional[Dict[str, Any]]) -> Optional[str]:
+def _format_process_result(result: str | None, args: dict[str, Any] | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return result if isinstance(result, str) and result.strip() else None
@@ -560,7 +560,7 @@ def _format_process_result(result: Optional[str], args: Optional[Dict[str, Any]]
     return _truncate_text("\n".join(lines), limit=7000)
 
 
-def _format_delegate_result(result: Optional[str]) -> Optional[str]:
+def _format_delegate_result(result: str | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return None
@@ -606,7 +606,7 @@ def _format_delegate_result(result: Optional[str]) -> Optional[str]:
     return _truncate_text("\n".join(lines), limit=8000)
 
 
-def _format_session_search_result(result: Optional[str]) -> Optional[str]:
+def _format_session_search_result(result: str | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return None
@@ -637,7 +637,7 @@ def _format_session_search_result(result: Optional[str]) -> Optional[str]:
     return _truncate_text("\n".join(lines), limit=7000)
 
 
-def _format_memory_result(result: Optional[str], args: Optional[Dict[str, Any]]) -> Optional[str]:
+def _format_memory_result(result: str | None, args: dict[str, Any] | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return None
@@ -664,7 +664,7 @@ def _format_memory_result(result: Optional[str], args: Optional[Dict[str, Any]])
     return "\n".join(lines)
 
 
-def _format_edit_result(tool_name: str, result: Optional[str], args: Optional[Dict[str, Any]]) -> Optional[str]:
+def _format_edit_result(tool_name: str, result: str | None, args: dict[str, Any] | None) -> str | None:
     data = _json_loads_maybe(result)
     path = str((args or {}).get("path") or "file").strip()
     if isinstance(data, dict):
@@ -687,7 +687,7 @@ def _format_edit_result(tool_name: str, result: Optional[str], args: Optional[Di
     return f"✅ {tool_name} completed" + (f" for `{path}`" if path else "")
 
 
-def _format_browser_result(tool_name: str, result: Optional[str], args: Optional[Dict[str, Any]]) -> Optional[str]:
+def _format_browser_result(tool_name: str, result: str | None, args: dict[str, Any] | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return result if isinstance(result, str) and result.strip() else None
@@ -713,7 +713,7 @@ def _format_browser_result(tool_name: str, result: Optional[str], args: Optional
     return _truncate_text("\n".join(lines), limit=7000)
 
 
-def _format_media_or_cron_result(tool_name: str, result: Optional[str]) -> Optional[str]:
+def _format_media_or_cron_result(tool_name: str, result: str | None) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, dict):
         return result if isinstance(result, str) and result.strip() else None
@@ -733,7 +733,7 @@ def _format_structured_value(
     indent: int = 0,
     max_depth: int = 3,
     max_items: int = 8,
-) -> List[str]:
+) -> list[str]:
     """Render nested JSON-ish values as compact Markdown bullets, not inline blobs."""
     prefix = "  " * indent
     bullet = f"{prefix}- "
@@ -818,10 +818,10 @@ def _format_structured_value(
 
 def _format_generic_structured_result(
     tool_name: str,
-    result: Optional[str],
+    result: str | None,
     *,
     fallback_to_text: bool = True,
-) -> Optional[str]:
+) -> str | None:
     data = _json_loads_maybe(result)
     if not isinstance(data, (dict, list)):
         return result if fallback_to_text and isinstance(result, str) and result.strip() else None
@@ -870,9 +870,9 @@ def _format_generic_structured_result(
 
 def _build_polished_completion_content(
     tool_name: str,
-    result: Optional[str],
-    function_args: Optional[Dict[str, Any]],
-) -> Optional[List[Any]]:
+    result: str | None,
+    function_args: dict[str, Any] | None,
+) -> list[Any] | None:
     formatter = {
         "todo": lambda: _format_todo_result(result),
         "read_file": lambda: _format_read_file_result(result, function_args),
@@ -897,7 +897,8 @@ def _build_polished_completion_content(
         "cronjob": lambda: _format_media_or_cron_result(tool_name, result),
     }.get(tool_name)
     if formatter is None and tool_name in _POLISHED_TOOLS:
-        formatter = lambda: _format_generic_structured_result(tool_name, result)
+        def formatter():
+            return _format_generic_structured_result(tool_name, result)
     if formatter is None:
         text = _format_generic_structured_result(tool_name, result, fallback_to_text=False)
     else:
@@ -914,14 +915,14 @@ def _strip_diff_prefix(path: str) -> str:
     return raw
 
 
-def _parse_unified_diff_content(diff_text: str) -> List[Any]:
+def _parse_unified_diff_content(diff_text: str) -> list[Any]:
     """Convert unified diff text into ACP diff content blocks."""
     if not diff_text:
         return []
 
-    content: List[Any] = []
-    current_old_path: Optional[str] = None
-    current_new_path: Optional[str] = None
+    content: list[Any] = []
+    current_old_path: str | None = None
+    current_new_path: str | None = None
     old_lines: list[str] = []
     new_lines: list[str] = []
 
@@ -975,11 +976,11 @@ def _parse_unified_diff_content(diff_text: str) -> List[Any]:
 
 def _build_tool_complete_content(
     tool_name: str,
-    result: Optional[str],
+    result: str | None,
     *,
-    function_args: Optional[Dict[str, Any]] = None,
+    function_args: dict[str, Any] | None = None,
     snapshot: Any = None,
-) -> List[Any]:
+) -> list[Any]:
     """Build structured ACP completion content, falling back to plain text."""
     display_result = result or ""
     if len(display_result) > 5000:
@@ -1017,7 +1018,7 @@ def _build_tool_complete_content(
 def build_tool_start(
     tool_call_id: str,
     tool_name: str,
-    arguments: Dict[str, Any],
+    arguments: dict[str, Any],
     *,
     edit_diff: Any = None,
 ) -> ToolCallStart:
@@ -1242,15 +1243,15 @@ def build_tool_start(
     )
 
 
-def _is_structured_json_result(result: Optional[str]) -> bool:
+def _is_structured_json_result(result: str | None) -> bool:
     return isinstance(_json_loads_maybe(result), (dict, list))
 
 
 def build_tool_complete(
     tool_call_id: str,
     tool_name: str,
-    result: Optional[str] = None,
-    function_args: Optional[Dict[str, Any]] = None,
+    result: str | None = None,
+    function_args: dict[str, Any] | None = None,
     snapshot: Any = None,
 ) -> ToolCallProgress:
     """Create a ToolCallUpdate (progress) event for a completed tool call."""
@@ -1280,10 +1281,10 @@ def build_tool_complete(
 
 
 def extract_locations(
-    arguments: Dict[str, Any],
-) -> List[ToolCallLocation]:
+    arguments: dict[str, Any],
+) -> list[ToolCallLocation]:
     """Extract file-system locations from tool arguments."""
-    locations: List[ToolCallLocation] = []
+    locations: list[ToolCallLocation] = []
     path = arguments.get("path")
     if path:
         line = arguments.get("offset") or arguments.get("line")

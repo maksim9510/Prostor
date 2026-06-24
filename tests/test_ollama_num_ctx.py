@@ -5,11 +5,9 @@ Covers:
   run_agent.py — _ollama_num_ctx detection + extra_body injection
 """
 
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 from agent.model_metadata import query_ollama_num_ctx
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # Level 1: query_ollama_num_ctx — Ollama API interaction

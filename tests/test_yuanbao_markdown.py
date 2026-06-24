@@ -9,8 +9,8 @@ Or with pytest if available:
     python3 -m pytest tests/test_yuanbao_markdown.py -v
 """
 
-import sys
 import os
+import sys
 import unittest
 
 # Ensure project root is on the path
@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from gateway.platforms.yuanbao import MarkdownProcessor
 
-
 # ============ has_unclosed_fence ============
+
 
 class TestHasUnclosedFence(unittest.TestCase):
     def test_unclosed_fence(self):
@@ -304,14 +304,14 @@ def test_table_not_broken():
 
 
 def test_has_unclosed_fence():
-    assert MarkdownProcessor.has_unclosed_fence("```python\ncode") == True
-    assert MarkdownProcessor.has_unclosed_fence("```python\ncode\n```") == False
-    assert MarkdownProcessor.has_unclosed_fence("no fence") == False
+    assert MarkdownProcessor.has_unclosed_fence("```python\ncode")
+    assert not MarkdownProcessor.has_unclosed_fence("```python\ncode\n```")
+    assert not MarkdownProcessor.has_unclosed_fence("no fence")
 
 
 def test_ends_with_table_row():
-    assert MarkdownProcessor.ends_with_table_row("| a | b |") == True
-    assert MarkdownProcessor.ends_with_table_row("normal text") == False
+    assert MarkdownProcessor.ends_with_table_row("| a | b |")
+    assert not MarkdownProcessor.ends_with_table_row("normal text")
 
 
 def test_empty_text():

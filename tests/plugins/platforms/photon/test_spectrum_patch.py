@@ -5,7 +5,6 @@ import subprocess
 import textwrap
 from pathlib import Path
 
-
 _PATCHER = Path("plugins/platforms/photon/sidecar/patch-spectrum-mixed-attachments.mjs")
 
 

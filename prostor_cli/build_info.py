@@ -26,14 +26,13 @@ Behaviour:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 # Path is resolved relative to this module so it works regardless of cwd —
 # matches the pattern used by ``banner._resolve_repo_dir``.
 _BUILD_SHA_FILE = Path(__file__).parent.parent / ".prostor_build_sha"
 
 
-def get_build_sha(short: int = 8) -> Optional[str]:
+def get_build_sha(short: int = 8) -> str | None:
     """Return the baked-in build SHA, truncated to ``short`` chars, or None.
 
     Reads ``<project_root>/.prostor_build_sha`` if present.  The file is

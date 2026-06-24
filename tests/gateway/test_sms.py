@@ -14,8 +14,8 @@ import pytest
 
 from gateway.config import Platform, PlatformConfig
 
-
 # ── Config loading ──────────────────────────────────────────────────
+
 
 class TestSmsConfigLoading:
     """Verify _apply_env_overrides wires SMS correctly."""
@@ -54,6 +54,7 @@ class TestSmsConfigLoading:
             assert hc.platform == Platform.SMS
 
 # ── Format / truncate ───────────────────────────────────────────────
+
 
 class TestSmsFormatAndTruncate:
     """Test SmsAdapter.format_message strips markdown."""

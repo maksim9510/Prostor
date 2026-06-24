@@ -110,7 +110,7 @@ def test_simplex_allowlist_accepts_display_name(monkeypatch):
     monkeypatch.setenv("SIMPLEX_ALLOWED_USERS", "hujikuji")
 
     # Register the simplex plugin so the env-var lookup resolves.
-    from gateway.platform_registry import platform_registry, PlatformEntry
+    from gateway.platform_registry import PlatformEntry, platform_registry
     platform_registry.register(PlatformEntry(
         name="simplex",
         label="SimpleX Chat",
@@ -145,7 +145,7 @@ def test_simplex_allowlist_accepts_numeric_contact_id(monkeypatch):
     monkeypatch.delenv("SIMPLEX_ALLOWED_USERS", raising=False)
     monkeypatch.setenv("SIMPLEX_ALLOWED_USERS", "4")
 
-    from gateway.platform_registry import platform_registry, PlatformEntry
+    from gateway.platform_registry import PlatformEntry, platform_registry
     platform_registry.register(PlatformEntry(
         name="simplex",
         label="SimpleX Chat",
@@ -177,7 +177,7 @@ def test_simplex_allowlist_denies_unlisted(monkeypatch):
     monkeypatch.delenv("SIMPLEX_ALLOWED_USERS", raising=False)
     monkeypatch.setenv("SIMPLEX_ALLOWED_USERS", "hujikuji")
 
-    from gateway.platform_registry import platform_registry, PlatformEntry
+    from gateway.platform_registry import PlatformEntry, platform_registry
     platform_registry.register(PlatformEntry(
         name="simplex",
         label="SimpleX Chat",

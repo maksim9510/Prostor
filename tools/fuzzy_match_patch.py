@@ -16,9 +16,6 @@ Activation: tools/hashline.py imports this module at the bottom.
 Deactivation: remove tools/hashline.py — fuzzy_match works as before.
 """
 
-import os
-import sys
-from typing import Optional, Tuple
 
 # No threshold — hashline is faster than fuzzy_match on ALL file sizes
 # after the exact-match fast path optimization (str.find before index build).
@@ -46,10 +43,10 @@ def apply_patch():
         old_string: str,
         new_string: str,
         replace_all: bool = False,
-        file_path: Optional[str] = None,
-        file_mtime: Optional[float] = None,
+        file_path: str | None = None,
+        file_mtime: float | None = None,
         **kwargs,
-    ) -> Tuple[str, int, Optional[str], Optional[str]]:
+    ) -> tuple[str, int, str | None, str | None]:
         """Patched find_and_replace: hashline always → fuzzy fallback."""
         # Hashline for ALL file sizes (no threshold)
         try:

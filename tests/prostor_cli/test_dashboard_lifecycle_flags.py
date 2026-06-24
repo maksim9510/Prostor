@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -166,12 +166,13 @@ class TestArgparseWiring:
     ``prostor dashboard --stop`` / ``--status`` actually parse."""
 
     def test_flags_are_registered(self):
-        from prostor_cli.main import main as _cli_main  # noqa: F401
         # Rebuild the argparse tree by re-running the section of main()
         # that builds it.  Cheapest way: introspect via --help on the
         # already-built parser would require refactoring; instead we
         # parse the flags directly via a minimal replay.
         import importlib
+
+        from prostor_cli.main import main as _cli_main  # noqa: F401
         mod = importlib.import_module("prostor_cli.main")
         # Find the dashboard_parser instance by running build logic would
         # be too invasive.  Instead parse args as if via the CLI by

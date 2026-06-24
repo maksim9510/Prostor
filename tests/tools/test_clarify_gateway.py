@@ -203,6 +203,7 @@ class TestGatewayTextIntercept:
         pending2 = cm.get_pending_for_session("sk")
         assert pending2 is not None
         assert pending2.clarify_id == "first"
+
     def test_text_fallback_enables_awaiting_text_for_multi_choice(self):
         """When base send_clarify renders choices as text, mark_awaiting_text
         is called so the gateway text-intercept can capture the reply."""

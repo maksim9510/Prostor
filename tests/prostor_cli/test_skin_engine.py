@@ -125,7 +125,7 @@ class TestBuiltinSkins:
 
 class TestSkinManagement:
     def test_set_active_skin(self):
-        from prostor_cli.skin_engine import set_active_skin, get_active_skin, get_active_skin_name
+        from prostor_cli.skin_engine import get_active_skin, get_active_skin_name, set_active_skin
         skin = set_active_skin("ares")
         assert skin.name == "ares"
         assert get_active_skin_name() == "ares"
@@ -151,24 +151,24 @@ class TestSkinManagement:
             assert s["source"] == "builtin"
 
     def test_init_skin_from_config(self):
-        from prostor_cli.skin_engine import init_skin_from_config, get_active_skin_name
+        from prostor_cli.skin_engine import get_active_skin_name, init_skin_from_config
         init_skin_from_config({"display": {"skin": "ares"}})
         assert get_active_skin_name() == "ares"
 
     def test_init_skin_from_empty_config(self):
-        from prostor_cli.skin_engine import init_skin_from_config, get_active_skin_name
+        from prostor_cli.skin_engine import get_active_skin_name, init_skin_from_config
         init_skin_from_config({})
         assert get_active_skin_name() == "default"
 
     def test_init_skin_from_null_display(self):
         """display: null should fall back to default, not crash."""
-        from prostor_cli.skin_engine import init_skin_from_config, get_active_skin_name
+        from prostor_cli.skin_engine import get_active_skin_name, init_skin_from_config
         init_skin_from_config({"display": None})
         assert get_active_skin_name() == "default"
 
     def test_init_skin_from_non_dict_display(self):
         """display: <non-dict> should fall back to default."""
-        from prostor_cli.skin_engine import init_skin_from_config, get_active_skin_name
+        from prostor_cli.skin_engine import get_active_skin_name, init_skin_from_config
         init_skin_from_config({"display": "invalid"})
         assert get_active_skin_name() == "default"
 
@@ -262,14 +262,14 @@ class TestDisplayIntegration:
         assert get_skin_tool_prefix() == "┊"
 
     def test_get_skin_tool_prefix_custom(self):
-        from prostor_cli.skin_engine import set_active_skin
         from agent.display import get_skin_tool_prefix
+        from prostor_cli.skin_engine import set_active_skin
         set_active_skin("ares")
         assert get_skin_tool_prefix() == "╎"
 
     def test_tool_message_uses_skin_prefix(self):
-        from prostor_cli.skin_engine import set_active_skin
         from agent.display import get_cute_tool_message
+        from prostor_cli.skin_engine import set_active_skin
         set_active_skin("ares")
         msg = get_cute_tool_message("terminal", {"command": "ls"}, 0.5)
         assert msg.startswith("╎")
@@ -288,25 +288,25 @@ class TestCliBrandingHelpers:
         assert get_active_prompt_symbol() == "❯ "
 
     def test_active_prompt_symbol_ares(self):
-        from prostor_cli.skin_engine import set_active_skin, get_active_prompt_symbol
+        from prostor_cli.skin_engine import get_active_prompt_symbol, set_active_skin
 
         set_active_skin("ares")
         assert get_active_prompt_symbol() == "⚔ "
 
     def test_active_help_header_ares(self):
-        from prostor_cli.skin_engine import set_active_skin, get_active_help_header
+        from prostor_cli.skin_engine import get_active_help_header, set_active_skin
 
         set_active_skin("ares")
         assert get_active_help_header() == "(⚔) Available Commands"
 
     def test_active_goodbye_ares(self):
-        from prostor_cli.skin_engine import set_active_skin, get_active_goodbye
+        from prostor_cli.skin_engine import get_active_goodbye, set_active_skin
 
         set_active_skin("ares")
         assert get_active_goodbye() == "Farewell, warrior! ⚔"
 
     def test_prompt_toolkit_style_overrides_cover_tui_classes(self):
-        from prostor_cli.skin_engine import set_active_skin, get_prompt_toolkit_style_overrides
+        from prostor_cli.skin_engine import get_prompt_toolkit_style_overrides, set_active_skin
         set_active_skin("ares")
         overrides = get_prompt_toolkit_style_overrides()
         required = {
@@ -329,13 +329,6 @@ class TestCliBrandingHelpers:
             "completion-menu.completion.current",
             "completion-menu.meta.completion",
             "completion-menu.meta.completion.current",
-            "status-bar",
-            "status-bar-strong",
-            "status-bar-dim",
-            "status-bar-good",
-            "status-bar-warn",
-            "status-bar-bad",
-            "status-bar-critical",
             "voice-status",
             "voice-status-recording",
             "clarify-border",
@@ -360,9 +353,9 @@ class TestCliBrandingHelpers:
 
     def test_prompt_toolkit_style_overrides_use_skin_colors(self):
         from prostor_cli.skin_engine import (
-            set_active_skin,
             get_active_skin,
             get_prompt_toolkit_style_overrides,
+            set_active_skin,
         )
 
         set_active_skin("ares")

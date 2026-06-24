@@ -5,11 +5,10 @@ import pytest
 
 from prostor_cli.auth import (
     PROVIDER_REGISTRY,
-    resolve_provider,
     get_api_key_provider_status,
     resolve_api_key_provider_credentials,
+    resolve_provider,
 )
-
 
 # =============================================================================
 # Provider Registry

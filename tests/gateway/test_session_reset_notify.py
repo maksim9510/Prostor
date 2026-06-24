@@ -9,7 +9,6 @@ Verifies that:
 
 from datetime import datetime, timedelta
 
-
 from gateway.config import (
     GatewayConfig,
     Platform,
@@ -17,10 +16,10 @@ from gateway.config import (
 )
 from gateway.session import SessionEntry, SessionSource, SessionStore
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_source(platform=Platform.TELEGRAM, chat_id="123", user_id="u1"):
     return SessionSource(

@@ -8,7 +8,7 @@ on quality/filteredness/speed, returns the best unfiltered answer.
 
 Usage in execute_code:
     exec(open(os.path.join(os.environ.get("PROSTOR_HOME", os.path.expanduser("~/.prostor")), "skills/red-teaming/godmode/scripts/godmode_race.py")).read())
-    
+
     result = race_models(
         query="Your query here",
         tier="standard",
@@ -184,7 +184,7 @@ def count_hedges(content):
 
 def score_response(content, query):
     """Score a response. Higher is better.
-    
+
     Returns dict with: score, is_refusal, hedge_count
     """
     lower_content = content.lower()
@@ -301,7 +301,7 @@ def race_models(query, tier="standard", api_key=None, system_prompt=None,
                 max_workers=10, timeout=60, append_directive=True,
                 jailbreak_system=None, prefill=None):
     """Race multiple models against a query, return the best unfiltered response.
-    
+
     Args:
         query: The user's query
         tier: 'fast' (10), 'standard' (24), 'smart' (38), 'power' (49), 'ultra' (55)
@@ -312,7 +312,7 @@ def race_models(query, tier="standard", api_key=None, system_prompt=None,
         append_directive: Whether to append the anti-hedge depth directive
         jailbreak_system: Optional jailbreak system prompt (from GODMODE CLASSIC)
         prefill: Optional prefill messages list [{"role": ..., "content": ...}, ...]
-    
+
     Returns:
         Dict with: model, content, score, latency, is_refusal, hedge_count,
                     all_results (list of all scored results), refusal_count
@@ -399,7 +399,7 @@ def race_models(query, tier="standard", api_key=None, system_prompt=None,
 
 def race_godmode_classic(query, api_key=None, timeout=60):
     """Race the 5 GODMODE CLASSIC combos — each with its own model + jailbreak template.
-    
+
     Each combo uses a different model paired with its best-performing jailbreak prompt.
     Returns the best result across all combos.
     """

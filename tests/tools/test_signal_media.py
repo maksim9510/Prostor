@@ -3,7 +3,7 @@
 import asyncio
 import sys
 from types import ModuleType
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -159,9 +159,9 @@ class TestSendSignalMediaWarningMessages:
         import httpx
         if not hasattr(httpx, 'Proxy') or not hasattr(httpx, 'URL'):
             pytest.skip("httpx type annotations incompatible with telegram library")
-        from tools.send_message_tool import _send_to_platform
-        from prostor_cli.plugins import discover_plugins
         from gateway.platform_registry import platform_registry
+        from prostor_cli.plugins import discover_plugins
+        from tools.send_message_tool import _send_to_platform
 
         config = MagicMock()
         config.platforms = {Platform.SLACK: MagicMock(enabled=True)}

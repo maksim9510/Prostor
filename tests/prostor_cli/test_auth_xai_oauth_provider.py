@@ -10,13 +10,13 @@ from pathlib import Path
 import pytest
 
 from prostor_cli.auth import (
-    AuthError,
     DEFAULT_XAI_OAUTH_BASE_URL,
     PROVIDER_REGISTRY,
     XAI_OAUTH_CLIENT_ID,
     XAI_OAUTH_REDIRECT_HOST,
     XAI_OAUTH_REDIRECT_PATH,
     XAI_OAUTH_SCOPE,
+    AuthError,
     _read_xai_oauth_tokens,
     _save_xai_oauth_tokens,
     _xai_access_token_is_expiring,
@@ -31,7 +31,6 @@ from prostor_cli.auth import (
     resolve_provider,
     resolve_xai_oauth_runtime_credentials,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -214,7 +213,7 @@ def test_xai_validate_loopback_redirect_uri_rejects_missing_port():
 
 
 def _parse_authorize_url(url: str) -> dict:
-    from urllib.parse import urlparse, parse_qs
+    from urllib.parse import parse_qs, urlparse
 
     parsed = urlparse(url)
     return {k: v[0] for k, v in parse_qs(parsed.query).items()}
@@ -335,8 +334,8 @@ def test_xai_callback_server_latches_first_terminal_callback_result():
 
 def _get_callback(redirect_uri: str, query: str = "") -> tuple[int, str]:
     """GET the loopback callback URL with an optional query string."""
-    from urllib.request import Request, urlopen
     from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
 
     target = redirect_uri + (("?" + query) if query else "")
     req = Request(target, method="GET")
@@ -1241,9 +1240,10 @@ def test_auth_remove_xai_oauth_clears_singleton_and_sticks(tmp_path, monkeypatch
     nothing to clean up" branch. That branch is correct for ``manual``
     entries (pool-only) but wrong for singleton-seeded loopback_pkce
     entries (auth.json singleton survives the in-memory removal)."""
+    from types import SimpleNamespace
+
     from agent.credential_pool import load_pool
     from prostor_cli.auth_commands import auth_remove_command
-    from types import SimpleNamespace
 
     prostor_home = tmp_path / "prostor"
     fresh = _jwt_with_exp(int(time.time()) + 2 * 60 * 60)
@@ -1350,8 +1350,9 @@ def test_runtime_provider_uses_pool_entry_for_xai_oauth(tmp_path, monkeypatch):
 def test_runtime_provider_default_base_url_when_pool_entry_missing_url(tmp_path, monkeypatch):
     """Edge case: a pool entry that somehow has an empty base_url should still
     surface the default xAI inference base URL instead of an empty string."""
-    from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
+
+    from agent.credential_pool import AUTH_TYPE_OAUTH, PooledCredential, load_pool
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1395,9 +1396,10 @@ def test_pool_entry_needs_refresh_when_jwt_within_skew(tmp_path, monkeypatch):
     is within the XAI_ACCESS_TOKEN_REFRESH_SKEW_SECONDS window — otherwise a
     near-expired token will hit the API and 401 unnecessarily.  Mirrors the
     Codex skew-window behavior."""
-    from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
-    from prostor_cli.auth import XAI_ACCESS_TOKEN_REFRESH_SKEW_SECONDS
     import uuid
+
+    from agent.credential_pool import AUTH_TYPE_OAUTH, PooledCredential, load_pool
+    from prostor_cli.auth import XAI_ACCESS_TOKEN_REFRESH_SKEW_SECONDS
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1425,8 +1427,9 @@ def test_pool_entry_needs_refresh_when_jwt_within_skew(tmp_path, monkeypatch):
 
 def test_pool_entry_no_refresh_for_fresh_jwt(tmp_path, monkeypatch):
     """A fresh JWT beyond the skew window must NOT trigger proactive refresh."""
-    from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
+
+    from agent.credential_pool import AUTH_TYPE_OAUTH, PooledCredential, load_pool
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1454,8 +1457,9 @@ def test_pool_select_proactively_refreshes_expiring_token(tmp_path, monkeypatch)
     """End-to-end: pool.select() with refresh=True on an expiring entry must
     return the refreshed token.  This is the proactive path that runs BEFORE
     the API call — separate from the 401-reactive path."""
-    from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
+
+    from agent.credential_pool import AUTH_TYPE_OAUTH, PooledCredential, load_pool
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1508,8 +1512,9 @@ def test_pool_try_refresh_current_handles_xai_oauth(tmp_path, monkeypatch):
     must work for xai-oauth alongside openai-codex — otherwise mid-call
     expirations get propagated as hard failures instead of being retried with
     fresh tokens."""
-    from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
+
+    from agent.credential_pool import AUTH_TYPE_OAUTH, PooledCredential, load_pool
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1562,9 +1567,10 @@ def test_pool_refresh_marks_entry_exhausted_on_failure(tmp_path, monkeypatch):
     rather than silently retaining stale tokens.  This is critical for the
     failover path — _recover_with_credential_pool rotates to the next entry
     only if try_refresh_current returns None."""
-    from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
-    from prostor_cli.auth import AuthError
     import uuid
+
+    from agent.credential_pool import AUTH_TYPE_OAUTH, PooledCredential, load_pool
+    from prostor_cli.auth import AuthError
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1746,8 +1752,9 @@ def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, mon
     refreshes), the next ``_available_entries`` pass must adopt the fresh
     auth.json tokens instead of leaving the entry frozen until the
     cooldown elapses.  Mirrors the codex/nous self-heal pattern."""
-    from agent.credential_pool import load_pool, STATUS_EXHAUSTED
     from dataclasses import replace
+
+    from agent.credential_pool import STATUS_EXHAUSTED, load_pool
 
     prostor_home = tmp_path / "prostor"
     stale_at = _jwt_with_exp(int(time.time()) + 2 * 60 * 60)
@@ -1800,8 +1807,9 @@ def test_pool_manual_xai_entry_not_synced_from_singleton(tmp_path, monkeypatch):
     ``prostor auth add xai-oauth``) own their own refresh-token lifecycle
     and must not be silently overwritten when the user logs in via
     ``prostor model``."""
-    from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
+
+    from agent.credential_pool import AUTH_TYPE_OAUTH, PooledCredential, load_pool
 
     prostor_home = tmp_path / "prostor"
     singleton_at = _jwt_with_exp(int(time.time()) + 2 * 60 * 60)
@@ -1837,8 +1845,9 @@ def test_pool_manual_entry_does_not_sync_back_to_singleton(tmp_path, monkeypatch
     independent credentials and must NOT write to the singleton.  Sync-back
     is restricted to entries seeded from the singleton.  Otherwise adding a
     second pool credential would silently overwrite the user's main login."""
-    from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
+
+    from agent.credential_pool import AUTH_TYPE_OAUTH, PooledCredential, load_pool
 
     prostor_home = tmp_path / "prostor"
     # Singleton has its own tokens (separate login).

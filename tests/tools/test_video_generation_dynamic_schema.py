@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 import yaml
@@ -38,13 +38,13 @@ class _BothModalitiesProvider(VideoGenProvider):
     def is_available(self) -> bool:
         return True
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         return [{"id": "family-a", "modalities": ["text", "image"]}]
 
-    def default_model(self) -> Optional[str]:
+    def default_model(self) -> str | None:
         return "family-a"
 
-    def capabilities(self) -> Dict[str, Any]:
+    def capabilities(self) -> dict[str, Any]:
         return {
             "modalities": ["text", "image"],
             "aspect_ratios": ["16:9", "9:16"],
@@ -70,13 +70,13 @@ class _ImageOnlyProvider(VideoGenProvider):
     def is_available(self) -> bool:
         return True
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         return [{"id": "img-only-v1", "modalities": ["image"]}]
 
-    def default_model(self) -> Optional[str]:
+    def default_model(self) -> str | None:
         return "img-only-v1"
 
-    def capabilities(self) -> Dict[str, Any]:
+    def capabilities(self) -> dict[str, Any]:
         return {"modalities": ["image"], "min_duration": 1, "max_duration": 10}
 
     def generate(self, prompt, **kwargs):
@@ -94,7 +94,7 @@ class TestDynamicSchemaBuilder:
     def test_does_not_mention_edit_or_extend(self, cfg_home):
         """The simplified surface only does text→video and image→video.
         The description must not mention edit/extend anywhere."""
-        from tools.video_generation_tool import _build_dynamic_video_schema, _GENERIC_DESCRIPTION
+        from tools.video_generation_tool import _GENERIC_DESCRIPTION, _build_dynamic_video_schema
 
         desc = _build_dynamic_video_schema()["description"]
         # Block words that would suggest functionality we removed

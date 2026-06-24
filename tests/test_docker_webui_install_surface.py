@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import runpy
+from pathlib import Path
 
-from setuptools import Distribution
 import setuptools
-
+from setuptools import Distribution
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

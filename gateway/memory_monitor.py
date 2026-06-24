@@ -36,20 +36,19 @@ import os
 import sys
 import threading
 import time
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 _BYTES_TO_MB = 1024 * 1024
 
-_monitor_thread: Optional[threading.Thread] = None
-_stop_event: Optional[threading.Event] = None
-_start_time: Optional[float] = None
+_monitor_thread: threading.Thread | None = None
+_stop_event: threading.Event | None = None
+_start_time: float | None = None
 _interval_seconds: float = 300.0  # 5 minutes
 _lock = threading.Lock()
 
 
-def _get_rss_mb() -> Optional[int]:
+def _get_rss_mb() -> int | None:
     """Return current process resident set size in MB, or None if unavailable.
 
     Tries ``resource.getrusage`` first (Linux/macOS, no extra deps), then

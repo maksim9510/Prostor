@@ -7,7 +7,6 @@ host systemd/launchd/windows code path.
 """
 from __future__ import annotations
 
-
 import pytest
 
 
@@ -475,6 +474,7 @@ def test_block_until_terminated_installs_sigterm_handler_and_blocks(
     when PATH lacked a directory containing `sleep`.
     """
     import signal as _signal
+
     from prostor_cli import gateway as gw
 
     registered: dict[int, object] = {}

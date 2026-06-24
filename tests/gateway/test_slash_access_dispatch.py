@@ -484,8 +484,8 @@ async def test_dm_admin_blocked_in_group_with_separate_admin_list():
 async def test_gating_isolated_per_platform():
     """When Discord is gated and Telegram isn't, the same user_id on
     Telegram must be unrestricted."""
-    from gateway.run import GatewayRunner
     from gateway.config import GatewayConfig, Platform, PlatformConfig
+    from gateway.run import GatewayRunner
 
     runner = object.__new__(GatewayRunner)
     runner.config = GatewayConfig(

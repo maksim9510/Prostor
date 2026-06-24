@@ -1,17 +1,18 @@
 """Tests for tools/tool_result_storage.py -- 3-layer tool result persistence."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tools.budget_config import (
-    DEFAULT_RESULT_SIZE_CHARS,
     DEFAULT_PREVIEW_SIZE_CHARS,
+    DEFAULT_RESULT_SIZE_CHARS,
     BudgetConfig,
 )
 from tools.tool_result_storage import (
     HEREDOC_MARKER,
-    PERSISTED_OUTPUT_TAG,
     PERSISTED_OUTPUT_CLOSING_TAG,
+    PERSISTED_OUTPUT_TAG,
     STORAGE_DIR,
     _build_persisted_message,
     _heredoc_marker,
@@ -22,8 +23,8 @@ from tools.tool_result_storage import (
     maybe_persist_tool_result,
 )
 
-
 # ── generate_preview ──────────────────────────────────────────────────
+
 
 class TestGeneratePreview:
     def test_short_content_unchanged(self):

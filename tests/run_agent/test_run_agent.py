@@ -18,13 +18,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from agent.codex_responses_adapter import _normalize_codex_response
 
 import run_agent
-from run_agent import AIAgent
+from agent.codex_responses_adapter import _normalize_codex_response
 from agent.error_classifier import FailoverReason
 from agent.prompt_builder import DEFAULT_AGENT_IDENTITY
-
+from run_agent import AIAgent
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -3120,7 +3119,7 @@ class TestMcpParallelToolBatch:
     def test_mcp_tools_parallel_when_server_opted_in(self):
         """MCP tools from a parallel-safe server can run concurrently."""
         from run_agent import _should_parallelize_tool_batch
-        from tools.mcp_tool import _mcp_tool_server_names, _parallel_safe_servers, _lock
+        from tools.mcp_tool import _lock, _mcp_tool_server_names, _parallel_safe_servers
         with _lock:
             _parallel_safe_servers.add("github")
             _mcp_tool_server_names["mcp_github_list_repos"] = "github"
@@ -3138,7 +3137,7 @@ class TestMcpParallelToolBatch:
     def test_mixed_mcp_and_builtin_parallel(self):
         """MCP parallel tools mixed with built-in parallel-safe tools."""
         from run_agent import _should_parallelize_tool_batch
-        from tools.mcp_tool import _mcp_tool_server_names, _parallel_safe_servers, _lock
+        from tools.mcp_tool import _lock, _mcp_tool_server_names, _parallel_safe_servers
         with _lock:
             _parallel_safe_servers.add("docs")
             _mcp_tool_server_names["mcp_docs_search"] = "docs"
@@ -3154,7 +3153,7 @@ class TestMcpParallelToolBatch:
     def test_mixed_parallel_and_serial_mcp_servers(self):
         """One parallel MCP server + one non-parallel MCP server = sequential."""
         from run_agent import _should_parallelize_tool_batch
-        from tools.mcp_tool import _mcp_tool_server_names, _parallel_safe_servers, _lock
+        from tools.mcp_tool import _lock, _mcp_tool_server_names, _parallel_safe_servers
         with _lock:
             _parallel_safe_servers.add("docs")
             # "github" is NOT in _parallel_safe_servers
@@ -5332,6 +5331,7 @@ class TestSystemPromptStability:
         # Empty string is falsy, so should fall through to fresh build
         assert "Prostor Agent" in agent._cached_system_prompt
 
+
 class TestBudgetPressure:
     """Budget exhaustion grace call system."""
 
@@ -5346,8 +5346,9 @@ class TestSafeWriter:
 
     def test_write_delegates_normally(self):
         """When stdout is healthy, _SafeWriter is transparent."""
-        from run_agent import _SafeWriter
         from io import StringIO
+
+        from run_agent import _SafeWriter
         inner = StringIO()
         writer = _SafeWriter(inner)
         writer.write("hello")
@@ -5355,8 +5356,9 @@ class TestSafeWriter:
 
     def test_write_catches_oserror(self):
         """OSError on write is silently caught, returns len(data)."""
-        from run_agent import _SafeWriter
         from unittest.mock import MagicMock
+
+        from run_agent import _SafeWriter
         inner = MagicMock()
         inner.write.side_effect = OSError(5, "Input/output error")
         writer = _SafeWriter(inner)
@@ -5365,8 +5367,9 @@ class TestSafeWriter:
 
     def test_flush_catches_oserror(self):
         """OSError on flush is silently caught."""
-        from run_agent import _SafeWriter
         from unittest.mock import MagicMock
+
+        from run_agent import _SafeWriter
         inner = MagicMock()
         inner.flush.side_effect = OSError(5, "Input/output error")
         writer = _SafeWriter(inner)
@@ -5375,8 +5378,9 @@ class TestSafeWriter:
     def test_print_survives_broken_stdout(self, monkeypatch):
         """print() through _SafeWriter doesn't crash on broken pipe."""
         import sys
-        from run_agent import _SafeWriter
         from unittest.mock import MagicMock
+
+        from run_agent import _SafeWriter
         broken = MagicMock()
         broken.write.side_effect = OSError(5, "Input/output error")
         original = sys.stdout
@@ -5389,6 +5393,7 @@ class TestSafeWriter:
     def test_installed_in_run_conversation(self, agent):
         """run_conversation installs _SafeWriter on stdio."""
         import sys
+
         from run_agent import _SafeWriter
         resp = _mock_response(content="Done", finish_reason="stop")
         agent.client.chat.completions.create.return_value = resp
@@ -5412,8 +5417,9 @@ class TestSafeWriter:
 
     def test_double_wrap_prevented(self):
         """Wrapping an already-wrapped stream doesn't add layers."""
-        from run_agent import _SafeWriter
         from io import StringIO
+
+        from run_agent import _SafeWriter
         inner = StringIO()
         wrapped = _SafeWriter(inner)
         # isinstance check should prevent double-wrapping
@@ -5446,7 +5452,7 @@ class TestBuildApiKwargsAnthropicMaxTokens:
             if not kwargs:
                 kwargs = dict(zip(
                     ["model", "messages", "tools", "max_tokens", "reasoning_config"],
-                    mock_build.call_args[0],
+                    mock_build.call_args[0], strict=False,
                 ))
             assert kwargs.get("max_tokens") == 4096 or mock_build.call_args[1].get("max_tokens") == 4096
 
@@ -5488,7 +5494,7 @@ class TestAnthropicImageFallback:
 
         kwargs = mock_build.call_args.kwargs or dict(zip(
             ["model", "messages", "tools", "max_tokens", "reasoning_config"],
-            mock_build.call_args.args,
+            mock_build.call_args.args, strict=False,
         ))
         transformed = kwargs["messages"]
         assert isinstance(transformed[0]["content"], str)
@@ -6216,6 +6222,7 @@ class TestAnthropicInterruptHandler:
     def test_interruptible_has_anthropic_branch(self):
         """The interrupt handler must check api_mode == 'anthropic_messages'."""
         import inspect
+
         from agent.chat_completion_helpers import interruptible_api_call
         source = inspect.getsource(interruptible_api_call)
         assert "anthropic_messages" in source, \
@@ -6224,6 +6231,7 @@ class TestAnthropicInterruptHandler:
     def test_interruptible_rebuilds_anthropic_client(self):
         """After interrupting, the Anthropic client should be rebuilt."""
         import inspect
+
         from agent.chat_completion_helpers import interruptible_api_call
         source = inspect.getsource(interruptible_api_call)
         assert "build_anthropic_client" in source, \
@@ -6232,6 +6240,7 @@ class TestAnthropicInterruptHandler:
     def test_streaming_has_anthropic_branch(self):
         """_streaming_api_call must also handle Anthropic interrupt."""
         import inspect
+
         from agent.chat_completion_helpers import interruptible_streaming_api_call
         source = inspect.getsource(interruptible_streaming_api_call)
         assert "anthropic_messages" in source, \
@@ -6260,7 +6269,9 @@ class TestStreamCallbackNonStreamingProvider:
         agent._interruptible_api_call = MagicMock(return_value=mock_response)
 
         received = []
-        cb = lambda delta: received.append(delta)
+
+        def cb(delta):
+            return received.append(delta)
         agent._stream_callback = cb
 
         _cb = getattr(agent, "_stream_callback", None)
@@ -6304,7 +6315,9 @@ class TestStreamCallbackNonStreamingProvider:
         )
 
         received = []
-        cb = lambda d: received.append(d)
+
+        def cb(d):
+            return received.append(d)
         agent._stream_callback = cb
         _cb = agent._stream_callback
 
@@ -6641,6 +6654,7 @@ class TestMemoryNudgeCounterPersistence:
     def test_counters_not_reset_in_preamble(self):
         """The turn preamble must not zero the nudge counters."""
         import inspect
+
         from agent.turn_context import build_turn_context as _btc
         src = inspect.getsource(_btc)
         # The preamble (now in build_turn_context) resets many fields (retry
@@ -6660,6 +6674,7 @@ class TestDeadRetryCode:
 
     def test_no_unreachable_max_retries_after_backoff(self):
         import inspect
+
         from agent.conversation_loop import run_conversation as _rc
         source = inspect.getsource(_rc)
         occurrences = source.count("if retry_count >= max_retries:")
@@ -6699,6 +6714,7 @@ class TestMemoryContextSanitization:
         a literal <memory-context> tag we don't silently delete their text.
         The streaming scrubber + plugin-side scrub cover real leak paths."""
         import inspect
+
         from agent.conversation_loop import run_conversation as _rc
         src = inspect.getsource(_rc)
         assert "sanitize_context(user_message)" not in src
@@ -6736,6 +6752,7 @@ class TestMemoryProviderTurnStart:
     def test_on_turn_start_called_before_prefetch(self):
         """Source-level check: on_turn_start appears before prefetch_all in the prologue."""
         import inspect
+
         from agent.turn_context import build_turn_context as _btc
         src = inspect.getsource(_btc)
         # Find the actual method calls, not comments
@@ -6749,6 +6766,7 @@ class TestMemoryProviderTurnStart:
     def test_on_turn_start_uses_user_turn_count(self):
         """Source-level check: on_turn_start receives the user_turn_count."""
         import inspect
+
         from agent.turn_context import build_turn_context as _btc
         src = inspect.getsource(_btc)
         # The extracted body uses ``agent.X`` rather than ``self.X``;

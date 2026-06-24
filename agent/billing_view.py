@@ -18,7 +18,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
-def parse_money(value: Any) -> Optional[Decimal]:
+def parse_money(value: Any) -> Decimal | None:
     """Parse a server money value (decimal string) into :class:`Decimal`.
 
     Returns None for missing/invalid input. Never raises. Accepts str/int (and,
@@ -43,7 +43,7 @@ def parse_money(value: Any) -> Optional[Decimal]:
         return None
 
 
-def format_money(value: Optional[Decimal]) -> str:
+def format_money(value: Decimal | None) -> str:
     """Format a Decimal as ``$X`` / ``$X.YY`` for display.
 
     Whole dollars show no decimals; any fractional amount shows exactly 2dp:
@@ -76,16 +76,16 @@ class CardInfo:
 
 @dataclass(frozen=True)
 class MonthlyCap:
-    limit_usd: Optional[Decimal] = None
-    spent_this_month_usd: Optional[Decimal] = None
+    limit_usd: Decimal | None = None
+    spent_this_month_usd: Decimal | None = None
     is_default_ceiling: bool = False
 
 
 @dataclass(frozen=True)
 class AutoReload:
     enabled: bool = False
-    threshold_usd: Optional[Decimal] = None
-    reload_to_usd: Optional[Decimal] = None
+    threshold_usd: Decimal | None = None
+    reload_to_usd: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -97,21 +97,21 @@ class BillingState:
     """
 
     logged_in: bool
-    org_id: Optional[str] = None
-    org_slug: Optional[str] = None
-    org_name: Optional[str] = None
-    role: Optional[str] = None  # "OWNER" | "ADMIN" | "MEMBER"
-    balance_usd: Optional[Decimal] = None
+    org_id: str | None = None
+    org_slug: str | None = None
+    org_name: str | None = None
+    role: str | None = None  # "OWNER" | "ADMIN" | "MEMBER"
+    balance_usd: Decimal | None = None
     cli_billing_enabled: bool = False
     charge_presets: tuple[Decimal, ...] = ()
-    min_usd: Optional[Decimal] = None
-    max_usd: Optional[Decimal] = None
-    card: Optional[CardInfo] = None
-    monthly_cap: Optional[MonthlyCap] = None
-    auto_reload: Optional[AutoReload] = None
-    portal_url: Optional[str] = None
+    min_usd: Decimal | None = None
+    max_usd: Decimal | None = None
+    card: CardInfo | None = None
+    monthly_cap: MonthlyCap | None = None
+    auto_reload: AutoReload | None = None
+    portal_url: str | None = None
     # When the fetch failed (vs cleanly not-logged-in), the message for the surface.
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def is_admin(self) -> bool:
@@ -128,7 +128,7 @@ class BillingState:
         return self.is_admin and self.cli_billing_enabled
 
 
-def _parse_card(raw: Any) -> Optional[CardInfo]:
+def _parse_card(raw: Any) -> CardInfo | None:
     if not isinstance(raw, dict):
         return None
     brand = raw.get("brand")
@@ -138,7 +138,7 @@ def _parse_card(raw: Any) -> Optional[CardInfo]:
     return None
 
 
-def _parse_monthly_cap(raw: Any) -> Optional[MonthlyCap]:
+def _parse_monthly_cap(raw: Any) -> MonthlyCap | None:
     if not isinstance(raw, dict):
         return None
     return MonthlyCap(
@@ -148,7 +148,7 @@ def _parse_monthly_cap(raw: Any) -> Optional[MonthlyCap]:
     )
 
 
-def _parse_auto_reload(raw: Any) -> Optional[AutoReload]:
+def _parse_auto_reload(raw: Any) -> AutoReload | None:
     if not isinstance(raw, dict):
         return None
     return AutoReload(
@@ -159,7 +159,7 @@ def _parse_auto_reload(raw: Any) -> Optional[AutoReload]:
 
 
 def billing_state_from_payload(
-    payload: dict[str, Any], *, portal_url: Optional[str] = None
+    payload: dict[str, Any], *, portal_url: str | None = None
 ) -> BillingState:
     """Map a raw ``/api/billing/state`` JSON dict into :class:`BillingState`."""
     raw_org = payload.get("org")
@@ -267,12 +267,12 @@ def new_idempotency_key() -> str:
 @dataclass(frozen=True)
 class AmountValidation:
     ok: bool
-    amount: Optional[Decimal] = None
-    error: Optional[str] = None
+    amount: Decimal | None = None
+    error: str | None = None
 
 
 def validate_charge_amount(
-    raw: str, *, min_usd: Optional[Decimal], max_usd: Optional[Decimal]
+    raw: str, *, min_usd: Decimal | None, max_usd: Decimal | None
 ) -> AmountValidation:
     """Validate a custom charge amount against bounds + 2dp (multipleOf 0.01).
 

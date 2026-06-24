@@ -27,13 +27,11 @@ Usage:
 
 from __future__ import annotations
 
-import importlib
 import importlib.machinery
 import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +42,7 @@ _CRON_PLUGINS_DIR = Path(__file__).parent
 _USER_NAMESPACE = "_prostor_user_cron"
 
 
-def _register_synthetic_package(name: str, search_locations: List[str]) -> None:
+def _register_synthetic_package(name: str, search_locations: list[str]) -> None:
     """Register an empty package shell in sys.modules.
 
     User-installed providers import as ``_prostor_user_cron.<name>``, a dotted
@@ -66,7 +64,7 @@ def _register_synthetic_package(name: str, search_locations: List[str]) -> None:
 # Directory helpers
 # ---------------------------------------------------------------------------
 
-def _get_user_plugins_dir() -> Optional[Path]:
+def _get_user_plugins_dir() -> Path | None:
     """Return ``$PROSTOR_HOME/plugins/`` or None if unavailable."""
     try:
         from prostor_constants import get_prostor_home
@@ -92,14 +90,14 @@ def _is_cron_provider_dir(path: Path) -> bool:
         return False
 
 
-def _iter_provider_dirs() -> List[Tuple[str, Path]]:
+def _iter_provider_dirs() -> list[tuple[str, Path]]:
     """Yield ``(name, path)`` for all discovered provider directories.
 
     Scans bundled first, then user-installed. Bundled takes precedence on
     name collisions (first-seen wins via ``seen`` set).
     """
     seen: set = set()
-    dirs: List[Tuple[str, Path]] = []
+    dirs: list[tuple[str, Path]] = []
 
     # 1. Bundled providers (plugins/cron/<name>/)
     if _CRON_PLUGINS_DIR.is_dir():
@@ -126,7 +124,7 @@ def _iter_provider_dirs() -> List[Tuple[str, Path]]:
     return dirs
 
 
-def find_provider_dir(name: str) -> Optional[Path]:
+def find_provider_dir(name: str) -> Path | None:
     """Resolve a provider name to its directory.
 
     Checks bundled first, then user-installed.
@@ -148,7 +146,7 @@ def find_provider_dir(name: str) -> Optional[Path]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def discover_cron_schedulers() -> List[Tuple[str, str, bool]]:
+def discover_cron_schedulers() -> list[tuple[str, str, bool]]:
     """Scan bundled and user-installed directories for available providers.
 
     Returns list of (name, description, is_available) tuples. May be empty —
@@ -187,7 +185,7 @@ def discover_cron_schedulers() -> List[Tuple[str, str, bool]]:
     return results
 
 
-def load_cron_scheduler(name: str) -> Optional["CronScheduler"]:  # noqa: F821
+def load_cron_scheduler(name: str) -> CronScheduler | None:  # noqa: F821
     """Load and return a CronScheduler instance by name.
 
     Checks both bundled (``plugins/cron/<name>/``) and user-installed
@@ -212,7 +210,7 @@ def load_cron_scheduler(name: str) -> Optional["CronScheduler"]:  # noqa: F821
         return None
 
 
-def _load_provider_from_dir(provider_dir: Path) -> Optional["CronScheduler"]:  # noqa: F821
+def _load_provider_from_dir(provider_dir: Path) -> CronScheduler | None:  # noqa: F821
     """Import a provider module and extract the CronScheduler instance.
 
     The module must have either:

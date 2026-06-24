@@ -10,12 +10,13 @@ Adapt this for your specific task by modifying:
 4. Hyperparameters (GRPOConfig)
 """
 
-import torch
 import re
+
+import torch
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig
-from trl import GRPOTrainer, GRPOConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from trl import GRPOConfig, GRPOTrainer
 
 # ==================== CONFIGURATION ====================
 
@@ -35,6 +36,7 @@ Respond in the following format:
 """
 
 # ==================== DATASET ====================
+
 
 def get_dataset(split="train"):
     """
@@ -63,17 +65,20 @@ def get_dataset(split="train"):
 
 # ==================== HELPER FUNCTIONS ====================
 
+
 def extract_xml_tag(text: str, tag: str) -> str:
     """Extract content between XML tags."""
     pattern = f'<{tag}>(.*?)</{tag}>'
     match = re.search(pattern, text, re.DOTALL)
     return match.group(1).strip() if match else ""
 
+
 def extract_answer(text: str) -> str:
     """Extract the final answer from structured output."""
     return extract_xml_tag(text, 'answer')
 
 # ==================== REWARD FUNCTIONS ====================
+
 
 def correctness_reward_func(prompts, completions, answer, **kwargs):
     """
@@ -82,7 +87,8 @@ def correctness_reward_func(prompts, completions, answer, **kwargs):
     """
     responses = [comp[0]['content'] for comp in completions]
     extracted = [extract_answer(r) for r in responses]
-    return [2.0 if ans == gt else 0.0 for ans, gt in zip(extracted, answer)]
+    return [2.0 if ans == gt else 0.0 for ans, gt in zip(extracted, answer, strict=False)]
+
 
 def format_reward_func(completions, **kwargs):
     """
@@ -92,6 +98,7 @@ def format_reward_func(completions, **kwargs):
     pattern = r'<reasoning>.*?</reasoning>\s*<answer>.*?</answer>'
     responses = [comp[0]['content'] for comp in completions]
     return [0.5 if re.search(pattern, r, re.DOTALL) else 0.0 for r in responses]
+
 
 def incremental_format_reward_func(completions, **kwargs):
     """
@@ -123,6 +130,7 @@ def incremental_format_reward_func(completions, **kwargs):
 
 # ==================== MODEL SETUP ====================
 
+
 def setup_model_and_tokenizer():
     """Load model and tokenizer with optimizations."""
     model = AutoModelForCausalLM.from_pretrained(
@@ -136,6 +144,7 @@ def setup_model_and_tokenizer():
     tokenizer.pad_token = tokenizer.eos_token
 
     return model, tokenizer
+
 
 def get_peft_config():
     """LoRA configuration for parameter-efficient training."""
@@ -151,6 +160,7 @@ def get_peft_config():
     )
 
 # ==================== TRAINING ====================
+
 
 def main():
     """Main training function."""
@@ -223,6 +233,7 @@ def main():
     trainer.save_model(f"{OUTPUT_DIR}/final")
 
     print("Training complete!")
+
 
 if __name__ == "__main__":
     main()

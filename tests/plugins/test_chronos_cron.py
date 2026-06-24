@@ -65,7 +65,7 @@ def test_is_available_true_with_config_and_token(temp_home, monkeypatch):
     import plugins.cron.chronos as mod
     from plugins.cron.chronos import ChronosCronScheduler
 
-    monkeypatch.setattr(mod, "_cfg", lambda *k, default="": "https://x" )
+    monkeypatch.setattr(mod, "_cfg", lambda *k, default="": "https://x")
     monkeypatch.setattr("prostor_cli.auth.get_provider_auth_state",
                         lambda pid: {"access_token": "tok"})
     assert ChronosCronScheduler().is_available() is True

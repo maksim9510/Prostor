@@ -16,9 +16,9 @@ argparse → cmd_chat → cli.main() → ProstorCLI → AIAgent call chain.
 
 from __future__ import annotations
 
+import importlib
 import os
 import textwrap
-import importlib
 
 import pytest
 
@@ -238,6 +238,7 @@ class TestArgparseFlagsRegistered:
 
         # And the cmd_chat env-var wiring must be present
         import inspect
+
         import prostor_cli.main as hm
         src = inspect.getsource(hm)
         assert "PROSTOR_IGNORE_USER_CONFIG" in src

@@ -9,14 +9,13 @@ Verifies:
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Gating
 # ---------------------------------------------------------------------------
+
 
 def test_kanban_tools_hidden_without_env_var(monkeypatch, tmp_path):
     """Normal `prostor chat` sessions (no PROSTOR_KANBAN_TASK) must have
@@ -26,7 +25,6 @@ def test_kanban_tools_hidden_without_env_var(monkeypatch, tmp_path):
     home.mkdir()
     monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-    import tools.kanban_tools  # ensure registered
     from tools.registry import invalidate_check_fn_cache, registry
     from toolsets import resolve_toolset
 
@@ -46,7 +44,6 @@ def test_kanban_tools_visible_with_env_var(monkeypatch, tmp_path):
     home.mkdir()
     monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-    import tools.kanban_tools  # ensure registered
     from tools.registry import invalidate_check_fn_cache, registry
     from toolsets import resolve_toolset
 
@@ -70,7 +67,6 @@ def test_kanban_worker_env_overrides_profile_toolset_filter(monkeypatch, tmp_pat
     home.mkdir()
     monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-    import tools.kanban_tools  # ensure registered
     from model_tools import _clear_tool_defs_cache, get_tool_definitions
     from tools.registry import invalidate_check_fn_cache
 
@@ -100,7 +96,6 @@ def test_worker_with_kanban_toolset_still_hides_board_routing(monkeypatch, tmp_p
     (home / "config.yaml").write_text("toolsets:\n  - kanban\n")
     monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-    import tools.kanban_tools  # ensure registered
     from tools.registry import invalidate_check_fn_cache, registry
     from toolsets import resolve_toolset
 
@@ -125,7 +120,6 @@ def test_kanban_tools_visible_with_toolset_config(monkeypatch, tmp_path):
     (home / "config.yaml").write_text("toolsets:\n  - kanban\n")
     monkeypatch.setenv("PROSTOR_HOME", str(home))
 
-    import tools.kanban_tools  # ensure registered
     from tools.registry import invalidate_check_fn_cache, registry
     from toolsets import resolve_toolset
 
@@ -642,6 +636,7 @@ def test_heartbeat_extends_claim_expires(worker_env):
     static while last_heartbeat_at advanced.
     """
     import time as _time
+
     from prostor_cli import kanban_db as kb
     from tools import kanban_tools as kt
 
@@ -772,8 +767,8 @@ def test_create_inherits_worker_dir_workspace(monkeypatch, worker_env):
     """A worker scoped to a dir: task that spawns a child without a
     workspace arg inherits the dir, not scratch (so follow-up code-gen
     lands in the same project)."""
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
 
     proj = "/home/teknium/myproject"
     conn = kb.connect()
@@ -800,8 +795,8 @@ def test_create_inherits_worker_dir_workspace(monkeypatch, worker_env):
 
 def test_create_explicit_workspace_beats_inheritance(monkeypatch, worker_env):
     """An explicit workspace arg overrides worker-task inheritance."""
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
 
     conn = kb.connect()
     try:
@@ -830,8 +825,8 @@ def test_create_explicit_workspace_beats_inheritance(monkeypatch, worker_env):
 def test_create_no_worker_task_stays_scratch(monkeypatch, worker_env):
     """Orchestrator/CLI callers (no PROSTOR_KANBAN_TASK) still default to
     scratch — inheritance only applies to task-scoped workers."""
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
 
     monkeypatch.delenv("PROSTOR_KANBAN_TASK", raising=False)
     d = json.loads(kt._handle_create({"title": "orch child", "assignee": "peer"}))
@@ -851,8 +846,8 @@ def test_create_stamps_session_id_from_env(monkeypatch, worker_env):
     reads it and stamps the new task so clients can render a per-session
     board (issue: ACP session linkage on kanban tasks)."""
     monkeypatch.setenv("PROSTOR_SESSION_ID", "acp-sess-abc")
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
     out = kt._handle_create({
         "title": "from chat",
         "assignee": "peer",
@@ -874,8 +869,8 @@ def test_create_session_id_arg_overrides_env(monkeypatch, worker_env):
     different session id (e.g. cross-session linking) and the explicit
     arg should not be silently overwritten."""
     monkeypatch.setenv("PROSTOR_SESSION_ID", "from-env")
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
     out = kt._handle_create({
         "title": "explicit override",
         "assignee": "peer",
@@ -897,8 +892,8 @@ def test_create_session_id_absent_when_env_unset(monkeypatch, worker_env):
     compatibility: pre-ACP-propagation hosts and CLI-driven creates must
     not accidentally inherit a stale id."""
     monkeypatch.delenv("PROSTOR_SESSION_ID", raising=False)
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
     out = kt._handle_create({
         "title": "no session",
         "assignee": "peer",
@@ -932,8 +927,8 @@ def test_create_rejects_non_list_parents(worker_env):
 
 
 def test_create_parses_triage_string_false(worker_env):
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
     out = kt._handle_create({
         "title": "not triage",
         "assignee": "peer",
@@ -950,8 +945,8 @@ def test_create_parses_triage_string_false(worker_env):
 
 
 def test_create_parses_triage_string_true(worker_env):
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
     out = kt._handle_create({
         "title": "needs triage",
         "assignee": "peer",
@@ -988,8 +983,8 @@ def test_create_accepts_string_parent(worker_env):
 
 def test_create_accepts_skills_list(worker_env):
     """Tool writes the per-task skills through to the kernel."""
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
     out = kt._handle_create({
         "title": "skilled",
         "assignee": "linguist",
@@ -1004,8 +999,8 @@ def test_create_accepts_skills_list(worker_env):
 
 def test_create_accepts_skills_string(worker_env):
     """Convenience: a single skill name as string is coerced to [name]."""
-    from tools import kanban_tools as kt
     from prostor_cli import kanban_db as kb
+    from tools import kanban_tools as kt
     out = kt._handle_create({
         "title": "one-skill",
         "assignee": "a",
@@ -1170,8 +1165,8 @@ def test_kanban_guidance_not_in_normal_prompt(monkeypatch, tmp_path):
     from pathlib import Path as _P
     monkeypatch.setattr(_P, "home", lambda: tmp_path)
 
-    from tools.registry import invalidate_check_fn_cache
     from model_tools import _clear_tool_defs_cache
+    from tools.registry import invalidate_check_fn_cache
     invalidate_check_fn_cache()
     _clear_tool_defs_cache()
 
@@ -1198,8 +1193,8 @@ def test_kanban_guidance_in_worker_prompt(monkeypatch, tmp_path):
     from pathlib import Path as _P
     monkeypatch.setattr(_P, "home", lambda: tmp_path)
 
-    from tools.registry import invalidate_check_fn_cache
     from model_tools import _clear_tool_defs_cache
+    from tools.registry import invalidate_check_fn_cache
     invalidate_check_fn_cache()
     _clear_tool_defs_cache()
 
@@ -1400,8 +1395,8 @@ def test_worker_complete_own_task_still_works(worker_env):
 
 def test_worker_complete_rejects_stale_run_id(worker_env, monkeypatch):
     """A retried worker cannot complete the task using an old run token."""
-    from prostor_cli import kanban_db as kb
     import prostor_cli.kanban_db as _kb
+    from prostor_cli import kanban_db as kb
 
     # detect_crashed_workers now gates each running task behind a
     # launch-window grace period (c002668ff) so a freshly-spawned worker

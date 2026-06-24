@@ -136,8 +136,9 @@ class TestCompletionConsumedPrune:
     def test_prune_drops_completion_entry_with_expired_session(self):
         """When a finished session is pruned, _completion_consumed is
         cleared for the same session_id."""
-        from tools.process_registry import ProcessRegistry, FINISHED_TTL_SECONDS
         import time
+
+        from tools.process_registry import FINISHED_TTL_SECONDS, ProcessRegistry
 
         reg = ProcessRegistry()
         # Fake a finished session whose started_at is older than the TTL.
@@ -159,8 +160,9 @@ class TestCompletionConsumedPrune:
 
     def test_prune_drops_completion_entry_for_lru_evicted(self):
         """Same contract for the LRU path (over MAX_PROCESSES)."""
-        from tools import process_registry as pr
         import time
+
+        from tools import process_registry as pr
 
         reg = pr.ProcessRegistry()
 

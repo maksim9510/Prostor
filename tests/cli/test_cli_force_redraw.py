@@ -84,7 +84,9 @@ class TestForceFullRedraw:
         events = []
         app.renderer.reset.side_effect = lambda **_: events.append("renderer_reset")
         app.invalidate.side_effect = lambda: events.append("invalidate")
-        original_on_resize = lambda: events.append("original_resize")
+
+        def original_on_resize():
+            return events.append("original_resize")
 
         # bare_cli skips __init__, so seed attributes the way __init__ would.
         bare_cli._status_bar_suppressed_after_resize = False
@@ -118,7 +120,9 @@ class TestForceFullRedraw:
         events = []
         app.renderer.output.erase_screen.side_effect = lambda: events.append("erase")
         app.renderer.output.write_raw.side_effect = lambda *_: events.append("scrollback_wipe")
-        original_on_resize = lambda: events.append("original_resize")
+
+        def original_on_resize():
+            return events.append("original_resize")
 
         bare_cli._status_bar_suppressed_after_resize = False
         bare_cli._last_resize_width = 200
@@ -179,8 +183,11 @@ class TestForceFullRedraw:
             lambda _app, _orig: calls.append(("recover", _orig())),
         )
 
-        original_one = lambda: "first"
-        original_two = lambda: "second"
+        def original_one():
+            return "first"
+
+        def original_two():
+            return "second"
 
         bare_cli._schedule_resize_recovery(app, original_one, delay=0.25)
         assert bare_cli._resize_recovery_pending is True

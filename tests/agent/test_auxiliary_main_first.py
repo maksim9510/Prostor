@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-
 # ── Text aux tasks — _resolve_auto ──────────────────────────────────────────
 
 

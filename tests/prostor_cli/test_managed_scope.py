@@ -1,9 +1,6 @@
 """Unit tests for prostor_cli.managed_scope (resolver + loaders + key helpers)."""
 import textwrap
 
-import pytest
-
-
 # ── Directory resolver ───────────────────────────────────────────────────────
 
 

@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import statistics
 import subprocess
@@ -16,7 +17,6 @@ import sys
 import tempfile
 import time
 import urllib.request
-import json
 
 
 def _find_chrome() -> str:
@@ -94,7 +94,7 @@ def main():
             print("agent-browser CLI not found — skipping subprocess bench.")
             sub_times = []
         else:
-            from tools.browser_tool import _run_browser_command, _last_session_key
+            from tools.browser_tool import _last_session_key, _run_browser_command
             task_id = _last_session_key("bench-eval")
             sub_times = []
             for _ in range(args.iterations):

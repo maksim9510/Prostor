@@ -2,6 +2,7 @@
 
 import json
 import os
+from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -773,12 +774,12 @@ class TestTakeoverMarker:
 
     def test_consume_returns_false_for_stale_marker(self, tmp_path, monkeypatch):
         """A marker older than 60s must be ignored."""
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
 
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         marker_path = tmp_path / ".gateway-takeover.json"
         # Hand-craft a marker written 2 minutes ago
-        stale_time = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        stale_time = (datetime.now(UTC) - timedelta(minutes=2)).isoformat()
         marker_path.write_text(json.dumps({
             "target_pid": os.getpid(),
             "target_start_time": 123,
@@ -857,12 +858,12 @@ class TestTakeoverMarker:
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         marker_path = tmp_path / ".gateway-takeover.json"
         # Fresh marker (timestamp is recent) but names a totally different PID
-        from datetime import datetime, timezone
+        from datetime import datetime
         marker_path.write_text(json.dumps({
             "target_pid": os.getpid() + 10000,
             "target_start_time": 42,
             "replacer_pid": 99999,
-            "written_at": datetime.now(timezone.utc).isoformat(),
+            "written_at": datetime.now(UTC).isoformat(),
         }))
         monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 42)
 
@@ -913,11 +914,11 @@ class TestPlannedStopMarker:
         assert not (tmp_path / ".gateway-planned-stop.json").exists()
 
     def test_consume_returns_false_for_stale_marker(self, tmp_path, monkeypatch):
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
 
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         marker_path = tmp_path / ".gateway-planned-stop.json"
-        stale_time = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        stale_time = (datetime.now(UTC) - timedelta(minutes=2)).isoformat()
         marker_path.write_text(json.dumps({
             "target_pid": os.getpid(),
             "target_start_time": 123,

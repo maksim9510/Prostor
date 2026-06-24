@@ -13,14 +13,12 @@ import base64
 import json
 from unittest.mock import patch
 
-
 from tools.vision_tools import (
     _build_native_vision_tool_result,
     _handle_vision_analyze,
     _supports_media_in_tool_results,
     _vision_analyze_native,
 )
-
 
 # Minimal valid 1x1 PNG bytes.
 _TINY_PNG = base64.b64decode(
@@ -190,7 +188,7 @@ class TestHandleVisionAnalyzeFastPath:
         img.write_bytes(_TINY_PNG)
 
         # Set runtime override so the handler thinks we're on opus@openrouter
-        from agent.auxiliary_client import set_runtime_main, clear_runtime_main
+        from agent.auxiliary_client import clear_runtime_main, set_runtime_main
         set_runtime_main("openrouter", "anthropic/claude-opus-4.6")
         try:
             # Mock decide_image_input_mode to always return "native" so the
@@ -216,7 +214,7 @@ class TestHandleVisionAnalyzeFastPath:
         async def _aux_sentinel(*args, **kwargs):
             return '{"sentinel": "aux-path"}'
 
-        from agent.auxiliary_client import set_runtime_main, clear_runtime_main
+        from agent.auxiliary_client import clear_runtime_main, set_runtime_main
         set_runtime_main("openrouter", "qwen/qwen3-coder")
         try:
             with patch("tools.vision_tools.vision_analyze_tool", side_effect=_aux_sentinel):
@@ -236,7 +234,7 @@ class TestHandleVisionAnalyzeFastPath:
         async def _aux_sentinel(*args, **kwargs):
             return '{"sentinel": "aux-path"}'
 
-        from agent.auxiliary_client import set_runtime_main, clear_runtime_main
+        from agent.auxiliary_client import clear_runtime_main, set_runtime_main
         set_runtime_main("brand-new-provider", "anthropic/claude-opus-4.6")
         try:
             with patch("tools.vision_tools.vision_analyze_tool", side_effect=_aux_sentinel):
@@ -256,7 +254,7 @@ class TestHandleVisionAnalyzeFastPath:
         async def _aux_sentinel(*args, **kwargs):
             return '{"sentinel": "aux-path"}'
 
-        from agent.auxiliary_client import set_runtime_main, clear_runtime_main
+        from agent.auxiliary_client import clear_runtime_main, set_runtime_main
         set_runtime_main("brand-new-provider", "llava-v1.6")
         try:
             with patch(
@@ -281,7 +279,7 @@ class TestHandleVisionAnalyzeFastPath:
         async def _aux_sentinel(*args, **kwargs):
             return '{"sentinel": "aux-path"}'
 
-        from agent.auxiliary_client import set_runtime_main, clear_runtime_main
+        from agent.auxiliary_client import clear_runtime_main, set_runtime_main
         set_runtime_main("brand-new-provider", "llava-v1.6")
         try:
             with patch(

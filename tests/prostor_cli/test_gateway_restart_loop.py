@@ -7,7 +7,6 @@ Covers:
 """
 
 import json
-import os
 from argparse import Namespace
 
 import pytest
@@ -17,10 +16,10 @@ from prostor_cli.cron import (
     cron_command,
 )
 
-
 # ---------------------------------------------------------------------------
 # Defense 2: _contains_gateway_lifecycle_command pattern tests
 # ---------------------------------------------------------------------------
+
 
 class TestGatewayLifecyclePattern:
     """Verify the regex catches gateway lifecycle commands."""

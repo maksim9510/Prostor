@@ -1,8 +1,8 @@
 """Tests for native Discord slash command fast-paths (thread creation & auto-thread)."""
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-import sys
 
 import pytest
 
@@ -823,8 +823,9 @@ async def test_auto_thread_skips_threads_and_dms(adapter, monkeypatch):
 
 def test_discord_auto_thread_config_bridge(monkeypatch, tmp_path):
     """discord.auto_thread in config.yaml should be bridged to DISCORD_AUTO_THREAD env var."""
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     # Write a config.yaml the loader will find
     prostor_dir = tmp_path / ".prostor"

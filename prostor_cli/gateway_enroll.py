@@ -36,7 +36,6 @@ import socket
 import sys
 import urllib.error
 import urllib.request
-from typing import Optional
 
 
 def _default_gateway_id() -> str:
@@ -54,7 +53,7 @@ def _default_gateway_id() -> str:
     return f"gw-{host or 'prostor'}"
 
 
-def _resolve_connector_url(override: Optional[str]) -> Optional[str]:
+def _resolve_connector_url(override: str | None) -> str | None:
     """Resolve the connector base URL (no trailing slash) for enrollment.
 
     Precedence: explicit ``--connector-url`` flag > ``GATEWAY_RELAY_URL`` env >

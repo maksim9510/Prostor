@@ -44,7 +44,7 @@ import time
 import uuid
 
 _IS_WINDOWS = platform.system() == "Windows"
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from tools.thread_context import propagate_context_to_thread
 
@@ -256,7 +256,7 @@ _TOOL_STUBS = {
 }
 
 
-def generate_prostor_tools_module(enabled_tools: List[str],
+def generate_prostor_tools_module(enabled_tools: list[str],
                                  transport: str = "uds") -> str:
     """
     Build the source code for the prostor_tools.py stub module.
@@ -487,7 +487,7 @@ def _rpc_server_loop(
             try:
                 conn, _ = server_sock.accept()
                 break
-            except socket.timeout:
+            except TimeoutError:
                 continue
         if conn is None:
             return
@@ -497,7 +497,7 @@ def _rpc_server_loop(
         while True:
             try:
                 chunk = conn.recv(65536)
-            except socket.timeout:
+            except TimeoutError:
                 break
             if not chunk:
                 break
@@ -581,7 +581,7 @@ def _rpc_server_loop(
 
                 conn.sendall((result + "\n").encode())
 
-    except socket.timeout:
+    except TimeoutError:
         logger.debug("RPC listener socket timeout")
     except OSError as e:
         logger.debug("RPC listener socket error: %s", e, exc_info=True)
@@ -605,10 +605,16 @@ def _get_or_create_env(task_id: str):
     Returns ``(env, env_type)`` tuple.
     """
     from tools.terminal_tool import (
-        _active_environments, _env_lock, _create_environment,
-        _get_env_config, _last_activity, _start_cleanup_thread,
-        _creation_locks, _creation_locks_lock, _task_env_overrides,
+        _active_environments,
+        _create_environment,
+        _creation_locks,
+        _creation_locks_lock,
+        _env_lock,
+        _get_env_config,
+        _last_activity,
         _resolve_container_task_id,
+        _start_cleanup_thread,
+        _task_env_overrides,
     )
 
     effective_task_id = _resolve_container_task_id(task_id)
@@ -876,8 +882,8 @@ def _rpc_poll_loop(
 
 def _execute_remote(
     code: str,
-    task_id: Optional[str],
-    enabled_tools: Optional[List[str]],
+    task_id: str | None,
+    enabled_tools: list[str] | None,
 ) -> str:
     """Run a script on the remote terminal backend via file-based RPC.
 
@@ -1036,7 +1042,7 @@ def _execute_remote(
     stdout_text = redact_sensitive_text(stdout_text)
 
     # Build response
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "status": status,
         "output": stdout_text,
         "tool_calls_made": tool_call_counter[0],
@@ -1073,8 +1079,8 @@ def _execute_remote(
 
 def execute_code(
     code: str,
-    task_id: Optional[str] = None,
-    enabled_tools: Optional[List[str]] = None,
+    task_id: str | None = None,
+    enabled_tools: list[str] | None = None,
 ) -> str:
     """
     Run a Python script in a sandboxed child process with RPC access
@@ -1446,7 +1452,7 @@ def execute_code(
         stderr_text = redact_sensitive_text(stderr_text)
 
         # Build response
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "status": status,
             "output": stdout_text,
             "tool_calls_made": tool_call_counter[0],

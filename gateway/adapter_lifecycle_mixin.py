@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class GatewayAdapterLifecycleMixin:
                 await adapter.disconnect()
             else:
                 await asyncio.wait_for(adapter.disconnect(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Timed out after %.1fs while disconnecting %s adapter; continuing shutdown",
                 timeout,
@@ -81,7 +80,7 @@ class GatewayAdapterLifecycleMixin:
             return await adapter.connect()
         try:
             return await asyncio.wait_for(adapter.connect(), timeout=timeout)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise TimeoutError(
                 f"{platform.value} connect timed out after {timeout:g}s"
             ) from exc

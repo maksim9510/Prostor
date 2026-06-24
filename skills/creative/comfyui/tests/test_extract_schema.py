@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from extract_schema import (
     extract_schema,
     find_negative_prompt_node,
@@ -10,10 +9,10 @@ from extract_schema import (
     trace_to_node,
 )
 
-
 # =============================================================================
 # Connection tracing
 # =============================================================================
+
 
 class TestConnectionTracing:
     def test_direct_link(self):

@@ -27,12 +27,9 @@ Integration:
 import hashlib
 import os
 import re
-import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
 
 # ---------------------------------------------------------------------------
 # Optional dependencies — graceful fallback to stdlib
@@ -40,10 +37,12 @@ from typing import Dict, List, Optional, Tuple
 
 try:
     import xxhash
-    _HASH_FUNC = lambda s: xxhash.xxh64(s).hexdigest()
+    def _HASH_FUNC(s):
+        return xxhash.xxh64(s).hexdigest()
     _HASH_NAME = "xxhash64"
 except ImportError:
-    _HASH_FUNC = lambda s: hashlib.blake2b(s.encode("utf-8"), digest_size=8).hexdigest()
+    def _HASH_FUNC(s):
+        return hashlib.blake2b(s.encode("utf-8"), digest_size=8).hexdigest()
     _HASH_NAME = "blake2b8"
 
 try:
@@ -63,6 +62,7 @@ UNICODE_MAP = {
     "\u2026": "...", "\u00a0": " ",  # ellipsis and non-breaking space
 }
 
+
 def _unicode_normalize(text: str) -> str:
     for char, repl in UNICODE_MAP.items():
         text = text.replace(char, repl)
@@ -71,6 +71,7 @@ def _unicode_normalize(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Line key — normalized hash of a single line
 # ---------------------------------------------------------------------------
+
 
 _WS_RE = re.compile(r'[ \t]+')
 
@@ -88,7 +89,7 @@ def _line_key(line: str) -> str:
     return _HASH_FUNC(_normalize_line(line))
 
 
-def _block_key(lines: List[str]) -> str:
+def _block_key(lines: list[str]) -> str:
     """Hash a block of lines (normalized). Returns hex string."""
     normalized = "\n".join(_normalize_line(l) for l in lines)
     return _HASH_FUNC(normalized)
@@ -101,7 +102,7 @@ def _block_key(lines: List[str]) -> str:
 _TOKEN_RE = re.compile(r'[\w\u0410-\u044f\u0451]+')
 
 
-def _tokenize(line: str) -> List[Tuple[str, int]]:
+def _tokenize(line: str) -> list[tuple[str, int]]:
     """Tokenize a line into (normalized_token, char_offset) pairs."""
     normalized = _unicode_normalize(line)
     tokens = []
@@ -127,7 +128,7 @@ def _leading_whitespace(line: str) -> str:
     return line[:i]
 
 
-def _indent_fingerprint(lines: List[str]) -> str:
+def _indent_fingerprint(lines: list[str]) -> str:
     """Relative indentation pattern, not absolute.
 
     ['    if x:', '        y()']  → '0|+4'
@@ -214,6 +215,7 @@ class LineRef:
     indent: str
     stripped: str
 
+
 @dataclass
 class BlockRef:
     """Reference to a block of lines."""
@@ -221,6 +223,7 @@ class BlockRef:
     line_count: int
     start_pos: int
     end_pos: int
+
 
 @dataclass
 class TokenRef:
@@ -234,7 +237,7 @@ class TokenRef:
 class CachedIndex:
     """Cached index with validation metadata."""
     index: "HashLineIndex"
-    mtime: Optional[float]
+    mtime: float | None
     size: int
 
 # ---------------------------------------------------------------------------
@@ -251,8 +254,8 @@ class HashLineIndex:
     # Threshold for parallel build
     PARALLEL_THRESHOLD = 5000
 
-    def __init__(self, content: str, file_path: Optional[str] = None,
-                 file_mtime: Optional[float] = None):
+    def __init__(self, content: str, file_path: str | None = None,
+                 file_mtime: float | None = None):
         self.content = content
         self.lines = content.split("\n")
         self.line_count = len(self.lines)
@@ -260,15 +263,15 @@ class HashLineIndex:
         self.file_mtime = file_mtime
 
         # Line positions (precomputed for O(1) lookup)
-        self._line_starts: List[int] = []
+        self._line_starts: list[int] = []
         self._compute_line_starts()
 
         # Indexes
-        self.line_index: Dict[str, List[LineRef]] = {}
-        self.block_indexes: Dict[int, Dict[str, List[BlockRef]]] = {
+        self.line_index: dict[str, list[LineRef]] = {}
+        self.block_indexes: dict[int, dict[str, list[BlockRef]]] = {
             size: {} for size in self.BLOCK_SIZES
         }
-        self.token_index: Dict[str, List[TokenRef]] = {}
+        self.token_index: dict[str, list[TokenRef]] = {}
         self.bloom: BloomFilter = BloomFilter(max(self.line_count * 2, 20000))
 
         # Build
@@ -351,8 +354,8 @@ class HashLineIndex:
         # Build line + token index in parallel
         def build_chunk(start_end):
             start, end = start_end
-            local_line_idx: Dict[str, List[LineRef]] = {}
-            local_token_idx: Dict[str, List[TokenRef]] = {}
+            local_line_idx: dict[str, list[LineRef]] = {}
+            local_token_idx: dict[str, list[TokenRef]] = {}
             for i in range(start, end):
                 line = self.lines[i]
                 key = _line_key(line)
@@ -430,7 +433,7 @@ class HashLineIndex:
                         return True
         return False
 
-    def find_line_matches(self, pattern: str) -> List[Tuple[int, int]]:
+    def find_line_matches(self, pattern: str) -> list[tuple[int, int]]:
         """Find matches using line index (for full-line / multi-line patterns)."""
         pattern_lines = pattern.split("\n")
         pcount = len(pattern_lines)
@@ -473,7 +476,7 @@ class HashLineIndex:
             matches.append((start_pos, end_pos))
         return matches
 
-    def find_block_matches(self, pattern: str) -> List[Tuple[int, int]]:
+    def find_block_matches(self, pattern: str) -> list[tuple[int, int]]:
         """Find matches using block index (for patterns matching block sizes)."""
         pattern_lines = pattern.split("\n")
         pcount = len(pattern_lines)
@@ -502,7 +505,7 @@ class HashLineIndex:
             matches.append((start_pos, end_pos))
         return matches
 
-    def find_token_matches(self, pattern: str) -> List[Tuple[int, int]]:
+    def find_token_matches(self, pattern: str) -> list[tuple[int, int]]:
         """Find substring/phrase matches using token index."""
         pattern_lines = pattern.split("\n")
 
@@ -560,7 +563,7 @@ class HashLineIndex:
 
         return matches
 
-    def find_matches(self, pattern: str) -> List[Tuple[int, int]]:
+    def find_matches(self, pattern: str) -> list[tuple[int, int]]:
         """Find all matches using the best strategy.
 
         Tries: bloom reject → block index → line index → token index.
@@ -597,7 +600,7 @@ class HashLineIndex:
 # ---------------------------------------------------------------------------
 
 
-def _verify_match(lines: List[str], start_idx: int, pattern_lines: List[str]) -> bool:
+def _verify_match(lines: list[str], start_idx: int, pattern_lines: list[str]) -> bool:
     """Verify that lines[start_idx:start_idx+len(pattern_lines)] matches pattern.
 
     Compares normalized content (strip + whitespace collapse) to catch
@@ -621,14 +624,14 @@ def _verify_match(lines: List[str], start_idx: int, pattern_lines: List[str]) ->
 # ---------------------------------------------------------------------------
 
 
-def _first_meaningful_line(text: str) -> Optional[str]:
+def _first_meaningful_line(text: str) -> str | None:
     for line in text.split("\n"):
         if line.strip():
             return line
     return None
 
 
-def _first_indented_line(text: str) -> Optional[str]:
+def _first_indented_line(text: str) -> str | None:
     """Return the first line of ``text`` that has indentation (leading whitespace)."""
     for line in text.split("\n"):
         if line.strip() and _leading_whitespace(line):
@@ -657,7 +660,7 @@ def _reindent_replacement(file_region: str, old_string: str, new_string: str) ->
     if old_indent == file_indent:
         return new_string
 
-    out_lines: List[str] = []
+    out_lines: list[str] = []
     for line in new_string.split("\n"):
         if not line.strip():
             out_lines.append(line)
@@ -675,8 +678,8 @@ def _reindent_replacement(file_region: str, old_string: str, new_string: str) ->
 # ---------------------------------------------------------------------------
 
 
-def _apply_replacements(content: str, matches: List[Tuple[int, int]],
-                        new_string: str, old_string: Optional[str] = None) -> str:
+def _apply_replacements(content: str, matches: list[tuple[int, int]],
+                        new_string: str, old_string: str | None = None) -> str:
     """Apply replacements at given positions."""
     sorted_matches = sorted(matches, key=lambda x: x[0], reverse=True)
     result = content
@@ -693,12 +696,13 @@ def _apply_replacements(content: str, matches: List[Tuple[int, int]],
 # Index cache — reuse between sequential patches
 # ---------------------------------------------------------------------------
 
-_INDEX_CACHE: Dict[str, CachedIndex] = {}
+
+_INDEX_CACHE: dict[str, CachedIndex] = {}
 _CACHE_LOCK = threading.Lock()
 
 
-def get_index(content: str, file_path: Optional[str] = None,
-              file_mtime: Optional[float] = None) -> HashLineIndex:
+def get_index(content: str, file_path: str | None = None,
+              file_mtime: float | None = None) -> HashLineIndex:
     """Get a HashLineIndex, from cache if valid, or build new.
 
     Cache resolution order:
@@ -757,9 +761,9 @@ def hashline_find_and_replace(
     old_string: str,
     new_string: str,
     replace_all: bool = False,
-    file_path: Optional[str] = None,
-    file_mtime: Optional[float] = None,
-) -> Tuple[str, int, Optional[str], Optional[str]]:
+    file_path: str | None = None,
+    file_mtime: float | None = None,
+) -> tuple[str, int, str | None, str | None]:
     """Find and replace text using hash-based line matching.
 
     Args:
@@ -845,6 +849,7 @@ def hashline_find_and_replace(
 # ---------------------------------------------------------------------------
 # Public exports
 # ---------------------------------------------------------------------------
+
 
 __all__ = [
     "HashLineIndex",

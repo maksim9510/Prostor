@@ -23,14 +23,12 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from prostor_state import SessionDB
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
 
 def _build_agent_with_db(db: SessionDB, session_id: str):
     """Construct an AIAgent wired to *db* and pinned to *session_id*.

@@ -9,8 +9,8 @@ import pytest
 
 import plugins.memory.openviking as openviking_module
 from plugins.memory.openviking import (
-    OpenVikingMemoryProvider,
     _DEFERRED_COMMIT_TIMEOUT,
+    OpenVikingMemoryProvider,
     _VikingClient,
 )
 
@@ -1961,6 +1961,7 @@ def test_validate_openviking_identity_value_matches_cli_rules(value, field, ok):
 # ---------------------------------------------------------------------------
 # on_session_switch — flush + commit + rotate behavior (prostor-agent#28296)
 # ---------------------------------------------------------------------------
+
 
 def _make_provider_with_session(session_id: str, turn_count: int):
     provider = OpenVikingMemoryProvider()

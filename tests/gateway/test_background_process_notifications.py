@@ -16,10 +16,10 @@ import pytest
 from gateway.config import GatewayConfig, Platform
 from gateway.run import GatewayRunner, _parse_session_key
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _FakeRegistry:
     """Return pre-canned sessions, then None once exhausted."""

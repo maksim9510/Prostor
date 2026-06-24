@@ -39,18 +39,18 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from prostor_constants import get_prostor_home, display_prostor_home
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 
-from utils import atomic_replace, is_truthy_value
 from prostor_cli.config import cfg_get
+from prostor_constants import display_prostor_home, get_prostor_home
+from utils import atomic_replace, is_truthy_value
 
 logger = logging.getLogger(__name__)
 
 # Import security scanner — external hub installs always get scanned;
 # agent-created skills only get scanned when skills.guard_agent_created is on.
 try:
-    from tools.skills_guard import scan_skill, should_allow_install, format_scan_report
+    from tools.skills_guard import format_scan_report, scan_skill, should_allow_install
     _GUARD_AVAILABLE = True
 except ImportError:
     _GUARD_AVAILABLE = False
@@ -75,7 +75,7 @@ def _guard_agent_created_enabled() -> bool:
         return False
 
 
-def _security_scan_skill(skill_dir: Path) -> Optional[str]:
+def _security_scan_skill(skill_dir: Path) -> str | None:
     """Scan a skill directory after write. Returns error string if blocked, else None.
 
     No-op when skills.guard_agent_created is disabled (the default).
@@ -101,8 +101,8 @@ def _security_scan_skill(skill_dir: Path) -> Optional[str]:
         logger.warning("Security scan failed for %s: %s", skill_dir, e, exc_info=True)
     return None
 
-import yaml
 
+import yaml
 
 # All skills live in ~/.prostor/skills/ (single source of truth)
 PROSTOR_HOME = get_prostor_home()
@@ -147,7 +147,7 @@ def _is_path_redirect(path: Path) -> bool:
         return False
 
 
-def _validate_delete_target(skill_dir: Path) -> Optional[str]:
+def _validate_delete_target(skill_dir: Path) -> str | None:
     """Last-line guard before ``shutil.rmtree(skill_dir)`` in ``_delete_skill``.
 
     ``_find_skill`` already restricts ``skill_dir`` to a real ``SKILL.md``
@@ -208,7 +208,7 @@ def _validate_delete_target(skill_dir: Path) -> Optional[str]:
     )
 
 
-def _pinned_guard(name: str) -> Optional[str]:
+def _pinned_guard(name: str) -> str | None:
     """Return a refusal message if *name* is pinned, else None.
 
     Pin protects a skill from **deletion** — both the curator's auto-archive
@@ -249,7 +249,7 @@ ALLOWED_SUBDIRS = {"references", "templates", "scripts", "assets"}
 # Validation helpers
 # =============================================================================
 
-def _validate_name(name: str) -> Optional[str]:
+def _validate_name(name: str) -> str | None:
     """Validate a skill name. Returns error message or None if valid."""
     if not name:
         return "Skill name is required."
@@ -263,7 +263,7 @@ def _validate_name(name: str) -> Optional[str]:
     return None
 
 
-def _validate_category(category: Optional[str]) -> Optional[str]:
+def _validate_category(category: str | None) -> str | None:
     """Validate an optional category name used as a single directory segment."""
     if category is None:
         return None
@@ -288,7 +288,7 @@ def _validate_category(category: Optional[str]) -> Optional[str]:
     return None
 
 
-def _validate_frontmatter(content: str) -> Optional[str]:
+def _validate_frontmatter(content: str) -> str | None:
     """
     Validate that SKILL.md content has proper frontmatter with required fields.
     Returns error message or None if valid.
@@ -327,7 +327,7 @@ def _validate_frontmatter(content: str) -> Optional[str]:
     return None
 
 
-def _validate_content_size(content: str, label: str = "SKILL.md") -> Optional[str]:
+def _validate_content_size(content: str, label: str = "SKILL.md") -> str | None:
     """Check that content doesn't exceed the character limit for agent writes.
 
     Returns an error message or None if within bounds.
@@ -349,7 +349,7 @@ def _resolve_skill_dir(name: str, category: str = None) -> Path:
     return SKILLS_DIR / name
 
 
-def _find_skill(name: str) -> Optional[Dict[str, Any]]:
+def _find_skill(name: str) -> dict[str, Any] | None:
     """
     Find a skill by name across all skill directories.
 
@@ -369,7 +369,7 @@ def _find_skill(name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _find_skill_in_other_profiles(name: str) -> List[Tuple[str, Path]]:
+def _find_skill_in_other_profiles(name: str) -> list[tuple[str, Path]]:
     """Look for ``name`` under SKILL.md across OTHER Prostor profiles.
 
     Returns a list of ``(profile_name, skill_dir)`` pairs. Used to make
@@ -378,10 +378,10 @@ def _find_skill_in_other_profiles(name: str) -> List[Tuple[str, Path]]:
     when profile discovery fails — fail-quiet, the caller falls back to
     the plain "not found" error).
     """
-    matches: List[Tuple[str, Path]] = []
+    matches: list[tuple[str, Path]] = []
     try:
-        from prostor_constants import get_default_prostor_root
         from agent.skill_utils import is_excluded_skill_path
+        from prostor_constants import get_default_prostor_root
     except Exception:
         return matches
 
@@ -393,7 +393,7 @@ def _find_skill_in_other_profiles(name: str) -> List[Tuple[str, Path]]:
     # Collect (profile_name, skills_dir) for every profile EXCEPT the
     # one whose SKILLS_DIR we already searched in _find_skill().
     active_dir = SKILLS_DIR.resolve() if SKILLS_DIR.exists() else SKILLS_DIR
-    candidates: List[Tuple[str, Path]] = []
+    candidates: list[tuple[str, Path]] = []
 
     # Default profile (~/.prostor/skills) — only consider when active is non-default.
     default_skills = root / "skills"
@@ -472,7 +472,7 @@ def _skill_not_found_error(name: str, suffix: str = "") -> str:
     return base
 
 
-def _validate_file_path(file_path: str) -> Optional[str]:
+def _validate_file_path(file_path: str) -> str | None:
     """
     Validate a file path for write_file/remove_file.
     Must be under an allowed subdirectory and not escape the skill dir.
@@ -509,7 +509,7 @@ def _validate_file_path(file_path: str) -> Optional[str]:
     return None
 
 
-def _resolve_skill_target(skill_dir: Path, file_path: str) -> Tuple[Optional[Path], Optional[str]]:
+def _resolve_skill_target(skill_dir: Path, file_path: str) -> tuple[Path | None, str | None]:
     """Resolve a supporting-file path and ensure it stays within the skill directory."""
     from tools.path_security import validate_within_dir
 
@@ -523,11 +523,11 @@ def _resolve_skill_target(skill_dir: Path, file_path: str) -> Tuple[Optional[Pat
 def _atomic_write_text(file_path: Path, content: str, encoding: str = "utf-8") -> None:
     """
     Atomically write text content to a file.
-    
+
     Uses a temporary file in the same directory and os.replace() to ensure
     the target file is never left in a partially-written state if the process
     crashes or is interrupted.
-    
+
     Args:
         file_path: Target file path
         content: Content to write
@@ -556,7 +556,7 @@ def _atomic_write_text(file_path: Path, content: str, encoding: str = "utf-8") -
 # Core actions
 # =============================================================================
 
-def _create_skill(name: str, content: str, category: str = None) -> Dict[str, Any]:
+def _create_skill(name: str, content: str, category: str = None) -> dict[str, Any]:
     """Create a new user skill with SKILL.md content."""
     # Validate name
     err = _validate_name(name)
@@ -619,12 +619,12 @@ def _create_skill(name: str, content: str, category: str = None) -> Dict[str, An
         result["category"] = category
     result["hint"] = (
         "To add reference files, templates, or scripts, use "
-        "skill_manage(action='write_file', name='{}', file_path='references/example.md', file_content='...')".format(name)
+        f"skill_manage(action='write_file', name='{name}', file_path='references/example.md', file_content='...')"
     )
     return result
 
 
-def _edit_skill(name: str, content: str) -> Dict[str, Any]:
+def _edit_skill(name: str, content: str) -> dict[str, Any]:
     """Replace the SKILL.md of any existing skill (full rewrite)."""
     err = _validate_frontmatter(content)
     if err:
@@ -674,7 +674,7 @@ def _patch_skill(
     new_string: str,
     file_path: str = None,
     replace_all: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Targeted find-and-replace within a skill file.
 
     Defaults to SKILL.md. Use file_path to patch a supporting file instead.
@@ -768,7 +768,7 @@ def _patch_skill(
     return result
 
 
-def _delete_skill(name: str, absorbed_into: Optional[str] = None) -> Dict[str, Any]:
+def _delete_skill(name: str, absorbed_into: str | None = None) -> dict[str, Any]:
     """Delete a skill.
 
     ``absorbed_into`` declares intent:
@@ -831,7 +831,7 @@ def _delete_skill(name: str, absorbed_into: Optional[str] = None) -> Dict[str, A
     }
 
 
-def _write_file(name: str, file_path: str, file_content: str) -> Dict[str, Any]:
+def _write_file(name: str, file_path: str, file_content: str) -> dict[str, Any]:
     """Add or overwrite a supporting file within any skill directory."""
     err = _validate_file_path(file_path)
     if err:
@@ -883,7 +883,7 @@ def _write_file(name: str, file_path: str, file_content: str) -> Dict[str, Any]:
     }
 
 
-def _remove_file(name: str, file_path: str) -> Dict[str, Any]:
+def _remove_file(name: str, file_path: str) -> dict[str, Any]:
     """Remove a supporting file from any skill directory."""
     err = _validate_file_path(file_path)
     if err:
@@ -933,6 +933,7 @@ def _remove_file(name: str, file_path: str) -> Dict[str, Any]:
 # ContextVar bypass: set while replaying an already-approved staged skill write
 # so skill_manage() does not re-gate (and re-stage) it.
 import contextvars as _ctxvars
+
 _skill_gate_bypass: "_ctxvars.ContextVar[bool]" = _ctxvars.ContextVar(
     "skill_gate_bypass", default=False
 )
@@ -977,7 +978,7 @@ def _apply_skill_write_gate(action, name, **payload_kwargs):
     )
 
 
-def apply_skill_pending(payload: Dict[str, Any]) -> str:
+def apply_skill_pending(payload: dict[str, Any]) -> str:
     """Replay a staged skill write, bypassing the gate. Returns the tool result
     JSON string. Called by the /skills approve handler.
     """
@@ -1077,8 +1078,8 @@ def skill_manage(
         # user-directed, and those skills belong to the user (the curator must
         # not touch them). Best-effort; telemetry failures never break the tool.
         try:
-            from tools.skill_usage import bump_patch, forget, mark_agent_created
             from tools.skill_provenance import is_background_review
+            from tools.skill_usage import bump_patch, forget, mark_agent_created
             if action == "create":
                 if is_background_review():
                     mark_agent_created(name)

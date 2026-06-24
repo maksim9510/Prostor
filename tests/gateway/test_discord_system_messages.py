@@ -1,8 +1,9 @@
 """Tests for Discord system message filtering (thread renames, pins, etc.)."""
 
-import pytest
 import unittest
 from unittest.mock import MagicMock
+
+import pytest
 
 discord = pytest.importorskip("discord")
 

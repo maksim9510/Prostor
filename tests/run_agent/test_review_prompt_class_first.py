@@ -16,10 +16,10 @@ snapshot the full prompt text (change-detector).
 
 from run_agent import AIAgent
 
-
 # ---------------------------------------------------------------------------
 # _SKILL_REVIEW_PROMPT
 # ---------------------------------------------------------------------------
+
 
 def test_skill_review_prompt_biases_toward_active_updates():
     """Prompt must frame updating as the default stance, not something rare."""

@@ -3,27 +3,26 @@
 import json
 import logging
 import os
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import Awaitable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from tools.vision_tools import (
-    _validate_image_url,
-    _handle_vision_analyze,
-    _determine_mime_type,
-    _image_to_base64_data_url,
-    _resize_image_for_vision,
-    _image_exceeds_dimension,
     _EMBED_MAX_DIMENSION,
-    _is_image_size_error,
     _MAX_BASE64_BYTES,
     _RESIZE_TARGET_BYTES,
-    vision_analyze_tool,
+    _determine_mime_type,
+    _handle_vision_analyze,
+    _image_exceeds_dimension,
+    _image_to_base64_data_url,
+    _is_image_size_error,
+    _resize_image_for_vision,
+    _validate_image_url,
     check_vision_requirements,
+    vision_analyze_tool,
 )
-
 
 # ---------------------------------------------------------------------------
 # _validate_image_url — urlparse-based validation
@@ -1034,6 +1033,7 @@ class TestDownloadRetryClassification:
     async def test_404_fails_fast_without_retry(self, tmp_path):
         """A 404 must raise on the first attempt — no backoff sleep, no extra GETs."""
         import httpx
+
         from tools.vision_tools import _download_image
 
         mock_client = self._make_client_raising_status(404)
@@ -1054,6 +1054,7 @@ class TestDownloadRetryClassification:
     async def test_503_retries_then_raises(self, tmp_path):
         """A 5xx is retried up to max_retries, sleeping between attempts."""
         import httpx
+
         from tools.vision_tools import _download_image
 
         mock_client = self._make_client_raising_status(503)

@@ -14,14 +14,14 @@ Tools:
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 from plugins.google_meet import process_manager as pm
-
 
 # ---------------------------------------------------------------------------
 # Runtime gate
 # ---------------------------------------------------------------------------
+
 
 def check_meet_requirements() -> bool:
     """Return True when the plugin can actually run LOCALLY.
@@ -49,7 +49,7 @@ def check_meet_requirements() -> bool:
 # Node client helper
 # ---------------------------------------------------------------------------
 
-def _resolve_node_client(node: Optional[str]):
+def _resolve_node_client(node: str | None):
     """Return (NodeClient, node_name) for *node*, or (None, None) to run local.
 
     Raises RuntimeError with a readable message if the node is named but
@@ -57,8 +57,8 @@ def _resolve_node_client(node: Optional[str]):
     """
     if node is None or node == "":
         return None, None
-    from plugins.google_meet.node.registry import NodeRegistry
     from plugins.google_meet.node.client import NodeClient
+    from plugins.google_meet.node.registry import NodeRegistry
 
     reg = NodeRegistry()
     entry = reg.resolve(node if node != "auto" else None)
@@ -75,7 +75,7 @@ def _resolve_node_client(node: Optional[str]):
 # Schemas
 # ---------------------------------------------------------------------------
 
-MEET_JOIN_SCHEMA: Dict[str, Any] = {
+MEET_JOIN_SCHEMA: dict[str, Any] = {
     "name": "meet_join",
     "description": (
         "Join a Google Meet call and start scraping live captions into a "
@@ -142,7 +142,7 @@ MEET_JOIN_SCHEMA: Dict[str, Any] = {
     },
 }
 
-MEET_STATUS_SCHEMA: Dict[str, Any] = {
+MEET_STATUS_SCHEMA: dict[str, Any] = {
     "name": "meet_status",
     "description": (
         "Report the current Meet session state — whether the bot is alive, "
@@ -158,7 +158,7 @@ MEET_STATUS_SCHEMA: Dict[str, Any] = {
     },
 }
 
-MEET_TRANSCRIPT_SCHEMA: Dict[str, Any] = {
+MEET_TRANSCRIPT_SCHEMA: dict[str, Any] = {
     "name": "meet_transcript",
     "description": (
         "Read the scraped transcript for the active Meet session. Returns "
@@ -183,7 +183,7 @@ MEET_TRANSCRIPT_SCHEMA: Dict[str, Any] = {
     },
 }
 
-MEET_LEAVE_SCHEMA: Dict[str, Any] = {
+MEET_LEAVE_SCHEMA: dict[str, Any] = {
     "name": "meet_leave",
     "description": (
         "Leave the active Meet call cleanly, stop caption scraping, and "
@@ -199,7 +199,7 @@ MEET_LEAVE_SCHEMA: Dict[str, Any] = {
     },
 }
 
-MEET_SAY_SCHEMA: Dict[str, Any] = {
+MEET_SAY_SCHEMA: dict[str, Any] = {
     "name": "meet_say",
     "description": (
         "Speak text into the active Meet call. Requires the active meeting "
@@ -233,7 +233,7 @@ def _err(msg: str, **extra) -> str:
     return _json({"success": False, "error": msg, **extra})
 
 
-def handle_meet_join(args: Dict[str, Any], **_kw) -> str:
+def handle_meet_join(args: dict[str, Any], **_kw) -> str:
     url = (args.get("url") or "").strip()
     if not url:
         return _err("url is required")
@@ -278,7 +278,7 @@ def handle_meet_join(args: Dict[str, Any], **_kw) -> str:
     return _json({"success": bool(res.get("ok")), **res})
 
 
-def handle_meet_status(args: Dict[str, Any], **_kw) -> str:
+def handle_meet_status(args: dict[str, Any], **_kw) -> str:
     try:
         client, node_name = _resolve_node_client(args.get("node"))
     except RuntimeError as e:
@@ -293,7 +293,7 @@ def handle_meet_status(args: Dict[str, Any], **_kw) -> str:
     return _json({"success": bool(res.get("ok")), **res})
 
 
-def handle_meet_transcript(args: Dict[str, Any], **_kw) -> str:
+def handle_meet_transcript(args: dict[str, Any], **_kw) -> str:
     last = args.get("last")
     try:
         last_i = int(last) if last is not None else None
@@ -315,7 +315,7 @@ def handle_meet_transcript(args: Dict[str, Any], **_kw) -> str:
     return _json({"success": bool(res.get("ok")), **res})
 
 
-def handle_meet_leave(args: Dict[str, Any], **_kw) -> str:
+def handle_meet_leave(args: dict[str, Any], **_kw) -> str:
     try:
         client, node_name = _resolve_node_client(args.get("node"))
     except RuntimeError as e:
@@ -330,7 +330,7 @@ def handle_meet_leave(args: Dict[str, Any], **_kw) -> str:
     return _json({"success": bool(res.get("ok")), **res})
 
 
-def handle_meet_say(args: Dict[str, Any], **_kw) -> str:
+def handle_meet_say(args: dict[str, Any], **_kw) -> str:
     text = (args.get("text") or "").strip()
     if not text:
         return _err("text is required")

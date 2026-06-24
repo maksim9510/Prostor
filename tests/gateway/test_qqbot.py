@@ -9,10 +9,10 @@ import pytest
 
 from gateway.config import PlatformConfig
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_config(**extra):
     """Build a PlatformConfig(enabled=True, extra=extra) for testing."""
@@ -237,6 +237,7 @@ class TestQQWebSocketProxy:
 # ---------------------------------------------------------------------------
 # _strip_at_mention
 # ---------------------------------------------------------------------------
+
 
 class TestStripAtMention:
     def _fn(self, content):
@@ -701,7 +702,8 @@ class TestChunkedUploadHelpers:
     def test_compute_hashes_large_file_has_distinct_md5_10m(self, tmp_path):
         # File > 10,002,432 bytes → md5_10m is truncated, so it differs from full md5.
         from gateway.platforms.qqbot.chunked_upload import (
-            _compute_file_hashes, _MD5_10M_SIZE,
+            _MD5_10M_SIZE,
+            _compute_file_hashes,
         )
         f = tmp_path / "big.bin"
         size = _MD5_10M_SIZE + 1024
@@ -860,7 +862,8 @@ class TestChunkedUploaderFlow:
     @pytest.mark.asyncio
     async def test_daily_limit_raises_structured_error(self, tmp_path):
         from gateway.platforms.qqbot.chunked_upload import (
-            ChunkedUploader, UploadDailyLimitExceededError,
+            ChunkedUploader,
+            UploadDailyLimitExceededError,
         )
 
         f = tmp_path / "a.bin"
@@ -887,8 +890,8 @@ class TestChunkedUploaderFlow:
     @pytest.mark.asyncio
     async def test_part_finish_retries_on_40093001_then_succeeds(self, tmp_path):
         """biz_code 40093001 is retryable — finish-with-retry must keep trying."""
-        from gateway.platforms.qqbot.chunked_upload import ChunkedUploader
         import gateway.platforms.qqbot.chunked_upload as cu
+        from gateway.platforms.qqbot.chunked_upload import ChunkedUploader
 
         # Make the retry loop fast so the test doesn't take real seconds.
         orig_interval = cu._PART_FINISH_RETRY_INTERVAL
@@ -1066,7 +1069,8 @@ class TestBuildApprovalKeyboard:
     def test_round_trip_parse_matches_build(self):
         """Every button built by build_approval_keyboard is parseable."""
         from gateway.platforms.qqbot.keyboards import (
-            build_approval_keyboard, parse_approval_button_data,
+            build_approval_keyboard,
+            parse_approval_button_data,
         )
         session_key = "agent:main:qqbot:c2c:UID123"
         kb = build_approval_keyboard(session_key)
@@ -1093,7 +1097,8 @@ class TestBuildUpdatePromptKeyboard:
 class TestBuildApprovalText:
     def test_exec_approval_includes_command_preview(self):
         from gateway.platforms.qqbot.keyboards import (
-            ApprovalRequest, build_approval_text,
+            ApprovalRequest,
+            build_approval_text,
         )
         req = ApprovalRequest(
             session_key="s",
@@ -1110,7 +1115,8 @@ class TestBuildApprovalText:
 
     def test_plugin_approval_uses_severity_icon(self):
         from gateway.platforms.qqbot.keyboards import (
-            ApprovalRequest, build_approval_text,
+            ApprovalRequest,
+            build_approval_text,
         )
         crit = ApprovalRequest(
             session_key="s", title="dangerous op",
@@ -1128,7 +1134,8 @@ class TestBuildApprovalText:
 
     def test_truncates_long_commands(self):
         from gateway.platforms.qqbot.keyboards import (
-            ApprovalRequest, build_approval_text,
+            ApprovalRequest,
+            build_approval_text,
         )
         long = "x" * 1000
         req = ApprovalRequest(

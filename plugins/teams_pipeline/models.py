@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
-
 
 ArtifactType = Literal["transcript", "recording", "call_record"]
 
@@ -20,14 +19,14 @@ def _parse_datetime(value: Any) -> datetime | None:
         text = f"{text[:-1]}+00:00"
     parsed = datetime.fromisoformat(text)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
+        return parsed.replace(tzinfo=UTC)
     return parsed
 
 
 def _serialize_datetime(value: datetime | None) -> str | None:
     if value is None:
         return None
-    normalized = value.astimezone(timezone.utc)
+    normalized = value.astimezone(UTC)
     return normalized.isoformat().replace("+00:00", "Z")
 
 
@@ -61,7 +60,7 @@ class GraphSubscription:
             raise ValueError("GraphSubscription.expiration_datetime is required.")
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "GraphSubscription":
+    def from_dict(cls, payload: dict[str, Any]) -> GraphSubscription:
         return cls(
             subscription_id=str(payload.get("subscription_id") or payload.get("id") or "").strip(),
             resource=str(payload.get("resource") or "").strip(),
@@ -106,7 +105,7 @@ class TeamsMeetingRef:
             raise ValueError("TeamsMeetingRef.meeting_id is required.")
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "TeamsMeetingRef":
+    def from_dict(cls, payload: dict[str, Any]) -> TeamsMeetingRef:
         return cls(
             meeting_id=str(payload.get("meeting_id") or payload.get("id") or "").strip(),
             organizer_user_id=payload.get("organizer_user_id") or payload.get("organizerUserId"),
@@ -157,7 +156,7 @@ class MeetingArtifact:
             self.size_bytes = int(self.size_bytes)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "MeetingArtifact":
+    def from_dict(cls, payload: dict[str, Any]) -> MeetingArtifact:
         return cls(
             artifact_type=payload.get("artifact_type") or payload.get("artifactType"),
             artifact_id=str(payload.get("artifact_id") or payload.get("id") or "").strip(),
@@ -219,7 +218,7 @@ class TeamsMeetingSummaryPayload:
         self.end_time = _parse_datetime(self.end_time)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "TeamsMeetingSummaryPayload":
+    def from_dict(cls, payload: dict[str, Any]) -> TeamsMeetingSummaryPayload:
         return cls(
             meeting_ref=TeamsMeetingRef.from_dict(payload["meeting_ref"]),
             title=payload.get("title"),
@@ -298,7 +297,7 @@ class TeamsMeetingPipelineJob:
         self.updated_at = _parse_datetime(self.updated_at)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "TeamsMeetingPipelineJob":
+    def from_dict(cls, payload: dict[str, Any]) -> TeamsMeetingPipelineJob:
         meeting_ref_payload = payload.get("meeting_ref") or payload.get("meetingRef")
         summary_payload = payload.get("summary_payload") or payload.get("summaryPayload")
         return cls(

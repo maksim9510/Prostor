@@ -10,14 +10,14 @@ so it can run without optional dependencies like firecrawl.
 
 import asyncio
 import threading
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Minimal stubs so we can import _get_cached_client without the full tree
 # ---------------------------------------------------------------------------
+
 
 def _stub_resolve_provider_client(provider, model, async_mode, **kw):
     """Return a unique mock client each time, simulating AsyncOpenAI creation."""

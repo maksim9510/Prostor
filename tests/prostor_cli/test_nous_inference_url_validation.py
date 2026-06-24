@@ -24,8 +24,8 @@ from __future__ import annotations
 import logging
 
 from prostor_cli.auth import (
-    DEFAULT_NOUS_INFERENCE_URL,
     _ALLOWED_NOUS_INFERENCE_HOSTS,
+    DEFAULT_NOUS_INFERENCE_URL,
     _validate_nous_inference_url_from_network,
 )
 
@@ -141,8 +141,9 @@ class TestCallSiteWiring:
     """
 
     def _read_auth_source(self):
-        import prostor_cli.auth as _auth_mod
         from pathlib import Path
+
+        import prostor_cli.auth as _auth_mod
         return Path(_auth_mod.__file__).read_text(encoding="utf-8")
 
     def test_no_unvalidated_inference_base_url_assignments_remain(self):
@@ -180,6 +181,7 @@ class TestCallSiteWiring:
         bypass at the source layer still gets caught at the forward
         boundary."""
         from pathlib import Path
+
         import prostor_cli.proxy.adapters.nous_portal as _nous_adapter
         source = Path(_nous_adapter.__file__).read_text(encoding="utf-8")
         assert "_validate_nous_inference_url_from_network" in source
@@ -201,8 +203,9 @@ class TestEnvOverrideNotGated:
         read via os.getenv directly, not via the validator. Grep the
         source to confirm: the env line should NOT mention the
         validator."""
-        import prostor_cli.auth as _auth_mod
         from pathlib import Path
+
+        import prostor_cli.auth as _auth_mod
         source = Path(_auth_mod.__file__).read_text(encoding="utf-8")
         # Find the env-override read line.
         for line in source.splitlines():

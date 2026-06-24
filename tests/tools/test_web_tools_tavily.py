@@ -7,16 +7,17 @@ Coverage:
   web_search_tool / web_extract_tool — Tavily dispatch paths.
 """
 
+import asyncio
 import json
 import os
-import asyncio
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from tests.tools.conftest import register_all_web_providers
 
-
 # ─── _tavily_request ─────────────────────────────────────────────────────────
+
 
 class TestTavilyRequest:
     """Test suite for the _tavily_request helper."""

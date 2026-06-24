@@ -268,6 +268,7 @@ class TestRunJobTerminalCwd:
         """Patch enough of run_job's deps that it executes without real creds."""
         import os
         import sys
+
         import cron.scheduler as sched
 
         class FakeAgent:
@@ -322,6 +323,7 @@ class TestRunJobTerminalCwd:
         self, tmp_path, monkeypatch
     ):
         import os
+
         import cron.scheduler as sched
 
         # Make sure the test's TERMINAL_CWD starts at a known non-workdir value.
@@ -361,6 +363,7 @@ class TestRunJobTerminalCwd:
         check it's unchanged by run_job.
         """
         import os
+
         import cron.scheduler as sched
 
         # Pin TERMINAL_CWD to a sentinel via monkeypatch so we control both

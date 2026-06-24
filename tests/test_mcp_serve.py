@@ -13,16 +13,16 @@ import inspect
 import json
 import os
 import sqlite3
-import time
 import threading
+import time
 from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _isolate_prostor_home(tmp_path, monkeypatch):
@@ -444,7 +444,7 @@ class TestEventBridge:
         assert result[0]["session_key"] == "wake"
 
     def test_queue_limit(self):
-        from mcp_serve import EventBridge, QueueEvent, QUEUE_LIMIT
+        from mcp_serve import QUEUE_LIMIT, EventBridge, QueueEvent
         b = EventBridge()
         for i in range(QUEUE_LIMIT + 50):
             b._enqueue(QueueEvent(cursor=0, type="message", session_key=f"s{i}"))
@@ -745,6 +745,7 @@ class TestE2EEventsWait:
         # Even with huge timeout, should return immediately since event exists
         result = _run_tool(server, "events_wait", {"timeout_ms": 999999})
         assert result["event"] is not None
+
 
 class TestMCPToolParameterCoercion:
     def test_conversations_list_coerces_string_limit(self, fake_mcp_server, _event_loop):

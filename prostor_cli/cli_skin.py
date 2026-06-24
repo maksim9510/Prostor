@@ -22,10 +22,10 @@ import sys
 import time
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Hex / luminance primitives
 # ---------------------------------------------------------------------------
+
 
 def hex_to_ansi(hex_color: str, bold: bool = False) -> str:
     """Convert ``#RRGGBB`` (or ``#RGB``) to a truecolor SGR escape sequence.

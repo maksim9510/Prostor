@@ -67,8 +67,6 @@ def _prompt_auth_credentials_choice(title: str) -> str:
 
 def _model_flow_openrouter(config, current_model=""):
     """OpenRouter provider: ensure API key, then pick model."""
-    from prostor_cli.main import _prompt_api_key
-    from prostor_constants import OPENROUTER_BASE_URL
     from prostor_cli.auth import (
         ProviderConfig,
         _prompt_model_selection,
@@ -76,6 +74,8 @@ def _model_flow_openrouter(config, current_model=""):
         deactivate_provider,
     )
     from prostor_cli.config import get_env_value
+    from prostor_cli.main import _prompt_api_key
+    from prostor_constants import OPENROUTER_BASE_URL
 
     # Route through _prompt_api_key so users can replace a stale/broken key
     # in-flow (K/R/C) instead of having to edit ~/.prostor/.env by hand. The
@@ -96,7 +96,7 @@ def _model_flow_openrouter(config, current_model=""):
     if abort:
         return
 
-    from prostor_cli.models import model_ids, get_pricing_for_provider
+    from prostor_cli.models import get_pricing_for_provider, model_ids
 
     openrouter_models = model_ids(force_refresh=True)
 
@@ -132,18 +132,19 @@ def _model_flow_openrouter(config, current_model=""):
     else:
         print("No change.")
 
+
 def _model_flow_nous(config, current_model="", args=None):
     """Nous Portal provider: ensure logged in, then pick model."""
     from prostor_cli.auth import (
-        get_provider_auth_state,
+        PROVIDER_REGISTRY,
+        AuthError,
+        _login_nous,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
-        resolve_nous_runtime_credentials,
-        AuthError,
         format_auth_error,
-        _login_nous,
-        PROVIDER_REGISTRY,
+        get_provider_auth_state,
+        resolve_nous_runtime_credentials,
     )
     from prostor_cli.config import (
         get_env_value,
@@ -188,9 +189,9 @@ def _model_flow_nous(config, current_model="", args=None):
     # The live /models endpoint returns hundreds of models; the curated list
     # shows only agentic models users recognize from OpenRouter.
     from prostor_cli.models import (
+        check_nous_free_tier,
         get_curated_nous_model_ids,
         get_pricing_for_provider,
-        check_nous_free_tier,
         partition_nous_models_by_tier,
         union_with_portal_free_recommendations,
         union_with_portal_paid_recommendations,
@@ -357,16 +358,17 @@ def _model_flow_nous(config, current_model="", args=None):
     else:
         print("No change.")
 
+
 def _model_flow_openai_codex(config, current_model=""):
     """OpenAI Codex provider: ensure logged in, then pick model."""
     from prostor_cli.auth import (
-        get_codex_auth_status,
+        DEFAULT_CODEX_BASE_URL,
+        PROVIDER_REGISTRY,
+        _login_openai_codex,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
-        _login_openai_codex,
-        PROVIDER_REGISTRY,
-        DEFAULT_CODEX_BASE_URL,
+        get_codex_auth_status,
     )
     from prostor_cli.codex_models import get_codex_model_ids
 
@@ -445,17 +447,18 @@ def _model_flow_openai_codex(config, current_model=""):
     else:
         print("No change.")
 
+
 def _model_flow_xai_oauth(_config, current_model="", *, args=None):
     """xAI Grok OAuth (SuperGrok / Premium+) provider: ensure logged in, then pick model."""
     from prostor_cli.auth import (
-        get_xai_oauth_auth_status,
+        DEFAULT_XAI_OAUTH_BASE_URL,
+        PROVIDER_REGISTRY,
+        _login_xai_oauth,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
+        get_xai_oauth_auth_status,
         resolve_xai_oauth_runtime_credentials,
-        _login_xai_oauth,
-        DEFAULT_XAI_OAUTH_BASE_URL,
-        PROVIDER_REGISTRY,
     )
     from prostor_cli.models import _PROVIDER_MODELS
 
@@ -532,17 +535,18 @@ def _model_flow_xai_oauth(_config, current_model="", *, args=None):
     else:
         print("No change.")
 
+
 def _model_flow_qwen_oauth(_config, current_model=""):
     """Qwen OAuth provider: reuse local Qwen CLI login, then pick model."""
-    from prostor_cli.main import _DEFAULT_QWEN_PORTAL_MODELS
     from prostor_cli.auth import (
-        get_qwen_auth_status,
-        resolve_qwen_runtime_credentials,
+        DEFAULT_QWEN_BASE_URL,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
-        DEFAULT_QWEN_BASE_URL,
+        get_qwen_auth_status,
+        resolve_qwen_runtime_credentials,
     )
+    from prostor_cli.main import _DEFAULT_QWEN_PORTAL_MODELS
     from prostor_cli.models import fetch_api_models
 
     status = get_qwen_auth_status()
@@ -580,18 +584,19 @@ def _model_flow_qwen_oauth(_config, current_model=""):
     else:
         print("No change.")
 
+
 def _model_flow_minimax_oauth(config, current_model="", args=None):
     """MiniMax OAuth provider: ensure logged in, then pick model."""
     from prostor_cli.auth import (
-        get_provider_auth_state,
+        PROVIDER_REGISTRY,
+        AuthError,
+        _login_minimax_oauth,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
-        resolve_minimax_oauth_runtime_credentials,
-        AuthError,
         format_auth_error,
-        _login_minimax_oauth,
-        PROVIDER_REGISTRY,
+        get_provider_auth_state,
+        resolve_minimax_oauth_runtime_credentials,
     )
 
     state = get_provider_auth_state("minimax-oauth")
@@ -633,6 +638,7 @@ def _model_flow_minimax_oauth(config, current_model="", args=None):
     _update_config_for_provider("minimax-oauth", creds["base_url"])
     print(f"\u2713 Using MiniMax model: {selected}")
 
+
 def _model_flow_google_gemini_cli(_config, current_model=""):
     """Google Gemini OAuth (PKCE) via Cloud Code Assist — supports free AND paid tiers.
 
@@ -645,11 +651,11 @@ def _model_flow_google_gemini_cli(_config, current_model=""):
     """
     from prostor_cli.auth import (
         DEFAULT_GEMINI_CLOUDCODE_BASE_URL,
-        get_gemini_oauth_auth_status,
-        resolve_gemini_oauth_runtime_credentials,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
+        get_gemini_oauth_auth_status,
+        resolve_gemini_oauth_runtime_credentials,
     )
     from prostor_cli.models import _PROVIDER_MODELS
 
@@ -712,15 +718,16 @@ def _model_flow_google_gemini_cli(_config, current_model=""):
     else:
         print("No change.")
 
+
 def _model_flow_custom(config):
     """Custom endpoint: collect URL, API key, and model name.
 
     Automatically saves the endpoint to ``custom_providers`` in config.yaml
     so it appears in the provider menu on subsequent runs.
     """
-    from prostor_cli.main import _auto_provider_name, _prompt_custom_api_mode_selection, _save_custom_provider
     from prostor_cli.auth import _save_model_choice, deactivate_provider
     from prostor_cli.config import get_env_value, load_config, save_config
+    from prostor_cli.main import _auto_provider_name, _prompt_custom_api_mode_selection, _save_custom_provider
     from prostor_cli.secret_prompt import masked_secret_prompt
 
     current_url = get_env_value("OPENAI_BASE_URL") or ""
@@ -931,6 +938,7 @@ def _model_flow_custom(config):
         api_mode=api_mode,
     )
 
+
 def _model_flow_azure_foundry(config, current_model=""):
     """Azure Foundry provider: configure endpoint, auth mode, API mode, and model.
 
@@ -964,14 +972,14 @@ def _model_flow_azure_foundry(config, current_model=""):
     :func:`agent.model_metadata.get_model_context_length` chain
     (models.dev, provider metadata, hardcoded family fallbacks).
     """
+    from prostor_cli import azure_detect
     from prostor_cli.auth import _save_model_choice, deactivate_provider  # noqa: F401
     from prostor_cli.config import (
         get_env_value,
-        save_env_value,
         load_config,
         save_config,
+        save_env_value,
     )
-    from prostor_cli import azure_detect
 
     # ── Load current Azure Foundry configuration ─────────────────────
     model_cfg = config.get("model", {})
@@ -1064,8 +1072,8 @@ def _model_flow_azure_foundry(config, current_model=""):
     if use_entra:
         try:
             from agent.azure_identity_adapter import (
-                EntraIdentityConfig,
                 SCOPE_AI_AZURE_DEFAULT,
+                EntraIdentityConfig,
                 build_token_provider,
                 describe_active_credential,
                 has_azure_identity_installed,
@@ -1299,6 +1307,7 @@ def _model_flow_azure_foundry(config, current_model=""):
         print("    Context length: not auto-detected (will fall back at runtime)")
     print()
 
+
 def _model_flow_named_custom(config, provider_info):
     """Handle a named custom provider from config.yaml custom_providers list.
 
@@ -1306,9 +1315,13 @@ def _model_flow_named_custom(config, provider_info):
     If a model was previously saved, it is pre-selected in the menu.
     Falls back to the saved model if probing fails.
     """
-    from prostor_cli.main import _custom_provider_api_key_config_value, _custom_provider_base_url_config_value, _save_custom_provider
     from prostor_cli.auth import _save_model_choice, deactivate_provider
     from prostor_cli.config import load_config, save_config
+    from prostor_cli.main import (
+        _custom_provider_api_key_config_value,
+        _custom_provider_base_url_config_value,
+        _save_custom_provider,
+    )
     from prostor_cli.models import fetch_api_models
 
     name = provider_info["name"]
@@ -1491,9 +1504,9 @@ def _model_flow_named_custom(config, provider_info):
     print(f"\n✅ Model set to: {model_name}")
     print(f"   Provider: {name} ({base_url})")
 
+
 def _model_flow_copilot(config, current_model=""):
     """GitHub Copilot flow using env vars, gh CLI, or OAuth device code."""
-    from prostor_cli.main import _current_reasoning_effort, _prompt_reasoning_effort_selection, _set_reasoning_effort
     from prostor_cli.auth import (
         PROVIDER_REGISTRY,
         _prompt_model_selection,
@@ -1501,13 +1514,14 @@ def _model_flow_copilot(config, current_model=""):
         deactivate_provider,
         resolve_api_key_provider_credentials,
     )
-    from prostor_cli.config import save_env_value, load_config, save_config
+    from prostor_cli.config import load_config, save_config, save_env_value
+    from prostor_cli.main import _current_reasoning_effort, _prompt_reasoning_effort_selection, _set_reasoning_effort
     from prostor_cli.models import (
         _PROVIDER_MODELS,
+        copilot_model_api_mode,
         fetch_api_models,
         fetch_github_model_catalog,
         github_model_reasoning_efforts,
-        copilot_model_api_mode,
         normalize_copilot_model_id,
     )
 
@@ -1690,6 +1704,7 @@ def _model_flow_copilot(config, current_model=""):
     else:
         print("No change.")
 
+
 def _model_flow_copilot_acp(config, current_model=""):
     """GitHub Copilot ACP flow using the local Copilot CLI."""
     from prostor_cli.auth import (
@@ -1701,12 +1716,12 @@ def _model_flow_copilot_acp(config, current_model=""):
         resolve_api_key_provider_credentials,
         resolve_external_process_provider_credentials,
     )
+    from prostor_cli.config import load_config, save_config
     from prostor_cli.models import (
         _PROVIDER_MODELS,
         fetch_github_model_catalog,
         normalize_copilot_model_id,
     )
-    from prostor_cli.config import load_config, save_config
 
     del config
 
@@ -1807,6 +1822,7 @@ def _model_flow_copilot_acp(config, current_model=""):
 
     print(f"Default model set to: {selected} (via {pconfig.name})")
 
+
 def _model_flow_kimi(config, current_model=""):
     """Kimi / Moonshot model selection with automatic endpoint routing.
 
@@ -1815,20 +1831,20 @@ def _model_flow_kimi(config, current_model=""):
 
     No manual base URL prompt — endpoint is determined by key prefix.
     """
-    from prostor_cli.main import _prompt_api_key
     from prostor_cli.auth import (
-        PROVIDER_REGISTRY,
         KIMI_CODE_BASE_URL,
+        PROVIDER_REGISTRY,
         _prompt_model_selection,
         _save_model_choice,
         deactivate_provider,
     )
     from prostor_cli.config import (
         get_env_value,
-        save_env_value,
         load_config,
         save_config,
+        save_env_value,
     )
+    from prostor_cli.main import _prompt_api_key
     from prostor_cli.models import _PROVIDER_MODELS
 
     provider_id = "kimi-coding"
@@ -1900,9 +1916,9 @@ def _model_flow_kimi(config, current_model=""):
     else:
         print("No change.")
 
+
 def _model_flow_stepfun(config, current_model=""):
     """StepFun Step Plan flow with region-specific endpoints."""
-    from prostor_cli.main import _infer_stepfun_region, _prompt_api_key, _prompt_provider_choice, _stepfun_base_url_for_region
     from prostor_cli.auth import (
         PROVIDER_REGISTRY,
         _prompt_model_selection,
@@ -1911,9 +1927,15 @@ def _model_flow_stepfun(config, current_model=""):
     )
     from prostor_cli.config import (
         get_env_value,
-        save_env_value,
         load_config,
         save_config,
+        save_env_value,
+    )
+    from prostor_cli.main import (
+        _infer_stepfun_region,
+        _prompt_api_key,
+        _prompt_provider_choice,
+        _stepfun_base_url_for_region,
     )
     from prostor_cli.models import _PROVIDER_MODELS, fetch_api_models
 
@@ -2014,6 +2036,7 @@ def _model_flow_stepfun(config, current_model=""):
     else:
         print("No change.")
 
+
 def _model_flow_bedrock_api_key(config, region, current_model=""):
     """Bedrock API Key mode — uses the OpenAI-compatible bedrock-mantle endpoint.
 
@@ -2026,9 +2049,9 @@ def _model_flow_bedrock_api_key(config, region, current_model=""):
         deactivate_provider,
     )
     from prostor_cli.config import (
+        get_env_value,
         load_config,
         save_config,
-        get_env_value,
         save_env_value,
     )
     from prostor_cli.models import _PROVIDER_MODELS
@@ -2110,6 +2133,7 @@ def _model_flow_bedrock_api_key(config, region, current_model=""):
     else:
         print("  No change.")
 
+
 def _model_flow_bedrock(config, current_model=""):
     """AWS Bedrock provider: verify credentials, pick region, discover models.
 
@@ -2128,10 +2152,10 @@ def _model_flow_bedrock(config, current_model=""):
     # 1. Check for AWS credentials
     try:
         from agent.bedrock_adapter import (
+            discover_bedrock_models,
             has_aws_credentials,
             resolve_aws_auth_env_var,
             resolve_bedrock_region,
-            discover_bedrock_models,
         )
     except ImportError:
         print("  ✗ boto3 is not installed. Install it with:")
@@ -2298,9 +2322,9 @@ def _model_flow_bedrock(config, current_model=""):
     else:
         print("  No change.")
 
+
 def _model_flow_api_key_provider(config, provider_id, current_model=""):
     """Generic flow for API-key providers (z.ai, MiniMax, OpenCode, etc.)."""
-    from prostor_cli.main import _prompt_api_key
     from prostor_cli.auth import (
         PROVIDER_REGISTRY,
         _prompt_model_selection,
@@ -2309,15 +2333,16 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
     )
     from prostor_cli.config import (
         get_env_value,
-        save_env_value,
         load_config,
         save_config,
+        save_env_value,
     )
+    from prostor_cli.main import _prompt_api_key
     from prostor_cli.models import (
         _PROVIDER_MODELS,
         fetch_api_models,
-        opencode_model_api_mode,
         normalize_opencode_model_id,
+        opencode_model_api_mode,
     )
 
     pconfig = PROVIDER_REGISTRY[provider_id]
@@ -2589,32 +2614,32 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
     else:
         print("No change.")
 
+
 def _model_flow_anthropic(config, current_model=""):
     """Flow for Anthropic provider — OAuth subscription, API key, or Claude Code creds."""
-    from prostor_cli.main import _run_anthropic_oauth_flow
+    # Check ALL credential sources
     from prostor_cli.auth import (
         _prompt_model_selection,
         _save_model_choice,
         deactivate_provider,
+        get_anthropic_key,
     )
     from prostor_cli.config import (
-        save_env_value,
         load_config,
-        save_config,
         save_anthropic_api_key,
+        save_config,
+        save_env_value,
     )
+    from prostor_cli.main import _run_anthropic_oauth_flow
     from prostor_cli.models import _PROVIDER_MODELS
-
-    # Check ALL credential sources
-    from prostor_cli.auth import get_anthropic_key
 
     existing_key = get_anthropic_key()
     cc_available = False
     try:
         from agent.anthropic_adapter import (
-            read_claude_code_credentials,
-            is_claude_code_token_valid,
             _is_oauth_token,
+            is_claude_code_token_valid,
+            read_claude_code_credentials,
         )
 
         cc_creds = read_claude_code_credentials()
@@ -2636,8 +2661,8 @@ def _model_flow_anthropic(config, current_model=""):
     if has_creds:
         # Show what we found
         if existing_key:
-            from prostor_cli.env_loader import format_secret_source_suffix
             from prostor_cli.auth import PROVIDER_REGISTRY
+            from prostor_cli.env_loader import format_secret_source_suffix
 
             # Surface which env var supplied the key so users with
             # Bitwarden see "(from Bitwarden)" — without this, a detected

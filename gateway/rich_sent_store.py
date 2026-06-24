@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Optional
 
 _MAX_ENTRIES = 1000
 _MAX_TEXT_CHARS = 2000
@@ -33,7 +32,7 @@ def _key(chat_id, message_id) -> str:
     return f"{chat_id}:{message_id}"
 
 
-def record(chat_id, message_id, text: Optional[str]) -> None:
+def record(chat_id, message_id, text: str | None) -> None:
     """Persist ``text`` for ``(chat_id, message_id)``. No-op on any failure."""
     if not text or message_id is None or chat_id is None:
         return
@@ -41,7 +40,7 @@ def record(chat_id, message_id, text: Optional[str]) -> None:
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         try:
-            with open(path, "r", encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)
             if not isinstance(data, dict):
                 data = {}
@@ -65,12 +64,12 @@ def record(chat_id, message_id, text: Optional[str]) -> None:
         return
 
 
-def lookup(chat_id, message_id) -> Optional[str]:
+def lookup(chat_id, message_id) -> str | None:
     """Return stored text for ``(chat_id, message_id)`` or ``None``."""
     if message_id is None or chat_id is None:
         return None
     try:
-        with open(_store_path(), "r", encoding="utf-8") as fh:
+        with open(_store_path(), encoding="utf-8") as fh:
             data = json.load(fh)
         entry = data.get(_key(chat_id, message_id))
         if isinstance(entry, dict):

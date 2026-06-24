@@ -19,7 +19,8 @@ deprecation cycle until >=2 Class-1 platforms validate them.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, SendResult
@@ -35,7 +36,7 @@ def _utf16_len(text: str) -> int:
 
 
 # Table-driven length-unit selection from the descriptor's ``len_unit``.
-_LEN_FNS: Dict[str, Callable[[str], int]] = {
+_LEN_FNS: dict[str, Callable[[str], int]] = {
     "chars": len,
     "utf16": _utf16_len,
 }
@@ -48,7 +49,7 @@ class RelayAdapter(BasePlatformAdapter):
         self,
         config: PlatformConfig,
         descriptor: CapabilityDescriptor,
-        transport: Optional[RelayTransport] = None,
+        transport: RelayTransport | None = None,
     ) -> None:
         # The relay adapter fronts many platforms but presents as a single
         # logical platform to the runner; Platform.RELAY identifies it.
@@ -63,7 +64,7 @@ class RelayAdapter(BasePlatformAdapter):
         # path (run.py _thread_metadata_for_source) only carries thread_id, so we
         # re-attach the scope here from what we saw inbound. Keyed by chat_id
         # (channel) since that's what send() receives. See routedEgressGuard.ts.
-        self._scope_by_chat: Dict[str, str] = {}
+        self._scope_by_chat: dict[str, str] = {}
         self.supports_code_blocks = descriptor.markdown_dialect not in ("", "plain")
 
     # ── capability surface (from descriptor) ─────────────────────────────
@@ -73,8 +74,8 @@ class RelayAdapter(BasePlatformAdapter):
 
     def supports_draft_streaming(
         self,
-        chat_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        chat_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         return self.descriptor.supports_draft_streaming
 
@@ -131,13 +132,13 @@ class RelayAdapter(BasePlatformAdapter):
         except Exception:  # noqa: BLE001 - scope tracking must never break inbound
             pass
 
-    def _with_scope(self, chat_id: str, metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _with_scope(self, chat_id: str, metadata: dict[str, Any] | None) -> dict[str, Any]:
         """Ensure the outbound metadata carries guild_id for the connector's
         egress tenant resolution. The connector resolves the owning tenant from
         metadata.guild_id (Discord); without it egress is declined as
         'target not routed to an onboarded tenant'. No-op when we have no scope
         for this chat (e.g. DMs) or it's already present."""
-        meta: Dict[str, Any] = dict(metadata or {})
+        meta: dict[str, Any] = dict(metadata or {})
         if not meta.get("guild_id"):
             scope = self._scope_by_chat.get(str(chat_id))
             if scope:
@@ -163,8 +164,8 @@ class RelayAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         if self._transport is None:
             return SendResult(success=False, error="no transport")
@@ -183,7 +184,7 @@ class RelayAdapter(BasePlatformAdapter):
             error=result.get("error"),
         )
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         # Proxied to the connector (it owns the platform connection / cache).
         if self._transport is None:
             return {"name": chat_id, "type": "dm"}
@@ -194,7 +195,7 @@ class RelayAdapter(BasePlatformAdapter):
         session_key: str,
         kind: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send via a shared-identity capability bound to a session (A2 outbound).
 

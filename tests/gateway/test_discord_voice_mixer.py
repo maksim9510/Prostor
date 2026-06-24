@@ -9,7 +9,7 @@ integration (install on join, play routing, ack) is tested with the standard
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -28,10 +28,10 @@ if _DISCORD_DIR not in sys.path:
 
 import voice_mixer as vm  # noqa: E402
 
-
 # =====================================================================
 # Pure mixer unit tests
 # =====================================================================
+
 
 class TestVoiceMixerCore:
     def test_frame_geometry_matches_discord(self):
@@ -130,8 +130,8 @@ class TestVoiceMixerCore:
 # =====================================================================
 
 def _make_adapter(fx_cfg=None):
-    from plugins.platforms.discord.adapter import DiscordAdapter
     from gateway.config import Platform, PlatformConfig
+    from plugins.platforms.discord.adapter import DiscordAdapter
     config = PlatformConfig(enabled=True, extra={})
     config.token = "fake-token"
     adapter = object.__new__(DiscordAdapter)
@@ -167,8 +167,8 @@ class TestVoiceMixerActive:
 
     def test_false_when_attr_missing(self):
         # Defensive getattr path (object.__new__ helper that forgot the attr).
-        from plugins.platforms.discord.adapter import DiscordAdapter
         from gateway.config import Platform
+        from plugins.platforms.discord.adapter import DiscordAdapter
         bare = object.__new__(DiscordAdapter)
         bare.platform = Platform.DISCORD
         assert bare.voice_mixer_active(111) is False

@@ -365,6 +365,7 @@ class TestMediaHelpers:
 
     def test_decrypt_file_bytes_round_trip(self):
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
         from plugins.platforms.wecom.adapter import WeComAdapter
 
         plaintext = b"wecom-secret"

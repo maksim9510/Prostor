@@ -560,6 +560,7 @@ class TestCookiePathRespectsPrefix:
         spec-compatible without Secure."""
         from fastapi import FastAPI
         from fastapi.responses import Response
+
         from prostor_cli.dashboard_auth.cookies import set_pkce_cookie
 
         app = FastAPI()

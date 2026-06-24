@@ -15,16 +15,15 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
+from prostor_cli.env_loader import load_prostor_dotenv
 from prostor_constants import (
     get_prostor_home,
     get_prostor_home_override,
     reset_prostor_home_override,
     set_prostor_home_override,
 )
-from prostor_cli.env_loader import load_prostor_dotenv
-from utils import is_truthy_value
 from tui_gateway.transport import (
     StdioTransport,
     Transport,
@@ -32,6 +31,7 @@ from tui_gateway.transport import (
     current_transport,
     reset_transport,
 )
+from utils import is_truthy_value
 
 logger = logging.getLogger(__name__)
 
@@ -842,7 +842,7 @@ def handle_request(req: dict) -> dict | None:
     return fn(rid, params)
 
 
-def dispatch(req: dict, transport: Optional[Transport] = None) -> dict | None:
+def dispatch(req: dict, transport: Transport | None = None) -> dict | None:
     """Route inbound RPCs — long handlers to the pool, everything else inline.
 
     Returns a response dict when handled inline. Returns None when the
@@ -982,8 +982,8 @@ def _start_agent_build(sid: str, session: dict) -> None:
 
             try:
                 from tools.approval import (
-                    register_gateway_notify,
                     load_permanent_allowlist,
+                    register_gateway_notify,
                 )
 
                 register_gateway_notify(
@@ -1494,7 +1494,7 @@ def _clear_pending(sid: str | None = None) -> None:
 
 def resolve_skin() -> dict:
     try:
-        from prostor_cli.skin_engine import init_skin_from_config, get_active_skin
+        from prostor_cli.skin_engine import get_active_skin, init_skin_from_config
 
         init_skin_from_config(_load_cfg())
         skin = get_active_skin()
@@ -2485,7 +2485,8 @@ def _sync_session_key_after_compress(
 
 
 def _get_usage(agent) -> dict:
-    g = lambda k, fb=None: getattr(agent, k, 0) or (getattr(agent, fb, 0) if fb else 0)
+    def g(k, fb=None):
+        return getattr(agent, k, 0) or (getattr(agent, fb, 0) if fb else 0)
     usage = {
         "model": getattr(agent, "model", "") or "",
         "input": g("session_input_tokens", "session_prompt_tokens"),
@@ -2658,7 +2659,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
         "profile_name": _current_profile_name(),
     }
     try:
-        from prostor_cli import __version__, __release_date__
+        from prostor_cli import __release_date__, __version__
 
         info["version"] = __version__
         info["release_date"] = __release_date__
@@ -3144,8 +3145,8 @@ def _agent_cbs(sid: str) -> dict:
 
 
 def _wire_callbacks(sid: str):
-    from tools.terminal_tool import set_sudo_password_callback
     from tools.skills_tool import set_secret_capture_callback
+    from tools.terminal_tool import set_sudo_password_callback
 
     set_sudo_password_callback(lambda: _block("sudo.request", sid, {}, timeout=120))
 
@@ -3316,7 +3317,7 @@ def _load_fallback_model():
 def _agent_fallback_model(agent):
     """Return an agent's fallback chain without rehydrating deliberately empty chains."""
     if hasattr(agent, "_fallback_chain"):
-        return getattr(agent, "_fallback_chain") or []
+        return agent._fallback_chain or []
     if hasattr(agent, "_fallback_model"):
         return getattr(agent, "_fallback_model", None)
     return _load_fallback_model()
@@ -3546,7 +3547,7 @@ def _schedule_mcp_late_refresh(sid: str, agent) -> None:
     as today. No-op when discovery already finished before the agent build.
     """
     try:
-        from tui_gateway.entry import mcp_discovery_in_flight, join_mcp_discovery
+        from tui_gateway.entry import join_mcp_discovery, mcp_discovery_in_flight
     except Exception:
         return
     if not mcp_discovery_in_flight():
@@ -3604,8 +3605,8 @@ def _make_agent(
     reasoning_config_override: dict | None = None,
     service_tier_override: str | None = None,
 ):
-    from run_agent import AIAgent
     from prostor_cli.runtime_provider import resolve_runtime_provider
+    from run_agent import AIAgent
 
     # MCP tool discovery runs in a background daemon thread at startup so a
     # dead server can't freeze the shell.  The agent snapshots its tool list
@@ -3809,7 +3810,7 @@ def _init_session(
         # Defer hard-failure to slash.exec; chat still works without slash worker.
         _sessions[sid]["slash_worker"] = None
     try:
-        from tools.approval import register_gateway_notify, load_permanent_allowlist
+        from tools.approval import load_permanent_allowlist, register_gateway_notify
 
         register_gateway_notify(key, lambda data: _emit("approval.request", sid, data))
         load_permanent_allowlist()
@@ -3862,7 +3863,9 @@ def _resolve_checkpoint_hash(mgr, cwd: str, ref: str) -> str:
 
 def _enrich_with_attached_images(user_text: str, image_paths: list[str]) -> str:
     """Pre-analyze attached images via vision and prepend descriptions to user text."""
-    import asyncio, json as _json
+    import asyncio
+    import json as _json
+
     from tools.vision_tools import vision_analyze_tool
 
     prompt = (
@@ -5366,8 +5369,8 @@ def _(rid, params: dict) -> dict:
     supplied, the server-side core mints a fresh one and returns it so the TUI can
     reuse it on retry of the SAME purchase.
     """
-    from prostor_cli.nous_billing import BillingError, post_charge
     from agent.billing_view import new_idempotency_key
+    from prostor_cli.nous_billing import BillingError, post_charge
 
     amount = params.get("amount_usd")
     if amount is None:
@@ -5840,10 +5843,10 @@ def _(rid, params: dict) -> dict:
 @method("delegation.status")
 def _(rid, params: dict) -> dict:
     from tools.delegate_tool import (
-        is_spawn_paused,
-        list_active_subagents,
         _get_max_concurrent_children,
         _get_max_spawn_depth,
+        is_spawn_paused,
+        list_active_subagents,
     )
 
     return _ok(
@@ -6243,7 +6246,7 @@ def _notification_poller_loop(
     even if the process was started by a different session. This matches
     CLI/gateway behavior (single session per process).
     """
-    from tools.process_registry import process_registry, format_process_notification
+    from tools.process_registry import format_process_notification, process_registry
 
     _emitted = set()  # dedup re-queued events so same completion isn't emitted 50 times while session is busy
     while not stop_event.is_set() and not session.get("_finalized"):
@@ -6438,13 +6441,13 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             run_message: Any = prompt
             if images:
                 try:
-                    from agent.image_routing import (
-                        decide_image_input_mode,
-                        build_native_content_parts,
-                    )
                     from agent.auxiliary_client import (
                         _read_main_model,
                         _read_main_provider,
+                    )
+                    from agent.image_routing import (
+                        build_native_content_parts,
+                        decide_image_input_mode,
                     )
                     from prostor_cli.config import load_config as _tui_load_config
 
@@ -8247,9 +8250,9 @@ def _(rid, params: dict) -> dict:
     surface onboarding before the user submits a doomed prompt.
     """
     try:
-        from prostor_cli.runtime_provider import resolve_runtime_provider
         from prostor_cli.auth import has_usable_secret
         from prostor_cli.main import _has_any_provider_configured
+        from prostor_cli.runtime_provider import resolve_runtime_provider
 
         runtime = resolve_runtime_provider(requested=None)
         provider_configured = bool(_has_any_provider_configured())
@@ -8411,7 +8414,7 @@ def _(rid, params: dict) -> dict:
                     },
                 )
 
-        from tools.mcp_tool import shutdown_mcp_servers, discover_mcp_tools
+        from tools.mcp_tool import discover_mcp_tools, shutdown_mcp_servers
 
         shutdown_mcp_servers()
         discover_mcp_tools()
@@ -8745,8 +8748,8 @@ def _(rid, params: dict) -> dict:
 
     try:
         from agent.skill_commands import (
-            scan_skill_commands,
             build_skill_invocation_message,
+            scan_skill_commands,
         )
 
         cmds = scan_skill_commands()
@@ -9454,12 +9457,12 @@ def _(rid, params: dict) -> dict:
         return _ok(rid, {"items": []})
 
     try:
-        from prostor_cli.commands import SlashCommandCompleter
         from prompt_toolkit.document import Document
         from prompt_toolkit.formatted_text import to_plain_text
 
-        from agent.skill_commands import get_skill_commands
         from agent.skill_bundles import get_skill_bundles
+        from agent.skill_commands import get_skill_commands
+        from prostor_cli.commands import SlashCommandCompleter
 
         completer = SlashCommandCompleter(
             skill_commands_provider=lambda: get_skill_commands(),
@@ -10352,10 +10355,10 @@ def _(rid, params: dict) -> dict:
 
 def _browser_connect(rid, params: dict) -> dict:
     import platform
+    from urllib.parse import urlparse
 
     from prostor_cli.browser_connect import DEFAULT_BROWSER_CDP_URL
     from tools.browser_tool import cleanup_all_browsers
-    from urllib.parse import urlparse
 
     raw_url = params.get("url")
     if raw_url is not None and not isinstance(raw_url, str):
@@ -10568,7 +10571,7 @@ def _(rid, params: dict) -> dict:
 @method("tools.show")
 def _(rid, params: dict) -> dict:
     try:
-        from model_tools import get_toolset_for_tool, get_tool_definitions
+        from model_tools import get_tool_definitions, get_toolset_for_tool
 
         session = _sessions.get(params.get("session_id", ""))
         enabled = (

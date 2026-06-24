@@ -266,6 +266,7 @@ class TestDelegationCleanup:
     def test_run_single_child_calls_close(self):
         """_run_single_child finally block should call close() on child."""
         from unittest.mock import MagicMock
+
         from tools.delegate_tool import _run_single_child
 
         parent = MagicMock()

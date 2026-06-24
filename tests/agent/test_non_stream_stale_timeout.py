@@ -182,6 +182,7 @@ providers:
     monkeypatch.delenv("PROSTOR_API_CALL_STALE_TIMEOUT", raising=False)
 
     import importlib
+
     from prostor_cli import timeouts as to_mod
     importlib.reload(to_mod)
 

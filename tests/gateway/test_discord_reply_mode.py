@@ -9,13 +9,13 @@ Also covers reply_to_text extraction from incoming messages.
 """
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from gateway.config import PlatformConfig, GatewayConfig, Platform, _apply_env_overrides, load_gateway_config
+from gateway.config import GatewayConfig, Platform, PlatformConfig, _apply_env_overrides, load_gateway_config
 
 
 def _ensure_discord_mock():
@@ -318,7 +318,7 @@ def _make_message(*, content: str = "hi", reference=None):
         mentions=[],
         attachments=[],
         reference=reference,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         channel=FakeDMChannel(),
         author=author,
     )

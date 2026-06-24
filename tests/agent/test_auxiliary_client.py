@@ -5,30 +5,30 @@ import json
 import logging
 import time
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from agent.auxiliary_client import (
-    get_text_auxiliary_client,
-    get_available_vision_backends,
-    resolve_vision_provider_client,
-    resolve_provider_client,
-    auxiliary_max_tokens_param,
-    call_llm,
-    async_call_llm,
     _build_call_kwargs,
-    _read_codex_access_token,
+    _CodexCompletionsAdapter,
     _get_provider_chain,
+    _is_model_not_found_error,
     _is_payment_error,
     _is_rate_limit_error,
-    _is_model_not_found_error,
-    _refresh_nous_recommended_model,
     _normalize_aux_provider,
-    _try_payment_fallback,
+    _read_codex_access_token,
+    _refresh_nous_recommended_model,
     _resolve_auto,
     _resolve_xai_oauth_for_aux,
-    _CodexCompletionsAdapter,
+    _try_payment_fallback,
+    async_call_llm,
+    auxiliary_max_tokens_param,
+    call_llm,
+    get_available_vision_backends,
+    get_text_auxiliary_client,
+    resolve_provider_client,
+    resolve_vision_provider_client,
 )
 
 
@@ -428,7 +428,7 @@ class TestAnthropicOAuthFlag:
         monkeypatch.setenv("ANTHROPIC_TOKEN", "sk-ant-oat01-test-token")
         with patch("agent.anthropic_adapter.build_anthropic_client") as mock_build:
             mock_build.return_value = MagicMock()
-            from agent.auxiliary_client import _try_anthropic, AnthropicAuxiliaryClient
+            from agent.auxiliary_client import AnthropicAuxiliaryClient, _try_anthropic
             client, model = _try_anthropic()
             assert client is not None
             assert isinstance(client, AnthropicAuxiliaryClient)
@@ -442,7 +442,7 @@ class TestAnthropicOAuthFlag:
              patch("agent.anthropic_adapter.build_anthropic_client") as mock_build, \
              patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
             mock_build.return_value = MagicMock()
-            from agent.auxiliary_client import _try_anthropic, AnthropicAuxiliaryClient
+            from agent.auxiliary_client import AnthropicAuxiliaryClient, _try_anthropic
             client, model = _try_anthropic()
             assert client is not None
             assert isinstance(client, AnthropicAuxiliaryClient)
@@ -914,6 +914,7 @@ class TestExplicitProviderRouting:
             "OPENROUTER_API_KEY not set" in record.message
             for record in caplog.records
         )
+
 
 class TestGetTextAuxiliaryClient:
     """Test the full resolution chain for get_text_auxiliary_client."""
@@ -1559,7 +1560,8 @@ class TestGetProviderChain:
 
     def test_picks_up_patched_functions(self):
         """Patches on _try_* functions must be visible in the chain."""
-        sentinel = lambda: ("patched", "model")
+        def sentinel():
+            return ("patched", "model")
         with patch("agent.auxiliary_client._try_openrouter", sentinel):
             chain = _get_provider_chain()
         assert chain[0] == ("openrouter", sentinel)
@@ -1575,7 +1577,7 @@ class TestTryPaymentFallback:
         Without this cleanup the fallback chain skips providers we've patched
         to return valid clients — the patched function is never called.
         """
-        from agent.auxiliary_client import _aux_unhealthy_until, _aux_unhealthy_logged_at
+        from agent.auxiliary_client import _aux_unhealthy_logged_at, _aux_unhealthy_until
         _aux_unhealthy_until.clear()
         _aux_unhealthy_logged_at.clear()
         yield
@@ -1859,6 +1861,7 @@ class TestTryMainAgentModelFallback:
 def test_resolve_api_key_provider_skips_unconfigured_anthropic(monkeypatch):
     """_resolve_api_key_provider must not try anthropic when user never configured it."""
     from collections import OrderedDict
+
     from prostor_cli.auth import ProviderConfig
 
     # Build a minimal registry with only "anthropic" so the loop is guaranteed
@@ -2328,6 +2331,7 @@ class TestAuxiliaryTaskExtraBody:
 # Anthropic-compatible image block conversion
 # ---------------------------------------------------------------------------
 
+
 class TestAnthropicCompatImageConversion:
     """Tests for _is_anthropic_compat_endpoint and _convert_openai_images_to_anthropic."""
 
@@ -2762,8 +2766,9 @@ class TestCodexAdapterReasoningTranslation:
     @staticmethod
     def _build_adapter():
         """Build a _CodexCompletionsAdapter with a mocked responses.create()."""
-        from agent.auxiliary_client import _CodexCompletionsAdapter
         from types import SimpleNamespace
+
+        from agent.auxiliary_client import _CodexCompletionsAdapter
 
         # The event-driven path consumes ``responses.create(stream=True)`` as a
         # raw iterable of SSE events.  Emit a minimal stream containing one
@@ -3306,7 +3311,9 @@ class TestAuxiliaryClientPoisonedCacheEviction:
 
     def test_evict_cached_client_instance_drops_direct_match(self):
         from agent.auxiliary_client import (
-            _client_cache, _client_cache_lock, _evict_cached_client_instance,
+            _client_cache,
+            _client_cache_lock,
+            _evict_cached_client_instance,
         )
 
         target = MagicMock(name="target_client")
@@ -3326,8 +3333,10 @@ class TestAuxiliaryClientPoisonedCacheEviction:
     def test_evict_cached_client_instance_walks_codex_wrapper(self):
         """Closing the underlying OpenAI client must evict the Codex shim."""
         from agent.auxiliary_client import (
-            _client_cache, _client_cache_lock, _evict_cached_client_instance,
             CodexAuxiliaryClient,
+            _client_cache,
+            _client_cache_lock,
+            _evict_cached_client_instance,
         )
 
         real = SimpleNamespace(api_key="k", base_url="https://chatgpt.com/backend-api/codex",
@@ -3364,8 +3373,11 @@ class TestAuxiliaryClientPoisonedCacheEviction:
         sync wrapper's _real_client walk but missed the async wrappers.
         """
         from agent.auxiliary_client import (
-            _client_cache, _client_cache_lock, _evict_cached_client_instance,
-            CodexAuxiliaryClient, AsyncCodexAuxiliaryClient,
+            AsyncCodexAuxiliaryClient,
+            CodexAuxiliaryClient,
+            _client_cache,
+            _client_cache_lock,
+            _evict_cached_client_instance,
         )
 
         real = SimpleNamespace(api_key="k", base_url="https://chatgpt.com/backend-api/codex",
@@ -3390,8 +3402,10 @@ class TestAuxiliaryClientPoisonedCacheEviction:
     def test_codex_timeout_evicts_cached_wrapper(self):
         """The timeout closer evicts the cache entry that wraps the closed client."""
         from agent.auxiliary_client import (
-            _client_cache, _client_cache_lock,
-            _CodexCompletionsAdapter, CodexAuxiliaryClient,
+            CodexAuxiliaryClient,
+            _client_cache,
+            _client_cache_lock,
+            _CodexCompletionsAdapter,
         )
 
         class _SlowAliveCreateStream:
@@ -3767,8 +3781,8 @@ class TestAuxUnhealthyCache:
 
     def test_mark_then_skip(self):
         from agent.auxiliary_client import (
-            _mark_provider_unhealthy,
             _is_provider_unhealthy,
+            _mark_provider_unhealthy,
         )
         assert _is_provider_unhealthy("openrouter") is False
         _mark_provider_unhealthy("openrouter")
@@ -3776,9 +3790,9 @@ class TestAuxUnhealthyCache:
 
     def test_ttl_expiry_evicts(self):
         from agent.auxiliary_client import (
-            _mark_provider_unhealthy,
-            _is_provider_unhealthy,
             _aux_unhealthy_until,
+            _is_provider_unhealthy,
+            _mark_provider_unhealthy,
         )
         _mark_provider_unhealthy("openrouter", ttl=0.01)
         assert _is_provider_unhealthy("openrouter") is True
@@ -3792,8 +3806,8 @@ class TestAuxUnhealthyCache:
         """'codex' should normalize to 'openai-codex' so the cache lookup
         matches the chain label."""
         from agent.auxiliary_client import (
-            _mark_provider_unhealthy,
             _is_provider_unhealthy,
+            _mark_provider_unhealthy,
         )
         _mark_provider_unhealthy("codex")
         assert _is_provider_unhealthy("openai-codex") is True
@@ -3801,8 +3815,8 @@ class TestAuxUnhealthyCache:
     def test_resolve_auto_skips_unhealthy_step2(self):
         """_resolve_auto Step-2 chain skips unhealthy providers."""
         from agent.auxiliary_client import (
-            _resolve_auto,
             _mark_provider_unhealthy,
+            _resolve_auto,
         )
         nous_client = MagicMock()
         # Mark OpenRouter unhealthy → chain should skip it and pick nous.
@@ -3824,8 +3838,8 @@ class TestAuxUnhealthyCache:
         provider doesn't burn a 402 RTT every aux call. Falls through to
         Step-2 chain (which also respects the cache)."""
         from agent.auxiliary_client import (
-            _resolve_auto,
             _mark_provider_unhealthy,
+            _resolve_auto,
         )
         nous_client = MagicMock()
         _mark_provider_unhealthy("openrouter")
@@ -3848,8 +3862,8 @@ class TestAuxUnhealthyCache:
         on OpenRouter doesn't cause a second OR call within the same chain
         iteration if it gets re-entered."""
         from agent.auxiliary_client import (
-            _try_payment_fallback,
             _mark_provider_unhealthy,
+            _try_payment_fallback,
         )
         nous_client = MagicMock()
         # Mark BOTH the failed provider (openrouter) and a sibling (custom)
@@ -3872,8 +3886,8 @@ class TestAuxUnhealthyCache:
         so the next call skips it instead of re-trying the same depleted
         endpoint."""
         from agent.auxiliary_client import (
-            call_llm,
             _is_provider_unhealthy,
+            call_llm,
         )
         monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
 

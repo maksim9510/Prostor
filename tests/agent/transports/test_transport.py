@@ -1,14 +1,15 @@
 """Tests for the transport ABC, registry, and AnthropicTransport."""
 
-import pytest
 from types import SimpleNamespace
 
+import pytest
+
+from agent.transports import _REGISTRY, get_transport, register_transport
 from agent.transports.base import ProviderTransport
 from agent.transports.types import NormalizedResponse
-from agent.transports import get_transport, register_transport, _REGISTRY
-
 
 # ── ABC contract tests ──────────────────────────────────────────────────
+
 
 class TestProviderTransportABC:
     """Verify the ABC contract is enforceable."""

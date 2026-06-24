@@ -11,8 +11,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-
-from prostor_cli.main import _web_ui_build_needed, _build_web_ui, _run_npm_install_deterministic
+from prostor_cli.main import _build_web_ui, _run_npm_install_deterministic, _web_ui_build_needed
 
 
 def _touch(path: Path, offset: float = 0.0) -> None:

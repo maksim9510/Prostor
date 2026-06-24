@@ -6,17 +6,18 @@ are exposed in the model picker.
 """
 
 import pytest
-from prostor_cli.model_switch import list_authenticated_providers, switch_model
-from prostor_cli import runtime_provider as rp
 
+from prostor_cli import runtime_provider as rp
+from prostor_cli.model_switch import list_authenticated_providers, switch_model
 
 # =============================================================================
 # Tests for list_authenticated_providers including full models list
 # =============================================================================
 
+
 def test_list_authenticated_providers_includes_full_models_list_from_user_providers(monkeypatch):
     """User-defined providers should expose both default_model and full models list.
-    
+
     Regression test: previously only default_model was shown in /model picker.
     """
     monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})

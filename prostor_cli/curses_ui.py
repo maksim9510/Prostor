@@ -5,8 +5,8 @@ Provides a curses multi-select with keyboard navigation, plus a
 text-based numbered fallback for terminals without curses support.
 """
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Set
 
 from prostor_cli.colors import Colors, color
 
@@ -135,7 +135,7 @@ def _fuzzy_score(label: str, query: str) -> float | None:
     return total
 
 
-def _filter_indices(items: List[str], query: str) -> List[int]:
+def _filter_indices(items: list[str], query: str) -> list[int]:
     """Return item indices matching *query*, ranked best-first.
 
     An empty query keeps every item in original order. Otherwise items are
@@ -168,7 +168,7 @@ class _SearchState:
     query: str = ""
 
 
-def _reconcile_cursor(filtered: List[int], cursor: int) -> tuple[int, int]:
+def _reconcile_cursor(filtered: list[int], cursor: int) -> tuple[int, int]:
     """Return ``(cursor, cursor_pos)`` inside the filtered index list."""
     if not filtered:
         return cursor, 0
@@ -180,7 +180,7 @@ def _reconcile_cursor(filtered: List[int], cursor: int) -> tuple[int, int]:
 
 
 def _move_filtered_cursor(
-    filtered: List[int], cursor: int, cursor_pos: int, delta: int
+    filtered: list[int], cursor: int, cursor_pos: int, delta: int
 ) -> int:
     """Move through the filtered index list, wrapping like the legacy menus."""
     if not filtered:
@@ -427,7 +427,7 @@ def _run_curses_menu(
             search = _SearchState()
             # Non-None labels for filtering; empty when search is disabled so
             # _filter_indices stays a cheap identity range.
-            labels: List[str] = (
+            labels: list[str] = (
                 search_labels if (use_search and search_labels is not None) else []
             )
 
@@ -530,12 +530,12 @@ def _run_curses_menu(
 
 def curses_checklist(
     title: str,
-    items: List[str],
-    selected: Set[int],
+    items: list[str],
+    selected: set[int],
     *,
-    cancel_returns: Set[int] | None = None,
-    status_fn: Optional[Callable[[Set[int]], str]] = None,
-) -> Set[int]:
+    cancel_returns: set[int] | None = None,
+    status_fn: Callable[[set[int]], str] | None = None,
+) -> set[int]:
     """Curses multi-select checklist. Returns set of selected indices.
 
     Args:
@@ -621,7 +621,7 @@ def curses_checklist(
 
 def curses_radiolist(
     title: str,
-    items: List[str],
+    items: list[str],
     selected: int = 0,
     *,
     cancel_returns: int | None = None,
@@ -715,7 +715,7 @@ def curses_radiolist(
 
 def _radio_numbered_fallback(
     title: str,
-    items: List[str],
+    items: list[str],
     selected: int,
     cancel_returns: int,
 ) -> int:
@@ -741,7 +741,7 @@ def _radio_numbered_fallback(
 
 def curses_single_select(
     title: str,
-    items: List[str],
+    items: list[str],
     default_index: int = 0,
     *,
     cancel_label: str = "Cancel",
@@ -815,7 +815,7 @@ def curses_single_select(
 
 def _numbered_single_fallback(
     title: str,
-    items: List[str],
+    items: list[str],
     cancel_idx: int,
 ) -> int | None:
     """Text-based numbered fallback for single-select."""
@@ -839,11 +839,11 @@ def _numbered_single_fallback(
 
 def _numbered_fallback(
     title: str,
-    items: List[str],
-    selected: Set[int],
-    cancel_returns: Set[int],
-    status_fn: Optional[Callable[[Set[int]], str]] = None,
-) -> Set[int]:
+    items: list[str],
+    selected: set[int],
+    cancel_returns: set[int],
+    status_fn: Callable[[set[int]], str] | None = None,
+) -> set[int]:
     """Text-based toggle fallback for terminals without curses."""
     chosen = set(selected)
     print(color(f"\n  {title}", Colors.YELLOW))

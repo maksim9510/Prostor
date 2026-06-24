@@ -38,7 +38,9 @@ def _install_telegram_mock_with_request(
     constants_mod = SimpleNamespace(ParseMode=parse_mode)
     request_mod = SimpleNamespace(HTTPXRequest=httpx_request_factory)
     # MessageEntity needed by #27865 mention-detection path.
-    _MessageEntity = lambda **_kw: SimpleNamespace(**_kw)
+
+    def _MessageEntity(**_kw):
+        return SimpleNamespace(**_kw)
     telegram_mod = SimpleNamespace(
         Bot=bot_factory,
         MessageEntity=_MessageEntity,

@@ -42,10 +42,10 @@ from tools.tts_tool import (
     text_to_speech_tool,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _python_copy_command(output_placeholder: str = "{output_path}") -> str:
     """Return a cross-platform shell command that copies {input_path} -> output."""

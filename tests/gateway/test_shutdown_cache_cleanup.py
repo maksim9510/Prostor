@@ -19,10 +19,10 @@ import pytest
 # Import the module (not the class) to reach stop() and helpers
 import gateway.run as gw_mod
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _FakeGateway:
     """Minimal stand-in with just enough state for ``stop()`` to run."""

@@ -16,10 +16,10 @@ import pytest
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent, MessageType, SessionSource
 
-
 # =====================================================================
 # Helpers
 # =====================================================================
+
 
 def _make_event(
     text: str,

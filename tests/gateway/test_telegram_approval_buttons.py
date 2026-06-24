@@ -46,8 +46,8 @@ def _ensure_telegram_mock():
 
 _ensure_telegram_mock()
 
-from plugins.platforms.telegram.adapter import TelegramAdapter
 from gateway.config import Platform, PlatformConfig
+from plugins.platforms.telegram.adapter import TelegramAdapter
 
 
 def _make_adapter(extra=None):
@@ -234,6 +234,7 @@ class TestTelegramExecApproval:
         assert len(kwargs["text"]) < 5000
 # _handle_callback_query — approval button clicks
 # ===========================================================================
+
 
 class TestTelegramApprovalCallback:
     """Test the approval callback handling in _handle_callback_query."""

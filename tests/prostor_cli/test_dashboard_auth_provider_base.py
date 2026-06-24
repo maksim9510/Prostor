@@ -11,11 +11,10 @@ import pytest
 
 from prostor_cli.dashboard_auth.base import (
     DashboardAuthProvider,
-    Session,
     LoginStart,
+    Session,
     assert_protocol_compliance,
 )
-
 
 # ---------------------------------------------------------------------------
 # Dataclasses
@@ -123,10 +122,10 @@ def test_assert_protocol_compliance_rejects_missing_display_name():
 
 
 from prostor_cli.dashboard_auth import (  # noqa: E402  (after-imports for clarity)
-    register_provider,
+    clear_providers,
     get_provider,
     list_providers,
-    clear_providers,
+    register_provider,
 )
 
 

@@ -7,8 +7,6 @@ finished automatically on the next launch instead of leaving a half-built venv.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import prostor_cli.main as m
 
 

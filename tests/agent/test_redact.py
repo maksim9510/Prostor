@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from agent.redact import redact_sensitive_text, RedactingFormatter
+from agent.redact import RedactingFormatter, redact_sensitive_text
 
 
 @pytest.fixture(autouse=True)

@@ -20,8 +20,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +28,13 @@ logger = logging.getLogger(__name__)
 # Hardware detection
 # ---------------------------------------------------------------------------
 
-_HW_CACHE: Optional[Dict[str, int]] = None
+_HW_CACHE: dict[str, int] | None = None
 _HW_CACHE_LOCK = threading.Lock()
 _HW_CACHE_TS: float = 0.0
 _HW_CACHE_TTL: float = 5.0  # cache for 5 seconds
 
 
-def _detect_hardware() -> Dict[str, int]:
+def _detect_hardware() -> dict[str, int]:
     """Detect available parallelism capacity.
 
     Returns dict with:
@@ -51,7 +50,7 @@ def _detect_hardware() -> Dict[str, int]:
         if _HW_CACHE is not None and (now - _HW_CACHE_TS) < _HW_CACHE_TTL:
             return _HW_CACHE
 
-    result: Dict[str, int] = {}
+    result: dict[str, int] = {}
 
     try:
         import psutil
@@ -86,7 +85,7 @@ def _detect_hardware() -> Dict[str, int]:
     return result
 
 
-def _compute_workers(num_operations: int) -> Tuple[int, Dict[str, int]]:
+def _compute_workers(num_operations: int) -> tuple[int, dict[str, int]]:
     """Compute optimal worker count for given number of operations.
 
     Returns (workers, hw_info).
@@ -107,7 +106,7 @@ def _compute_workers(num_operations: int) -> Tuple[int, Dict[str, int]]:
 
 def _summarize_result(path: str, success: bool, match_count: int,
                       strategy: str = "", error: str = "",
-                      elapsed_ms: float = 0.0) -> Dict[str, Any]:
+                      elapsed_ms: float = 0.0) -> dict[str, Any]:
     """Create compact token-efficient result summary."""
     return {
         "path": path,
@@ -123,8 +122,8 @@ def _summarize_result(path: str, success: bool, match_count: int,
 # Batch patch execution
 # ---------------------------------------------------------------------------
 
-def _execute_single_patch(op: Dict[str, Any], task_id: str,
-                           cross_profile: bool = False) -> Dict[str, Any]:
+def _execute_single_patch(op: dict[str, Any], task_id: str,
+                           cross_profile: bool = False) -> dict[str, Any]:
     """Execute a single patch operation. Called from worker threads.
 
     Each thread gets its own file_ops instance — no shared state.
@@ -188,7 +187,7 @@ def _execute_single_patch(op: Dict[str, Any], task_id: str,
                                 elapsed_ms=elapsed)
 
 
-def batch_patch_tool(operations: List[Dict[str, Any]],
+def batch_patch_tool(operations: list[dict[str, Any]],
                      task_id: str = "default",
                      cross_profile: bool = False) -> str:
     """Apply multiple patch operations in parallel.
@@ -236,7 +235,7 @@ def batch_patch_tool(operations: List[Dict[str, Any]],
             })
 
     # Check sensitive paths
-    from tools.file_tools import _check_sensitive_path, _check_cross_profile_path, tool_error
+    from tools.file_tools import _check_cross_profile_path, _check_sensitive_path, tool_error
     for op in operations:
         path = op["path"]
         sensitive_err = _check_sensitive_path(path, task_id)
@@ -255,7 +254,7 @@ def batch_patch_tool(operations: List[Dict[str, Any]],
         num_ops, workers, hw_info["cpu_cores"], hw_info["available_gb"],
     )
 
-    results: List[Dict[str, Any]] = [None] * num_ops  # preserve order
+    results: list[dict[str, Any]] = [None] * num_ops  # preserve order
     t0 = time.perf_counter()
 
     if workers <= 1 or num_ops <= 1:

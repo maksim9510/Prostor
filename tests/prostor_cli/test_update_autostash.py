@@ -39,6 +39,7 @@ def _patch_managed_uv(request):
          patch("prostor_cli.managed_uv.update_managed_uv", side_effect=_fake_update_managed_uv):
         yield
 
+
 def test_stash_local_changes_if_needed_returns_none_when_tree_clean(monkeypatch, tmp_path):
     calls = []
 

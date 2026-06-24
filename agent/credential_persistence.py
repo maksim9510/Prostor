@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Any, Dict, Mapping
-
+from collections.abc import Mapping
+from typing import Any
 
 # Sources Prostor owns and can intentionally persist in auth.json.  Everything
 # else with a non-empty source is treated as borrowed/reference-only by default
@@ -151,7 +151,7 @@ def _credential_secret_fingerprint(payload: Mapping[str, Any]) -> str | None:
 def sanitize_borrowed_credential_payload(
     payload: Mapping[str, Any],
     provider_id: Any = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return a disk-safe credential-pool payload.
 
     Owned sources (manual entries and Prostor-owned OAuth/device-code state)

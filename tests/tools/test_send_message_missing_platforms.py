@@ -29,6 +29,7 @@ async def _send_matrix(token, extra, chat_id, message):
     pconfig = SimpleNamespace(token=token, extra=extra or {})
     return await _matrix_standalone_send(pconfig, chat_id, message)
 
+
 # ``_send_mattermost`` moved into the mattermost plugin
 # (``plugins/platforms/mattermost/adapter.py::_standalone_send``).  Keep a
 # thin ``(token, extra, chat_id, message)``-shaped wrapper so existing test

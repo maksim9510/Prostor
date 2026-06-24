@@ -13,11 +13,9 @@ from __future__ import annotations
 import logging
 import os
 import platform
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 from prostor_constants import get_prostor_home
 
@@ -26,6 +24,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
+
 
 def managed_uv_path() -> Path:
     """Return the path where Prostor keeps *its* uv binary.
@@ -40,7 +39,7 @@ def managed_uv_path() -> Path:
     return home / "bin" / "uv"
 
 
-def resolve_uv() -> Optional[str]:
+def resolve_uv() -> str | None:
     """Return the managed uv path if it exists, else ``None``.
 
     No side effects — pure lookup.
@@ -79,7 +78,7 @@ class _UvResult(str):
 
     fresh_bootstrap: bool
 
-    def __new__(cls, path: Optional[str], fresh: bool = False) -> "_UvResult":
+    def __new__(cls, path: str | None, fresh: bool = False) -> _UvResult:
         self = super().__new__(cls, path or "")
         self.fresh_bootstrap = fresh
         return self
@@ -91,7 +90,7 @@ class _UvResult(str):
         return iter(((str(self) or None), self.fresh_bootstrap))
 
 
-def _ensure_uv_path() -> Optional[str]:
+def _ensure_uv_path() -> str | None:
     """Resolve the managed uv path, installing it if necessary (plain ``str``/``None``)."""
     existing = resolve_uv()
     if existing:
@@ -155,7 +154,7 @@ def ensure_uv():
     return _UvResult(result)
 
 
-def update_managed_uv() -> Optional[str]:
+def update_managed_uv() -> str | None:
     """Run ``uv self update`` on the managed uv binary.
 
     Call this during ``prostor update`` so the managed copy stays current.
@@ -249,6 +248,7 @@ def _install_uv_windows(env: dict[str, str]) -> None:
         check=True,
         capture_output=True,
     )
+
 
 def rebuild_venv(uv_bin: str, venv_dir: Path, python_version: str = "3.11") -> bool:
     True  # dont remove me. ask ethernet

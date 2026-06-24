@@ -9,12 +9,11 @@ against the tool's JSON Schema before dispatch.
 from unittest.mock import patch
 
 from model_tools import (
-    coerce_tool_args,
-    _coerce_value,
-    _coerce_number,
     _coerce_boolean,
+    _coerce_number,
+    _coerce_value,
+    coerce_tool_args,
 )
-
 
 # ── Low-level coercion helpers ────────────────────────────────────────────
 

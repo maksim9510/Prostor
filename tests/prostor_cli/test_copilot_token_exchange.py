@@ -62,7 +62,7 @@ class TestExchangeCopilotToken:
 
     @patch("urllib.request.urlopen")
     def test_refreshes_expired_cache(self, mock_urlopen):
-        from prostor_cli.copilot_auth import exchange_copilot_token, _jwt_cache, _token_fingerprint
+        from prostor_cli.copilot_auth import _jwt_cache, _token_fingerprint, exchange_copilot_token
 
         # Seed cache with expired entry
         fp = _token_fingerprint("gho_test123")

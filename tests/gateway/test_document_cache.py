@@ -22,6 +22,7 @@ from gateway.platforms.base import (
 # Fixture: redirect DOCUMENT_CACHE_DIR to a temp directory for every test
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _redirect_cache(tmp_path, monkeypatch):
     """Point the module-level DOCUMENT_CACHE_DIR to a fresh tmp_path."""

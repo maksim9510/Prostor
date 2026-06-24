@@ -4,9 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
-from prostor_cli.profiles import _get_default_prostor_home
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -19,6 +17,7 @@ from plugins.memory.honcho.client import (
     resolve_config_path,
     resolve_global_config_path,
 )
+from prostor_cli.profiles import _get_default_prostor_home
 
 
 class TestHonchoClientConfigDefaults:

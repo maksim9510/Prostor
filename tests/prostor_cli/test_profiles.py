@@ -5,44 +5,44 @@ management, export/import, renaming, alias collision checks, profile isolation,
 and shell completion generation.
 """
 
-import json
 import io
+import json
 import tarfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
+from prostor_cli.config import DEFAULT_CONFIG
 from prostor_cli.profiles import (
-    normalize_profile_name,
-    validate_profile_name,
-    get_profile_dir,
+    NO_BUNDLED_SKILLS_MARKER,
+    _get_default_prostor_home,
+    _get_profiles_root,
+    backfill_profile_envs,
+    check_alias_collision,
     create_profile,
     delete_profile,
-    list_profiles,
-    set_active_profile,
+    export_profile,
     get_active_profile,
     get_active_profile_name,
-    resolve_profile_env,
-    check_alias_collision,
-    rename_profile,
-    export_profile,
-    import_profile,
-    _get_profiles_root,
-    _get_default_prostor_home,
-    seed_profile_skills,
+    get_profile_dir,
     has_bundled_skills_opt_out,
-    NO_BUNDLED_SKILLS_MARKER,
-    backfill_profile_envs,
+    import_profile,
+    list_profiles,
+    normalize_profile_name,
     profiles_to_serve,
+    rename_profile,
+    resolve_profile_env,
+    seed_profile_skills,
+    set_active_profile,
+    validate_profile_name,
 )
-from prostor_cli.config import DEFAULT_CONFIG
-
 
 # ---------------------------------------------------------------------------
 # Shared fixture: redirect Path.home() and PROSTOR_HOME for profile tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def profile_env(tmp_path, monkeypatch):

@@ -30,7 +30,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Optional
+from typing import Any
 
 DEFAULT_PORTAL_BASE_URL = "https://portal.nousresearch.com"
 
@@ -62,11 +62,11 @@ class BillingError(Exception):
         self,
         message: str,
         *,
-        status: Optional[int] = None,
-        error: Optional[str] = None,
-        portal_url: Optional[str] = None,
-        retry_after: Optional[int] = None,
-        payload: Optional[dict[str, Any]] = None,
+        status: int | None = None,
+        error: str | None = None,
+        portal_url: str | None = None,
+        retry_after: int | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
@@ -104,7 +104,7 @@ class BillingAuthError(BillingError):
 # =============================================================================
 
 
-def resolve_portal_base_url(state: Optional[dict[str, Any]] = None) -> str:
+def resolve_portal_base_url(state: dict[str, Any] | None = None) -> str:
     """Resolve the portal base URL with login-time precedence.
 
     ``PROSTOR_PORTAL_BASE_URL`` → ``NOUS_PORTAL_BASE_URL`` → stored auth-state
@@ -120,7 +120,7 @@ def resolve_portal_base_url(state: Optional[dict[str, Any]] = None) -> str:
     return DEFAULT_PORTAL_BASE_URL
 
 
-def _absolutize_portal_url(portal_url: Optional[str]) -> Optional[str]:
+def _absolutize_portal_url(portal_url: str | None) -> str | None:
     """Resolve a (possibly relative) server portalUrl to an absolute URL.
 
     The server emits ``portalUrl`` relative by design (e.g. ``/billing?topup=open``)
@@ -148,7 +148,7 @@ _TOKEN_CACHE_TTL_SECONDS = 30.0
 _token_cache: tuple[float, str, str] | None = None  # (cached_at, token, base)
 
 
-def _billing_not_logged_in(exc: Optional[BaseException] = None) -> "BillingAuthError":
+def _billing_not_logged_in(exc: BaseException | None = None) -> BillingAuthError:
     """Build the canonical 'not logged in' BillingAuthError (single source)."""
     err = BillingAuthError(
         "Not logged into Nous Portal — run `prostor portal` to log in.",
@@ -215,7 +215,7 @@ def _resolve_token_and_base(*, use_cache: bool = True) -> tuple[str, str]:
 # =============================================================================
 
 
-def _retry_after_seconds(headers: Any) -> Optional[int]:
+def _retry_after_seconds(headers: Any) -> int | None:
     """Parse a ``Retry-After`` header (integer seconds) — None if absent/bad."""
     if headers is None:
         return None
@@ -267,8 +267,8 @@ def _request(
     method: str,
     path: str,
     *,
-    body: Optional[dict[str, Any]] = None,
-    extra_headers: Optional[dict[str, str]] = None,
+    body: dict[str, Any] | None = None,
+    extra_headers: dict[str, str] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
     _retried_auth: bool = False,
 ) -> dict[str, Any]:

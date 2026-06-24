@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 __all__ = [
     "BlueprintSlot",
@@ -50,7 +50,7 @@ class BlueprintFillError(ValueError):
 _SLOT_TYPES = frozenset({"time", "enum", "text", "weekdays"})
 
 # Named weekday recurrences -> cron day-of-week field.
-WEEKDAY_PRESETS: Dict[str, str] = {
+WEEKDAY_PRESETS: dict[str, str] = {
     "everyday": "*",
     "weekdays": "1-5",
     "weekends": "0,6",
@@ -93,7 +93,7 @@ class AutomationBlueprint:
     schedule_template: str
     # Seed instruction for the agent / the cron job prompt; may contain {slot}s.
     prompt_template: str
-    slots: List[BlueprintSlot] = field(default_factory=list)
+    slots: list[BlueprintSlot] = field(default_factory=list)
     deliver_default: str = "origin"
     skills: tuple = ()        # skills the job loads before running
     tags: tuple = ()
@@ -117,7 +117,7 @@ _DELIVER = BlueprintSlot(
 )
 
 
-CATALOG: List[AutomationBlueprint] = [
+CATALOG: list[AutomationBlueprint] = [
     AutomationBlueprint(
         key="morning-brief",
         title="Morning briefing",
@@ -481,7 +481,7 @@ CATALOG: List[AutomationBlueprint] = [
 _CATALOG_BY_KEY = {r.key: r for r in CATALOG}
 
 
-def get_blueprint(key: str) -> Optional[AutomationBlueprint]:
+def get_blueprint(key: str) -> AutomationBlueprint | None:
     return _CATALOG_BY_KEY.get(key)
 
 
@@ -489,7 +489,7 @@ def get_blueprint(key: str) -> Optional[AutomationBlueprint]:
 # Renderers
 # ---------------------------------------------------------------------------
 
-def blueprint_form_schema(blueprint: AutomationBlueprint) -> Dict[str, Any]:
+def blueprint_form_schema(blueprint: AutomationBlueprint) -> dict[str, Any]:
     """Emit the JSON a form renderer (dashboard / GUI) needs for this blueprint."""
     return {
         "key": blueprint.key,
@@ -513,7 +513,7 @@ def blueprint_form_schema(blueprint: AutomationBlueprint) -> Dict[str, Any]:
     }
 
 
-def blueprint_slash_command(blueprint: AutomationBlueprint, values: Optional[Dict[str, Any]] = None) -> str:
+def blueprint_slash_command(blueprint: AutomationBlueprint, values: dict[str, Any] | None = None) -> str:
     """Build the flattened ``/blueprint <key> slot=val …`` command string.
 
     Uses each slot's default when ``values`` is omitted, so the docs/dashboard
@@ -534,7 +534,7 @@ def blueprint_slash_command(blueprint: AutomationBlueprint, values: Optional[Dic
     return " ".join(parts)
 
 
-def blueprint_deeplink(blueprint: AutomationBlueprint, values: Optional[Dict[str, Any]] = None) -> str:
+def blueprint_deeplink(blueprint: AutomationBlueprint, values: dict[str, Any] | None = None) -> str:
     """Build the ``prostor://blueprint/<key>?slot=val`` deep-link URL."""
     from urllib.parse import quote, urlencode
 
@@ -575,7 +575,7 @@ def _humanize_schedule(blueprint: AutomationBlueprint) -> str:
     return "on a schedule"
 
 
-def blueprint_catalog_entry(blueprint: AutomationBlueprint) -> Dict[str, Any]:
+def blueprint_catalog_entry(blueprint: AutomationBlueprint) -> dict[str, Any]:
     """Unified serializable shape for a blueprint — used by the docs generator
     and the dashboard API. Combines the form schema, the ready-to-paste slash
     command, the deep-link URL, and a human-readable schedule.
@@ -600,7 +600,7 @@ _DAY_TO_DOW = {
 }
 
 
-def _resolve_schedule(blueprint: AutomationBlueprint, values: Dict[str, Any]) -> str:
+def _resolve_schedule(blueprint: AutomationBlueprint, values: dict[str, Any]) -> str:
     """Fill the schedule_template placeholders from resolved slot values."""
     sched = blueprint.schedule_template
 
@@ -608,7 +608,7 @@ def _resolve_schedule(blueprint: AutomationBlueprint, values: Dict[str, Any]) ->
     if "schedule" in values and values["schedule"]:
         return str(values["schedule"])
 
-    repl: Dict[str, str] = {}
+    repl: dict[str, str] = {}
 
     # time -> minute/hour
     time_val = values.get("time")
@@ -660,10 +660,10 @@ def _resolve_schedule(blueprint: AutomationBlueprint, values: Dict[str, Any]) ->
 
 def fill_blueprint(
     blueprint: AutomationBlueprint,
-    values: Dict[str, Any],
+    values: dict[str, Any],
     *,
-    origin: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    origin: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Validate ``values`` and return ``cron.jobs.create_job`` kwargs.
 
     Missing required (non-optional) slots raise BlueprintFillError naming the
@@ -679,7 +679,7 @@ def fill_blueprint(
             f"unknown slot{'s' if len(unknown) > 1 else ''}: "
             f"{', '.join(unknown)} — valid: {', '.join(s.name for s in blueprint.slots)}"
         )
-    resolved: Dict[str, Any] = {}
+    resolved: dict[str, Any] = {}
     for s in blueprint.slots:
         raw = values.get(s.name, s.default)
         if raw in (None, ""):
@@ -700,7 +700,7 @@ def fill_blueprint(
     except KeyError as e:
         raise BlueprintFillError(f"blueprint prompt missing value for {e}") from e
 
-    spec: Dict[str, Any] = {
+    spec: dict[str, Any] = {
         "prompt": prompt,
         "schedule": schedule,
         "name": blueprint.title,

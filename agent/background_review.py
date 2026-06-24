@@ -22,7 +22,7 @@ import contextlib
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -234,10 +234,10 @@ _COMBINED_REVIEW_PROMPT = (
 
 
 def summarize_background_review_actions(
-    review_messages: List[Dict],
-    prior_snapshot: List[Dict],
+    review_messages: list[dict],
+    prior_snapshot: list[dict],
     notification_mode: str = "on",
-) -> List[str]:
+) -> list[str]:
     """Build the human-facing action summary for a background review pass.
 
     Walks the review agent's session messages and collects successful memory
@@ -305,7 +305,7 @@ def summarize_background_review_actions(
                     "new_string": args.get("new_string", ""),
                 }
 
-    actions: List[str] = []
+    actions: list[str] = []
     for msg in review_messages or []:
         if not isinstance(msg, dict) or msg.get("role") != "tool":
             continue
@@ -418,13 +418,13 @@ def summarize_background_review_actions(
 def build_memory_write_metadata(
     agent: Any,
     *,
-    write_origin: Optional[str] = None,
-    execution_context: Optional[str] = None,
-    task_id: Optional[str] = None,
-    tool_call_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    write_origin: str | None = None,
+    execution_context: str | None = None,
+    task_id: str | None = None,
+    tool_call_id: str | None = None,
+) -> dict[str, Any]:
     """Build provenance metadata for external memory-provider mirrors."""
-    metadata: Dict[str, Any] = {
+    metadata: dict[str, Any] = {
         "write_origin": write_origin or getattr(agent, "_memory_write_origin", "assistant_tool"),
         "execution_context": (
             execution_context
@@ -444,7 +444,7 @@ def build_memory_write_metadata(
 
 def _run_review_in_thread(
     agent: Any,
-    messages_snapshot: List[Dict],
+    messages_snapshot: list[dict],
     prompt: str,
 ) -> None:
     """Worker function executed in the background-review daemon thread.
@@ -474,7 +474,7 @@ def _run_review_in_thread(
         pass
 
     review_agent = None
-    review_messages: List[Dict] = []
+    review_messages: list[dict] = []
     try:
         with open(os.devnull, "w", encoding="utf-8") as _devnull, \
              contextlib.redirect_stdout(_devnull), \
@@ -588,8 +588,8 @@ def _run_review_in_thread(
 
             from model_tools import get_tool_definitions
             from prostor_cli.plugins import (
-                set_thread_tool_whitelist,
                 clear_thread_tool_whitelist,
+                set_thread_tool_whitelist,
             )
 
             review_whitelist = {
@@ -698,7 +698,7 @@ def _run_review_in_thread(
 
 def spawn_background_review_thread(
     agent: Any,
-    messages_snapshot: List[Dict],
+    messages_snapshot: list[dict],
     review_memory: bool = False,
     review_skills: bool = False,
 ):

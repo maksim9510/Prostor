@@ -14,14 +14,14 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from prostor_constants import get_prostor_home
 
 logger = logging.getLogger(__name__)
 
 
-def coerce_max_concurrent_sessions(value: Any, key: str = "max_concurrent_sessions") -> Optional[int]:
+def coerce_max_concurrent_sessions(value: Any, key: str = "max_concurrent_sessions") -> int | None:
     """Return a positive integer cap, or None when disabled/invalid."""
     if value is None:
         return None
@@ -53,7 +53,7 @@ def coerce_max_concurrent_sessions(value: Any, key: str = "max_concurrent_sessio
     return parsed
 
 
-def resolve_max_concurrent_sessions(config: Any) -> Optional[int]:
+def resolve_max_concurrent_sessions(config: Any) -> int | None:
     """Resolve top-level max_concurrent_sessions with gateway.* fallback."""
     raw: Any = None
     key = "max_concurrent_sessions"
@@ -144,7 +144,7 @@ class _FileLock:
 
 def _read_entries(path: Path) -> list[dict[str, Any]]:
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
     except FileNotFoundError:
         return []
@@ -165,7 +165,7 @@ def _write_entries(path: Path, entries: list[dict[str, Any]]) -> None:
     os.replace(tmp, path)
 
 
-def _process_start_time(pid: int) -> Optional[float]:
+def _process_start_time(pid: int) -> float | None:
     # Pair pid with process create_time when psutil can read it, so a recycled
     # pid does not keep a stale lease alive indefinitely.
     try:
@@ -176,7 +176,7 @@ def _process_start_time(pid: int) -> Optional[float]:
         return None
 
 
-def _optional_float(value: Any) -> Optional[float]:
+def _optional_float(value: Any) -> float | None:
     if value is None or value == "":
         return None
     try:
@@ -236,8 +236,8 @@ def try_acquire_active_session(
     session_id: str,
     surface: str,
     config: Any,
-    metadata: Optional[dict[str, Any]] = None,
-) -> tuple[Optional[ActiveSessionLease], Optional[str]]:
+    metadata: dict[str, Any] | None = None,
+) -> tuple[ActiveSessionLease | None, str | None]:
     """Acquire an active-session slot.
 
     Returns ``(lease, None)`` on success.  When the cap is disabled, the lease is

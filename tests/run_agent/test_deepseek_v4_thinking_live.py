@@ -17,7 +17,6 @@ from typing import Any
 
 import pytest
 
-
 LIVE = os.environ.get("PROSTOR_LIVE_TESTS") == "1"
 DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 LIVE_MODELS = ("deepseek-v4-flash", "deepseek-v4-pro")

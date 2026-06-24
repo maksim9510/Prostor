@@ -16,11 +16,11 @@ import pytest
 
 from prostor_cli.profile_distribution import (
     DEFAULT_DIST_OWNED,
+    MANIFEST_FILENAME,
+    USER_OWNED_EXCLUDE,
     DistributionError,
     DistributionManifest,
     EnvRequirement,
-    MANIFEST_FILENAME,
-    USER_OWNED_EXCLUDE,
     _env_template_from_manifest,
     _looks_like_git_url,
     _parse_semver,
@@ -32,7 +32,6 @@ from prostor_cli.profile_distribution import (
     update_distribution,
     write_manifest,
 )
-
 
 # ---------------------------------------------------------------------------
 # Isolated profile env (matches tests/prostor_cli/test_profiles.py)
@@ -599,7 +598,7 @@ class TestInstalledAtStamp:
         class _FakeDT(_dt.datetime):
             @classmethod
             def now(cls, tz=None):
-                return _dt.datetime(2099, 1, 1, 0, 0, 0, tzinfo=tz or _dt.timezone.utc)
+                return _dt.datetime(2099, 1, 1, 0, 0, 0, tzinfo=tz or _dt.UTC)
         monkeypatch.setattr(
             "prostor_cli.profile_distribution.datetime", _FakeDT, raising=True
         )
@@ -641,7 +640,7 @@ class TestProfileInfoDistribution:
         assert rows["plain"].distribution_version is None
 
     def test_malformed_manifest_does_not_break_list(self, profile_env):
-        from prostor_cli.profiles import create_profile, list_profiles, get_profile_dir
+        from prostor_cli.profiles import create_profile, get_profile_dir, list_profiles
         create_profile(name="brokenmeta", no_alias=True)
         # Write a distribution.yaml that isn't a valid mapping
         (get_profile_dir("brokenmeta") / "distribution.yaml").write_text(

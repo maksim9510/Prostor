@@ -8,34 +8,33 @@ import sys
 import pytest
 
 from agent.prompt_builder import (
-    _scan_context_content,
-    _truncate_content,
-    _parse_skill_file,
-    _skill_should_show,
-    _find_prostor_md,
-    _find_git_root,
-    _strip_yaml_frontmatter,
-    build_skills_system_prompt,
-    build_nous_subscription_prompt,
-    build_context_files_prompt,
-    CONTEXT_FILE_MAX_CHARS,
-    _dynamic_context_file_max_chars,
-    _get_context_file_max_chars,
     _CONTEXT_FILE_DYNAMIC_CEILING,
+    CONTEXT_FILE_MAX_CHARS,
     DEFAULT_AGENT_IDENTITY,
-    drain_truncation_warnings,
-    TOOL_USE_ENFORCEMENT_GUIDANCE,
-    TOOL_USE_ENFORCEMENT_MODELS,
-    OPENAI_MODEL_EXECUTION_GUIDANCE,
-    PARALLEL_TOOL_CALL_GUIDANCE,
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     MEMORY_GUIDANCE,
-    SESSION_SEARCH_GUIDANCE,
+    OPENAI_MODEL_EXECUTION_GUIDANCE,
+    PARALLEL_TOOL_CALL_GUIDANCE,
     PLATFORM_HINTS,
+    SESSION_SEARCH_GUIDANCE,
+    TOOL_USE_ENFORCEMENT_GUIDANCE,
+    TOOL_USE_ENFORCEMENT_MODELS,
     WSL_ENVIRONMENT_HINT,
+    _dynamic_context_file_max_chars,
+    _find_git_root,
+    _find_prostor_md,
+    _get_context_file_max_chars,
+    _parse_skill_file,
+    _scan_context_content,
+    _skill_should_show,
+    _strip_yaml_frontmatter,
+    _truncate_content,
+    build_context_files_prompt,
+    build_nous_subscription_prompt,
+    build_skills_system_prompt,
+    drain_truncation_warnings,
 )
 from prostor_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
-
 
 # =========================================================================
 # Guidance constants
@@ -1091,8 +1090,10 @@ class TestEnvironmentHints:
         assert "User home directory:" in result
 
     def test_build_environment_hints_on_linux_local(self, monkeypatch):
+        import platform
+        import sys
+
         import agent.prompt_builder as _pb
-        import sys, platform
         monkeypatch.setattr(_pb, "is_wsl", lambda: False)
         monkeypatch.setattr(sys, "platform", "linux")
         monkeypatch.setattr(platform, "system", lambda: "Linux")
@@ -1111,8 +1112,9 @@ class TestEnvironmentHints:
         assert "WSL" not in result
 
     def test_build_environment_hints_on_windows_local(self, monkeypatch):
-        import agent.prompt_builder as _pb
         import sys
+
+        import agent.prompt_builder as _pb
         monkeypatch.setattr(_pb, "is_wsl", lambda: False)
         monkeypatch.setattr(sys, "platform", "win32")
         monkeypatch.delenv("TERMINAL_ENV", raising=False)
@@ -1128,8 +1130,9 @@ class TestEnvironmentHints:
         assert "PowerShell" in result
 
     def test_build_environment_hints_on_macos_local(self, monkeypatch):
-        import agent.prompt_builder as _pb
         import sys
+
+        import agent.prompt_builder as _pb
         monkeypatch.setattr(_pb, "is_wsl", lambda: False)
         monkeypatch.setattr(sys, "platform", "darwin")
         monkeypatch.delenv("TERMINAL_ENV", raising=False)
@@ -1143,8 +1146,9 @@ class TestEnvironmentHints:
 
     def test_build_environment_hints_suppresses_host_on_docker_backend(self, monkeypatch):
         """Docker/remote backends must hide host info — the agent can only touch the backend."""
-        import agent.prompt_builder as _pb
         import sys
+
+        import agent.prompt_builder as _pb
         monkeypatch.setattr(_pb, "is_wsl", lambda: False)
         monkeypatch.setattr(sys, "platform", "win32")
         monkeypatch.setenv("TERMINAL_ENV", "docker")

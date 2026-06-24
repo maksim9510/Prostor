@@ -19,8 +19,7 @@ if sys.platform == "win32":
 import curses
 import re
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 # Path to the source files under test
 _SRC_ROOT = Path(__file__).parent.parent.parent / "prostor_cli"

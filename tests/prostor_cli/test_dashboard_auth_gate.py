@@ -110,8 +110,8 @@ def _stub_uvicorn_run(monkeypatch):
     returns immediately (rather than blocking on the event loop). Returns the dict
     that will capture the keyword args.
     """
-    import asyncio
     import contextlib
+
     import uvicorn
     captured: dict = {"kwargs": {}}
 
@@ -256,8 +256,8 @@ def test_start_server_surfaces_nous_skip_reason_when_unconfigured(monkeypatch):
     env vars set), the gate's fail-closed message should surface the
     plugin's LAST_SKIP_REASON so the operator knows the config fix is
     'set PROSTOR_DASHBOARD_OAUTH_CLIENT_ID', not 'install a plugin'."""
-    from prostor_cli.dashboard_auth import clear_providers
     from plugins.dashboard_auth import nous as nous_plugin
+    from prostor_cli.dashboard_auth import clear_providers
 
     # Simulate the plugin running and skipping for "no client_id".
     clear_providers()

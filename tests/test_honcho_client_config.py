@@ -3,12 +3,11 @@
 import json
 import os
 import stat
-from pathlib import Path
 
 import pytest
 
-from plugins.memory.honcho.client import HonchoClientConfig
 from plugins.memory.honcho import HonchoMemoryProvider
+from plugins.memory.honcho.client import HonchoClientConfig
 
 
 class TestHonchoClientConfigAutoEnable:

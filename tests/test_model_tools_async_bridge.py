@@ -18,10 +18,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 async def _get_current_loop():
     """Return the running event loop from inside a coroutine."""
@@ -91,6 +91,7 @@ class TestRunAsyncWorkerThread:
         """A worker thread's loop must stay open after _run_async returns,
         so cached httpx/AsyncOpenAI clients don't crash on GC."""
         from concurrent.futures import ThreadPoolExecutor
+
         from model_tools import _run_async
 
         def _run_on_worker():
@@ -110,6 +111,7 @@ class TestRunAsyncWorkerThread:
         """Multiple _run_async calls on the same worker thread should
         reuse the same persistent loop (not create-and-destroy each time)."""
         from concurrent.futures import ThreadPoolExecutor
+
         from model_tools import _run_async
 
         def _run_twice_on_worker():
@@ -130,6 +132,7 @@ class TestRunAsyncWorkerThread:
         """Different worker threads must get their own loops to avoid
         contention (the original reason for the worker-thread branch)."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
         from model_tools import _run_async
 
         barrier = threading.Barrier(3, timeout=5)
@@ -162,7 +165,8 @@ class TestRunAsyncWorkerThread:
         """Worker thread loops must be different from the main thread's
         persistent loop to avoid cross-thread contention."""
         from concurrent.futures import ThreadPoolExecutor
-        from model_tools import _run_async, _get_tool_loop
+
+        from model_tools import _get_tool_loop, _run_async
 
         main_loop = _get_tool_loop()
 
@@ -208,6 +212,7 @@ class TestRunAsyncWithRunningLoop:
         caller returns).
         """
         import concurrent.futures
+
         from model_tools import _run_async
 
         events = {
@@ -283,12 +288,12 @@ class TestRunAsyncWithRunningLoop:
         future is a no-op, so the worker thread kept running the coroutine
         to completion (leaking one thread per tool-timeout).
         """
-        from model_tools import _run_async
-
         # Shrink the 300s internal timeout by patching future.result.
         # We do this surgically: let everything else run for real so the
         # worker loop actually exists and can observe cancellation.
         import concurrent.futures as _cf
+
+        from model_tools import _run_async
 
         real_pool_cls = _cf.ThreadPoolExecutor
 

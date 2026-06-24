@@ -465,6 +465,7 @@ def test_tui_launch_install_uses_workspace_scope(
     assert "--workspace" in install_cmd
     assert "ui-tui" in install_cmd
 
+
 def test_make_tui_argv_omits_workspace_when_tui_has_own_lockfile(
     tmp_path: Path, main_mod, monkeypatch
 ) -> None:

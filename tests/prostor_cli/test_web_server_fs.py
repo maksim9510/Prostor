@@ -1,5 +1,4 @@
 import base64
-from pathlib import Path
 
 import pytest
 
@@ -20,7 +19,7 @@ def client(monkeypatch):
     finally:
         if previous_auth_required is None:
             try:
-                delattr(web_server.app.state, "auth_required")
+                del web_server.app.state.auth_required
             except AttributeError:
                 pass
         else:

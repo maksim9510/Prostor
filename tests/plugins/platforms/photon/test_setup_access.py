@@ -11,9 +11,9 @@ import argparse
 
 import pytest
 
-from prostor_cli.config import get_env_value, save_env_value
-from plugins.platforms.photon.adapter import _env_enablement
 from plugins.platforms.photon import cli
+from plugins.platforms.photon.adapter import _env_enablement
+from prostor_cli.config import get_env_value, save_env_value
 
 
 def test_autoconfigure_access_fills_unset(monkeypatch: pytest.MonkeyPatch) -> None:

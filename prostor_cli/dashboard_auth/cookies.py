@@ -56,8 +56,6 @@ Refresh-token handling:
 """
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 from fastapi import Request
 from fastapi.responses import Response
 
@@ -210,7 +208,7 @@ def clear_pkce_cookie(response: Response, *, prefix: str = "") -> None:
 
 def _read_with_fallback(
     request: Request, bare_name: str,
-) -> Optional[str]:
+) -> str | None:
     """Read a cookie by checking every prefix variant in order.
 
     The setter chooses one variant based on the active request shape;
@@ -225,14 +223,14 @@ def _read_with_fallback(
     return None
 
 
-def read_session_cookies(request: Request) -> Tuple[Optional[str], Optional[str]]:
+def read_session_cookies(request: Request) -> tuple[str | None, str | None]:
     """Returns (access_token, refresh_token), either may be None."""
     at = _read_with_fallback(request, SESSION_AT_COOKIE)
     rt = _read_with_fallback(request, SESSION_RT_COOKIE)
     return at, rt
 
 
-def read_pkce_cookie(request: Request) -> Optional[str]:
+def read_pkce_cookie(request: Request) -> str | None:
     return _read_with_fallback(request, PKCE_COOKIE)
 
 

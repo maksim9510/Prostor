@@ -38,23 +38,25 @@ Configuration:
 Usage:
     from mixture_of_agents_tool import mixture_of_agents_tool
     import asyncio
-    
+
     # Process a complex query
     result = await mixture_of_agents_tool(
         user_prompt="Solve this complex mathematical proof..."
     )
 """
 
+import asyncio
+import datetime
 import json
 import logging
 import os
-import asyncio
-import datetime
-from typing import Dict, Any, List, Optional
-from tools.openrouter_client import get_async_client as _get_openrouter_client, check_api_key as check_openrouter_api_key
+import sys
+from typing import Any
+
 from agent.auxiliary_client import extract_content_or_reasoning
 from tools.debug_helpers import DebugSession
-import sys
+from tools.openrouter_client import check_api_key as check_openrouter_api_key
+from tools.openrouter_client import get_async_client as _get_openrouter_client
 
 logger = logging.getLogger(__name__)
 
@@ -87,14 +89,14 @@ Responses from models:"""
 _debug = DebugSession("moa_tools", env_var="MOA_TOOLS_DEBUG")
 
 
-def _construct_aggregator_prompt(system_prompt: str, responses: List[str]) -> str:
+def _construct_aggregator_prompt(system_prompt: str, responses: list[str]) -> str:
     """
     Construct the final system prompt for the aggregator including all model responses.
-    
+
     Args:
         system_prompt (str): Base system prompt for aggregation
         responses (List[str]): List of responses from reference models
-        
+
     Returns:
         str: Complete system prompt with enumerated responses
     """
@@ -111,14 +113,14 @@ async def _run_reference_model_safe(
 ) -> tuple[str, str, bool]:
     """
     Run a single reference model with retry logic and graceful failure handling.
-    
+
     Args:
         model (str): Model identifier to use
         user_prompt (str): The user's query
         temperature (float): Sampling temperature for response generation
         max_tokens (int): Maximum tokens in response
         max_retries (int): Maximum number of retry attempts
-        
+
     Returns:
         tuple[str, str, bool]: (model_name, response_content_or_error, success_flag)
     """
@@ -186,13 +188,13 @@ async def _run_aggregator_model(
 ) -> str:
     """
     Run the aggregator model to synthesize the final response.
-    
+
     Args:
         system_prompt (str): System prompt with all reference responses
         user_prompt (str): Original user query
         temperature (float): Focused temperature for consistent aggregation
         max_tokens (int): Maximum tokens in final response
-        
+
     Returns:
         str: Synthesized final response
     """
@@ -235,12 +237,12 @@ async def _run_aggregator_model(
 
 async def mixture_of_agents_tool(
     user_prompt: str,
-    reference_models: Optional[List[str]] = None,
-    aggregator_model: Optional[str] = None
+    reference_models: list[str] | None = None,
+    aggregator_model: str | None = None
 ) -> str:
     """
     Process a complex query using the Mixture-of-Agents methodology.
-    
+
     This tool leverages multiple frontier language models to collaboratively solve
     extremely difficult problems requiring intense reasoning. It's particularly
     effective for:
@@ -249,16 +251,16 @@ async def mixture_of_agents_tool(
     - Multi-step analytical reasoning tasks
     - Problems requiring diverse domain expertise
     - Tasks where single models show limitations
-    
+
     The MoA approach uses a fixed 2-layer architecture:
     1. Layer 1: Multiple reference models generate diverse responses in parallel (temp=0.6)
     2. Layer 2: Aggregator model synthesizes the best elements into final response (temp=0.4)
-    
+
     Args:
         user_prompt (str): The complex query or problem to solve
         reference_models (Optional[List[str]]): Custom reference models to use
         aggregator_model (Optional[str]): Custom aggregator model to use
-    
+
     Returns:
         str: JSON string containing the MoA results with the following structure:
              {
@@ -270,7 +272,7 @@ async def mixture_of_agents_tool(
                  },
                  "processing_time": float
              }
-    
+
     Raises:
         Exception: If MoA processing fails or API key is not set
     """
@@ -345,7 +347,7 @@ async def mixture_of_agents_tool(
         # Layer 2: Aggregate responses using the aggregator model
         logger.info("Layer 2: Synthesizing final response...")
         aggregator_system_prompt = _construct_aggregator_prompt(
-            AGGREGATOR_SYSTEM_PROMPT, 
+            AGGREGATOR_SYSTEM_PROMPT,
             successful_responses
         )
 
@@ -412,17 +414,17 @@ async def mixture_of_agents_tool(
 def check_moa_requirements() -> bool:
     """
     Check if all requirements for MoA tools are met.
-    
+
     Returns:
         bool: True if requirements are met, False otherwise
     """
     return check_openrouter_api_key()
 
 
-def get_moa_configuration() -> Dict[str, Any]:
+def get_moa_configuration() -> dict[str, Any]:
     """
     Get the current MoA configuration settings.
-    
+
     Returns:
         Dict[str, Any]: Dictionary containing all configuration parameters
     """

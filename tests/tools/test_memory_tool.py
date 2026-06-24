@@ -1,20 +1,21 @@
 """Tests for tools/memory_tool.py — MemoryStore, security scanning, and tool dispatcher."""
 
 import json
-import pytest
 from pathlib import Path
 
-from tools.memory_tool import (
-    MemoryStore,
-    memory_tool,
-    _scan_memory_content,
-    MEMORY_SCHEMA,
-)
+import pytest
 
+from tools.memory_tool import (
+    MEMORY_SCHEMA,
+    MemoryStore,
+    _scan_memory_content,
+    memory_tool,
+)
 
 # =========================================================================
 # Tool schema guidance
 # =========================================================================
+
 
 class TestMemorySchema:
     def test_discourages_diary_style_task_logs(self):

@@ -59,8 +59,8 @@ class DaytonaEnvironment(BaseEnvironment):
         except Exception as e:
             raise ImportError(str(e))
         from daytona import (
-            Daytona,
             CreateSandboxFromImageParams,
+            Daytona,
             DaytonaError,
             Resources,
             SandboxState,

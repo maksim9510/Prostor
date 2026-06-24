@@ -20,7 +20,7 @@ Features:
 Usage:
     from vision_tools import vision_analyze_tool
     import asyncio
-    
+
     # Analyze an image
     result = await vision_analyze_tool(
         image_url="https://example.com/image.jpg",
@@ -32,20 +32,24 @@ import base64
 import json
 import logging
 import os
+import sys
 import uuid
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import Any, Awaitable, Dict, Optional
+from typing import Any
 from urllib.parse import urlparse
+
 import httpx
+
 from agent.auxiliary_client import async_call_llm, extract_content_or_reasoning
 from prostor_constants import get_prostor_dir
 from tools.debug_helpers import DebugSession
 from tools.website_policy import check_website_access
-import sys
 
 logger = logging.getLogger(__name__)
 
 _debug = DebugSession("vision_tools", env_var="VISION_TOOLS_DEBUG")
+
 
 # Configurable HTTP download timeout for _download_image().
 # Separate from auxiliary.vision.timeout which governs the LLM API call.
@@ -66,6 +70,7 @@ def _resolve_download_timeout() -> float:
     except Exception:
         pass
     return 30.0
+
 
 _VISION_DOWNLOAD_TIMEOUT = _resolve_download_timeout()
 
@@ -106,7 +111,7 @@ async def _validate_image_url_async(url: str) -> bool:
     return await async_is_safe_url(url)
 
 
-def _detect_image_mime_type(image_path: Path) -> Optional[str]:
+def _detect_image_mime_type(image_path: Path) -> str | None:
     """Return a MIME type when the file looks like a supported image."""
     with image_path.open("rb") as f:
         header = f.read(64)
@@ -155,15 +160,15 @@ def _is_retryable_download_error(error: Exception) -> bool:
 async def _download_image(image_url: str, destination: Path, max_retries: int = 3) -> Path:
     """
     Download an image from a URL to a local destination (async) with retry logic.
-    
+
     Args:
         image_url (str): The URL of the image to download
         destination (Path): The path where the image should be saved
         max_retries (int): Maximum number of retry attempts (default: 3)
-        
+
     Returns:
         Path: The path to the downloaded image
-        
+
     Raises:
         Exception: If download fails after all retries
     """
@@ -266,10 +271,10 @@ async def _download_image(image_url: str, destination: Path, max_retries: int = 
 def _determine_mime_type(image_path: Path) -> str:
     """
     Determine the MIME type of an image based on its file extension.
-    
+
     Args:
         image_path (Path): Path to the image file
-        
+
     Returns:
         str: The MIME type (defaults to image/jpeg if unknown)
     """
@@ -286,14 +291,14 @@ def _determine_mime_type(image_path: Path) -> str:
     return mime_types.get(extension, 'image/jpeg')
 
 
-def _image_to_base64_data_url(image_path: Path, mime_type: Optional[str] = None) -> str:
+def _image_to_base64_data_url(image_path: Path, mime_type: str | None = None) -> str:
     """
     Convert an image file to a base64-encoded data URL.
-    
+
     Args:
         image_path (Path): Path to the image file
         mime_type (Optional[str]): MIME type of the image (auto-detected if None)
-        
+
     Returns:
         str: Base64-encoded data URL (e.g., "data:image/jpeg;base64,...")
     """
@@ -369,9 +374,9 @@ def _image_exceeds_dimension(image_path: Path, max_dimension: int) -> bool:
         return False
 
 
-def _resize_image_for_vision(image_path: Path, mime_type: Optional[str] = None,
+def _resize_image_for_vision(image_path: Path, mime_type: str | None = None,
                               max_base64_bytes: int = _RESIZE_TARGET_BYTES,
-                              max_dimension: Optional[int] = None) -> str:
+                              max_dimension: int | None = None) -> str:
     """Convert an image to a base64 data URL, auto-resizing if too large.
 
     Tries Pillow first to progressively downscale oversized images.  If Pillow
@@ -413,8 +418,9 @@ def _resize_image_for_vision(image_path: Path, mime_type: Optional[str] = None,
 
     # Attempt auto-resize with Pillow (soft dependency)
     try:
-        from PIL import Image
         import io as _io
+
+        from PIL import Image
     except ImportError:
         # Pillow is a lazy-installable soft dependency. Try a best-effort
         # install (respects security.allow_lazy_installs; no-op if disabled or
@@ -427,8 +433,9 @@ def _resize_image_for_vision(image_path: Path, mime_type: Optional[str] = None,
             # input() deadlocks the terminal (#40490). The install is already
             # gated by security.allow_lazy_installs, so reaching here is opt-in.
             _ensure_dep("tool.vision", prompt=False)
-            from PIL import Image
             import io as _io
+
+            from PIL import Image
         except Exception:
             logger.info("Pillow not installed — cannot auto-resize oversized image")
             if data_url is None:
@@ -612,8 +619,8 @@ def _should_use_native_vision_fast_path() -> bool:
     the caller falls back to the legacy aux-LLM path.
     """
     try:
-        from agent.auxiliary_client import _read_main_provider, _read_main_model
-        from agent.image_routing import decide_image_input_mode, _lookup_supports_vision
+        from agent.auxiliary_client import _read_main_model, _read_main_provider
+        from agent.image_routing import _lookup_supports_vision, decide_image_input_mode
         from prostor_cli.config import load_config
 
         provider = _read_main_provider()
@@ -635,7 +642,7 @@ def _build_native_vision_tool_result(
     question: str,
     image_data_url: str,
     image_size_bytes: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build the multimodal tool-result envelope returned by the fast path.
 
     Shape:
@@ -704,7 +711,7 @@ async def _vision_analyze_native(
     if not isinstance(image_url, str) or not image_url.strip():
         return tool_error("image_url is required", success=False)
 
-    temp_image_path: Optional[Path] = None
+    temp_image_path: Path | None = None
     should_cleanup = False
     try:
         from tools.interrupt import is_interrupted
@@ -805,31 +812,31 @@ async def vision_analyze_tool(
 ) -> str:
     """
     Analyze an image from a URL or local file path using vision AI.
-    
+
     This tool accepts either an HTTP/HTTPS URL or a local file path. For URLs,
     it downloads the image first. In both cases, the image is converted to base64
     and processed using Gemini 3 Flash Preview via OpenRouter API.
-    
+
     The user_prompt parameter is expected to be pre-formatted by the calling
     function (typically model_tools.py) to include both full description
     requests and specific questions.
-    
+
     Args:
         image_url (str): The URL or local file path of the image to analyze.
                          Accepts http://, https:// URLs or absolute/relative file paths.
         user_prompt (str): The pre-formatted prompt for the vision model
         model (str): The vision model to use (default: google/gemini-3-flash-preview)
-    
+
     Returns:
         str: JSON string containing the analysis results with the following structure:
              {
                  "success": bool,
                  "analysis": str (defaults to error message if None)
              }
-    
+
     Raises:
         Exception: If download fails, analysis fails, or API key is not set
-        
+
     Note:
         - For URLs, temporary images are stored under $PROSTOR_HOME/cache/vision/ and cleaned up
         - For local file paths, the file is used directly and NOT deleted
@@ -1193,7 +1200,7 @@ VISION_ANALYZE_SCHEMA = {
 }
 
 
-def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> Awaitable[str]:
+def _handle_vision_analyze(args: dict[str, Any], **kw: Any) -> Awaitable[str]:
     image_url = args.get("image_url", "")
     question = args.get("question", "")
 
@@ -1246,13 +1253,13 @@ _MAX_VIDEO_BASE64_BYTES = 50 * 1024 * 1024  # 50 MB hard cap
 _VIDEO_SIZE_WARN_BYTES = 20 * 1024 * 1024
 
 
-def _detect_video_mime_type(video_path: Path) -> Optional[str]:
+def _detect_video_mime_type(video_path: Path) -> str | None:
     """Return a video MIME type based on file extension, or None if unsupported."""
     ext = video_path.suffix.lower()
     return _VIDEO_MIME_TYPES.get(ext)
 
 
-def _video_to_base64_data_url(video_path: Path, mime_type: Optional[str] = None) -> str:
+def _video_to_base64_data_url(video_path: Path, mime_type: str | None = None) -> str:
     """Convert a video file to a base64-encoded data URL."""
     data = video_path.read_bytes()
     encoded = base64.b64encode(data).decode("ascii")
@@ -1567,7 +1574,7 @@ VIDEO_ANALYZE_SCHEMA = {
 }
 
 
-def _handle_video_analyze(args: Dict[str, Any], **kw: Any) -> Awaitable[str]:
+def _handle_video_analyze(args: dict[str, Any], **kw: Any) -> Awaitable[str]:
     video_url = args.get("video_url", "")
     question = args.get("question", "")
     full_prompt = (

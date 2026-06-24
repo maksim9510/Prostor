@@ -22,8 +22,8 @@ class TestThreadLocalApprovalCallback:
 
     def test_set_and_get_in_same_thread(self):
         from tools.terminal_tool import (
-            set_approval_callback,
             _get_approval_callback,
+            set_approval_callback,
         )
 
         cb1 = lambda cmd, desc: "once"  # noqa: E731
@@ -33,8 +33,8 @@ class TestThreadLocalApprovalCallback:
     def test_callback_not_visible_in_different_thread(self):
         """Thread A's callback is NOT visible to Thread B."""
         from tools.terminal_tool import (
-            set_approval_callback,
             _get_approval_callback,
+            set_approval_callback,
         )
 
         cb_a = lambda cmd, desc: "thread_a"  # noqa: E731
@@ -71,8 +71,8 @@ class TestThreadLocalApprovalCallback:
         """A callback set in the main thread does NOT leak into a
         freshly-spawned worker thread."""
         from tools.terminal_tool import (
-            set_approval_callback,
             _get_approval_callback,
+            set_approval_callback,
         )
 
         cb_main = lambda cmd, desc: "main"  # noqa: E731
@@ -95,8 +95,8 @@ class TestThreadLocalApprovalCallback:
     def test_sudo_password_callback_also_thread_local(self):
         """Same protection applies to the sudo password callback."""
         from tools.terminal_tool import (
-            set_sudo_password_callback,
             _get_sudo_password_callback,
+            set_sudo_password_callback,
         )
 
         cb_main = lambda: "main-password"  # noqa: E731

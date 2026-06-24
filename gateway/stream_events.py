@@ -35,10 +35,10 @@ invariants):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Union
-
+from typing import Any, Union
 
 # ── Message (assistant text) events ──────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class MessageChunk:
@@ -92,8 +92,8 @@ class ToolCallChunk:
     emoji + preview formatting in; that decision now belongs to the adapter.
     """
     tool_name: str
-    preview: Optional[str] = None
-    args: Optional[Dict[str, Any]] = None
+    preview: str | None = None
+    args: dict[str, Any] | None = None
     # Monotonic per-turn index, so the consumer can correlate a finish with its
     # start and so "new"-mode dedup (only report when the tool changes) works
     # without the consumer tracking call order itself.
@@ -142,7 +142,7 @@ class GatewayNotice:
     """
     kind: str
     text: str = ""
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 # Union of every event the consumer's dispatcher accepts.  Kept explicit (rather

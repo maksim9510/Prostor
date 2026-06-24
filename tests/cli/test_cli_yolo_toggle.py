@@ -32,7 +32,6 @@ import pytest
 import tools.approval as approval_module
 from cli import ProstorCLI
 
-
 SESSION_KEY = "test-cli-yolo-session"
 
 

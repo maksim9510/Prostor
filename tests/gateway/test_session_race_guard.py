@@ -15,7 +15,7 @@ import pytest
 
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent, MessageType, merge_pending_message_event
-from gateway.run import GatewayRunner, _AGENT_PENDING_SENTINEL
+from gateway.run import _AGENT_PENDING_SENTINEL, GatewayRunner
 from gateway.session import SessionSource, build_session_key
 
 

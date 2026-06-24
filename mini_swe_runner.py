@@ -15,13 +15,13 @@ Features:
 Usage:
     # Run a single task with local environment
     python mini_swe_runner.py --task "Create a hello world Python script" --env local
-    
+
     # Run with Docker
     python mini_swe_runner.py --task "List files in /tmp" --env docker --image python:3.11-slim
-    
+
     # Run with Modal (cloud)
     python mini_swe_runner.py --task "Install numpy and test it" --env modal --image python:3.11-slim
-    
+
     # Batch mode from JSONL file
     python mini_swe_runner.py --prompts_file prompts.jsonl --output_file trajectories.jsonl --env docker
 """
@@ -30,10 +30,11 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 import fire
 from dotenv import load_dotenv
+
 from agent.tool_dispatch_helpers import make_tool_result_message
 
 # Load environment variables
@@ -42,15 +43,15 @@ load_dotenv()
 
 def _effective_temperature_for_model(
     model: str,
-    base_url: Optional[str] = None,
-) -> Optional[float]:
+    base_url: str | None = None,
+) -> float | None:
     """Return a fixed temperature for models with strict sampling contracts.
 
     Returns ``None`` when the model manages temperature server-side (Kimi);
     callers must omit the ``temperature`` kwarg entirely in that case.
     """
     try:
-        from agent.auxiliary_client import _fixed_temperature_for_model, OMIT_TEMPERATURE
+        from agent.auxiliary_client import OMIT_TEMPERATURE, _fixed_temperature_for_model
     except Exception:
         return None
     result = _fixed_temperature_for_model(model, base_url)
@@ -121,14 +122,14 @@ def create_environment(
 ):
     """
     Create an execution environment using Prostor-Agent's built-in backends.
-    
+
     Args:
         env_type: One of "local", "docker", "modal"
         image: Docker/Modal image name (ignored for local)
         cwd: Working directory
         timeout: Default command timeout
         **kwargs: Additional environment-specific options
-        
+
     Returns:
         Environment instance with execute() and cleanup() methods
     """
@@ -172,7 +173,7 @@ class MiniSWERunner:
     ):
         """
         Initialize the Mini-SWE Runner.
-        
+
         Args:
             model: Model name for OpenAI-compatible API
             base_url: API base URL (optional, uses env vars if not provided)
@@ -258,14 +259,14 @@ class MiniSWERunner:
                 self.env.stop()
             self.env = None
 
-    def _execute_command(self, command: str, timeout: int = None) -> Dict[str, Any]:
+    def _execute_command(self, command: str, timeout: int = None) -> dict[str, Any]:
         """
         Execute a command in the environment.
-        
+
         Args:
             command: Bash command to execute
             timeout: Optional timeout override
-            
+
         Returns:
             Dict with 'output' and 'returncode'
         """
@@ -301,13 +302,13 @@ class MiniSWERunner:
 
     def _convert_to_prostor_format(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         user_query: str,
         completed: bool
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Convert internal message format to Prostor trajectory format.
-        
+
         This produces the exact format used by batch_runner.py.
         """
         trajectory = []
@@ -409,13 +410,13 @@ class MiniSWERunner:
 
         return trajectory
 
-    def run_task(self, task: str) -> Dict[str, Any]:
+    def run_task(self, task: str) -> dict[str, Any]:
         """
         Run a single task and return the result with trajectory.
-        
+
         Args:
             task: The task/prompt to execute
-            
+
         Returns:
             Dict with trajectory, completion status, and metadata
         """
@@ -576,16 +577,16 @@ Complete the user's task step by step."""
 
     def run_batch(
         self,
-        prompts: List[str],
+        prompts: list[str],
         output_file: str
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Run multiple tasks and save trajectories to a JSONL file.
-        
+
         Args:
             prompts: List of task prompts
             output_file: Output JSONL file path
-            
+
         Returns:
             List of results
         """
@@ -647,7 +648,7 @@ def main(
 ):
     """
     Run SWE tasks with Prostor trajectory format output.
-    
+
     Args:
         task: Single task to run (use this OR prompts_file)
         prompts_file: JSONL file with prompts (each line: {"prompt": "..."})
@@ -661,14 +662,14 @@ def main(
         max_iterations: Maximum tool-calling iterations (default: 15)
         timeout: Command timeout in seconds (default: 60)
         verbose: Enable verbose logging
-        
+
     Examples:
         # Single task with local environment
         python mini_swe_runner.py --task "Create hello.py that prints Hello World"
-        
+
         # Single task with Docker
         python mini_swe_runner.py --task "List files" --env docker
-        
+
         # Batch from file
         python mini_swe_runner.py --prompts_file tasks.jsonl --output_file results.jsonl
     """
@@ -704,7 +705,7 @@ def main(
     elif prompts_file:
         # Batch mode
         prompts = []
-        with open(prompts_file, 'r', encoding='utf-8') as f:
+        with open(prompts_file, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line:

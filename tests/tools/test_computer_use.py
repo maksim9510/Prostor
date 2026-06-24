@@ -6,15 +6,15 @@ import base64
 import json
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _reset_backend():
@@ -241,6 +241,7 @@ class TestDispatch:
         out = handle_computer_use({"action": "set_value"})
         parsed = json.loads(out)
         assert "error" in parsed
+
     def test_capture_after_skipped_when_action_failed(self, noop_backend):
         """capture_after must not fire when res.ok=False (regression guard).
 
@@ -248,6 +249,7 @@ class TestDispatch:
         normal state, misleading the model into thinking the action succeeded.
         """
         from unittest.mock import patch
+
         from tools.computer_use.backend import ActionResult
         from tools.computer_use.tool import handle_computer_use
 
@@ -335,8 +337,8 @@ class TestCaptureResponse:
 
     def test_capture_vision_mode_with_image_returns_multimodal_envelope(self):
         """Inject a fake backend that returns a PNG to exercise the envelope path."""
-        from tools.computer_use.backend import CaptureResult
         from tools.computer_use import tool as cu_tool
+        from tools.computer_use.backend import CaptureResult
 
         fake_png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAADUlEQVR4nGNgGAUgAAABCAABgukLHQAAAABJRU5ErkJggg=="
 
@@ -376,8 +378,8 @@ class TestCaptureResponse:
 
     def test_capture_tiny_image_returns_text_json(self):
         """Providers can reject <8px images, so placeholders must be omitted."""
-        from tools.computer_use.backend import CaptureResult, UIElement
         from tools.computer_use import tool as cu_tool
+        from tools.computer_use.backend import CaptureResult, UIElement
 
         tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAC0lEQVR4nGNgQAcAABIAAXfx+gAAAAAASUVORK5CYII="
 
@@ -405,8 +407,8 @@ class TestCaptureResponse:
         assert parsed["elements"][0]["label"] == "Continue"
 
     def test_capture_som_with_elements_formats_index(self):
-        from tools.computer_use.backend import CaptureResult, UIElement
         from tools.computer_use import tool as cu_tool
+        from tools.computer_use.backend import CaptureResult, UIElement
 
         fake_png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAADUlEQVR4nGNgGAUgAAABCAABgukLHQAAAABJRU5ErkJggg=="
 
@@ -595,8 +597,8 @@ class TestCaptureResponse:
         `elements` array — so a "response truncated to N of M elements"
         claim in the summary would be inaccurate.
         """
-        from tools.computer_use.backend import CaptureResult, UIElement
         from tools.computer_use import tool as cu_tool
+        from tools.computer_use.backend import CaptureResult, UIElement
 
         fake_png = "iVBORw0KGgo="
         elements = [
@@ -715,7 +717,7 @@ class TestAnthropicAdapterMultimodal:
 
         fake_png = "iVBORw0KGgo="
 
-        def _mm_tool(call_id: str) -> Dict[str, Any]:
+        def _mm_tool(call_id: str) -> dict[str, Any]:
             return {
                 "role": "tool",
                 "tool_call_id": call_id,
@@ -731,7 +733,7 @@ class TestAnthropicAdapterMultimodal:
             }
 
         # Build 5 screenshots interleaved with assistant messages.
-        messages: List[Dict[str, Any]] = [{"role": "user", "content": "start"}]
+        messages: list[dict[str, Any]] = [{"role": "user", "content": "start"}]
         for i in range(5):
             messages.append({
                 "role": "assistant", "content": "",
@@ -1125,8 +1127,8 @@ class TestCaptureAfterAppContext:
 
     def test_capture_after_uses_last_app(self):
         """capture_after=True should pass _last_app to the follow-up capture."""
-        from tools.computer_use.backend import ActionResult, CaptureResult
         from tools.computer_use import tool as cu_tool
+        from tools.computer_use.backend import ActionResult, CaptureResult
 
         captured_app_args = []
 
@@ -1191,8 +1193,8 @@ class TestCaptureAfterAppContext:
 
     def test_capture_after_without_prior_app_uses_none(self):
         """When no app context is set, follow-up capture uses app=None (frontmost)."""
-        from tools.computer_use.backend import ActionResult, CaptureResult
         from tools.computer_use import tool as cu_tool
+        from tools.computer_use.backend import ActionResult, CaptureResult
 
         captured_app_args = []
 
@@ -1259,7 +1261,8 @@ class TestCaptureAfterAppContext:
 #   matches nothing instead of silently picking the frontmost window.
 # ---------------------------------------------------------------------------
 
-def _make_cua_backend_with_windows(windows: List[Dict[str, Any]]):
+
+def _make_cua_backend_with_windows(windows: list[dict[str, Any]]):
     """Construct a CuaDriverBackend with a mocked MCP session that returns
     the supplied list_windows payload."""
     from tools.computer_use.cua_backend import CuaDriverBackend
@@ -1280,7 +1283,9 @@ class TestCuaDriverSessionReconnect:
         """A daemon restart closes the cached MCP stdio channel; recover once."""
         import threading
         from typing import Any, cast
+
         from anyio import ClosedResourceError
+
         from tools.computer_use.cua_backend import _CuaDriverSession
 
         class FakeBridge:
@@ -1319,6 +1324,7 @@ class TestCuaDriverSessionReconnect:
         """Non-transport errors must propagate without a reconnect attempt."""
         import threading
         from typing import Any, cast
+
         from tools.computer_use.cua_backend import _CuaDriverSession
 
         class FakeBridge:
@@ -1469,9 +1475,10 @@ class TestCuaEnvironmentScrubbing:
         or other sensitive environment variables — only runtime-required vars.
         This is a regression test for issue #37878.
         """
-        from unittest.mock import MagicMock, patch, AsyncMock
-        from tools.computer_use.cua_backend import _CuaDriverSession, _AsyncBridge
         import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tools.computer_use.cua_backend import _AsyncBridge, _CuaDriverSession
 
         bridge = _AsyncBridge()
         session = _CuaDriverSession(bridge)

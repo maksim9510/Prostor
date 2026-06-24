@@ -38,7 +38,6 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
 
 logger = logging.getLogger("prostor.mcp_serve")
 
@@ -88,7 +87,7 @@ def _load_sessions_index() -> dict:
     if not sessions_file.exists():
         return {}
     try:
-        with open(sessions_file, "r", encoding="utf-8") as f:
+        with open(sessions_file, encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         logger.debug("Failed to load sessions.json: %s", e)
@@ -108,7 +107,7 @@ def _load_channel_directory() -> dict:
     if not directory_file.exists():
         return {}
     try:
-        with open(directory_file, "r", encoding="utf-8") as f:
+        with open(directory_file, encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         logger.debug("Failed to load channel_directory.json: %s", e)
@@ -146,7 +145,7 @@ def _extract_message_content(msg: dict) -> str:
     return str(content) if content else ""
 
 
-def _extract_attachments(msg: dict) -> List[dict]:
+def _extract_attachments(msg: dict) -> list[dict]:
     """Extract non-text attachments from a message.
 
     Finds: multi-part image/file content blocks, MEDIA: tags in text,
@@ -210,15 +209,15 @@ class EventBridge:
     """
 
     def __init__(self):
-        self._queue: List[QueueEvent] = []
+        self._queue: list[QueueEvent] = []
         self._cursor = 0
         self._lock = threading.Lock()
         self._new_event = threading.Event()
         self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self._last_poll_timestamps: Dict[str, float] = {}  # session_key -> unix timestamp
+        self._thread: threading.Thread | None = None
+        self._last_poll_timestamps: dict[str, float] = {}  # session_key -> unix timestamp
         # In-memory approval tracking (populated from events)
-        self._pending_approvals: Dict[str, dict] = {}
+        self._pending_approvals: dict[str, dict] = {}
         # mtime cache — skip expensive work when files haven't changed
         self._sessions_json_mtime: float = 0.0
         self._state_db_mtime: float = 0.0
@@ -244,7 +243,7 @@ class EventBridge:
     def poll_events(
         self,
         after_cursor: int = 0,
-        session_key: Optional[str] = None,
+        session_key: str | None = None,
         limit: int = 20,
     ) -> dict:
         """Return events since after_cursor, optionally filtered by session_key."""
@@ -268,9 +267,9 @@ class EventBridge:
     def wait_for_event(
         self,
         after_cursor: int = 0,
-        session_key: Optional[str] = None,
+        session_key: str | None = None,
         timeout_ms: int = 30000,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Block until a matching event arrives or timeout expires."""
         deadline = time.monotonic() + (timeout_ms / 1000.0)
 
@@ -293,7 +292,7 @@ class EventBridge:
 
         return None
 
-    def list_pending_approvals(self) -> List[dict]:
+    def list_pending_approvals(self) -> list[dict]:
         """List approval requests observed during this bridge session."""
         with self._lock:
             return sorted(
@@ -447,7 +446,7 @@ class EventBridge:
 # MCP Server
 # ---------------------------------------------------------------------------
 
-def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
+def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
     """Create and return the Prostor MCP server with all tools registered."""
     if not _MCP_SERVER_AVAILABLE:
         raise ImportError(
@@ -470,9 +469,9 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
 
     @mcp.tool()
     def conversations_list(
-        platform: Optional[str] = None,
+        platform: str | None = None,
         limit: int = 50,
-        search: Optional[str] = None,
+        search: str | None = None,
     ) -> str:
         """List active messaging conversations across connected platforms.
 
@@ -670,7 +669,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
     @mcp.tool()
     def events_poll(
         after_cursor: int = 0,
-        session_key: Optional[str] = None,
+        session_key: str | None = None,
         limit: int = 20,
     ) -> str:
         """Poll for new conversation events since a cursor position.
@@ -699,7 +698,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
     @mcp.tool()
     def events_wait(
         after_cursor: int = 0,
-        session_key: Optional[str] = None,
+        session_key: str | None = None,
         timeout_ms: int = 30000,
     ) -> str:
         """Wait for the next conversation event (long-poll).
@@ -767,7 +766,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
     # -- channels_list -----------------------------------------------------
 
     @mcp.tool()
-    def channels_list(platform: Optional[str] = None) -> str:
+    def channels_list(platform: str | None = None) -> str:
         """List available messaging channels and targets across platforms.
 
         Returns channels that you can send messages to. The target strings
@@ -781,7 +780,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
             entries = _load_sessions_index()
             targets = []
             seen = set()
-            for key, entry in entries.items():
+            for _key, entry in entries.items():
                 origin = entry.get("origin", {})
                 p = entry.get("platform") or origin.get("platform", "")
                 chat_id = origin.get("chat_id", "")

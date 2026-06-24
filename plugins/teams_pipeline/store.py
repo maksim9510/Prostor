@@ -7,19 +7,18 @@ import json
 import os
 import threading
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Optional
+from typing import Any
 
 from prostor_constants import get_prostor_home
-
 
 DEFAULT_TEAMS_PIPELINE_STORE_FILENAME = "teams_pipeline_store.json"
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def resolve_teams_pipeline_store_path(path: str | Path | None = None) -> Path:
@@ -41,7 +40,7 @@ class TeamsPipelineStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self._lock = threading.RLock()
-        self._state: Dict[str, Dict[str, Any]] = {
+        self._state: dict[str, dict[str, Any]] = {
             "subscriptions": {},
             "notification_receipts": {},
             "event_timestamps": {},
@@ -76,16 +75,16 @@ class TeamsPipelineStore:
             tmp_path = Path(tmp.name)
         tmp_path.replace(self.path)
 
-    def list_subscriptions(self) -> Dict[str, Dict[str, Any]]:
+    def list_subscriptions(self) -> dict[str, dict[str, Any]]:
         with self._lock:
             return deepcopy(self._state["subscriptions"])
 
-    def get_subscription(self, subscription_id: str) -> Optional[Dict[str, Any]]:
+    def get_subscription(self, subscription_id: str) -> dict[str, Any] | None:
         with self._lock:
             record = self._state["subscriptions"].get(subscription_id)
             return deepcopy(record) if isinstance(record, dict) else None
 
-    def upsert_subscription(self, subscription_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def upsert_subscription(self, subscription_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             existing = self._state["subscriptions"].get(subscription_id, {})
             merged = {**existing, **deepcopy(payload)}
@@ -105,7 +104,7 @@ class TeamsPipelineStore:
             return True
 
     @classmethod
-    def build_notification_receipt_key(cls, notification: Dict[str, Any]) -> str:
+    def build_notification_receipt_key(cls, notification: dict[str, Any]) -> str:
         explicit_id = notification.get("id")
         if explicit_id:
             return f"id:{explicit_id}"
@@ -120,9 +119,9 @@ class TeamsPipelineStore:
     def record_notification_receipt(
         self,
         receipt_key: str,
-        payload: Optional[Dict[str, Any]] = None,
+        payload: dict[str, Any] | None = None,
         *,
-        received_at: Optional[str] = None,
+        received_at: str | None = None,
     ) -> bool:
         with self._lock:
             if receipt_key in self._state["notification_receipts"]:
@@ -134,19 +133,19 @@ class TeamsPipelineStore:
             self._persist()
             return True
 
-    def record_event_timestamp(self, event_key: str, timestamp: Optional[str] = None) -> str:
+    def record_event_timestamp(self, event_key: str, timestamp: str | None = None) -> str:
         with self._lock:
             value = timestamp or _utc_now_iso()
             self._state["event_timestamps"][event_key] = value
             self._persist()
             return value
 
-    def get_event_timestamp(self, event_key: str) -> Optional[str]:
+    def get_event_timestamp(self, event_key: str) -> str | None:
         with self._lock:
             value = self._state["event_timestamps"].get(event_key)
             return str(value) if value is not None else None
 
-    def stats(self) -> Dict[str, int]:
+    def stats(self) -> dict[str, int]:
         with self._lock:
             return {
                 "subscriptions": len(self._state["subscriptions"]),
@@ -156,7 +155,7 @@ class TeamsPipelineStore:
                 "sink_records": len(self._state["sink_records"]),
             }
 
-    def upsert_job(self, job_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def upsert_job(self, job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             existing = self._state["jobs"].get(job_id, {})
             merged = {**existing, **deepcopy(payload)}
@@ -167,16 +166,16 @@ class TeamsPipelineStore:
             self._persist()
             return deepcopy(merged)
 
-    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             record = self._state["jobs"].get(job_id)
             return deepcopy(record) if isinstance(record, dict) else None
 
-    def list_jobs(self) -> Dict[str, Dict[str, Any]]:
+    def list_jobs(self) -> dict[str, dict[str, Any]]:
         with self._lock:
             return deepcopy(self._state["jobs"])
 
-    def upsert_sink_record(self, sink_key: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def upsert_sink_record(self, sink_key: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             existing = self._state["sink_records"].get(sink_key, {})
             merged = {**existing, **deepcopy(payload)}
@@ -187,7 +186,7 @@ class TeamsPipelineStore:
             self._persist()
             return deepcopy(merged)
 
-    def get_sink_record(self, sink_key: str) -> Optional[Dict[str, Any]]:
+    def get_sink_record(self, sink_key: str) -> dict[str, Any] | None:
         with self._lock:
             record = self._state["sink_records"].get(sink_key)
             return deepcopy(record) if isinstance(record, dict) else None

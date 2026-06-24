@@ -1,6 +1,6 @@
 import logging
-from io import StringIO
 import subprocess
+from io import StringIO
 
 import pytest
 
@@ -1236,7 +1236,7 @@ def test_cleanup_on_env_with_no_container_id_does_not_raise(monkeypatch):
 def _now_iso(offset_seconds: int = 0) -> str:
     """Return an RFC3339 timestamp ``offset_seconds`` in the past."""
     import datetime
-    t = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=offset_seconds)
+    t = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=offset_seconds)
     # Format like Docker emits — with nanoseconds-style trailing digits.
     return t.isoformat().replace("+00:00", ".123456789Z")
 
@@ -1456,7 +1456,7 @@ def test_container_finished_at_parses_nanosecond_timestamp(monkeypatch):
     result = docker_env._container_finished_at("/usr/bin/docker", "test-cid")
     assert result is not None, "must parse RFC3339 with nanoseconds"
     import datetime
-    assert result.tzinfo == datetime.timezone.utc
+    assert result.tzinfo == datetime.UTC
     assert result.year == 2026 and result.month == 5 and result.day == 28
 
 
@@ -1465,7 +1465,6 @@ def test_container_finished_at_returns_none_on_zero_value():
     map to None so the reaper treats the container as unreapable."""
     # Direct test of the parsing helper — no subprocess needed since the
     # check happens after the inspect call returns.
-    import subprocess as _subprocess
 
     class _MockRun:
         def __init__(self, stdout):

@@ -36,16 +36,15 @@ import os
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
-
 
 # ── Public stamp type ────────────────────────────────────────────────
 # (mtime, read_ts, partial).  partial=True when read_file returned a
 # windowed view (offset > 1 or limit < total_lines) — writes that happen
 # after a partial read should still warn so the model re-reads in full.
-ReadStamp = Tuple[float, float, bool]
+ReadStamp = tuple[float, float, bool]
 
 # Number of resolved-path entries retained per agent.  Bounded to keep
 # long sessions from accumulating unbounded state.  On overflow we drop
@@ -60,9 +59,9 @@ class FileStateRegistry:
     """Process-wide coordinator for cross-agent file edits."""
 
     def __init__(self) -> None:
-        self._reads: Dict[str, Dict[str, ReadStamp]] = defaultdict(dict)
-        self._last_writer: Dict[str, Tuple[str, float]] = {}
-        self._path_locks: Dict[str, threading.Lock] = {}
+        self._reads: dict[str, dict[str, ReadStamp]] = defaultdict(dict)
+        self._last_writer: dict[str, tuple[str, float]] = {}
+        self._path_locks: dict[str, threading.Lock] = {}
         self._meta_lock = threading.Lock()  # guards _path_locks
         self._state_lock = threading.Lock()  # guards _reads + _last_writer
 
@@ -96,7 +95,7 @@ class FileStateRegistry:
         resolved: str,
         *,
         partial: bool = False,
-        mtime: Optional[float] = None,
+        mtime: float | None = None,
     ) -> None:
         if _disabled():
             return
@@ -116,7 +115,7 @@ class FileStateRegistry:
         task_id: str,
         resolved: str,
         *,
-        mtime: Optional[float] = None,
+        mtime: float | None = None,
     ) -> None:
         """Record a successful write.
 
@@ -139,7 +138,7 @@ class FileStateRegistry:
             self._reads[task_id][resolved] = (float(mtime), now, False)
             _cap_dict(self._reads[task_id], _MAX_PATHS_PER_AGENT)
 
-    def check_stale(self, task_id: str, resolved: str) -> Optional[str]:
+    def check_stale(self, task_id: str, resolved: str) -> str | None:
         """Return a model-facing warning if this write would be stale.
 
         Three staleness classes, in order of severity:
@@ -220,7 +219,7 @@ class FileStateRegistry:
         exclude_task_id: str,
         since_ts: float,
         paths: Iterable[str],
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """Return ``{writer_task_id: [paths]}`` for writes done after
         ``since_ts`` by agents OTHER than ``exclude_task_id``.
 
@@ -230,7 +229,7 @@ class FileStateRegistry:
         if _disabled():
             return {}
         paths_set = set(paths)
-        out: Dict[str, List[str]] = defaultdict(list)
+        out: dict[str, list[str]] = defaultdict(list)
         with self._state_lock:
             for p, (writer_tid, ts) in self._last_writer.items():
                 if writer_tid == exclude_task_id:
@@ -241,7 +240,7 @@ class FileStateRegistry:
                     out[writer_tid].append(p)
         return dict(out)
 
-    def known_reads(self, task_id: str) -> List[str]:
+    def known_reads(self, task_id: str) -> list[str]:
         """Return the list of resolved paths this agent has read."""
         if _disabled():
             return []
@@ -300,7 +299,7 @@ def note_write(task_id: str, resolved_or_path: str | Path) -> None:
     _registry.note_write(task_id, str(resolved_or_path))
 
 
-def check_stale(task_id: str, resolved_or_path: str | Path) -> Optional[str]:
+def check_stale(task_id: str, resolved_or_path: str | Path) -> str | None:
     return _registry.check_stale(task_id, str(resolved_or_path))
 
 
@@ -312,11 +311,11 @@ def writes_since(
     exclude_task_id: str,
     since_ts: float,
     paths: Iterable[str | Path],
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     return _registry.writes_since(exclude_task_id, since_ts, [str(p) for p in paths])
 
 
-def known_reads(task_id: str) -> List[str]:
+def known_reads(task_id: str) -> list[str]:
     return _registry.known_reads(task_id)
 
 

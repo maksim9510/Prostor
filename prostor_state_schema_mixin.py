@@ -5,7 +5,6 @@ Extracted from prostor_state.py (#26).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +130,7 @@ class SessionSchemaMixin:
                 self._warn_fts5_unavailable(exc)
             return False
 
-    def _parse_schema_columns(schema_sql: str) -> Dict[str, Dict[str, str]]:
+    def _parse_schema_columns(schema_sql: str) -> dict[str, dict[str, str]]:
         """Extract expected columns per table from SCHEMA_SQL.
 
         Uses an in-memory SQLite database to parse the SQL — SQLite itself
@@ -146,12 +145,12 @@ class SessionSchemaMixin:
         ref = sqlite3.connect(":memory:")
         try:
             ref.executescript(schema_sql)
-            table_columns: Dict[str, Dict[str, str]] = {}
+            table_columns: dict[str, dict[str, str]] = {}
             for (tbl,) in ref.execute(
                 "SELECT name FROM sqlite_master "
                 "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ).fetchall():
-                cols: Dict[str, str] = {}
+                cols: dict[str, str] = {}
                 for row in ref.execute(
                     f'PRAGMA table_info("{tbl}")'
                 ).fetchall():

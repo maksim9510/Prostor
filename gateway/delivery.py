@@ -11,10 +11,10 @@ Routes messages to the appropriate destination based on:
 import logging
 import os
 import re
-from pathlib import Path
-from datetime import datetime
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 from prostor_core import get_prostor_home
 
@@ -35,7 +35,7 @@ _SILENCE_NARRATION = re.compile(
 )
 
 
-def _is_silence_narration(content: Optional[str]) -> bool:
+def _is_silence_narration(content: str | None) -> bool:
     """Return True when ``content`` is *only* a silence-narration token.
 
     Length-guarded (real messages are longer) and anchored to the whole string
@@ -49,11 +49,12 @@ def _is_silence_narration(content: Optional[str]) -> bool:
         return False
     return bool(_SILENCE_NARRATION.match(stripped))
 
-from .config import Platform, GatewayConfig
+
+from .config import GatewayConfig, Platform
 from .session import SessionSource
 
 
-def _looks_like_telegram_private_chat_id(chat_id: Optional[str]) -> bool:
+def _looks_like_telegram_private_chat_id(chat_id: str | None) -> bool:
     if chat_id is None:
         return False
     try:
@@ -62,7 +63,7 @@ def _looks_like_telegram_private_chat_id(chat_id: Optional[str]) -> bool:
         return False
 
 
-def _looks_like_int(value: Optional[str]) -> bool:
+def _looks_like_int(value: str | None) -> bool:
     if value is None:
         return False
     try:
@@ -78,7 +79,7 @@ def _send_result_failed(result: Any) -> bool:
     return getattr(result, "success", True) is False
 
 
-def _send_result_error(result: Any) -> Optional[str]:
+def _send_result_error(result: Any) -> str | None:
     if isinstance(result, dict):
         error = result.get("error")
     else:
@@ -95,7 +96,7 @@ def _is_thread_not_found_delivery_error(result: Any) -> bool:
 class DeliveryTarget:
     """
     A single delivery target.
-    
+
     Represents where a message should be sent:
     - "origin" → back to source
     - "local" → save to local files
@@ -103,16 +104,16 @@ class DeliveryTarget:
     - "telegram:123456" → specific Telegram chat
     """
     platform: Platform
-    chat_id: Optional[str] = None  # None means use home channel
-    thread_id: Optional[str] = None
+    chat_id: str | None = None  # None means use home channel
+    thread_id: str | None = None
     is_origin: bool = False
     is_explicit: bool = False  # True if chat_id was explicitly specified
 
     @classmethod
-    def parse(cls, target: str, origin: Optional[SessionSource] = None) -> "DeliveryTarget":
+    def parse(cls, target: str, origin: SessionSource | None = None) -> "DeliveryTarget":
         """
         Parse a delivery target string.
-        
+
         Formats:
         - "origin" → back to source
         - "local" → local files only
@@ -175,15 +176,15 @@ class DeliveryTarget:
 class DeliveryRouter:
     """
     Routes messages to appropriate destinations.
-    
+
     Handles the logic of resolving delivery targets and dispatching
     messages to the right platform adapters.
     """
 
-    def __init__(self, config: GatewayConfig, adapters: Dict[Platform, Any] = None):
+    def __init__(self, config: GatewayConfig, adapters: dict[Platform, Any] = None):
         """
         Initialize the delivery router.
-        
+
         Args:
             config: Gateway configuration
             adapters: Dict mapping platforms to their adapter instances
@@ -195,21 +196,21 @@ class DeliveryRouter:
     async def deliver(
         self,
         content: str,
-        targets: List[DeliveryTarget],
-        job_id: Optional[str] = None,
-        job_name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        targets: list[DeliveryTarget],
+        job_id: str | None = None,
+        job_name: str | None = None,
+        metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Deliver content to all specified targets.
-        
+
         Args:
             content: The message/output to deliver
             targets: List of delivery targets
             job_id: Optional job ID (for cron jobs)
             job_name: Optional job name
             metadata: Additional metadata to include
-        
+
         Returns:
             Dict with delivery results per target
         """
@@ -237,10 +238,10 @@ class DeliveryRouter:
     def _deliver_local(
         self,
         content: str,
-        job_id: Optional[str],
-        job_name: Optional[str],
-        metadata: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        job_id: str | None,
+        job_name: str | None,
+        metadata: dict[str, Any] | None
+    ) -> dict[str, Any]:
         """Save content to local files."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -305,8 +306,8 @@ class DeliveryRouter:
         self,
         target: DeliveryTarget,
         content: str,
-        metadata: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        metadata: dict[str, Any] | None
+    ) -> dict[str, Any]:
         """Deliver content to a messaging platform."""
         adapter = self.adapters.get(target.platform)
 
@@ -349,7 +350,7 @@ class DeliveryRouter:
 
         send_metadata = dict(metadata or {})
         is_named_telegram_private_topic = False
-        named_telegram_private_topic_name: Optional[str] = None
+        named_telegram_private_topic_name: str | None = None
         if target.thread_id:
             has_explicit_direct_topic = (
                 "direct_messages_topic_id" in send_metadata

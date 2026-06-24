@@ -5,8 +5,6 @@ Extracted from gateway/run.py (#23 Phase 2).
 from __future__ import annotations
 
 import logging
-import re
-from typing import Any, Dict, Optional
 
 from gateway.config import Platform
 
@@ -24,11 +22,11 @@ class GatewaySessionMixin:
         return self._exit_with_failure
 
     @property
-    def exit_reason(self) -> Optional[str]:
+    def exit_reason(self) -> str | None:
         return self._exit_reason
 
     @property
-    def exit_code(self) -> Optional[int]:
+    def exit_code(self) -> int | None:
         return self._exit_code
 
     def _session_key_for_source(self, source: SessionSource) -> str:
@@ -146,7 +144,7 @@ class GatewaySessionMixin:
             "existing topic only if you want to replace that topic's current session."
         )
 
-    def _telegram_topic_new_header(self, source: SessionSource) -> Optional[str]:
+    def _telegram_topic_new_header(self, source: SessionSource) -> str | None:
         if not self._is_telegram_topic_lane(source):
             return None
         return (
@@ -202,7 +200,7 @@ class GatewaySessionMixin:
     def _recover_telegram_topic_thread_id(
         self,
         source: SessionSource,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Pin DM-topic routing to the user's last-active topic.
 
         Telegram can omit ``message_thread_id`` or surface General (``1``)
@@ -282,9 +280,9 @@ class GatewaySessionMixin:
     def _resolve_session_agent_runtime(
         self,
         *,
-        source: Optional[SessionSource] = None,
-        session_key: Optional[str] = None,
-        user_config: Optional[dict] = None,
+        source: SessionSource | None = None,
+        session_key: str | None = None,
+        user_config: dict | None = None,
     ) -> tuple[str, dict]:
         """Resolve model/runtime for a session, honoring session-scoped /model overrides.
 

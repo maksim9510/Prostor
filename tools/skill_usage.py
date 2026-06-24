@@ -29,12 +29,12 @@ import logging
 import os
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from prostor_constants import get_prostor_home
 from agent.skill_utils import is_excluded_skill_path
+from prostor_constants import get_prostor_home
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ _VALID_STATES = {STATE_ACTIVE, STATE_STALE, STATE_ARCHIVED}
 # Protection is by skill ``name`` (frontmatter ``name:``), matching the keys used
 # throughout this module. Keep this list tiny and intentional — it is not a
 # substitute for ``curator.prune_builtins: false``, which exempts ALL built-ins.
-PROTECTED_BUILTIN_SKILLS: Set[str] = {
+PROTECTED_BUILTIN_SKILLS: set[str] = {
     "plan",
 }
 
@@ -111,13 +111,13 @@ def _usage_file_lock():
         if fcntl:
             try:
                 fcntl.flock(fd, fcntl.LOCK_UN)
-            except (OSError, IOError):
+            except OSError:
                 pass
         elif msvcrt:
             try:
                 fd.seek(0)
                 msvcrt.locking(fd.fileno(), msvcrt.LK_UNLCK, 1)
-            except (OSError, IOError):
+            except OSError:
                 pass
         fd.close()
 
@@ -127,10 +127,10 @@ def _archive_dir() -> Path:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
-def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
+def _parse_iso_timestamp(value: Any) -> datetime | None:
     """Parse an ISO timestamp defensively for activity comparisons."""
     if not value:
         return None
@@ -139,19 +139,19 @@ def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
     except (TypeError, ValueError):
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
-def latest_activity_at(record: Dict[str, Any]) -> Optional[str]:
+def latest_activity_at(record: dict[str, Any]) -> str | None:
     """Return the newest actual activity timestamp for a usage record.
 
     "Activity" means a skill was used, viewed, or patched. Creation time is
     intentionally excluded so callers can still distinguish never-active skills;
     lifecycle code can fall back to ``created_at`` as its own anchor.
     """
-    latest_dt: Optional[datetime] = None
-    latest_raw: Optional[str] = None
+    latest_dt: datetime | None = None
+    latest_raw: str | None = None
     for key in ("last_used_at", "last_viewed_at", "last_patched_at"):
         raw = record.get(key)
         dt = _parse_iso_timestamp(raw)
@@ -163,7 +163,7 @@ def latest_activity_at(record: Dict[str, Any]) -> Optional[str]:
     return latest_raw
 
 
-def activity_count(record: Dict[str, Any]) -> int:
+def activity_count(record: dict[str, Any]) -> int:
     """Return the total observed activity count across use/view/patch events."""
     total = 0
     for key in ("use_count", "view_count", "patch_count"):
@@ -178,7 +178,7 @@ def activity_count(record: Dict[str, Any]) -> int:
 # Provenance — which skills are agent-created (and thus eligible for curation)
 # ---------------------------------------------------------------------------
 
-def _read_bundled_manifest_names() -> Set[str]:
+def _read_bundled_manifest_names() -> set[str]:
     """Return the set of skill names that were seeded from the bundled repo.
 
     Reads ~/.prostor/skills/.bundled_manifest (format: "name:hash" per line).
@@ -187,7 +187,7 @@ def _read_bundled_manifest_names() -> Set[str]:
     manifest = _skills_dir() / ".bundled_manifest"
     if not manifest.exists():
         return set()
-    names: Set[str] = set()
+    names: set[str] = set()
     try:
         for line in manifest.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -201,7 +201,7 @@ def _read_bundled_manifest_names() -> Set[str]:
     return names
 
 
-def _read_hub_installed_names() -> Set[str]:
+def _read_hub_installed_names() -> set[str]:
     """Return the set of skill names installed via the Skills Hub.
 
     Reads ~/.prostor/skills/.hub/lock.json (see tools/skills_hub.py :: HubLockFile).
@@ -264,7 +264,7 @@ def _suppressed_file() -> Path:
     return _skills_dir() / ".curator_suppressed"
 
 
-def read_suppressed_names() -> Set[str]:
+def read_suppressed_names() -> set[str]:
     """Built-in skills the curator pruned — the re-seeder must leave archived.
 
     One skill name per line in ``~/.prostor/skills/.curator_suppressed``. This is
@@ -274,7 +274,7 @@ def read_suppressed_names() -> Set[str]:
     path = _suppressed_file()
     if not path.exists():
         return set()
-    names: Set[str] = set()
+    names: set[str] = set()
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -285,7 +285,7 @@ def read_suppressed_names() -> Set[str]:
     return names
 
 
-def _write_suppressed_names(names: Set[str]) -> None:
+def _write_suppressed_names(names: set[str]) -> None:
     path = _suppressed_file()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -327,7 +327,7 @@ def remove_suppressed_name(skill_name: str) -> None:
         _write_suppressed_names(names)
 
 
-def list_agent_created_skill_names() -> List[str]:
+def list_agent_created_skill_names() -> list[str]:
     """Enumerate skills the curator may manage.
 
     Always includes agent-authored skills (those marked in ``.usage.json`` via
@@ -346,7 +346,7 @@ def list_agent_created_skill_names() -> List[str]:
     prune_builtins = _prune_builtins_enabled()
     usage = load_usage()
 
-    names: List[str] = []
+    names: list[str] = []
     # Top-level SKILL.md files (flat layout) AND nested category/skill/SKILL.md
     for skill_md in base.rglob("SKILL.md"):
         # Skip Prostor metadata, VCS, virtualenv/dependency, and cache dirs
@@ -378,7 +378,7 @@ def list_agent_created_skill_names() -> List[str]:
     return sorted(set(names))
 
 
-def list_archived_skill_names() -> List[str]:
+def list_archived_skill_names() -> list[str]:
     """Enumerate skills in ``~/.prostor/skills/.archive/``.
 
     Archive layout is flat (``.archive/<skill>/``) as set by ``archive_skill``,
@@ -457,7 +457,7 @@ def _is_curator_managed_record(record: Any) -> bool:
 # Sidecar I/O
 # ---------------------------------------------------------------------------
 
-def _empty_record() -> Dict[str, Any]:
+def _empty_record() -> dict[str, Any]:
     return {
         "created_by": None,
         "use_count": 0,
@@ -473,7 +473,7 @@ def _empty_record() -> Dict[str, Any]:
     }
 
 
-def load_usage() -> Dict[str, Dict[str, Any]]:
+def load_usage() -> dict[str, dict[str, Any]]:
     """Read the entire .usage.json map. Returns empty dict on missing/corrupt."""
     path = _usage_file()
     if not path.exists():
@@ -486,14 +486,14 @@ def load_usage() -> Dict[str, Dict[str, Any]]:
     if not isinstance(data, dict):
         return {}
     # Defensive: coerce any non-dict values to a fresh empty record
-    clean: Dict[str, Dict[str, Any]] = {}
+    clean: dict[str, dict[str, Any]] = {}
     for k, v in data.items():
         if isinstance(v, dict):
             clean[str(k)] = v
     return clean
 
 
-def save_usage(data: Dict[str, Dict[str, Any]]) -> None:
+def save_usage(data: dict[str, dict[str, Any]]) -> None:
     """Write the usage map atomically. Best-effort — errors are logged, not raised."""
     path = _usage_file()
     try:
@@ -517,7 +517,7 @@ def save_usage(data: Dict[str, Dict[str, Any]]) -> None:
         logger.debug("Failed to write %s: %s", path, e, exc_info=True)
 
 
-def get_record(skill_name: str) -> Dict[str, Any]:
+def get_record(skill_name: str) -> dict[str, Any]:
     """Return the record for *skill_name*, creating a fresh one if missing."""
     data = load_usage()
     rec = data.get(skill_name)
@@ -590,7 +590,7 @@ def bump_view(skill_name: str) -> None:
     Tracks every skill regardless of provenance — built-ins and hub skills
     included. Usage telemetry is observability, not a curation signal.
     """
-    def _apply(rec: Dict[str, Any]) -> None:
+    def _apply(rec: dict[str, Any]) -> None:
         rec["view_count"] = int(rec.get("view_count") or 0) + 1
         rec["last_viewed_at"] = _now_iso()
     _mutate(skill_name, _apply)
@@ -602,7 +602,7 @@ def bump_use(skill_name: str) -> None:
 
     Tracks every skill regardless of provenance.
     """
-    def _apply(rec: Dict[str, Any]) -> None:
+    def _apply(rec: dict[str, Any]) -> None:
         rec["use_count"] = int(rec.get("use_count") or 0) + 1
         rec["last_used_at"] = _now_iso()
     _mutate(skill_name, _apply)
@@ -613,7 +613,7 @@ def bump_patch(skill_name: str) -> None:
 
     Tracks every skill regardless of provenance.
     """
-    def _apply(rec: Dict[str, Any]) -> None:
+    def _apply(rec: dict[str, Any]) -> None:
         rec["patch_count"] = int(rec.get("patch_count") or 0) + 1
         rec["last_patched_at"] = _now_iso()
     _mutate(skill_name, _apply)
@@ -625,7 +625,7 @@ def mark_agent_created(skill_name: str) -> None:
     Viewing or invoking a manually authored skill may still create telemetry,
     but only this explicit marker makes it eligible for automatic curation.
     """
-    def _apply(rec: Dict[str, Any]) -> None:
+    def _apply(rec: dict[str, Any]) -> None:
         rec["created_by"] = "agent"
     _mutate(skill_name, _apply, require_curation_eligible=True)
 
@@ -637,7 +637,7 @@ def set_state(skill_name: str, state: str) -> None:
         logger.debug("set_state: invalid state %r for %s", state, skill_name)
         return
 
-    def _apply(rec: Dict[str, Any]) -> None:
+    def _apply(rec: dict[str, Any]) -> None:
         rec["state"] = state
         if state == STATE_ARCHIVED:
             rec["archived_at"] = _now_iso()
@@ -647,7 +647,7 @@ def set_state(skill_name: str, state: str) -> None:
 
 
 def set_pinned(skill_name: str, pinned: bool) -> None:
-    def _apply(rec: Dict[str, Any]) -> None:
+    def _apply(rec: dict[str, Any]) -> None:
         rec["pinned"] = bool(pinned)
     _mutate(skill_name, _apply, require_curation_eligible=True)
 
@@ -670,7 +670,7 @@ def forget(skill_name: str) -> None:
 # Archive / restore
 # ---------------------------------------------------------------------------
 
-def archive_skill(skill_name: str) -> Tuple[bool, str]:
+def archive_skill(skill_name: str) -> tuple[bool, str]:
     """Move a curator-eligible skill directory to ~/.prostor/skills/.archive/.
 
     Returns (ok, message). Never archives hub-installed skills. Bundled
@@ -705,7 +705,7 @@ def archive_skill(skill_name: str) -> Tuple[bool, str]:
     # are simple. If a collision exists, append a timestamp.
     dest = archive_root / skill_dir.name
     if dest.exists():
-        dest = archive_root / f"{skill_dir.name}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        dest = archive_root / f"{skill_dir.name}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
 
     try:
         skill_dir.rename(dest)
@@ -725,7 +725,7 @@ def archive_skill(skill_name: str) -> Tuple[bool, str]:
     return True, f"archived to {dest}"
 
 
-def restore_skill(skill_name: str) -> Tuple[bool, str]:
+def restore_skill(skill_name: str) -> tuple[bool, str]:
     """Move an archived skill back to ~/.prostor/skills/. Restores to the flat
     top-level layout; original category nesting is NOT reconstructed.
 
@@ -800,7 +800,7 @@ def restore_skill(skill_name: str) -> Tuple[bool, str]:
     return True, f"restored to {dest}"
 
 
-def _find_skill_dir(skill_name: str) -> Optional[Path]:
+def _find_skill_dir(skill_name: str) -> Path | None:
     """Locate the directory for a skill by its frontmatter `name:` field.
 
     Handles both flat (~/.prostor/skills/<skill>/SKILL.md) and category-nested
@@ -821,7 +821,7 @@ def _find_skill_dir(skill_name: str) -> Optional[Path]:
 # Reporting — for the curator CLI / slash command
 # ---------------------------------------------------------------------------
 
-def agent_created_report() -> List[Dict[str, Any]]:
+def agent_created_report() -> list[dict[str, Any]]:
     """Return a list of {name, state, pinned, last_activity_at, ...}
     records for every curator-managed skill. Missing usage records are
     backfilled with defaults so callers can always index fields.
@@ -832,11 +832,11 @@ def agent_created_report() -> List[Dict[str, Any]]:
     clock instead of treating an unrecorded skill as ancient.
     """
     data = load_usage()
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for name in list_agent_created_skill_names():
         raw = data.get(name)
         persisted = isinstance(raw, dict)
-        rec: Dict[str, Any] = raw if isinstance(raw, dict) else _empty_record()
+        rec: dict[str, Any] = raw if isinstance(raw, dict) else _empty_record()
         base = _empty_record()
         for k, v in base.items():
             rec.setdefault(k, v)
@@ -860,7 +860,7 @@ def provenance(skill_name: str) -> str:
     return "agent"
 
 
-def usage_report() -> List[Dict[str, Any]]:
+def usage_report() -> list[dict[str, Any]]:
     """Return usage telemetry for EVERY skill on disk, with provenance.
 
     Unlike ``agent_created_report()`` (which is scoped to curator-managed
@@ -874,7 +874,7 @@ def usage_report() -> List[Dict[str, Any]]:
     if not base.exists():
         return []
     data = load_usage()
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     seen: set = set()
     for skill_md in base.rglob("SKILL.md"):
         if is_excluded_skill_path(skill_md):
@@ -885,7 +885,7 @@ def usage_report() -> List[Dict[str, Any]]:
         seen.add(name)
         raw = data.get(name)
         persisted = isinstance(raw, dict)
-        rec: Dict[str, Any] = raw if isinstance(raw, dict) else _empty_record()
+        rec: dict[str, Any] = raw if isinstance(raw, dict) else _empty_record()
         base_rec = _empty_record()
         for k, v in base_rec.items():
             rec.setdefault(k, v)

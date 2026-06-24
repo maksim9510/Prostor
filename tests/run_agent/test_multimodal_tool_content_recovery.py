@@ -25,7 +25,6 @@ See: https://github.com/maksim9510/Prostor/issues/27344
 
 from __future__ import annotations
 
-
 from agent.error_classifier import FailoverReason, classify_api_error
 
 

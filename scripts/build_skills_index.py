@@ -31,8 +31,9 @@ import os
 import sys
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
-from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FutureTimeout
+from datetime import UTC, datetime
 
 # Allow importing from repo root
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,19 +42,20 @@ sys.path.insert(0, REPO_ROOT)
 # Ensure PROSTOR_HOME is set (needed by tools/skills_hub.py imports)
 os.environ.setdefault("PROSTOR_HOME", os.path.join(os.path.expanduser("~"), ".prostor"))
 
+import httpx
+
 from tools.skills_hub import (
+    BrowseShSource,
+    ClaudeMarketplaceSource,
+    ClawHubSource,
     GitHubAuth,
     GitHubSource,
-    SkillsShSource,
-    OptionalSkillSource,
-    WellKnownSkillSource,
-    ClawHubSource,
-    ClaudeMarketplaceSource,
     LobeHubSource,
-    BrowseShSource,
+    OptionalSkillSource,
     SkillMeta,
+    SkillsShSource,
+    WellKnownSkillSource,
 )
-import httpx
 
 OUTPUT_PATH = os.path.join(REPO_ROOT, "website", "static", "api", "skills-index.json")
 INDEX_VERSION = 1
@@ -530,7 +532,7 @@ def main():
     # Healthy — only now write the index out for the docs build to consume.
     index = {
         "version": INDEX_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "skill_count": len(deduped),
         "skills": deduped,
     }

@@ -18,10 +18,10 @@ from gateway.platforms.base import MessageEvent
 from gateway.run import GatewayRunner
 from gateway.session import SessionSource
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _FakeRegistry:
     """Return pre-canned sessions, then None once exhausted."""
@@ -354,8 +354,8 @@ async def test_none_user_id_does_not_generate_pairing_code(monkeypatch, tmp_path
 @pytest.mark.asyncio
 async def test_non_internal_event_without_user_triggers_pairing(monkeypatch, tmp_path):
     """Verify the normal (non-internal) path still triggers pairing for unknown users."""
-    import gateway.run as gateway_run
     import gateway.pairing as pairing_mod
+    import gateway.run as gateway_run
 
     monkeypatch.setattr(gateway_run, "_prostor_home", tmp_path)
     # gateway.pairing.PAIRING_DIR is a module-level constant captured at

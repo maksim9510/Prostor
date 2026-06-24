@@ -409,6 +409,7 @@ def test_unblock_scheduled_rechecks_parent_gate(kanban_home):
 
 def test_stale_claim_reclaimed(kanban_home, monkeypatch):
     import signal
+
     import prostor_cli.kanban_db as _kb
 
     with kb.connect() as conn:
@@ -678,6 +679,7 @@ def test_stale_claim_reclaim_event_records_diagnostic_payload(
     (#23025: previous payload only had ``stale_lock`` which gives no
     timing context)."""
     import json
+
     import prostor_cli.kanban_db as _kb
 
     with kb.connect() as conn:
@@ -1543,6 +1545,7 @@ def test_list_tasks_order_by(kanban_home):
             assert False, "Should have raised ValueError"
         except ValueError as e:
             assert "order_by must be one of" in str(e)
+
 
 def test_delete_task_removes_task_and_cascades(kanban_home):
     with kb.connect() as conn:
@@ -2924,6 +2927,7 @@ def test_archive_task_triggers_recompute_ready_for_dependents(kanban_home):
 # _add_column_if_missing / _migrate_add_optional_columns idempotency (#21708)
 # ---------------------------------------------------------------------------
 
+
 def test_add_column_if_missing_is_idempotent_on_race(kanban_home):
     """``_add_column_if_missing`` must swallow 'duplicate column name' errors.
 
@@ -3023,6 +3027,7 @@ def test_migrate_add_optional_columns_tolerates_concurrent_migration(kanban_home
 def test_resolve_prostor_argv_prefers_path_shim(monkeypatch):
     """When `prostor` is on PATH, use the shim — preserves familiar ps output."""
     import shutil
+
     import prostor_cli.kanban_db as kb
 
     monkeypatch.delenv("PROSTOR_BIN", raising=False)
@@ -3045,6 +3050,7 @@ def test_resolve_prostor_argv_absolutizes_relative_exe_shim(monkeypatch, tmp_pat
 def test_resolve_prostor_argv_avoids_implicit_windows_batch_shim(monkeypatch, tmp_path):
     """Implicit .cmd/.bat shims use the module fallback, not batch argv[0]."""
     import sys
+
     import prostor_cli.kanban_db as kb
 
     bin_dir = tmp_path / "bin"
@@ -3061,6 +3067,7 @@ def test_resolve_prostor_argv_avoids_implicit_windows_batch_shim(monkeypatch, tm
 def test_resolve_prostor_argv_honors_prostor_bin_path_override(monkeypatch, tmp_path):
     """An explicit path-like PROSTOR_BIN lets service managers pin the executable."""
     import shutil
+
     import prostor_cli.kanban_db as kb
 
     shim = tmp_path / "bin" / "prostor"
@@ -3075,6 +3082,7 @@ def test_resolve_prostor_argv_honors_prostor_bin_path_override(monkeypatch, tmp_
 def test_resolve_prostor_argv_prostor_bin_bare_name_uses_path(monkeypatch, tmp_path):
     """Bare PROSTOR_BIN values keep PATH semantics instead of cwd shadowing."""
     import stat
+
     import prostor_cli.kanban_db as kb
 
     cwd_prostor = tmp_path / "prostor"
@@ -3094,6 +3102,7 @@ def test_resolve_prostor_argv_prostor_bin_bare_name_uses_path(monkeypatch, tmp_p
 def test_resolve_prostor_argv_prostor_bin_bare_name_ignores_cwd(monkeypatch, tmp_path):
     """Bare PROSTOR_BIN does not accept current-directory shadow executables."""
     import sys
+
     import prostor_cli.kanban_db as kb
 
     (tmp_path / "prostor.exe").write_text("wrong\n", encoding="utf-8")
@@ -3108,6 +3117,7 @@ def test_resolve_prostor_argv_prostor_bin_bare_name_ignores_cwd(monkeypatch, tmp
 def test_resolve_prostor_argv_prostor_bin_bare_cmd_uses_module_fallback(monkeypatch, tmp_path):
     """A PATH-resolved PROSTOR_BIN batch shim is not used as worker argv[0]."""
     import sys
+
     import prostor_cli.kanban_db as kb
 
     bin_dir = tmp_path / "bin"
@@ -3124,6 +3134,7 @@ def test_resolve_prostor_argv_prostor_bin_bare_cmd_uses_module_fallback(monkeypa
 def test_resolve_prostor_argv_prostor_bin_unresolved_bare_name_falls_back(monkeypatch):
     """Unresolved PROSTOR_BIN command names do not delegate cwd search to Popen."""
     import sys
+
     import prostor_cli.kanban_db as kb
 
     monkeypatch.setenv("PATH", "")
@@ -3142,6 +3153,7 @@ def test_resolve_prostor_argv_falls_back_to_module_form_when_no_path_shim(monkey
     """
     import shutil
     import sys
+
     import prostor_cli.kanban_db as kb
 
     monkeypatch.delenv("PROSTOR_BIN", raising=False)
@@ -3159,10 +3171,11 @@ def test_resolve_prostor_argv_module_actually_runs():
     would fail and so would every dispatcher spawn that hits the fallback.
     Run it as a real subprocess to catch that regression.
     """
-    import subprocess
-    import prostor_cli.kanban_db as kb
     import shutil
+    import subprocess
     import unittest.mock as mock
+
+    import prostor_cli.kanban_db as kb
 
     with mock.patch.dict(os.environ, {}, clear=False):
         os.environ.pop("PROSTOR_BIN", None)
@@ -3191,7 +3204,7 @@ def test_resolve_prostor_argv_module_actually_runs():
 # ---------------------------------------------------------------------------
 
 
-def _make_task(**overrides) -> "kb.Task":
+def _make_task(**overrides) -> kb.Task:
     """Minimal Task with all required fields filled in. Override anything."""
     defaults = dict(
         id="t_age",
@@ -3610,6 +3623,7 @@ def test_dispatch_review_does_not_claim_ready_tasks(
 
 # Stale detection — detect_stale_running
 # ---------------------------------------------------------------------------
+
 
 def test_detect_stale_returns_running_task_with_no_heartbeat(kanban_home, monkeypatch):
     """A task running > timeout with zero heartbeats gets reclaimed as stale."""
@@ -4217,6 +4231,8 @@ def test_write_txn_preserves_original_exception_when_rollback_fails(kanban_home)
         f"write_txn surfaced the rollback failure instead of the original "
         f"OperationalError; got {msg!r}"
     )
+
+
 def test_write_txn_healthy_commit_no_exception(tmp_path):
     """Normal commit does not trigger the torn-extend check."""
     from prostor_cli.kanban_db import connect, write_txn
@@ -4259,8 +4275,8 @@ def test_write_txn_raises_on_truncated_file(tmp_path):
 
 def test_write_txn_post_commit_check_fires_every_call(tmp_path):
     """The invariant check runs on every write_txn call."""
-    from prostor_cli.kanban_db import connect, write_txn
     import prostor_cli.kanban_db as kanban_db_module
+    from prostor_cli.kanban_db import connect, write_txn
     db = tmp_path / "test.db"
     conn = connect(db_path=db)
     call_count = 0
@@ -4295,7 +4311,8 @@ def test_connect_sets_wal_autocheckpoint_100(tmp_path):
 def test_write_txn_check_reads_correct_header_fields(tmp_path):
     """Synthetic DB file with mismatched header page_count triggers the check."""
     import struct
-    from prostor_cli.kanban_db import connect, _check_file_length_invariant
+
+    from prostor_cli.kanban_db import _check_file_length_invariant, connect
     db = tmp_path / "synthetic.db"
     conn = connect(db_path=db)
     page_size = conn.execute("PRAGMA page_size").fetchone()[0]

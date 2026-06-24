@@ -21,10 +21,10 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-
 # ---------------------------------------------------------------------------
 # Part 1: Agent-side — _flush_messages_to_session_db after compression
 # ---------------------------------------------------------------------------
+
 
 class TestFlushAfterCompression:
     """Verify that compressed messages are flushed to the new session's SQLite

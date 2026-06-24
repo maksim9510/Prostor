@@ -53,7 +53,7 @@ def _run_memory_reset(target="all", yes=False, monkeypatch=None, confirm_input="
         if confirm_input != "yes":
             return "cancelled"
 
-    for f, desc in existing:
+    for f, _desc in existing:
         (mem_dir / f).unlink()
 
     return "deleted"

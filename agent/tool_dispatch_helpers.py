@@ -28,7 +28,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.tool_result_classification import (
     FILE_MUTATING_TOOL_NAMES as _FILE_MUTATING_TOOLS,
@@ -146,7 +146,7 @@ def _should_parallelize_tool_batch(tool_calls) -> bool:
     return True
 
 
-def _extract_parallel_scope_path(tool_name: str, function_args: dict) -> Optional[Path]:
+def _extract_parallel_scope_path(tool_name: str, function_args: dict) -> Path | None:
     """Return the normalized file target for path-scoped tools."""
     if tool_name not in _PATH_SCOPED_TOOLS:
         return None
@@ -213,7 +213,7 @@ def _multimodal_text_summary(value: Any) -> str:
         return str(value)
 
 
-def _append_subdir_hint_to_multimodal(value: Dict[str, Any], hint: str) -> None:
+def _append_subdir_hint_to_multimodal(value: dict[str, Any], hint: str) -> None:
     """Mutate a multimodal tool-result envelope to append a subdir hint.
 
     The hint is added to the first text part so the model sees it; image
@@ -234,7 +234,7 @@ def _append_subdir_hint_to_multimodal(value: Dict[str, Any], hint: str) -> None:
         value["text_summary"] = value["text_summary"] + hint
 
 
-def _extract_file_mutation_targets(tool_name: str, args: Dict[str, Any]) -> List[str]:
+def _extract_file_mutation_targets(tool_name: str, args: dict[str, Any]) -> list[str]:
     """Return the file paths a ``write_file`` or ``patch`` call is targeting.
 
     For ``write_file`` and ``patch`` in replace mode this is just ``args["path"]``.
@@ -256,7 +256,7 @@ def _extract_file_mutation_targets(tool_name: str, args: Dict[str, Any]) -> List
         body = args.get("patch") or ""
         if not isinstance(body, str) or not body:
             return []
-        paths: List[str] = []
+        paths: list[str] = []
         for _m in re.finditer(
             r'^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s*(.+)$',
             body,
@@ -294,7 +294,7 @@ def _extract_error_preview(result: Any, max_len: int = 180) -> str:
     return text
 
 
-def _trajectory_normalize_msg(msg: Dict[str, Any]) -> Dict[str, Any]:
+def _trajectory_normalize_msg(msg: dict[str, Any]) -> dict[str, Any]:
     """Strip image blobs from a message for trajectory saving.
 
     Returns a shallow copy with multimodal tool results replaced by their
@@ -361,7 +361,7 @@ _UNTRUSTED_TOOL_PREFIXES = (
 _UNTRUSTED_WRAP_MIN_CHARS = 32
 
 
-def _is_untrusted_tool(name: Optional[str]) -> bool:
+def _is_untrusted_tool(name: str | None) -> bool:
     if not name:
         return False
     if name in _UNTRUSTED_TOOL_NAMES:

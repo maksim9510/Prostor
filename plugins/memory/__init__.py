@@ -21,13 +21,12 @@ Usage:
 
 from __future__ import annotations
 
-import importlib
 import importlib.machinery
 import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
+
 from prostor_cli.config import cfg_get
 
 logger = logging.getLogger(__name__)
@@ -39,7 +38,7 @@ _MEMORY_PLUGINS_DIR = Path(__file__).parent
 _USER_NAMESPACE = "_prostor_user_memory"
 
 
-def _register_synthetic_package(name: str, search_locations: List[str]) -> None:
+def _register_synthetic_package(name: str, search_locations: list[str]) -> None:
     """Register an empty package shell in sys.modules.
 
     User-installed providers import as ``_prostor_user_memory.<name>``, a
@@ -61,7 +60,7 @@ def _register_synthetic_package(name: str, search_locations: List[str]) -> None:
 # Directory helpers
 # ---------------------------------------------------------------------------
 
-def _get_user_plugins_dir() -> Optional[Path]:
+def _get_user_plugins_dir() -> Path | None:
     """Return ``$PROSTOR_HOME/plugins/`` or None if unavailable."""
     try:
         from prostor_constants import get_prostor_home
@@ -87,14 +86,14 @@ def _is_memory_provider_dir(path: Path) -> bool:
         return False
 
 
-def _iter_provider_dirs() -> List[Tuple[str, Path]]:
+def _iter_provider_dirs() -> list[tuple[str, Path]]:
     """Yield ``(name, path)`` for all discovered provider directories.
 
     Scans bundled first, then user-installed.  Bundled takes precedence
     on name collisions (first-seen wins via ``seen`` set).
     """
     seen: set = set()
-    dirs: List[Tuple[str, Path]] = []
+    dirs: list[tuple[str, Path]] = []
 
     # 1. Bundled providers (plugins/memory/<name>/)
     if _MEMORY_PLUGINS_DIR.is_dir():
@@ -121,7 +120,7 @@ def _iter_provider_dirs() -> List[Tuple[str, Path]]:
     return dirs
 
 
-def find_provider_dir(name: str) -> Optional[Path]:
+def find_provider_dir(name: str) -> Path | None:
     """Resolve a provider name to its directory.
 
     Checks bundled first, then user-installed.
@@ -143,7 +142,7 @@ def find_provider_dir(name: str) -> Optional[Path]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def discover_memory_providers() -> List[Tuple[str, str, bool]]:
+def discover_memory_providers() -> list[tuple[str, str, bool]]:
     """Scan bundled and user-installed directories for available providers.
 
     Returns list of (name, description, is_available) tuples.
@@ -180,7 +179,7 @@ def discover_memory_providers() -> List[Tuple[str, str, bool]]:
     return results
 
 
-def load_memory_provider(name: str) -> Optional["MemoryProvider"]:
+def load_memory_provider(name: str) -> MemoryProvider | None:
     """Load and return a MemoryProvider instance by name.
 
     Checks both bundled (``plugins/memory/<name>/``) and user-installed
@@ -205,7 +204,7 @@ def load_memory_provider(name: str) -> Optional["MemoryProvider"]:
         return None
 
 
-def _load_provider_from_dir(provider_dir: Path) -> Optional["MemoryProvider"]:
+def _load_provider_from_dir(provider_dir: Path) -> MemoryProvider | None:
     """Import a provider module and extract the MemoryProvider instance.
 
     The module must have either:
@@ -336,7 +335,7 @@ class _ProviderCollector:
         pass  # CLI registration happens via discover_plugin_cli_commands()
 
 
-def _get_active_memory_provider() -> Optional[str]:
+def _get_active_memory_provider() -> str | None:
     """Read the active memory provider name from config.yaml.
 
     Returns the provider name (e.g. ``"honcho"``) or None if no
@@ -351,7 +350,7 @@ def _get_active_memory_provider() -> Optional[str]:
         return None
 
 
-def discover_plugin_cli_commands() -> List[dict]:
+def discover_plugin_cli_commands() -> list[dict]:
     """Return CLI commands for the **active** memory plugin only.
 
     Only one memory provider can be active at a time (set via
@@ -368,7 +367,7 @@ def discover_plugin_cli_commands() -> List[dict]:
     full plugin module.  Safe to call during argparse setup before
     any provider is loaded.
     """
-    results: List[dict] = []
+    results: list[dict] = []
     if not _MEMORY_PLUGINS_DIR.is_dir():
         return results
 

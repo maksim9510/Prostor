@@ -8,6 +8,7 @@ Usage:
     prostor pairing clear-pending     # Clear all expired/pending codes
 """
 
+
 def pairing_command(args):
     """Handle prostor pairing subcommands."""
     from gateway.pairing import PairingStore
@@ -88,8 +89,8 @@ def _cmd_approve(store, platform: str, code: str):
         )
         print(f"  Lockout clears in ~{mins} minute(s).")
         print(
-            "  To reset sooner, delete the '_lockout:{0}' entry from "
-            "~/.prostor/platforms/pairing/_rate_limits.json\n".format(platform)
+            f"  To reset sooner, delete the '_lockout:{platform}' entry from "
+            "~/.prostor/platforms/pairing/_rate_limits.json\n"
         )
     else:
         print(f"\n  Code '{code}' not found or expired for platform '{platform}'.")

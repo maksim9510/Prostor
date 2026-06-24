@@ -3,13 +3,21 @@
 import json
 import logging
 import os
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cron.scheduler import _resolve_origin, _resolve_delivery_target, _deliver_result, _send_media_via_adapter, run_job, SILENT_MARKER, _build_job_prompt
-from tools.env_passthrough import clear_env_passthrough
+from cron.scheduler import (
+    SILENT_MARKER,
+    _build_job_prompt,
+    _deliver_result,
+    _resolve_delivery_target,
+    _resolve_origin,
+    _send_media_via_adapter,
+    run_job,
+)
 from tools.credential_files import clear_credential_files
+from tools.env_passthrough import clear_env_passthrough
 
 
 class TestResolveOrigin:
@@ -607,8 +615,9 @@ class TestDeliverResultWrapping:
         """When a live adapter is available, MEDIA files should be sent as native
         platform attachments (e.g., Discord voice, Telegram audio) rather than
         as literal 'MEDIA:/path' text."""
-        from gateway.config import Platform
         from concurrent.futures import Future
+
+        from gateway.config import Platform
         media_path = self._safe_media_path(tmp_path, monkeypatch, "cron-voice.mp3")
 
         adapter = AsyncMock()
@@ -659,8 +668,9 @@ class TestDeliverResultWrapping:
 
     def test_live_adapter_routes_image_to_send_image_file(self, tmp_path, monkeypatch):
         """Image MEDIA files should be routed to send_image_file, not send_voice."""
-        from gateway.config import Platform
         from concurrent.futures import Future
+
+        from gateway.config import Platform
         media_path = self._safe_media_path(tmp_path, monkeypatch, "chart.png")
 
         adapter = AsyncMock()
@@ -703,8 +713,9 @@ class TestDeliverResultWrapping:
 
     def test_live_adapter_media_only_no_text(self, tmp_path, monkeypatch):
         """When content is ONLY a MEDIA tag with no text, media should still be sent."""
-        from gateway.config import Platform
         from concurrent.futures import Future
+
+        from gateway.config import Platform
         media_path = self._safe_media_path(tmp_path, monkeypatch, "voice.ogg")
 
         adapter = AsyncMock()
@@ -748,8 +759,9 @@ class TestDeliverResultWrapping:
     def test_live_adapter_sends_cleaned_text_not_raw(self):
         """The live adapter path must send cleaned text (MEDIA tags stripped),
         not the raw delivery_content with embedded MEDIA: tags."""
-        from gateway.config import Platform
         from concurrent.futures import Future
+
+        from gateway.config import Platform
 
         adapter = AsyncMock()
         adapter.send.return_value = MagicMock(success=True)
@@ -2108,8 +2120,8 @@ class TestRunJobWakeGate:
         """When _run_job_script output ends with {wakeAgent: false}, the agent
         is not invoked and run_job returns the SILENT marker so delivery is
         suppressed."""
-        from cron.scheduler import SILENT_MARKER
         import cron.scheduler as scheduler
+        from cron.scheduler import SILENT_MARKER
 
         with patch.object(scheduler, "_run_job_script",
                           return_value=(True, '{"wakeAgent": false}')), \
@@ -2408,7 +2420,7 @@ class TestParallelTick:
         def mock_run_job(job):
             origin = job.get("origin", {})
             # run_job sets ContextVars — verify each job sees its own
-            from gateway.session_context import set_session_vars, clear_session_vars
+            from gateway.session_context import clear_session_vars, set_session_vars
             tokens = set_session_vars(
                 platform=origin.get("platform", ""),
                 chat_id=str(origin.get("chat_id", "")),
@@ -2483,8 +2495,9 @@ class TestDeliverResultTimeoutCancelsFuture:
         """End-to-end: live adapter hangs past the 60s budget, _deliver_result
         patches the timeout down to a fast value, confirms future.cancel() fires,
         and verifies the standalone fallback path still delivers."""
-        from gateway.config import Platform
         from concurrent.futures import Future
+
+        from gateway.config import Platform
 
         # Live adapter whose send() coroutine never resolves within the budget
         adapter = AsyncMock()
@@ -2545,9 +2558,10 @@ class TestDeliverResultTimeoutCancelsFuture:
         """A cron target with an explicit topic must not be marked clean if
         Telegram falls back to the base chat after "thread not found".
         """
+        from concurrent.futures import Future
+
         from gateway.config import Platform
         from gateway.platforms.base import SendResult
-        from concurrent.futures import Future
 
         send_result = SendResult(
             success=True,

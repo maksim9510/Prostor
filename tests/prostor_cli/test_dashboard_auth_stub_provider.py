@@ -9,7 +9,9 @@ from __future__ import annotations
 import pytest
 
 from prostor_cli.dashboard_auth.base import (
-    InvalidCodeError, RefreshExpiredError, assert_protocol_compliance,
+    InvalidCodeError,
+    RefreshExpiredError,
+    assert_protocol_compliance,
 )
 from tests.prostor_cli.conftest_dashboard_auth import StubAuthProvider
 

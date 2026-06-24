@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Dict, List, Optional
 
 from agent.tts_provider import TTSProvider
 
@@ -59,7 +58,7 @@ _BUILTIN_NAMES = frozenset({
 })
 
 
-_providers: Dict[str, TTSProvider] = {}
+_providers: dict[str, TTSProvider] = {}
 _lock = threading.Lock()
 
 
@@ -108,14 +107,14 @@ def register_provider(provider: TTSProvider) -> None:
         )
 
 
-def list_providers() -> List[TTSProvider]:
+def list_providers() -> list[TTSProvider]:
     """Return all registered providers, sorted by name."""
     with _lock:
         items = list(_providers.values())
     return sorted(items, key=lambda p: p.name)
 
 
-def get_provider(name: str) -> Optional[TTSProvider]:
+def get_provider(name: str) -> TTSProvider | None:
     """Return the provider registered under *name*, or None.
 
     Name matching is case-insensitive and whitespace-tolerant — mirrors

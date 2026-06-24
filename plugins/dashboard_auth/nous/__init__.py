@@ -75,7 +75,7 @@ import logging
 import os
 import secrets
 import urllib.parse
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 
@@ -346,7 +346,7 @@ class NousDashboardAuthProvider(DashboardAuthProvider):
             refresh_token = ""
         return self._session_from_claims(access_token, refresh_token, claims)
 
-    def verify_session(self, *, access_token: str) -> Optional[Session]:
+    def verify_session(self, *, access_token: str) -> Session | None:
         # Contract: returns None on expiry/invalidity (the middleware then
         # tries refresh_session with the RT cookie, falling back to
         # redirect-to-login if that also fails); raises ProviderError if the
@@ -401,7 +401,7 @@ class NousDashboardAuthProvider(DashboardAuthProvider):
                 f"got {redirect_uri!r}"
             )
 
-    def _parse_json_body(self, response: httpx.Response) -> Dict[str, Any]:
+    def _parse_json_body(self, response: httpx.Response) -> dict[str, Any]:
         ctype = response.headers.get("content-type", "")
         if not ctype.startswith("application/json"):
             return {}
@@ -422,7 +422,7 @@ class NousDashboardAuthProvider(DashboardAuthProvider):
             )
         return self._jwks_client
 
-    def _verify_jwt(self, access_token: str) -> Dict[str, Any]:
+    def _verify_jwt(self, access_token: str) -> dict[str, Any]:
         # Lazy import — keeps startup fast for operators who never trigger
         # the gated path.
         import jwt
@@ -479,7 +479,7 @@ class NousDashboardAuthProvider(DashboardAuthProvider):
         self._check_contract_version(claims)
         return claims
 
-    def _check_agent_instance_id(self, claims: Dict[str, Any]) -> None:
+    def _check_agent_instance_id(self, claims: dict[str, Any]) -> None:
         """Contract C9: cross-check agent_instance_id against our config."""
         token_instance_id = claims.get("agent_instance_id")
         if token_instance_id is None:
@@ -493,7 +493,7 @@ class NousDashboardAuthProvider(DashboardAuthProvider):
                 f"vs configured={self._agent_instance_id!r}"
             )
 
-    def _check_contract_version(self, claims: Dict[str, Any]) -> None:
+    def _check_contract_version(self, claims: dict[str, Any]) -> None:
         """Contract C11 — tolerant treatment per OQ-C2."""
         contract_version = claims.get("oauth_contract_version")
         if contract_version is None:
@@ -513,7 +513,7 @@ class NousDashboardAuthProvider(DashboardAuthProvider):
         self,
         access_token: str,
         refresh_token: str,
-        claims: Dict[str, Any],
+        claims: dict[str, Any],
     ) -> Session:
         # Contract C4: no email / display_name in tokens. AuthWidget will
         # show user_id (truncated). Session fields kept for forward-compat.

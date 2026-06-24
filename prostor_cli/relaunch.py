@@ -11,7 +11,7 @@ Also works when ``prostor`` is not on PATH (e.g. ``nix run`` or ``python -m``).
 import os
 import shutil
 import sys
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from prostor_cli._parser import (
     PRE_ARGPARSE_INHERITED_FLAGS,
@@ -77,7 +77,7 @@ def _extract_inherited_flags(argv: Sequence[str]) -> list[str]:
     return flags
 
 
-def resolve_prostor_bin() -> Optional[str]:
+def resolve_prostor_bin() -> str | None:
     """Find the prostor entry point.
 
     Priority:
@@ -125,7 +125,7 @@ def build_relaunch_argv(
     extra_args: Sequence[str],
     *,
     preserve_inherited: bool = True,
-    original_argv: Optional[Sequence[str]] = None,
+    original_argv: Sequence[str] | None = None,
 ) -> list[str]:
     """Construct an argv list for replacing the current process with prostor.
 
@@ -156,7 +156,7 @@ def relaunch(
     extra_args: Sequence[str],
     *,
     preserve_inherited: bool = True,
-    original_argv: Optional[Sequence[str]] = None,
+    original_argv: Sequence[str] | None = None,
 ) -> None:
     """Replace the current process with a fresh prostor invocation.
 

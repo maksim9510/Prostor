@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -221,12 +220,12 @@ async def send_sticker(
 
     Returns: ``{"success": bool, ...}``
     """
-    from gateway.session_context import get_session_env
     from gateway.platforms.yuanbao_sticker import (
+        get_random_sticker,
         get_sticker_by_id,
         get_sticker_by_name,
-        get_random_sticker,
     )
+    from gateway.session_context import get_session_env
 
     target = (chat_id or "").strip() or get_session_env("PROSTOR_SESSION_CHAT_ID", "")
     if not target:
@@ -240,7 +239,7 @@ async def send_sticker(
         return {"success": False, "error": "Yuanbao adapter is not connected"}
 
     raw = (sticker or "").strip()
-    sticker_obj: Optional[dict] = None
+    sticker_obj: dict | None = None
     if not raw:
         sticker_obj = get_random_sticker()
     else:
@@ -292,7 +291,7 @@ async def send_dm(
     name: str,
     message: str,
     user_id: str = "",
-    media_files: Optional[List[Tuple[str, bool]]] = None,
+    media_files: list[tuple[str, bool]] | None = None,
 ) -> dict:
     """
     Send a DM (private chat message) to a group member, with optional media.

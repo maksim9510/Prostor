@@ -13,8 +13,8 @@ terminal_tool_module = importlib.import_module("tools.terminal_tool")
 def _clear_caches():
     """Invalidate check_fn and tool-definitions caches before each test
     so that monkeypatched env vars / config take effect."""
-    from tools.registry import invalidate_check_fn_cache
     from model_tools import _clear_tool_defs_cache
+    from tools.registry import invalidate_check_fn_cache
     invalidate_check_fn_cache()
     _clear_tool_defs_cache()
     yield

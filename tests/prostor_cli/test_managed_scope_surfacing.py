@@ -66,7 +66,7 @@ def test_doctor_reports_managed_scope(homes, capsys):
 
 def test_doctor_silent_with_no_managed_scope(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("PROSTOR_MANAGED_DIR", str(tmp_path / "nope"))
-    from prostor_cli import managed_scope, doctor
+    from prostor_cli import doctor, managed_scope
 
     managed_scope.invalidate_managed_cache()
     doctor.managed_scope_check()

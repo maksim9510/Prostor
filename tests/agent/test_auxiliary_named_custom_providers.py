@@ -1,6 +1,6 @@
 """Tests for named custom provider and 'main' alias resolution in auxiliary_client."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -354,9 +354,9 @@ class TestProvidersDictApiModeAnthropicMessages:
             },
         })
         from agent.auxiliary_client import (
-            resolve_provider_client,
             AnthropicAuxiliaryClient,
             AsyncAnthropicAuxiliaryClient,
+            resolve_provider_client,
         )
         sync_client, sync_model = resolve_provider_client("myrelay", async_mode=False)
         assert isinstance(sync_client, AnthropicAuxiliaryClient), (
@@ -393,10 +393,10 @@ class TestProvidersDictApiModeAnthropicMessages:
             "model": {"provider": "openrouter", "default": "anthropic/claude-sonnet-4.6"},
         })
         from agent.auxiliary_client import (
-            get_async_text_auxiliary_client,
-            get_text_auxiliary_client,
             AnthropicAuxiliaryClient,
             AsyncAnthropicAuxiliaryClient,
+            get_async_text_auxiliary_client,
+            get_text_auxiliary_client,
         )
         async_client, async_model = get_async_text_auxiliary_client("compression")
         assert isinstance(async_client, AsyncAnthropicAuxiliaryClient)
@@ -419,8 +419,9 @@ class TestProvidersDictApiModeAnthropicMessages:
                 },
             },
         })
+        from openai import AsyncOpenAI, OpenAI
+
         from agent.auxiliary_client import resolve_provider_client
-        from openai import OpenAI, AsyncOpenAI
         sync_client, _ = resolve_provider_client("localchat", async_mode=False)
         # sync returns the raw OpenAI client
         assert isinstance(sync_client, OpenAI)
@@ -450,8 +451,9 @@ class TestCustomProviderAliasCollision:
                 },
             ],
         })
-        from agent.auxiliary_client import resolve_provider_client
         from openai import OpenAI
+
+        from agent.auxiliary_client import resolve_provider_client
         client, model = resolve_provider_client("kimi", model="my-kimi-model", raw_codex=True)
         assert isinstance(client, OpenAI)
         assert "my-custom-kimi.example.com" in str(client.base_url)
@@ -481,8 +483,9 @@ class TestCustomProviderAliasCollision:
             "model": {"provider": "openrouter", "default": "anthropic/claude-sonnet-4.6"},
         })
         monkeypatch.setenv("KIMI_API_KEY", "builtin-kimi-key")
-        from agent.auxiliary_client import resolve_provider_client
         from openai import OpenAI
+
+        from agent.auxiliary_client import resolve_provider_client
         client, _ = resolve_provider_client(
             "kimi-coding", model="kimi-k2", raw_codex=True,
             explicit_base_url="https://override.example.com",

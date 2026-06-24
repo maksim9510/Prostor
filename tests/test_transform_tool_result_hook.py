@@ -8,9 +8,8 @@ targets the generic tool-result seam that runs for every tool dispatch.
 import os
 from pathlib import Path
 
-import prostor_cli.plugins as plugins_mod
 import model_tools
-
+import prostor_cli.plugins as plugins_mod
 
 _UNSET = object()
 

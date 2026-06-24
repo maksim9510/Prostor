@@ -34,7 +34,7 @@ from __future__ import annotations
 import secrets
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 #: Time-to-live for newly-minted tickets in seconds. 30 s is long enough
 #: that the SPA can call ``getWsTicket()`` and immediately open the WS,
@@ -42,12 +42,12 @@ from typing import Any, Dict, Optional, Tuple
 TTL_SECONDS = 30
 
 _lock = threading.Lock()
-_tickets: Dict[str, Tuple[int, Dict[str, Any]]] = {}  # ticket -> (expires_at, info)
+_tickets: dict[str, tuple[int, dict[str, Any]]] = {}  # ticket -> (expires_at, info)
 
 #: The process-lifetime internal credential (see module docstring). Lazily
 #: minted on first ``internal_ws_credential()`` call and stable for the life
 #: of the process. Guarded by ``_lock``.
-_internal_credential: Optional[str] = None
+_internal_credential: str | None = None
 
 #: Identity recorded for connections that authenticate via the internal
 #: credential, so audit logs distinguish them from browser-initiated tickets.
@@ -78,7 +78,7 @@ def mint_ticket(*, user_id: str, provider: str) -> str:
     return ticket
 
 
-def consume_ticket(ticket: str) -> Dict[str, Any]:
+def consume_ticket(ticket: str) -> dict[str, Any]:
     """Validate and consume. Raises :class:`TicketInvalid` on missing/expired/used.
 
     Single-use semantics: a successful consume immediately removes the
@@ -126,7 +126,7 @@ def internal_ws_credential() -> str:
         return _internal_credential
 
 
-def consume_internal_credential(value: str) -> Dict[str, Any]:
+def consume_internal_credential(value: str) -> dict[str, Any]:
     """Validate an internal credential. Raises :class:`TicketInvalid` on mismatch.
 
     Unlike :func:`consume_ticket` this is **not** single-use — the value is

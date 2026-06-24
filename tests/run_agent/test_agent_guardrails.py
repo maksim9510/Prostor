@@ -164,7 +164,7 @@ class TestCapDelegateTaskCalls:
         out = AIAgent._cap_delegate_task_calls(tcs)
         expected = [delegates[0], t1, delegates[1], w1] + delegates[2:MAX_CONCURRENT_CHILDREN]
         assert len(out) == len(expected)
-        for i, (actual, exp) in enumerate(zip(out, expected)):
+        for i, (actual, exp) in enumerate(zip(out, expected, strict=False)):
             assert actual is exp, f"mismatch at index {i}"
 
 

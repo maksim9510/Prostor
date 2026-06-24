@@ -24,12 +24,11 @@ import json
 import pytest
 
 from run_agent import (
-    AIAgent,
     _FILE_MUTATING_TOOLS,
+    AIAgent,
     _extract_error_preview,
     _extract_file_mutation_targets,
 )
-
 
 # ---------------------------------------------------------------------------
 # _extract_file_mutation_targets
@@ -328,6 +327,7 @@ class TestFormatFooter:
         config.yaml path out of the rendered footer (#35584)."""
         import os
         import tempfile
+
         from gateway.platforms.base import BasePlatformAdapter
 
         tmp = tempfile.mkdtemp(prefix="prostor_footer_")

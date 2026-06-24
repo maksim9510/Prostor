@@ -9,33 +9,35 @@ Uses python-telegram-bot library for:
 
 import asyncio
 import dataclasses
+import html as _html
 import inspect
 import json
 import logging
 import os
-import tempfile
-import html as _html
 import re
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Any
+import tempfile
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 try:
-    from telegram import Update, Bot, Message, InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
     try:
         from telegram import LinkPreviewOptions
     except ImportError:
         LinkPreviewOptions = None
+    from telegram.constants import ChatType, ParseMode
     from telegram.ext import (
         Application,
-        CommandHandler,
         CallbackQueryHandler,
-        MessageHandler as TelegramMessageHandler,
+        CommandHandler,
         ContextTypes,
         filters,
     )
-    from telegram.constants import ParseMode, ChatType
+    from telegram.ext import (
+        MessageHandler as TelegramMessageHandler,
+    )
     from telegram.request import HTTPXRequest
     TELEGRAM_AVAILABLE = True
 except ImportError:
@@ -63,23 +65,24 @@ except ImportError:
 
 import sys
 from pathlib import Path as _Path
+
 sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
+    SUPPORTED_DOCUMENT_TYPES,
+    SUPPORTED_IMAGE_DOCUMENT_TYPES,
+    SUPPORTED_VIDEO_TYPES,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     ProcessingOutcome,
     SendResult,
-    cache_image_from_bytes,
     cache_audio_from_bytes,
-    cache_video_from_bytes,
     cache_document_from_bytes,
+    cache_image_from_bytes,
+    cache_video_from_bytes,
     resolve_proxy_url,
-    SUPPORTED_VIDEO_TYPES,
-    SUPPORTED_DOCUMENT_TYPES,
-    SUPPORTED_IMAGE_DOCUMENT_TYPES,
     utf16_len,
 )
 from plugins.platforms.telegram.telegram_network import (
@@ -129,19 +132,35 @@ def check_telegram_requirements() -> bool:
     except Exception:
         return False
     try:
-        from telegram import Update as _Update, Bot as _Bot, Message as _Message
-        from telegram import InlineKeyboardButton as _IKB, InlineKeyboardMarkup as _IKM
+        from telegram import Bot as _Bot
+        from telegram import InlineKeyboardButton as _IKB
+        from telegram import InlineKeyboardMarkup as _IKM
+        from telegram import Message as _Message
+        from telegram import Update as _Update
         try:
             from telegram import LinkPreviewOptions as _LPO
         except ImportError:
             _LPO = None
+        from telegram.constants import ChatType as _CtT
+        from telegram.constants import ParseMode as _PM
         from telegram.ext import (
-            Application as _App, CommandHandler as _CH,
-            CallbackQueryHandler as _CQH,
-            MessageHandler as _MH,
-            ContextTypes as _CT, filters as _filters,
+            Application as _App,
         )
-        from telegram.constants import ParseMode as _PM, ChatType as _CtT
+        from telegram.ext import (
+            CallbackQueryHandler as _CQH,
+        )
+        from telegram.ext import (
+            CommandHandler as _CH,
+        )
+        from telegram.ext import (
+            ContextTypes as _CT,
+        )
+        from telegram.ext import (
+            MessageHandler as _MH,
+        )
+        from telegram.ext import (
+            filters as _filters,
+        )
         from telegram.request import HTTPXRequest as _HR
     except ImportError:
         return False
@@ -266,7 +285,7 @@ def _render_table_block_for_telegram(table_block: list[str]) -> str:
         # heading IS the first data cell, and emitting it twice (once as the
         # bold heading, once as the first bullet) is visual noise.
         bullets: list[str] = []
-        for header, value in zip(headers, data_cells):
+        for header, value in zip(headers, data_cells, strict=False):
             if not has_row_label_col and value == heading:
                 continue
             bullets.append(f"• {header}: {value}")
@@ -383,8 +402,8 @@ class TelegramAdapter(BasePlatformAdapter):
         name: str,
         default: float,
         *,
-        min_value: Optional[float] = None,
-        max_value: Optional[float] = None,
+        min_value: float | None = None,
+        max_value: float | None = None,
     ) -> float:
         """Read a float env var, reject non-finite values, and clamp to bounds.
 
@@ -413,8 +432,8 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.TELEGRAM)
-        self._app: Optional[Application] = None
-        self._bot: Optional[Bot] = None
+        self._app: Application | None = None
+        self._bot: Bot | None = None
         self._webhook_mode: bool = False
         self._mention_patterns = self._compile_mention_patterns()
         self._reply_to_mode: str = getattr(config, 'reply_to_mode', 'first') or 'first'
@@ -434,10 +453,10 @@ class TelegramAdapter(BasePlatformAdapter):
         # Buffer rapid/album photo updates so Telegram image bursts are handled
         # as a single MessageEvent instead of self-interrupting multiple turns.
         self._media_batch_delay_seconds = env_float("PROSTOR_TELEGRAM_MEDIA_BATCH_DELAY_SECONDS", 0.8)
-        self._pending_photo_batches: Dict[str, MessageEvent] = {}
-        self._pending_photo_batch_tasks: Dict[str, asyncio.Task] = {}
-        self._media_group_events: Dict[str, MessageEvent] = {}
-        self._media_group_tasks: Dict[str, asyncio.Task] = {}
+        self._pending_photo_batches: dict[str, MessageEvent] = {}
+        self._pending_photo_batch_tasks: dict[str, asyncio.Task] = {}
+        self._media_group_events: dict[str, MessageEvent] = {}
+        self._media_group_tasks: dict[str, asyncio.Task] = {}
         # Buffer rapid text messages so Telegram client-side splits of long
         # messages are aggregated into a single MessageEvent.  Lower defaults
         # (0.3s / 1.0s instead of 0.6s / 2.0s) let short replies stream
@@ -457,9 +476,9 @@ class TelegramAdapter(BasePlatformAdapter):
             min_value=self._text_batch_delay_seconds,
             max_value=4.0,
         )
-        self._pending_text_batches: Dict[str, MessageEvent] = {}
-        self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
-        self._polling_error_task: Optional[asyncio.Task] = None
+        self._pending_text_batches: dict[str, MessageEvent] = {}
+        self._pending_text_batch_tasks: dict[str, asyncio.Task] = {}
+        self._polling_error_task: asyncio.Task | None = None
         self._polling_conflict_count: int = 0
         self._polling_network_error_count: int = 0
         self._polling_error_callback_ref = None
@@ -471,7 +490,7 @@ class TelegramAdapter(BasePlatformAdapter):
         # (cron live-adapter branch) fall through to standalone delivery.
         self._send_path_degraded: bool = False
         # DM Topics: map of topic_name -> message_thread_id (populated at startup)
-        self._dm_topics: Dict[str, int] = {}
+        self._dm_topics: dict[str, int] = {}
         # Track forum chats where we've already registered bot commands
         self._forum_command_registered: set[int] = set()
         # Lock per la registrazione sicura dei comandi nei forum supergroup
@@ -494,9 +513,9 @@ class TelegramAdapter(BasePlatformAdapter):
             self.config.extra.get("status_offline", "Offline")
         )
         # DM Topics config from extra.dm_topics
-        self._dm_topics_config: List[Dict[str, Any]] = self.config.extra.get("dm_topics", [])
+        self._dm_topics_config: list[dict[str, Any]] = self.config.extra.get("dm_topics", [])
         # Precomputed chat_ids that have DM topics configured (for O(1) root-DM ignore check)
-        self._dm_topic_chat_ids: Set[str] = {
+        self._dm_topic_chat_ids: set[str] = {
             str(e["chat_id"]) for e in self._dm_topics_config if "chat_id" in e
         }
         # Document size cap. Telegram's public Bot API caps getFile at 20MB; a
@@ -508,15 +527,15 @@ class TelegramAdapter(BasePlatformAdapter):
             else 20 * 1024 * 1024
         )
         # Interactive model picker state per chat
-        self._model_picker_state: Dict[str, dict] = {}
+        self._model_picker_state: dict[str, dict] = {}
         # Approval button state: message_id → session_key
-        self._approval_state: Dict[int, str] = {}
+        self._approval_state: dict[int, str] = {}
         # Slash-confirm button state: confirm_id → session_key (for /reload-mcp
         # and any other slash-confirm prompts; see GatewayRunner._request_slash_confirm).
-        self._slash_confirm_state: Dict[str, str] = {}
+        self._slash_confirm_state: dict[str, str] = {}
         # Clarify button state: clarify_id → session_key (for the clarify tool's
         # multiple-choice prompts; see GatewayRunner clarify_callback wiring).
-        self._clarify_state: Dict[str, str] = {}
+        self._clarify_state: dict[str, str] = {}
         # Notification mode for message sends.
         # "important" — only final responses, approvals, and slash confirmations
         #               trigger notifications; tool progress, streaming, status
@@ -529,11 +548,11 @@ class TelegramAdapter(BasePlatformAdapter):
         # send_or_update_status() bookkeeping: {(chat_id, status_key) -> bot message_id}
         # Tracks status bubbles owned by this adapter so subsequent calls with the
         # same key edit the same message instead of appending new ones (#30045).
-        self._status_message_ids: Dict[tuple, str] = {}
+        self._status_message_ids: dict[tuple, str] = {}
 
     def _notification_kwargs(
-        self, metadata: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, metadata: dict[str, Any] | None
+    ) -> dict[str, Any]:
         """Return disable_notification kwargs when the adapter is in silent mode.
 
         In "important" mode, all message sends are silently delivered
@@ -550,10 +569,10 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         user_id: str,
         *,
-        chat_id: Optional[str] = None,
-        chat_type: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        user_name: Optional[str] = None,
+        chat_id: str | None = None,
+        chat_type: str | None = None,
+        thread_id: str | None = None,
+        user_name: str | None = None,
     ) -> bool:
         """Return whether a Telegram inline-button caller may perform gated actions."""
         normalized_user_id = str(user_id or "").strip()
@@ -599,21 +618,21 @@ class TelegramAdapter(BasePlatformAdapter):
         return "*" in allowed_ids or normalized_user_id in allowed_ids
 
     @classmethod
-    def _metadata_thread_id(cls, metadata: Optional[Dict[str, Any]]) -> Optional[str]:
+    def _metadata_thread_id(cls, metadata: dict[str, Any] | None) -> str | None:
         if not metadata:
             return None
         thread_id = metadata.get("thread_id") or metadata.get("message_thread_id")
         return str(thread_id) if thread_id is not None else None
 
     @classmethod
-    def _metadata_direct_messages_topic_id(cls, metadata: Optional[Dict[str, Any]]) -> Optional[str]:
+    def _metadata_direct_messages_topic_id(cls, metadata: dict[str, Any] | None) -> str | None:
         if not metadata:
             return None
         topic_id = metadata.get("direct_messages_topic_id") or metadata.get("telegram_direct_messages_topic_id")
         return str(topic_id) if topic_id is not None else None
 
     @classmethod
-    def _metadata_reply_to_message_id(cls, metadata: Optional[Dict[str, Any]]) -> Optional[int]:
+    def _metadata_reply_to_message_id(cls, metadata: dict[str, Any] | None) -> int | None:
         if not metadata:
             return None
         reply_to = metadata.get("telegram_reply_to_message_id")
@@ -630,8 +649,8 @@ class TelegramAdapter(BasePlatformAdapter):
     def _is_private_dm_topic_send(
         cls,
         chat_id: str,
-        thread_id: Optional[str],
-        metadata: Optional[Dict[str, Any]],
+        thread_id: str | None,
+        metadata: dict[str, Any] | None,
     ) -> bool:
         if cls._metadata_direct_messages_topic_id(metadata) is not None:
             return bool(
@@ -656,10 +675,10 @@ class TelegramAdapter(BasePlatformAdapter):
     @classmethod
     def _reply_to_message_id_for_send(
         cls,
-        reply_to: Optional[str],
-        metadata: Optional[Dict[str, Any]] = None,
-        reply_to_mode: Optional[str] = None,
-    ) -> Optional[int]:
+        reply_to: str | None,
+        metadata: dict[str, Any] | None = None,
+        reply_to_mode: str | None = None,
+    ) -> int | None:
         if reply_to:
             return int(reply_to)
         if metadata and metadata.get("telegram_dm_topic_reply_fallback"):
@@ -672,11 +691,11 @@ class TelegramAdapter(BasePlatformAdapter):
     def _thread_kwargs_for_send(
         cls,
         chat_id: str,
-        thread_id: Optional[str],
-        metadata: Optional[Dict[str, Any]] = None,
-        reply_to_message_id: Optional[int] = None,
-        reply_to_mode: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        thread_id: str | None,
+        metadata: dict[str, Any] | None = None,
+        reply_to_message_id: int | None = None,
+        reply_to_mode: str | None = None,
+    ) -> dict[str, Any]:
         """Return Telegram send kwargs for forum and direct-message topic routing.
 
         Supergroup/forum topics use ``message_thread_id``. True Bot API Direct
@@ -714,13 +733,13 @@ class TelegramAdapter(BasePlatformAdapter):
         return {"message_thread_id": cls._message_thread_id_for_send(thread_id)}
 
     @classmethod
-    def _message_thread_id_for_send(cls, thread_id: Optional[str]) -> Optional[int]:
+    def _message_thread_id_for_send(cls, thread_id: str | None) -> int | None:
         if not thread_id or str(thread_id) == cls._GENERAL_TOPIC_THREAD_ID:
             return None
         return int(thread_id)
 
     @classmethod
-    def _message_thread_id_for_typing(cls, thread_id: Optional[str]) -> Optional[int]:
+    def _message_thread_id_for_typing(cls, thread_id: str | None) -> int | None:
         # Asymmetric with _message_thread_id_for_send on purpose. Telegram's
         # sendMessage and sendChatAction treat thread id "1" (the forum General
         # topic) differently: sends reject message_thread_id=1 and must omit it,
@@ -751,8 +770,8 @@ class TelegramAdapter(BasePlatformAdapter):
     def _should_retry_without_dm_topic_reply_anchor(
         cls,
         error: Exception,
-        metadata: Optional[Dict[str, Any]],
-        reply_to_message_id: Optional[int],
+        metadata: dict[str, Any] | None,
+        reply_to_message_id: int | None,
     ) -> bool:
         """True when a DM-topic send should be retried with routing stripped.
 
@@ -794,11 +813,11 @@ class TelegramAdapter(BasePlatformAdapter):
     async def _send_with_dm_topic_reply_anchor_retry(
         self,
         send_fn: Any,
-        send_kwargs: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]],
-        reply_to_message_id: Optional[int],
+        send_kwargs: dict[str, Any],
+        metadata: dict[str, Any] | None,
+        reply_to_message_id: int | None,
         media_label: str,
-        reset_media: Optional[Any] = None,
+        reset_media: Any | None = None,
     ) -> Any:
         """Retry stale private-topic media replies once without the topic anchor."""
         try:
@@ -931,7 +950,7 @@ class TelegramAdapter(BasePlatformAdapter):
             return default
         return bool(value)
 
-    def _link_preview_kwargs(self) -> Dict[str, Any]:
+    def _link_preview_kwargs(self) -> dict[str, Any]:
         if not getattr(self, "_disable_link_previews", False):
             return {}
         if LinkPreviewOptions is not None:
@@ -1041,7 +1060,7 @@ class TelegramAdapter(BasePlatformAdapter):
         )
 
     def _should_attempt_rich(
-        self, content: str, metadata: Optional[Dict[str, Any]] = None
+        self, content: str, metadata: dict[str, Any] | None = None
     ) -> bool:
         return bool(
             not (metadata or {}).get("expect_edits")
@@ -1049,7 +1068,7 @@ class TelegramAdapter(BasePlatformAdapter):
         )
 
     def prefers_fresh_final_streaming(
-        self, content: str, metadata: Optional[Dict[str, Any]] = None
+        self, content: str, metadata: dict[str, Any] | None = None
     ) -> bool:
         """Whether to replace a streamed preview with a fresh rich final.
 
@@ -1063,7 +1082,7 @@ class TelegramAdapter(BasePlatformAdapter):
         """
         return False
 
-    def streaming_overflow_limit(self) -> Optional[int]:
+    def streaming_overflow_limit(self) -> int | None:
         """Allow the stream consumer to accumulate up to the rich-message cap
         before splitting, so a reply that fits one ``sendRichMessage`` /
         ``sendRichMessageDraft`` isn't fragmented at the 4,096 MarkdownV2 limit.
@@ -1084,13 +1103,13 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def _rich_message_payload(
         self, content: str, *, skip_entity_detection: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build the ``InputRichMessage`` object from RAW markdown.
 
         Never pass ``format_message(content)`` here — that converts to
         MarkdownV2 and would escape/destroy rich syntax like table pipes.
         """
-        payload: Dict[str, Any] = {"markdown": content}
+        payload: dict[str, Any] = {"markdown": content}
         if skip_entity_detection:
             payload["skip_entity_detection"] = True
         return payload
@@ -1135,10 +1154,10 @@ class TelegramAdapter(BasePlatformAdapter):
     def _compute_single_send_routing(
         self,
         chat_id: str,
-        reply_to: Optional[str],
-        metadata: Optional[Dict[str, Any]],
-        thread_id: Optional[str],
-    ) -> Optional[tuple]:
+        reply_to: str | None,
+        metadata: dict[str, Any] | None,
+        thread_id: str | None,
+    ) -> tuple | None:
         """Routing for a single (rich) send — mirrors send()'s index-0 block.
 
         Returns ``(reply_to_id, thread_kwargs)``, or ``None`` to signal "skip
@@ -1179,9 +1198,9 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str],
-        metadata: Optional[Dict[str, Any]],
-    ) -> Optional[SendResult]:
+        reply_to: str | None,
+        metadata: dict[str, Any] | None,
+    ) -> SendResult | None:
         """Attempt a single ``sendRichMessage`` send.
 
         Returns a :class:`SendResult` (success, or a transient failure that the
@@ -1194,7 +1213,7 @@ class TelegramAdapter(BasePlatformAdapter):
             return None
         reply_to_id, thread_kwargs = routing
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "chat_id": int(chat_id),
             "rich_message": self._rich_message_payload(content),
         }
@@ -1276,7 +1295,7 @@ class TelegramAdapter(BasePlatformAdapter):
         chat_id: str,
         message_id: str,
         content: str,
-    ) -> Optional[SendResult]:
+    ) -> SendResult | None:
         """Edit an existing message in place as a rich message (Bot API 10.1).
 
         Uses ``editMessageText`` with the ``rich_message`` parameter so a
@@ -1290,7 +1309,7 @@ class TelegramAdapter(BasePlatformAdapter):
         - transient / unknown → ``SendResult(success=False)`` with retry
           semantics (the message may already be edited; do NOT legacy-resend)
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "chat_id": int(chat_id),
             "message_id": int(message_id),
             "rich_message": self._rich_message_payload(content),
@@ -1353,7 +1372,7 @@ class TelegramAdapter(BasePlatformAdapter):
         chat_id: str,
         draft_id: int,
         content: str,
-        metadata: Optional[Dict[str, Any]],
+        metadata: dict[str, Any] | None,
     ) -> bool:
         """Emit one ``sendRichMessageDraft`` preview frame; True on success.
 
@@ -1363,7 +1382,7 @@ class TelegramAdapter(BasePlatformAdapter):
         legacy plain-text draft. A permanent/capability failure additionally
         latches ``_rich_draft_disabled`` so later frames skip the rich attempt.
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "chat_id": int(chat_id),
             "draft_id": int(draft_id),
             "rich_message": self._rich_message_payload(content),
@@ -1673,9 +1692,9 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: int,
         name: str,
-        icon_color: Optional[int] = None,
-        icon_custom_emoji_id: Optional[str] = None,
-    ) -> Optional[int]:
+        icon_color: int | None = None,
+        icon_custom_emoji_id: str | None = None,
+    ) -> int | None:
         """Create a forum topic in a private (DM) chat.
 
         Uses Bot API 9.4's createForumTopic which now works for 1-on-1 chats.
@@ -1684,7 +1703,7 @@ class TelegramAdapter(BasePlatformAdapter):
         if not self._bot:
             return None
         try:
-            kwargs: Dict[str, Any] = {"chat_id": chat_id, "name": name}
+            kwargs: dict[str, Any] = {"chat_id": chat_id, "name": name}
             if icon_color is not None:
                 kwargs["icon_color"] = icon_color
             if icon_custom_emoji_id:
@@ -1724,7 +1743,7 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         parent_chat_id: str,
         name: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create a forum topic for a session handoff.
 
         Works for DM topics (Bot API 9.4+, requires user to enable Topics
@@ -1738,7 +1757,7 @@ class TelegramAdapter(BasePlatformAdapter):
         thread_id = await self._create_dm_topic(chat_id_int, name=name)
         return str(thread_id) if thread_id else None
 
-    async def ensure_dm_topic(self, chat_id: str, topic_name: str, force_create: bool = False) -> Optional[str]:
+    async def ensure_dm_topic(self, chat_id: str, topic_name: str, force_create: bool = False) -> str | None:
         """Return a private DM topic thread id, creating and persisting it if needed."""
         name = str(topic_name or "").strip()
         if not name:
@@ -1753,8 +1772,8 @@ class TelegramAdapter(BasePlatformAdapter):
         if cached and not force_create:
             return str(cached)
 
-        topic_conf: Optional[Dict[str, Any]] = None
-        chat_entry: Optional[Dict[str, Any]] = None
+        topic_conf: dict[str, Any] | None = None
+        chat_entry: dict[str, Any] | None = None
         for entry in self._dm_topics_config:
             if str(entry.get("chat_id")) != str(chat_id_int):
                 continue
@@ -1830,7 +1849,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 return
 
             import yaml as _yaml
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 config = _yaml.safe_load(f) or {}
 
             # Navigate to platforms.telegram.extra.dm_topics, creating the path
@@ -2219,13 +2238,13 @@ class TelegramAdapter(BasePlatformAdapter):
             # List is derived from the central COMMAND_REGISTRY — adding a new
             # gateway command there automatically adds it to the Telegram menu.
             try:
+                from prostor_cli.commands import telegram_menu_commands
                 from telegram import (
                     BotCommand,
-                    BotCommandScopeAllPrivateChats,
                     BotCommandScopeAllGroupChats,
+                    BotCommandScopeAllPrivateChats,
                     BotCommandScopeDefault,
                 )
-                from prostor_cli.commands import telegram_menu_commands
                 # Telegram allows up to 100 commands but has an undocumented
                 # payload size limit (~4KB total).  Limit to 30 core commands
                 # to stay well under the threshold while covering all categories.
@@ -2361,7 +2380,7 @@ class TelegramAdapter(BasePlatformAdapter):
         self._bot = None
         logger.info("[%s] Disconnected from Telegram", self.name)
 
-    def _should_thread_reply(self, reply_to: Optional[str], chunk_index: int) -> bool:
+    def _should_thread_reply(self, reply_to: str | None, chunk_index: int) -> bool:
         """Determine if this message chunk should thread to the original message.
 
         Args:
@@ -2385,8 +2404,8 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None
     ) -> SendResult:
         """Send a message to a Telegram chat."""
         if not self._bot:
@@ -2680,7 +2699,7 @@ class TelegramAdapter(BasePlatformAdapter):
         status_key: str,
         content: str,
         *,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a status message, or edit the previous one with the same key.
 
@@ -2715,7 +2734,7 @@ class TelegramAdapter(BasePlatformAdapter):
         content: str,
         *,
         finalize: bool = False,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Edit a previously sent Telegram message.
 
@@ -2871,7 +2890,7 @@ class TelegramAdapter(BasePlatformAdapter):
         content: str,
         *,
         finalize: bool,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Split an oversized edit across the existing message + continuations.
 
@@ -3089,8 +3108,8 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def supports_draft_streaming(
         self,
-        chat_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        chat_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Telegram supports sendMessageDraft for private chats only.
 
@@ -3111,7 +3130,7 @@ class TelegramAdapter(BasePlatformAdapter):
         chat_id: str,
         draft_id: int,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Stream a partial message via Telegram's native draft API.
 
@@ -3157,7 +3176,7 @@ class TelegramAdapter(BasePlatformAdapter):
         # retry the streaming send loop uses — so a single bad token never
         # kills draft streaming for the whole response.
         for use_markdown in (True, False):
-            kwargs: Dict[str, Any] = {
+            kwargs: dict[str, Any] = {
                 "chat_id": int(chat_id),
                 "draft_id": int(draft_id),
                 "text": self.format_message(text) if use_markdown else text,
@@ -3230,7 +3249,7 @@ class TelegramAdapter(BasePlatformAdapter):
     async def send_update_prompt(
         self, chat_id: str, prompt: str, default: str = "",
         session_key: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an inline-keyboard update prompt (Yes / No buttons).
 
@@ -3273,7 +3292,7 @@ class TelegramAdapter(BasePlatformAdapter):
     async def send_exec_approval(
         self, chat_id: str, command: str, session_key: str,
         description: str = "dangerous command",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an inline-keyboard approval prompt with interactive buttons.
 
@@ -3313,7 +3332,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 ],
             ])
 
-            kwargs: Dict[str, Any] = {
+            kwargs: dict[str, Any] = {
                 "chat_id": int(chat_id),
                 "text": text,
                 "parse_mode": ParseMode.HTML,
@@ -3344,7 +3363,7 @@ class TelegramAdapter(BasePlatformAdapter):
 
     async def send_slash_confirm(
         self, chat_id: str, title: str, message: str, session_key: str,
-        confirm_id: str, metadata: Optional[Dict[str, Any]] = None,
+        confirm_id: str, metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Render a three-button slash-command confirmation prompt."""
         if not self._bot:
@@ -3364,7 +3383,7 @@ class TelegramAdapter(BasePlatformAdapter):
             ])
 
             thread_id = self._metadata_thread_id(metadata)
-            kwargs: Dict[str, Any] = {
+            kwargs: dict[str, Any] = {
                 "chat_id": int(chat_id),
                 "text": preview,
                 "parse_mode": ParseMode.MARKDOWN_V2,
@@ -3394,10 +3413,10 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         question: str,
-        choices: Optional[list],
+        choices: list | None,
         clarify_id: str,
         session_key: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Render a clarify prompt with one inline button per choice.
 
@@ -3428,7 +3447,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 )
                 text += f"\n\n{option_lines}"
 
-            kwargs: Dict[str, Any] = {
+            kwargs: dict[str, Any] = {
                 "chat_id": int(chat_id),
                 "text": text,
                 "parse_mode": ParseMode.HTML,
@@ -3480,7 +3499,7 @@ class TelegramAdapter(BasePlatformAdapter):
         current_provider: str,
         session_key: str,
         on_model_selected,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an interactive inline-keyboard model picker.
 
@@ -3502,12 +3521,12 @@ class TelegramAdapter(BasePlatformAdapter):
 
             provider_label = get_label(current_provider)
             text = self.format_message(
-                (
+
                     f"⚙ *Model Configuration*\n\n"
                     f"Current model: `{current_model or 'unknown'}`\n"
                     f"Provider: {provider_label}\n\n"
                     f"Select a provider:"
-                )
+
             )
 
             thread_id = metadata.get("thread_id") if metadata else None
@@ -3677,11 +3696,11 @@ class TelegramAdapter(BasePlatformAdapter):
 
             await query.edit_message_text(
                 text=self.format_message(
-                    (
+
                         f"⚙ *Model Configuration*\n\n"
                         f"Provider: *{pname}*{page_info}\n"
                         f"Select a model:{extra}"
-                    )
+
                 ),
                 parse_mode=ParseMode.MARKDOWN_V2,
                 reply_markup=keyboard,
@@ -3713,11 +3732,11 @@ class TelegramAdapter(BasePlatformAdapter):
 
             await query.edit_message_text(
                 text=self.format_message(
-                    (
+
                         f"⚙ *Model Configuration*\n\n"
                         f"Provider: *{pname}*{page_info}\n"
                         f"Select a model:{extra}"
-                    )
+
                 ),
                 parse_mode=ParseMode.MARKDOWN_V2,
                 reply_markup=keyboard,
@@ -3889,11 +3908,11 @@ class TelegramAdapter(BasePlatformAdapter):
 
             await query.edit_message_text(
                 text=self.format_message(
-                    (
+
                         f"⚙ *Model Configuration*\n\n"
                         f"Provider family: *{_label or group_id}*\n\n"
                         f"Select a provider:"
-                    )
+
                 ),
                 parse_mode=ParseMode.MARKDOWN_V2,
                 reply_markup=keyboard,
@@ -3911,12 +3930,12 @@ class TelegramAdapter(BasePlatformAdapter):
 
             await query.edit_message_text(
                 text=self.format_message(
-                    (
+
                         f"⚙ *Model Configuration*\n\n"
                         f"Current model: `{state['current_model'] or 'unknown'}`\n"
                         f"Provider: {provider_label}\n\n"
                         f"Select a provider:"
-                    )
+
                 ),
                 parse_mode=ParseMode.MARKDOWN_V2,
                 reply_markup=keyboard,
@@ -4100,7 +4119,7 @@ class TelegramAdapter(BasePlatformAdapter):
                         chat = getattr(query.message, "chat", None)
                         chat_type = getattr(chat, "type", None)
                         prompt_message_id = getattr(query.message, "message_id", None)
-                        send_kwargs: Dict[str, Any] = {
+                        send_kwargs: dict[str, Any] = {
                             "chat_id": int(query.message.chat_id),
                             "text": self.format_message(result_text),
                             "parse_mode": ParseMode.MARKDOWN_V2,
@@ -4200,7 +4219,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 # Look up the choice text from the entry registered in the
                 # clarify primitive.  Fall back to the index if the entry
                 # has been cleaned up (race with timeout / session reset).
-                resolved_text: Optional[str] = None
+                resolved_text: str | None = None
                 try:
                     from tools.clarify_gateway import _entries as _clarify_entries  # type: ignore
                     entry = _clarify_entries.get(clarify_id)
@@ -4370,7 +4389,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     "[%s] gmail-triage callback failed: verb=%s arg=%s rc=%s stderr=%s",
                     self.name, verb, arg, proc.returncode, stderr_text,
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             label = f"❌ {verb} timed out"
             logger.error("[%s] gmail-triage callback timed out: verb=%s arg=%s", self.name, verb, arg)
         except Exception as exc:
@@ -4426,7 +4445,7 @@ class TelegramAdapter(BasePlatformAdapter):
             "or a smaller audio file.]"
         )
 
-    def _telegram_media_size_allowed(self, source: Any, label: str) -> tuple[bool, Optional[str]]:
+    def _telegram_media_size_allowed(self, source: Any, label: str) -> tuple[bool, str | None]:
         """Validate Telegram media size before downloading into memory."""
         max_bytes = int(getattr(self, "_max_doc_bytes", 20 * 1024 * 1024) or 20 * 1024 * 1024)
         file_size = getattr(source, "file_size", None)
@@ -4444,9 +4463,9 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         """Send audio as a native Telegram voice message or audio file."""
@@ -4534,8 +4553,8 @@ class TelegramAdapter(BasePlatformAdapter):
     async def send_multiple_images(
         self,
         chat_id: str,
-        images: List[tuple],
-        metadata: Optional[Dict[str, Any]] = None,
+        images: list[tuple],
+        metadata: dict[str, Any] | None = None,
         human_delay: float = 0.0,
     ) -> None:
         """Send a batch of images natively via Telegram's media group API.
@@ -4565,8 +4584,8 @@ class TelegramAdapter(BasePlatformAdapter):
             return
 
         # Peel off animations — they need send_animation, not send_media_group
-        animations: List[tuple] = []
-        photos: List[tuple] = []
+        animations: list[tuple] = []
+        photos: list[tuple] = []
         for image_url, alt_text in images:
             if not image_url.startswith("file://") and self._is_animation_url(image_url):
                 animations.append((image_url, alt_text))
@@ -4593,8 +4612,8 @@ class TelegramAdapter(BasePlatformAdapter):
             if human_delay > 0 and chunk_idx > 0:
                 await asyncio.sleep(human_delay)
 
-            media: List[Any] = []
-            opened_files: List[Any] = []
+            media: list[Any] = []
+            opened_files: list[Any] = []
             try:
                 for image_url, alt_text in chunk:
                     caption = alt_text[:1024] if alt_text else None
@@ -4670,9 +4689,9 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a local image file natively as a Telegram photo."""
@@ -4763,10 +4782,10 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a document/file natively as a Telegram file attachment."""
@@ -4814,9 +4833,9 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a video natively as a Telegram video message."""
@@ -4861,12 +4880,12 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an image natively as a Telegram photo.
-        
+
         Tries URL-based send first (fast, works for <5MB images).
         Falls back to downloading and uploading as file (supports up to 10MB).
         """
@@ -4955,9 +4974,9 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         animation_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an animated GIF natively as a Telegram animation (auto-plays inline)."""
         if not self._bot:
@@ -4998,11 +5017,11 @@ class TelegramAdapter(BasePlatformAdapter):
             # Fallback: try as a regular photo
             return await self.send_image(chat_id, animation_url, caption, reply_to, metadata=metadata)
 
-    async def send_typing(self, chat_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+    async def send_typing(self, chat_id: str, metadata: dict[str, Any] | None = None) -> None:
         """Send typing indicator."""
         if self._bot:
             _is_dm_topic: bool = False
-            message_thread_id: Optional[int] = None
+            message_thread_id: int | None = None
             try:
                 _typing_thread = self._metadata_thread_id(metadata)
                 _is_dm_topic = bool(metadata and metadata.get("telegram_dm_topic_reply_fallback"))
@@ -5033,7 +5052,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     exc_info=True,
                 )
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Get information about a Telegram chat."""
         if not self._bot:
             return {"name": "Unknown", "type": "dm"}
@@ -5368,7 +5387,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 logger.warning("[%s] Ignoring invalid Telegram thread id: %r", self.name, value)
         return ignored
 
-    def _compile_mention_patterns(self) -> List[re.Pattern]:
+    def _compile_mention_patterns(self) -> list[re.Pattern]:
         """Compile optional regex wake-word patterns for group triggers."""
         patterns = self.config.extra.get("mention_patterns")
         if patterns is None:
@@ -5394,7 +5413,7 @@ class TelegramAdapter(BasePlatformAdapter):
             )
             return []
 
-        compiled: List[re.Pattern] = []
+        compiled: list[re.Pattern] = []
         for pattern in patterns:
             if not isinstance(pattern, str) or not pattern.strip():
                 continue
@@ -5572,7 +5591,7 @@ class TelegramAdapter(BasePlatformAdapter):
         """
         return self._telegram_guest_mode() and self._message_mentions_bot(message)
 
-    def _clean_bot_trigger_text(self, text: Optional[str]) -> Optional[str]:
+    def _clean_bot_trigger_text(self, text: str | None) -> str | None:
         if not text or not self._bot or not getattr(self._bot, "username", None):
             return text
         username = re.escape(self._bot.username)
@@ -5805,7 +5824,7 @@ class TelegramAdapter(BasePlatformAdapter):
         return None, "", "", None
 
     @staticmethod
-    def _append_observed_note(existing: Optional[str], note: str) -> str:
+    def _append_observed_note(existing: str | None, note: str) -> str:
         if not note:
             return existing or ""
         if not existing:
@@ -5816,8 +5835,8 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         message: Message,
         msg_type: MessageType,
-        update_id: Optional[int] = None,
-        event: Optional[MessageEvent] = None,
+        update_id: int | None = None,
+        event: MessageEvent | None = None,
     ) -> None:
         """Append skipped group chatter to the target session without dispatching."""
         store = getattr(self, "_session_store", None)
@@ -5830,7 +5849,7 @@ class TelegramAdapter(BasePlatformAdapter):
             entry = {
                 "role": "user",
                 "content": self._telegram_group_observe_attributed_text(event),
-                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                "timestamp": datetime.now(tz=UTC).isoformat(),
                 "observed": True,
             }
             if event.message_id:
@@ -5940,8 +5959,8 @@ class TelegramAdapter(BasePlatformAdapter):
                 chat_id = int(chat.id)
                 if chat_id in self._forum_command_registered:
                     return
-                from telegram import BotCommand, BotCommandScopeChat
                 from prostor_cli.commands import telegram_menu_commands
+                from telegram import BotCommand, BotCommandScopeChat
                 menu_commands, _ = telegram_menu_commands(max_commands=MAX_COMMANDS_PER_SCOPE)
                 bot_commands = [BotCommand(name, desc) for name, desc in menu_commands]
                 await self._bot.set_my_commands(bot_commands, scope=BotCommandScopeChat(chat_id=chat_id))
@@ -5950,7 +5969,7 @@ class TelegramAdapter(BasePlatformAdapter):
             except Exception as e:
                 logger.warning("[%s] Forum command lazy-registration failed: %s", self.name, e)
 
-    def _effective_update_message(self, update: Update) -> Optional[Message]:
+    def _effective_update_message(self, update: Update) -> Message | None:
         """Return the message-like payload for normal messages and channel posts.
 
         Telegram exposes channel broadcasts as ``update.channel_post`` rather
@@ -6237,7 +6256,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 # Save to local cache (for vision tool access)
                 cached_path = cache_image_from_bytes(bytes(image_bytes), ext=ext)
                 event.media_urls = [cached_path]
-                event.media_types = [f"image/{ext.lstrip('.')}" ]
+                event.media_types = [f"image/{ext.lstrip('.')}"]
                 logger.info("[Telegram] Cached user photo at %s", cached_path)
                 media_group_id = getattr(msg, "media_group_id", None)
                 if media_group_id:
@@ -6489,11 +6508,11 @@ class TelegramAdapter(BasePlatformAdapter):
         a placeholder noting the emoji.
         """
         from gateway.sticker_cache import (
-            get_cached_description,
-            cache_sticker_description,
-            build_sticker_injection,
-            build_animated_sticker_injection,
             STICKER_VISION_PROMPT,
+            build_animated_sticker_injection,
+            build_sticker_injection,
+            cache_sticker_description,
+            get_cached_description,
         )
 
         sticker = msg.sticker
@@ -6558,7 +6577,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 return
 
             import yaml as _yaml
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 config = _yaml.safe_load(f) or {}
 
             dm_topics = (
@@ -6597,7 +6616,7 @@ class TelegramAdapter(BasePlatformAdapter):
         except Exception as e:
             logger.debug("[%s] Failed to reload dm_topics from config: %s", self.name, e)
 
-    def _get_dm_topic_info(self, chat_id: str, thread_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    def _get_dm_topic_info(self, chat_id: str, thread_id: str | None) -> dict[str, Any] | None:
         """Look up DM topic config by chat_id and thread_id.
 
         Returns the topic config dict (name, skill, etc.) if this thread_id
@@ -6650,7 +6669,7 @@ class TelegramAdapter(BasePlatformAdapter):
         self,
         message: Message,
         msg_type: MessageType,
-        update_id: Optional[int] = None,
+        update_id: int | None = None,
     ) -> MessageEvent:
         """Build a MessageEvent from a Telegram message.
 

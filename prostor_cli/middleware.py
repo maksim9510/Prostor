@@ -8,9 +8,10 @@ contract helpers here so agent-loop call sites and plugins share one vocabulary.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +42,15 @@ class RequestMiddlewareResult:
     payload: Any
     original_payload: Any
     changed: bool = False
-    trace: List[Dict[str, Any]] = field(default_factory=list)
+    trace: list[dict[str, Any]] = field(default_factory=list)
 
 
-def observer_payload(**kwargs: Any) -> Dict[str, Any]:
+def observer_payload(**kwargs: Any) -> dict[str, Any]:
     kwargs.setdefault("telemetry_schema_version", OBSERVER_SCHEMA_VERSION)
     return kwargs
 
 
-def middleware_payload(**kwargs: Any) -> Dict[str, Any]:
+def middleware_payload(**kwargs: Any) -> dict[str, Any]:
     kwargs.setdefault("telemetry_schema_version", OBSERVER_SCHEMA_VERSION)
     kwargs.setdefault("middleware_schema_version", MIDDLEWARE_SCHEMA_VERSION)
     return kwargs
@@ -75,7 +76,7 @@ def _safe_copy(payload: Any) -> Any:
 
 
 def apply_llm_request_middleware(
-    request: Dict[str, Any],
+    request: dict[str, Any],
     **context: Any,
 ) -> RequestMiddlewareResult:
     """Apply registered LLM request middleware.
@@ -93,7 +94,7 @@ def apply_llm_request_middleware(
 
     original_request = _safe_copy(request)
     current_request = _safe_copy(original_request)
-    trace: List[Dict[str, Any]] = []
+    trace: list[dict[str, Any]] = []
 
     for result in _invoke_middleware(
         LLM_REQUEST_MIDDLEWARE,
@@ -119,7 +120,7 @@ def apply_llm_request_middleware(
 
 def apply_tool_request_middleware(
     tool_name: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     **context: Any,
 ) -> RequestMiddlewareResult:
     """Apply registered tool request middleware.
@@ -137,7 +138,7 @@ def apply_tool_request_middleware(
 
     original_args = _safe_copy(args)
     current_args = _safe_copy(original_args)
-    trace: List[Dict[str, Any]] = []
+    trace: list[dict[str, Any]] = []
 
     for result in _invoke_middleware(
         TOOL_REQUEST_MIDDLEWARE,
@@ -163,7 +164,7 @@ def apply_tool_request_middleware(
 
 
 def apply_api_request_middleware(
-    request: Dict[str, Any],
+    request: dict[str, Any],
     **context: Any,
 ) -> RequestMiddlewareResult:
     """Compatibility wrapper for older ``api_request`` naming."""
@@ -171,8 +172,8 @@ def apply_api_request_middleware(
 
 
 def run_llm_execution_middleware(
-    request: Dict[str, Any],
-    next_call: Callable[[Dict[str, Any]], Any],
+    request: dict[str, Any],
+    next_call: Callable[[dict[str, Any]], Any],
     **context: Any,
 ) -> Any:
     """Run provider execution through registered LLM execution middleware."""
@@ -191,8 +192,8 @@ def run_llm_execution_middleware(
 
 def run_tool_execution_middleware(
     tool_name: str,
-    args: Dict[str, Any],
-    next_call: Callable[[Dict[str, Any]], Any],
+    args: dict[str, Any],
+    next_call: Callable[[dict[str, Any]], Any],
     **context: Any,
 ) -> Any:
     """Run tool execution through registered tool execution middleware."""
@@ -211,15 +212,15 @@ def run_tool_execution_middleware(
 
 
 def run_api_execution_middleware(
-    request: Dict[str, Any],
-    next_call: Callable[[Dict[str, Any]], Any],
+    request: dict[str, Any],
+    next_call: Callable[[dict[str, Any]], Any],
     **context: Any,
 ) -> Any:
     """Compatibility wrapper for older ``api_execution`` naming."""
     return run_llm_execution_middleware(request, next_call, **context)
 
 
-def _invoke_middleware(kind: str, **kwargs: Any) -> List[Any]:
+def _invoke_middleware(kind: str, **kwargs: Any) -> list[Any]:
     from prostor_cli.plugins import invoke_middleware
 
     return invoke_middleware(kind, **middleware_payload(**kwargs))
@@ -231,7 +232,7 @@ def _has_middleware(kind: str) -> bool:
     return has_middleware(kind)
 
 
-def _get_middleware_callbacks(kind: str) -> List[Callable]:
+def _get_middleware_callbacks(kind: str) -> list[Callable]:
     from prostor_cli.plugins import get_plugin_manager
 
     return list(get_plugin_manager()._middleware.get(kind, []))
@@ -239,7 +240,7 @@ def _get_middleware_callbacks(kind: str) -> List[Callable]:
 
 def _run_execution_chain(
     kind: str,
-    callbacks: List[Callable],
+    callbacks: list[Callable],
     terminal_call: Callable[[Any], Any],
     **kwargs: Any,
 ) -> Any:
@@ -302,8 +303,8 @@ def _run_execution_chain(
     return call_at(0, kwargs[payload_key])
 
 
-def _trace_entry(result: Dict[str, Any]) -> Dict[str, Any]:
-    entry: Dict[str, Any] = {}
+def _trace_entry(result: dict[str, Any]) -> dict[str, Any]:
+    entry: dict[str, Any] = {}
     for key in ("source", "reason", "name"):
         value = result.get(key)
         if isinstance(value, str) and value:

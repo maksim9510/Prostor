@@ -9,14 +9,10 @@ Verifies that:
 
 import ast
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
-import pytest
-
-from prostor_state import SessionDB
 from acp_adapter.session import SessionManager
+from prostor_state import SessionDB
 
 
 def _tmp_db(tmp_path):

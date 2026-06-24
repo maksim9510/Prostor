@@ -21,7 +21,6 @@ from prostor_cli.service_manager import (
     validate_profile_name,
 )
 
-
 # ---------------------------------------------------------------------------
 # validate_profile_name
 # ---------------------------------------------------------------------------
@@ -880,6 +879,7 @@ def test_lifecycle_raises_s6_command_error_on_subprocess_failure(
     CalledProcessError into a named S6CommandError carrying the
     return code and stderr."""
     import subprocess as _sp
+
     from prostor_cli.service_manager import S6CommandError
 
     # Pre-create the slot so we reach the s6-svc call.

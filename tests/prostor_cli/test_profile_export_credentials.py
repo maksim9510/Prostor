@@ -7,7 +7,7 @@ profiles; leaking credentials in the archive is a security issue.
 
 import tarfile
 
-from prostor_cli.profiles import export_profile, _DEFAULT_EXPORT_EXCLUDE_ROOT
+from prostor_cli.profiles import _DEFAULT_EXPORT_EXCLUDE_ROOT, export_profile
 
 
 class TestCredentialExclusion:

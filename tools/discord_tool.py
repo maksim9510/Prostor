@@ -31,7 +31,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from tools.registry import registry
 
@@ -50,7 +50,8 @@ _FLAG_GATEWAY_MESSAGE_CONTENT_LIMITED = 1 << 19
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_bot_token() -> Optional[str]:
+
+def _get_bot_token() -> str | None:
     """Resolve the Discord bot token from environment."""
     return os.getenv("DISCORD_BOT_TOKEN", "").strip() or None
 
@@ -59,8 +60,8 @@ def _discord_request(
     method: str,
     path: str,
     token: str,
-    params: Optional[Dict[str, str]] = None,
-    body: Optional[Dict[str, Any]] = None,
+    params: dict[str, str] | None = None,
+    body: dict[str, Any] | None = None,
     timeout: int = 15,
 ) -> Any:
     """Make a request to the Discord REST API."""
@@ -132,10 +133,10 @@ def _channel_type_name(type_id: int) -> str:
 # ---------------------------------------------------------------------------
 
 # Module-level cache so the app/me endpoint is hit at most once per process.
-_capability_cache: Dict[str, Dict[str, Any]] = {}
+_capability_cache: dict[str, dict[str, Any]] = {}
 
 
-def _detect_capabilities(token: str, *, force: bool = False) -> Dict[str, Any]:
+def _detect_capabilities(token: str, *, force: bool = False) -> dict[str, Any]:
     """Detect the bot's app-wide capabilities via GET /applications/@me.
 
     Returns a dict with keys:
@@ -151,7 +152,7 @@ def _detect_capabilities(token: str, *, force: bool = False) -> Dict[str, Any]:
     if token in _capability_cache and not force:
         return _capability_cache[token]
 
-    caps: Dict[str, Any] = {
+    caps: dict[str, Any] = {
         "has_members_intent": True,
         "has_message_content": True,
         "detected": False,
@@ -224,8 +225,8 @@ def _list_channels(token: str, guild_id: str, **_kwargs: Any) -> str:
     channels = _discord_request("GET", f"/guilds/{guild_id}/channels", token)
 
     # Organize: categories first, then channels under each
-    categories: Dict[Optional[str], Dict[str, Any]] = {}
-    uncategorized: List[Dict[str, Any]] = []
+    categories: dict[str | None, dict[str, Any]] = {}
+    uncategorized: list[dict[str, Any]] = []
 
     # First pass: collect categories
     for ch in channels:
@@ -261,7 +262,7 @@ def _list_channels(token: str, guild_id: str, **_kwargs: Any) -> str:
         cat["channels"].sort(key=lambda c: c["position"])
     uncategorized.sort(key=lambda c: c["position"])
 
-    result: List[Dict[str, Any]] = []
+    result: list[dict[str, Any]] = []
     if uncategorized:
         result.append({"category": None, "channels": uncategorized})
     for cat in sorted_cats:
@@ -350,7 +351,7 @@ def _search_members(token: str, guild_id: str, query: str, limit: int = 20, **_k
 
 def _fetch_messages(
     token: str, channel_id: str, limit: int = 50,
-    before: Optional[str] = None, after: Optional[str] = None,
+    before: str | None = None, after: str | None = None,
     **_kwargs: Any,
 ) -> str:
     """Fetch recent messages from a channel."""
@@ -358,7 +359,7 @@ def _fetch_messages(
         limit = int(limit)
     except (TypeError, ValueError):
         limit = 50
-    params: Dict[str, str] = {"limit": str(min(limit, 100))}
+    params: dict[str, str] = {"limit": str(min(limit, 100))}
     if before:
         params["before"] = before
     if after:
@@ -426,7 +427,7 @@ def _delete_message(token: str, channel_id: str, message_id: str, **_kwargs: Any
 
 def _create_thread(
     token: str, channel_id: str, name: str,
-    message_id: Optional[str] = None,
+    message_id: str | None = None,
     auto_archive_duration: int = 1440,
     **_kwargs: Any,
 ) -> str:
@@ -434,7 +435,7 @@ def _create_thread(
     if message_id:
         # Create thread from an existing message
         path = f"/channels/{channel_id}/messages/{message_id}/threads"
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "name": name,
             "auto_archive_duration": auto_archive_duration,
         }
@@ -497,7 +498,7 @@ _ADMIN_ACTIONS = {k: v for k, v in _ACTIONS.items() if k in _ADMIN_ACTION_NAMES}
 # Single-source-of-truth manifest: action → (signature, one-line description).
 # Consumed by :func:`_build_schema` so the schema's top-level description
 # always matches the registered action set.
-_ACTION_MANIFEST: List[Tuple[str, str, str]] = [
+_ACTION_MANIFEST: list[tuple[str, str, str]] = [
     ("list_guilds", "()", "list servers the bot is in"),
     ("server_info", "(guild_id)", "server details + member counts"),
     ("list_channels", "(guild_id)", "all channels grouped by category"),
@@ -519,7 +520,7 @@ _ACTION_MANIFEST: List[Tuple[str, str, str]] = [
 _INTENT_GATED_MEMBERS = frozenset({"member_info", "search_members"})
 
 # Per-action required params for runtime validation.
-_REQUIRED_PARAMS: Dict[str, List[str]] = {
+_REQUIRED_PARAMS: dict[str, list[str]] = {
     "server_info": ["guild_id"],
     "list_channels": ["guild_id"],
     "list_roles": ["guild_id"],
@@ -541,7 +542,7 @@ _REQUIRED_PARAMS: Dict[str, List[str]] = {
 # Config-based action allowlist
 # ---------------------------------------------------------------------------
 
-def _load_allowed_actions_config() -> Optional[List[str]]:
+def _load_allowed_actions_config() -> list[str] | None:
     """Read ``discord.server_actions`` from user config.
 
     Returns a list of allowed action names, or ``None`` if the user
@@ -583,14 +584,14 @@ def _load_allowed_actions_config() -> Optional[List[str]]:
 
 
 def _available_actions(
-    caps: Dict[str, Any],
-    allowlist: Optional[List[str]],
-) -> List[str]:
+    caps: dict[str, Any],
+    allowlist: list[str] | None,
+) -> list[str]:
     """Compute the visible action list from intents + config allowlist.
 
     Preserves the canonical order from :data:`_ACTIONS`.
     """
-    actions: List[str] = []
+    actions: list[str] = []
     for name in _ACTIONS:
         # Intent filter
         if not caps.get("has_members_intent", True) and name in _INTENT_GATED_MEMBERS:
@@ -607,10 +608,10 @@ def _available_actions(
 # ---------------------------------------------------------------------------
 
 def _build_schema(
-    actions: List[str],
-    caps: Optional[Dict[str, Any]] = None,
+    actions: list[str],
+    caps: dict[str, Any] | None = None,
     tool_name: str = "discord",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Build the tool schema for the given filtered action list.
 
     Returns ``None`` when *actions* is empty — callers should drop the
@@ -660,7 +661,7 @@ def _build_schema(
             f"{content_note}"
         )
 
-    properties: Dict[str, Any] = {
+    properties: dict[str, Any] = {
         "action": {
             "type": "string",
             "enum": actions,
@@ -726,9 +727,9 @@ def _build_schema(
 
 
 def _get_dynamic_schema(
-    action_subset: Dict[str, Any],
+    action_subset: dict[str, Any],
     tool_name: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Build a dynamic schema for *action_subset* filtered by intents + config."""
     token = _get_bot_token()
     if not token:
@@ -741,15 +742,15 @@ def _get_dynamic_schema(
     return _build_schema(actions, caps, tool_name=tool_name)
 
 
-def get_dynamic_schema_core() -> Optional[Dict[str, Any]]:
+def get_dynamic_schema_core() -> dict[str, Any] | None:
     return _get_dynamic_schema(_CORE_ACTIONS, "discord")
 
 
-def get_dynamic_schema_admin() -> Optional[Dict[str, Any]]:
+def get_dynamic_schema_admin() -> dict[str, Any] | None:
     return _get_dynamic_schema(_ADMIN_ACTIONS, "discord_admin")
 
 
-def get_dynamic_schema() -> Optional[Dict[str, Any]]:
+def get_dynamic_schema() -> dict[str, Any] | None:
     """Backward-compat wrapper — returns core schema."""
     return get_dynamic_schema_core()
 
@@ -826,7 +827,7 @@ def check_discord_tool_requirements() -> bool:
 
 def _run_discord_action(
     action: str,
-    valid_actions: Dict[str, Any],
+    valid_actions: dict[str, Any],
     tool_label: str,
     guild_id: str = "",
     channel_id: str = "",

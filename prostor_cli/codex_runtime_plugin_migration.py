@@ -40,7 +40,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +59,12 @@ MIGRATION_END_MARKER = (
 class MigrationReport:
     """Outcome of a migration pass."""
 
-    target_path: Optional[Path] = None
+    target_path: Path | None = None
     migrated: list[str] = field(default_factory=list)
     skipped_keys_per_server: dict[str, list[str]] = field(default_factory=dict)
     migrated_plugins: list[str] = field(default_factory=list)
-    plugin_query_error: Optional[str] = None
-    wrote_permissions_default: Optional[str] = None
+    plugin_query_error: str | None = None
+    wrote_permissions_default: str | None = None
     errors: list[str] = field(default_factory=list)
     written: bool = False
     dry_run: bool = False
@@ -126,7 +126,7 @@ _KEYS_DROPPED_WITH_WARNING = {
 
 def _translate_one_server(
     name: str, prostor_cfg: dict
-) -> tuple[Optional[dict], list[str]]:
+) -> tuple[dict | None, list[str]]:
     """Translate one Prostor MCP server config to the codex inline-table dict
     representation. Returns (codex_entry, skipped_keys).
 
@@ -243,10 +243,11 @@ def _quote_key(key: str) -> str:
     escaped = key.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
 
+
 def render_codex_toml_section(
     servers: dict[str, dict],
-    plugins: Optional[list[dict]] = None,
-    default_permission_profile: Optional[str] = None,
+    plugins: list[dict] | None = None,
+    default_permission_profile: str | None = None,
 ) -> str:
     """Render the managed [mcp_servers.<n>] / [plugins.<id>] / [permissions]
     block for ~/.codex/config.toml.
@@ -317,7 +318,7 @@ def _insert_managed_block_at_top_level(user_text: str, managed_block: str) -> st
         return managed_block
 
     lines = user_text.splitlines(keepends=True)
-    first_table_idx: Optional[int] = None
+    first_table_idx: int | None = None
     for idx, line in enumerate(lines):
         stripped = line.lstrip()
         if stripped.startswith("["):
@@ -448,9 +449,9 @@ def _strip_existing_managed_block(toml_text: str) -> str:
 
 
 def _query_codex_plugins(
-    codex_home: Optional[Path] = None,
+    codex_home: Path | None = None,
     timeout: float = 8.0,
-) -> tuple[list[dict], Optional[str]]:
+) -> tuple[list[dict], str | None]:
     """Query codex's `plugin/list` for installed curated plugins.
 
     Spawns `codex app-server` briefly, sends initialize + plugin/list,
@@ -609,10 +610,10 @@ def _build_prostor_tools_mcp_entry() -> dict:
 def migrate(
     prostor_config: dict,
     *,
-    codex_home: Optional[Path] = None,
+    codex_home: Path | None = None,
     dry_run: bool = False,
     discover_plugins: bool = True,
-    default_permission_profile: Optional[str] = ":workspace",
+    default_permission_profile: str | None = ":workspace",
     expose_prostor_tools: bool = True,
 ) -> MigrationReport:
     """Translate Prostor mcp_servers config + Codex curated plugins into

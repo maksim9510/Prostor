@@ -17,9 +17,9 @@ import base64
 import json
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
-
+from typing import Any
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime"
 
@@ -55,7 +55,7 @@ class RealtimeSession:
         model: str = "gpt-realtime",
         voice: str = "alloy",
         instructions: str = "",
-        audio_sink_path: Optional[Path] = None,
+        audio_sink_path: Path | None = None,
         sample_rate: int = 24000,
     ) -> None:
         import threading as _threading
@@ -67,10 +67,10 @@ class RealtimeSession:
         self.sample_rate = sample_rate
         self._ws: Any = None
         self._send_lock = _threading.Lock()
-        self._last_response_id: Optional[str] = None
+        self._last_response_id: str | None = None
         # Public counters for status reporting.
         self.audio_bytes_out: int = 0
-        self.last_audio_out_at: Optional[float] = None
+        self.last_audio_out_at: float | None = None
 
     # ── lifecycle ─────────────────────────────────────────────────────────
 
@@ -225,7 +225,7 @@ class RealtimeSession:
         with self._send_lock:
             self._ws.send(json.dumps(payload))
 
-    def _recv(self, timeout: Optional[float] = None):
+    def _recv(self, timeout: float | None = None):
         assert self._ws is not None
         try:
             if timeout is None:
@@ -250,7 +250,7 @@ class RealtimeSpeaker:
         self,
         session: RealtimeSession,
         queue_path: Path,
-        processed_path: Optional[Path] = None,
+        processed_path: Path | None = None,
     ) -> None:
         self.session = session
         self.queue_path = Path(queue_path)

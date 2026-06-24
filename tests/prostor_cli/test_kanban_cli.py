@@ -52,6 +52,7 @@ def test_parse_workspace_flag_expands_user():
     assert path.endswith("/trees/t6-wire")
     assert not path.startswith("~")
 
+
 @pytest.mark.parametrize("bad", ["cloud", "dir:", "worktree:", ""])
 def test_parse_workspace_flag_rejects(bad):
     if not bad:
@@ -370,8 +371,9 @@ def test_kanban_not_gateway_only():
 
 def test_run_slash_reclaim_running_task(kanban_home):
     import re
-    import time
     import secrets
+    import time
+
     from prostor_cli import kanban_db as kb
 
     out1 = kc.run_slash("create 'stuck worker task' --assignee broken-model")
@@ -408,8 +410,9 @@ def test_run_slash_reclaim_running_task(kanban_home):
 
 def test_run_slash_reassign_with_reclaim_flag(kanban_home):
     import re
-    import time
     import secrets
+    import time
+
     from prostor_cli import kanban_db as kb
 
     out1 = kc.run_slash("create 'switch model' --assignee orig")

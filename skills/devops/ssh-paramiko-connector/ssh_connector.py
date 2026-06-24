@@ -11,10 +11,10 @@ SSH Paramiko Connector — подключение к удалённым хост
 - Параллельное подключение к нескольким хостам
 """
 
+import logging
 import re
 import time
-import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +29,11 @@ def run_ssh_task(
     port: int = 22,
     username: str = "",
     password: str = "",
-    commands: List[str] = None,
+    commands: list[str] = None,
     mode: str = "exec",
     timeout: int = 20,
     shell_wait: float = 3.0,
-) -> Union[List[Dict[str, Any]], str]:
+) -> list[dict[str, Any]] | str:
     """Выполнить команды на удалённом хосте через SSH.
 
     Args:
@@ -79,7 +79,7 @@ def run_ssh_task(
             look_for_keys=False,
         )
 
-        output_data: List[Dict[str, Any]] = []
+        output_data: list[dict[str, Any]] = []
 
         if mode == "exec":
             for cmd in commands:
@@ -135,9 +135,9 @@ def run_ssh_task(
 
 
 def run_ssh_batch(
-    hosts: List[Dict[str, Any]],
+    hosts: list[dict[str, Any]],
     max_workers: int = 4,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Параллельное SSH-подключение к нескольким хостам.
 
     Args:
@@ -156,7 +156,7 @@ def run_ssh_batch(
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    def _execute(host_config: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute(host_config: dict[str, Any]) -> dict[str, Any]:
         hostname = host_config.get("hostname", "")
         try:
             result = run_ssh_task(
@@ -177,7 +177,7 @@ def run_ssh_batch(
 
     # Auto-detect workers based on host count
     workers = min(max_workers, len(hosts), 4)  # cap at 4 parallel SSH
-    results: List[Dict[str, Any]] = [None] * len(hosts)
+    results: list[dict[str, Any]] = [None] * len(hosts)
 
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ssh_batch") as executor:
         future_to_idx = {

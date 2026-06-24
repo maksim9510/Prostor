@@ -61,8 +61,7 @@ class TestDotenvFallbackPerProvider:
         dotenv fallback contract from #17140 is preserved by patching the
         resolver's ``get_env_value`` rather than ``tts_tool.get_env_value``.
         """
-        from tools import tts_tool
-        from tools import xai_http
+        from tools import tts_tool, xai_http
 
         captured: dict = {}
 
@@ -184,6 +183,7 @@ class TestRegressionGuard:
         not freeze that temporary helper into this module forever.
         """
         import importlib
+
         import prostor_cli.config as config_mod
         from tools import tts_tool
 

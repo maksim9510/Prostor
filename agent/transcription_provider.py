@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ class TranscriptionProvider(abc.ABC):
         """
         return True
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         """Return model catalog entries.
 
         Each entry::
@@ -114,14 +114,14 @@ class TranscriptionProvider(abc.ABC):
         """
         return []
 
-    def default_model(self) -> Optional[str]:
+    def default_model(self) -> str | None:
         """Return the default model id, or None if not applicable."""
         models = self.list_models()
         if models:
             return models[0].get("id")
         return None
 
-    def get_setup_schema(self) -> Dict[str, Any]:
+    def get_setup_schema(self) -> dict[str, Any]:
         """Return provider metadata for the ``prostor tools`` picker.
 
         Used by ``tools_config.py`` to inject this provider as a row in
@@ -153,10 +153,10 @@ class TranscriptionProvider(abc.ABC):
         self,
         file_path: str,
         *,
-        model: Optional[str] = None,
-        language: Optional[str] = None,
+        model: str | None = None,
+        language: str | None = None,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Transcribe the audio file at ``file_path``.
 
         Returns a dict with the standard envelope::

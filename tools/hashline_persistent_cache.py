@@ -19,11 +19,10 @@ import pickle
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-_CACHE_DIR: Optional[Path] = None
+_CACHE_DIR: Path | None = None
 _CACHE_LOCK = threading.Lock()
 _MAX_ENTRIES = 100  # max cached indexes on disk
 _MAX_CACHE_SIZE_MB = 200  # max total cache size on disk
@@ -63,7 +62,7 @@ def _cache_path(key: str) -> Path:
     return _get_cache_dir() / f"{key}.pkl"
 
 
-def save_index(index, file_path: str, mtime: Optional[float], size: int) -> bool:
+def save_index(index, file_path: str, mtime: float | None, size: int) -> bool:
     """Save a HashLineIndex to disk cache.
 
     Args:
@@ -114,7 +113,7 @@ def save_index(index, file_path: str, mtime: Optional[float], size: int) -> bool
         return False
 
 
-def load_index(file_path: str, mtime: Optional[float], size: int):
+def load_index(file_path: str, mtime: float | None, size: int):
     """Load a HashLineIndex from disk cache if valid.
 
     Args:
@@ -144,11 +143,11 @@ def load_index(file_path: str, mtime: Optional[float], size: int):
             return None  # stale
 
         # Reconstruct HashLineIndex without rebuilding from scratch
-        from tools.hashline import HashLineIndex, BloomFilter, LineRef, BlockRef, TokenRef
+        from tools.hashline import BloomFilter, HashLineIndex
 
         # Need to read the file content to reconstruct lines
         try:
-            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(file_path, encoding="utf-8", errors="replace") as f:
                 content = f.read()
         except Exception:
             return None
@@ -238,7 +237,7 @@ def clear_cache():
         logger.debug("hashline cache clear failed: %s", e)
 
 
-def cache_stats() -> Dict[str, any]:
+def cache_stats() -> dict[str, any]:
     """Get cache statistics."""
     try:
         cache_dir = _get_cache_dir()

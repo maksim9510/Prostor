@@ -1,7 +1,8 @@
 """Tests for the ChatCompletionsTransport."""
 
-import pytest
 from types import SimpleNamespace
+
+import pytest
 
 from agent.transports import get_transport
 from agent.transports.types import NormalizedResponse
@@ -550,7 +551,7 @@ class TestChatCompletionsBuildKwargs:
 
     def test_omit_temperature(self, transport):
         """Omit temperature is set via ProviderProfile with OMIT_TEMPERATURE sentinel."""
-        from providers.base import ProviderProfile, OMIT_TEMPERATURE
+        from providers.base import OMIT_TEMPERATURE, ProviderProfile
         msgs = [{"role": "user", "content": "Hi"}]
         kw = transport.build_kwargs(
             model="gpt-4o", messages=msgs,

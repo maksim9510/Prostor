@@ -6,7 +6,6 @@ to prevent spinner/status bar overlap (#2718).
 
 from unittest.mock import MagicMock, patch
 
-
 from cli import ProstorCLI
 
 

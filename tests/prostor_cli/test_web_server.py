@@ -1,23 +1,22 @@
 """Tests for prostor_cli.web_server and related config utilities."""
 
 import asyncio
-import os
 import json
+import os
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from prostor_cli.config import (
-    reload_env,
-    redact_key,
-    OPTIONAL_ENV_VARS,
     DEFAULT_CONFIG,
+    OPTIONAL_ENV_VARS,
+    redact_key,
+    reload_env,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -55,8 +54,8 @@ def _install_example_plugin(_isolate_prostor_home):
     all). User plugins are first in the discovery search order, so
     laying down the fixture here is enough.
     """
-    from prostor_constants import get_prostor_home
     from prostor_cli import web_server
+    from prostor_constants import get_prostor_home
 
     user_plugins_dir = get_prostor_home() / "plugins"
     user_plugins_dir.mkdir(parents=True, exist_ok=True)
@@ -194,6 +193,7 @@ class TestSessionTokenInjection:
 
     def test_honors_injected_token(self, monkeypatch):
         import importlib
+
         import prostor_cli.web_server as ws
 
         monkeypatch.setenv("PROSTOR_DASHBOARD_SESSION_TOKEN", "desktop-seeded-token")
@@ -206,6 +206,7 @@ class TestSessionTokenInjection:
 
     def test_falls_back_to_random_token(self, monkeypatch):
         import importlib
+
         import prostor_cli.web_server as ws
 
         monkeypatch.delenv("PROSTOR_DASHBOARD_SESSION_TOKEN", raising=False)
@@ -231,8 +232,8 @@ class TestWebServerEndpoints:
             pytest.skip("fastapi/starlette not installed")
 
         import prostor_state
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
         from prostor_constants import get_prostor_home
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
         monkeypatch.setattr(prostor_state, "DEFAULT_DB_PATH", get_prostor_home() / "state.db")
 
@@ -258,8 +259,8 @@ class TestWebServerEndpoints:
         assert resp.json()["can_update_prostor"] is False
 
     def test_dashboard_update_capability_detects_generic_container(self, monkeypatch):
-        import prostor_constants
         import prostor_cli.web_server as web_server
+        import prostor_constants
 
         monkeypatch.setattr(prostor_constants, "is_container", lambda: True)
 
@@ -288,8 +289,8 @@ class TestWebServerEndpoints:
         assert fields["api_key"]["is_set"] is False
 
     def test_put_memory_provider_config_writes_config_and_secret(self):
-        from prostor_constants import get_prostor_home
         from prostor_cli.config import load_config, load_env
+        from prostor_constants import get_prostor_home
 
         resp = self.client.put(
             "/api/memory/providers/hindsight/config",
@@ -647,8 +648,8 @@ class TestWebServerEndpoints:
     def test_sessions_endpoint_reads_requested_profile(self):
         """The machine dashboard's global profile switcher must retarget
         the Sessions page, not just config/skills/model pages."""
-        from prostor_state import SessionDB
         from prostor_cli import profiles as profiles_mod
+        from prostor_state import SessionDB
 
         worker_home = profiles_mod.get_profile_dir("worker")
         worker_home.mkdir(parents=True)
@@ -685,8 +686,8 @@ class TestWebServerEndpoints:
         assert [m["content"] for m in messages["messages"]] == ["worker"]
 
     def test_analytics_endpoints_read_requested_profile(self):
-        from prostor_state import SessionDB
         from prostor_cli import profiles as profiles_mod
+        from prostor_state import SessionDB
 
         worker_home = profiles_mod.get_profile_dir("worker")
         worker_home.mkdir(parents=True)
@@ -1536,8 +1537,9 @@ class TestWebServerEndpoints:
     def test_reveal_env_var_no_token(self, tmp_path):
         """POST /api/env/reveal without token should return 401."""
         from starlette.testclient import TestClient
-        from prostor_cli.web_server import app
+
         from prostor_cli.config import save_env_value
+        from prostor_cli.web_server import app
         save_env_value("TEST_REVEAL_NOAUTH", "secret-value")
         # Use a fresh client WITHOUT the dashboard session header
         unauth_client = TestClient(app)
@@ -1776,6 +1778,7 @@ class TestWebServerEndpoints:
 
     def test_telegram_onboarding_worker_request_uses_httpx(self, monkeypatch):
         import httpx
+
         import prostor_cli.web_server as ws
 
         calls = {}
@@ -2145,6 +2148,7 @@ class TestWebServerEndpoints:
     def test_unauthenticated_api_blocked(self):
         """API requests without the session token should be rejected."""
         from starlette.testclient import TestClient
+
         from prostor_cli.web_server import app
         # Create a client WITHOUT the dashboard session header
         unauth_client = TestClient(app)
@@ -2182,6 +2186,7 @@ class TestWebServerEndpoints:
     def test_spa_assets_are_read_as_utf8(self, monkeypatch, tmp_path):
         from fastapi import FastAPI
         from starlette.testclient import TestClient
+
         import prostor_cli.web_server as ws
 
         dist = tmp_path / "web_dist"
@@ -2682,8 +2687,9 @@ class TestBuildSchemaFromConfig:
 
     def test_no_single_field_categories(self):
         """After merging, no category should have just 1 field."""
-        from prostor_cli.web_server import CONFIG_SCHEMA
         from collections import Counter
+
+        from prostor_cli.web_server import CONFIG_SCHEMA
         cats = Counter(e["category"] for e in CONFIG_SCHEMA.values())
         for cat, count in cats.items():
             assert count >= 2, f"Category '{cat}' has only {count} field(s) — should be merged"
@@ -2703,7 +2709,7 @@ class TestConfigRoundTrip:
             from starlette.testclient import TestClient
         except ImportError:
             pytest.skip("fastapi/starlette not installed")
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
         self.client = TestClient(app)
         self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
 
@@ -2838,8 +2844,8 @@ class TestNewEndpoints:
             pytest.skip("fastapi/starlette not installed")
 
         import prostor_state
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
         from prostor_constants import get_prostor_home
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
         monkeypatch.setattr(prostor_state, "DEFAULT_DB_PATH", get_prostor_home() / "state.db")
 
@@ -2915,8 +2921,8 @@ class TestNewEndpoints:
         assert "default" in names
 
     def test_profiles_list_falls_back_when_profile_listing_fails(self, monkeypatch):
-        from prostor_constants import get_prostor_home
         import prostor_cli.profiles as profiles_mod
+        from prostor_constants import get_prostor_home
 
         prostor_home = get_prostor_home()
         prostor_home.mkdir(parents=True, exist_ok=True)
@@ -3008,8 +3014,8 @@ class TestNewEndpoints:
         assert wrapper_path.read_text() == '#!/bin/sh\nexec /opt/prostor/bin/prostor -p writer "$@"\n'
 
     def test_profiles_create_with_clone_from_copies_source_skills(self, monkeypatch):
-        from prostor_constants import get_prostor_home
         import prostor_cli.profiles as profiles_mod
+        from prostor_constants import get_prostor_home
 
         monkeypatch.setattr(profiles_mod, "create_wrapper_script", lambda name: None)
         (get_prostor_home() / "config.yaml").write_text(
@@ -3035,8 +3041,8 @@ class TestNewEndpoints:
         assert profiles["cloned"]["skill_count"] == 1
 
     def test_profiles_create_with_clone_from_duplicates_source(self, monkeypatch):
-        from prostor_constants import get_prostor_home
         import prostor_cli.profiles as profiles_mod
+        from prostor_constants import get_prostor_home
 
         monkeypatch.setattr(profiles_mod, "create_wrapper_script", lambda name: None)
 
@@ -3059,8 +3065,8 @@ class TestNewEndpoints:
         assert cloned_skill.exists()
 
     def test_profiles_create_clone_all_from_named_source(self, monkeypatch):
-        from prostor_constants import get_prostor_home
         import prostor_cli.profiles as profiles_mod
+        from prostor_constants import get_prostor_home
 
         monkeypatch.setattr(profiles_mod, "create_wrapper_script", lambda name: None)
 
@@ -3081,8 +3087,8 @@ class TestNewEndpoints:
         assert (target_dir / "workspace" / "artifact.txt").read_text(encoding="utf-8") == "copied"
 
     def test_profiles_create_without_clone_seeds_bundled_skills(self, monkeypatch):
-        from prostor_constants import get_prostor_home
         import prostor_cli.profiles as profiles_mod
+        from prostor_constants import get_prostor_home
 
         monkeypatch.setattr(profiles_mod, "create_wrapper_script", lambda name: None)
 
@@ -3109,15 +3115,15 @@ class TestNewEndpoints:
         """Profile-builder create: model + MCP servers + keep-skills selection
         all land in the NEW profile's config, and hub installs are spawned
         scoped to that profile via ``-p <name>``."""
-        from prostor_constants import (
-            get_prostor_home,
-            set_prostor_home_override,
-            reset_prostor_home_override,
-        )
-        from prostor_cli.config import load_config
-        from prostor_cli.skills_config import get_disabled_skills
         import prostor_cli.profiles as profiles_mod
         import prostor_cli.web_server as web_server
+        from prostor_cli.config import load_config
+        from prostor_cli.skills_config import get_disabled_skills
+        from prostor_constants import (
+            get_prostor_home,
+            reset_prostor_home_override,
+            set_prostor_home_override,
+        )
 
         monkeypatch.setattr(profiles_mod, "create_wrapper_script", lambda name: None)
 
@@ -3188,8 +3194,8 @@ class TestNewEndpoints:
             reset_prostor_home_override(token)
 
     def test_profile_open_terminal_uses_macos_terminal(self, monkeypatch):
-        from prostor_constants import get_prostor_home
         import prostor_cli.web_server as web_server
+        from prostor_constants import get_prostor_home
 
         (get_prostor_home() / "profiles" / "coder").mkdir(parents=True)
         calls = []
@@ -3204,8 +3210,8 @@ class TestNewEndpoints:
         assert "coder setup" in " ".join(calls[0])
 
     def test_profile_open_terminal_uses_windows_cmd(self, monkeypatch):
-        from prostor_constants import get_prostor_home
         import prostor_cli.web_server as web_server
+        from prostor_constants import get_prostor_home
 
         (get_prostor_home() / "profiles" / "coder").mkdir(parents=True)
         calls = []
@@ -3308,8 +3314,8 @@ class TestNewEndpoints:
         assert resp.status_code == 404
 
     def test_profile_model_round_trip(self, monkeypatch):
-        from prostor_constants import get_prostor_home
         import prostor_cli.profiles as profiles_mod
+        from prostor_constants import get_prostor_home
         monkeypatch.setattr(profiles_mod, "create_wrapper_script", lambda name: None)
 
         self.client.post("/api/profiles", json={"name": "model-prof"})
@@ -3391,9 +3397,9 @@ class TestNewEndpoints:
             assert "enabled" in skills[0]
 
     def test_skills_list_includes_disabled_skills(self, monkeypatch):
-        import tools.skills_tool as skills_tool
         import prostor_cli.skills_config as skills_config
         import prostor_cli.web_server as web_server
+        import tools.skills_tool as skills_tool
 
         def _fake_find_all_skills(*, skip_disabled=False):
             if skip_disabled:
@@ -3439,8 +3445,8 @@ class TestNewEndpoints:
 
     def test_toolsets_list_matches_cli_enabled_state(self, monkeypatch):
         import prostor_cli.tools_config as tools_config
-        import toolsets as toolsets_module
         import prostor_cli.web_server as web_server
+        import toolsets as toolsets_module
 
         monkeypatch.setattr(
             tools_config,
@@ -3839,8 +3845,8 @@ class TestModelContextLength:
 
     def test_denormalize_writes_context_length_into_model_dict(self):
         """denormalize should write model_context_length back into model dict."""
-        from prostor_cli.web_server import _denormalize_config_from_web
         from prostor_cli.config import save_config
+        from prostor_cli.web_server import _denormalize_config_from_web
 
         # Set up disk config with model as a dict
         save_config({
@@ -3857,8 +3863,8 @@ class TestModelContextLength:
 
     def test_denormalize_zero_removes_context_length(self):
         """denormalize with model_context_length=0 should remove context_length key."""
-        from prostor_cli.web_server import _denormalize_config_from_web
         from prostor_cli.config import save_config
+        from prostor_cli.web_server import _denormalize_config_from_web
 
         save_config({
             "model": {
@@ -3877,8 +3883,8 @@ class TestModelContextLength:
 
     def test_denormalize_upgrades_bare_string_to_dict(self):
         """denormalize should upgrade bare string model to dict when context_length set."""
-        from prostor_cli.web_server import _denormalize_config_from_web
         from prostor_cli.config import save_config
+        from prostor_cli.web_server import _denormalize_config_from_web
 
         # Disk has model as bare string
         save_config({"model": "anthropic/claude-sonnet-4"})
@@ -3893,8 +3899,8 @@ class TestModelContextLength:
 
     def test_denormalize_bare_string_stays_string_when_zero(self):
         """denormalize should keep bare string model as string when context_length=0."""
-        from prostor_cli.web_server import _denormalize_config_from_web
         from prostor_cli.config import save_config
+        from prostor_cli.web_server import _denormalize_config_from_web
 
         save_config({"model": "anthropic/claude-sonnet-4"})
 
@@ -3906,8 +3912,8 @@ class TestModelContextLength:
 
     def test_denormalize_coerces_string_context_length(self):
         """denormalize should handle string model_context_length from frontend."""
-        from prostor_cli.web_server import _denormalize_config_from_web
         from prostor_cli.config import save_config
+        from prostor_cli.web_server import _denormalize_config_from_web
 
         save_config({
             "model": {"default": "test/model", "provider": "openrouter"}
@@ -4181,7 +4187,7 @@ class TestStatusRemoteGateway:
         except ImportError:
             pytest.skip("fastapi/starlette not installed")
 
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
         self.client = TestClient(app)
         self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
 
@@ -4596,8 +4602,8 @@ class TestDeleteSessionEndpoint:
             pytest.skip("fastapi/starlette not installed")
 
         import prostor_state
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
         from prostor_constants import get_prostor_home
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
         monkeypatch.setattr(
             prostor_state, "DEFAULT_DB_PATH", get_prostor_home() / "state.db"
@@ -4673,8 +4679,8 @@ class TestBulkDeleteSessionsEndpoint:
             pytest.skip("fastapi/starlette not installed")
 
         import prostor_state
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
         from prostor_constants import get_prostor_home
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
         monkeypatch.setattr(
             prostor_state, "DEFAULT_DB_PATH", get_prostor_home() / "state.db"
@@ -4797,8 +4803,8 @@ class TestDeleteEmptySessionsEndpoint:
             pytest.skip("fastapi/starlette not installed")
 
         import prostor_state
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
         from prostor_constants import get_prostor_home
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
         # Pin the SessionDB to the isolated PROSTOR_HOME so each test
         # starts with a clean state.db.
@@ -4933,8 +4939,8 @@ class TestPluginAPIAuth:
             pytest.skip("fastapi/starlette not installed")
 
         import prostor_state
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
         from prostor_constants import get_prostor_home
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
         monkeypatch.setattr(prostor_state, "DEFAULT_DB_PATH", get_prostor_home() / "state.db")
 
@@ -5157,7 +5163,6 @@ class TestDashboardPluginManifestExtensions:
 # ---------------------------------------------------------------------------
 
 import sys
-
 
 skip_on_windows = pytest.mark.skipif(
     sys.platform.startswith("win"), reason="PTY bridge is POSIX-only"
@@ -5552,6 +5557,7 @@ class TestPtyWebSocket:
         asserting the exact fan-out contract.
         """
         import asyncio
+
         from prostor_cli import web_server as ws_mod
 
         class _FakeSub:
@@ -5748,7 +5754,7 @@ class TestValidateProviderCredential:
         except ImportError:
             pytest.skip("fastapi/starlette not installed")
 
-        from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
+        from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
 
         self.client = TestClient(app)
         self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
@@ -5877,6 +5883,7 @@ class TestDesktopCronTicker:
 
     def test_ticker_runs_when_desktop(self, monkeypatch, _isolate_prostor_home):
         import threading
+
         import cron.scheduler as sched
 
         called = threading.Event()
@@ -5888,6 +5895,7 @@ class TestDesktopCronTicker:
 
     def test_ticker_skipped_without_desktop(self, monkeypatch, _isolate_prostor_home):
         import threading
+
         import cron.scheduler as sched
 
         called = threading.Event()

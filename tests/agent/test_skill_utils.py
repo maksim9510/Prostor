@@ -168,6 +168,8 @@ def test_skill_config_raw_cache_invalidates_on_config_edit(tmp_path, monkeypatch
     os.utime(config_path, None)
 
     assert get_disabled_skill_names() == {"new-skill"}
+
+
 def test_iter_skill_index_files_prunes_skill_support_dirs(tmp_path):
     """Archived package SKILL.md files under support dirs are not active skills."""
     real = tmp_path / "umbrella"

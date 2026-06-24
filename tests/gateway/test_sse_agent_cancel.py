@@ -10,15 +10,15 @@ import asyncio
 import queue
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_adapter():
     """Build a minimal APIServerAdapter with mocked internals."""
-    from gateway.platforms.api_server import APIServerAdapter
     from gateway.config import PlatformConfig
+    from gateway.platforms.api_server import APIServerAdapter
 
     config = PlatformConfig(enabled=True, token="test-key")
     adapter = APIServerAdapter(config)

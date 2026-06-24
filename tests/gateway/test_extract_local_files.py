@@ -14,10 +14,10 @@ import pytest
 
 from gateway.platforms.base import BasePlatformAdapter
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _extract(content: str, existing_files: set[str] | None = None):
     """

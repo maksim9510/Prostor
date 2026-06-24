@@ -9,7 +9,6 @@ cron job store.
 import importlib
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -17,12 +16,12 @@ from cron.blueprint_catalog import (
     CATALOG,
     BlueprintFillError,
     BlueprintSlot,
-    fill_blueprint,
-    get_blueprint,
     blueprint_catalog_entry,
     blueprint_deeplink,
     blueprint_form_schema,
     blueprint_slash_command,
+    fill_blueprint,
+    get_blueprint,
 )
 
 
@@ -105,7 +104,7 @@ class TestValidation:
         first_three = [it.get_next(datetime) for _ in range(3)]
         gaps = {
             (b - a).total_seconds()
-            for a, b in zip(first_three, first_three[1:])
+            for a, b in zip(first_three, first_three[1:], strict=False)
         }
         assert gaps == {7200.0}, f"expected 2h gaps, got {spec['schedule']} -> {first_three}"
 

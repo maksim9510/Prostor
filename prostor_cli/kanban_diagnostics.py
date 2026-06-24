@@ -29,11 +29,11 @@ Design goals:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Optional
 import json
 import time
-
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from typing import Any
 
 # Severity rungs, ordered least → most urgent. The UI colors them
 # amber (warning), orange (error), red (critical). Sorted outputs put
@@ -41,7 +41,7 @@ import time
 SEVERITY_ORDER = ("warning", "error", "critical")
 
 
-def severity_at_or_above(severity: Optional[str], threshold: Optional[str]) -> bool:
+def severity_at_or_above(severity: str | None, threshold: str | None) -> bool:
     """Return True when ``severity`` meets or exceeds ``threshold``."""
     if threshold is None:
         return True
@@ -98,7 +98,7 @@ class Diagnostic:
     last_seen_at: int = 0
     count: int = 1
     # Optional: the run id this diagnostic is scoped to. None = task-wide.
-    run_id: Optional[int] = None
+    run_id: int | None = None
     # Optional structured payload for the UI (phantom ids, failure count).
     data: dict = field(default_factory=dict)
 
@@ -191,6 +191,8 @@ def _active_hallucination_events(
         elif k == kind:
             active.append(ev)
     return active
+
+
 # Standard always-available actions. Every diagnostic can offer these as
 # fallbacks regardless of kind — they're the two baseline recovery
 # primitives the kernel supports.
@@ -263,7 +265,7 @@ def _main_model_visible(raw_config: Any) -> bool:
     return bool(str(model_cfg or "").strip())
 
 
-def triage_aux_status(config: Optional[dict]) -> Optional[dict]:
+def triage_aux_status(config: dict | None) -> dict | None:
     """Inspect raw config and report whether triage paths look configured.
 
     Returns ``None`` when config context is unavailable (suppress diagnostic
@@ -1017,7 +1019,7 @@ DEFAULT_CONFIG = {
 }
 
 
-def config_from_kanban_config(kanban_cfg: Optional[dict]) -> dict:
+def config_from_kanban_config(kanban_cfg: dict | None) -> dict:
     """Build diagnostics config from the runtime ``kanban`` config section.
 
     ``kanban.diagnostics.failure_threshold`` remains an explicit override.
@@ -1039,7 +1041,7 @@ def config_from_kanban_config(kanban_cfg: Optional[dict]) -> dict:
     return diag_cfg
 
 
-def config_from_runtime_config(raw_config: Optional[dict]) -> dict:
+def config_from_runtime_config(raw_config: dict | None) -> dict:
     """Build diagnostics config from the full Prostor runtime config.
 
     Carries through ``kanban``, ``auxiliary``, and ``model`` keys so triage-
@@ -1067,8 +1069,8 @@ def compute_task_diagnostics(
     events: list,
     runs: list,
     *,
-    now: Optional[int] = None,
-    config: Optional[dict] = None,
+    now: int | None = None,
+    config: dict | None = None,
 ) -> list[Diagnostic]:
     """Run every rule against a single task's state and return a
     severity-sorted list of active diagnostics.

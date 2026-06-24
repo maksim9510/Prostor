@@ -6,7 +6,6 @@ import base64
 from pathlib import Path
 from unittest.mock import patch
 
-
 from agent.image_routing import (
     _coerce_capability_bool,
     _coerce_mode,
@@ -17,7 +16,6 @@ from agent.image_routing import (
     decide_image_input_mode,
     extract_image_refs,
 )
-
 
 # ─── _coerce_mode ────────────────────────────────────────────────────────────
 

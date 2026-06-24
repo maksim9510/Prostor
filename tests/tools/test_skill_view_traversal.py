@@ -5,8 +5,9 @@ reading arbitrary files (e.g., ~/.prostor/.env) via path traversal.
 """
 
 import json
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from tools.skills_tool import skill_view
 

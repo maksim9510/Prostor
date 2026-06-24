@@ -395,8 +395,8 @@ def test_max_tokens_none_defaults_to_gemini_output_ceiling():
     published 65,535 ceiling rather than leaving the field unset.
     """
     from agent.gemini_native_adapter import (
-        build_gemini_request,
         GEMINI_DEFAULT_MAX_OUTPUT_TOKENS,
+        build_gemini_request,
     )
 
     req = build_gemini_request(messages=[{"role": "user", "content": "hi"}], max_tokens=None)

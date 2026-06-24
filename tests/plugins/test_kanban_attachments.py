@@ -22,7 +22,6 @@ from fastapi.testclient import TestClient
 
 from prostor_cli import kanban_db as kb
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

@@ -7,9 +7,10 @@ serialisation so we never leak refresh tokens or JWTs to disk.
 from __future__ import annotations
 
 import json
+
 import pytest
 
-from prostor_cli.dashboard_auth.audit import audit_log, AuditEvent
+from prostor_cli.dashboard_auth.audit import AuditEvent, audit_log
 
 
 @pytest.fixture

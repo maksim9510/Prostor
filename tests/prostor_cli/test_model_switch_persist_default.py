@@ -12,7 +12,6 @@ from unittest.mock import patch
 
 from prostor_cli.model_switch import parse_model_flags, resolve_persist_behavior
 
-
 # ---------------------------------------------------------------------------
 # parse_model_flags
 # ---------------------------------------------------------------------------

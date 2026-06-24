@@ -5,7 +5,6 @@ Extracted from prostor_state.py (#26).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ class SessionCompressionMixin:
                 session_id, exc,
             )
 
-    def get_compression_lock_holder(self, session_id: str) -> Optional[str]:
+    def get_compression_lock_holder(self, session_id: str) -> str | None:
         """Return the current (non-expired) holder for ``session_id``, or None.
 
         Diagnostic helper — not used by the locking protocol itself.
@@ -194,7 +193,7 @@ class SessionCompressionMixin:
         ).fetchone()
         return row is not None
 
-    def get_compression_tip(self, session_id: str) -> Optional[str]:
+    def get_compression_tip(self, session_id: str) -> str | None:
         """Walk the compression-continuation chain forward and return the tip.
 
         A compression continuation is a child session where:

@@ -21,12 +21,12 @@ def _client_with_app_state():
 
 def _restore_app_state(prev_auth_required, prev_bound_host):
     if prev_auth_required is None:
-        delattr(web_server.app.state, "auth_required")
+        del web_server.app.state.auth_required
     else:
         web_server.app.state.auth_required = prev_auth_required
     if prev_bound_host is None:
         if hasattr(web_server.app.state, "bound_host"):
-            delattr(web_server.app.state, "bound_host")
+            del web_server.app.state.bound_host
     else:
         web_server.app.state.bound_host = prev_bound_host
 

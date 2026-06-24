@@ -5,25 +5,25 @@ import os
 import pytest
 
 from prostor_cli.auth import (
-    PROVIDER_REGISTRY,
-    resolve_provider,
-    get_api_key_provider_status,
-    resolve_api_key_provider_credentials,
-    get_external_process_provider_status,
-    resolve_external_process_provider_credentials,
-    get_auth_status,
-    AuthError,
     KIMI_CODE_BASE_URL,
-    STEPFUN_STEP_PLAN_INTL_BASE_URL,
+    PROVIDER_REGISTRY,
     STEPFUN_STEP_PLAN_CN_BASE_URL,
+    STEPFUN_STEP_PLAN_INTL_BASE_URL,
+    AuthError,
     _resolve_kimi_base_url,
+    get_api_key_provider_status,
+    get_auth_status,
+    get_external_process_provider_status,
+    resolve_api_key_provider_credentials,
+    resolve_external_process_provider_credentials,
+    resolve_provider,
 )
 from prostor_cli.copilot_auth import _try_gh_cli_token
-
 
 # =============================================================================
 # Provider Registry tests
 # =============================================================================
+
 
 class TestProviderRegistry:
     """Test that new providers are correctly registered."""
@@ -755,6 +755,7 @@ class TestHasAnyProviderConfigured:
     def test_config_provider_counts(self, monkeypatch, tmp_path):
         """config.yaml with model.provider set should count as configured."""
         import yaml
+
         from prostor_cli import config as config_module
         prostor_home = tmp_path / ".prostor"
         prostor_home.mkdir()
@@ -775,6 +776,7 @@ class TestHasAnyProviderConfigured:
     def test_config_base_url_counts(self, monkeypatch, tmp_path):
         """config.yaml with model.base_url set (custom endpoint) should count."""
         import yaml
+
         from prostor_cli import config as config_module
         prostor_home = tmp_path / ".prostor"
         prostor_home.mkdir()
@@ -794,6 +796,7 @@ class TestHasAnyProviderConfigured:
     def test_config_api_key_counts(self, monkeypatch, tmp_path):
         """config.yaml with model.api_key set should count."""
         import yaml
+
         from prostor_cli import config as config_module
         prostor_home = tmp_path / ".prostor"
         prostor_home.mkdir()
@@ -813,6 +816,7 @@ class TestHasAnyProviderConfigured:
     def test_config_dict_no_provider_no_creds_still_false(self, monkeypatch, tmp_path):
         """config.yaml model dict with empty default and no creds stays false."""
         import yaml
+
         from prostor_cli import config as config_module
         from prostor_cli.auth import PROVIDER_REGISTRY
         prostor_home = tmp_path / ".prostor"
@@ -840,6 +844,7 @@ class TestHasAnyProviderConfigured:
     def test_claude_code_creds_counted_when_prostor_configured(self, monkeypatch, tmp_path):
         """Claude Code credentials should count when Prostor has been explicitly configured."""
         import yaml
+
         from prostor_cli import config as config_module
         prostor_home = tmp_path / ".prostor"
         prostor_home.mkdir()
@@ -1045,8 +1050,8 @@ class TestHuggingFaceModels:
 
     def test_model_metadata_has_context_lengths(self):
         """Every HF model should have a context length entry."""
-        from prostor_cli.models import _PROVIDER_MODELS
         from agent.model_metadata import DEFAULT_CONTEXT_LENGTHS
+        from prostor_cli.models import _PROVIDER_MODELS
         lower_keys = {k.lower() for k in DEFAULT_CONTEXT_LENGTHS}
         hf_models = _PROVIDER_MODELS["huggingface"]
         for model in hf_models:
@@ -1239,10 +1244,10 @@ class TestMinimaxOAuthProvider:
 
     def test_minimax_oauth_has_correct_endpoints(self):
         from prostor_cli.auth import (
-            MINIMAX_OAUTH_GLOBAL_BASE,
-            MINIMAX_OAUTH_GLOBAL_INFERENCE,
             MINIMAX_OAUTH_CN_BASE,
             MINIMAX_OAUTH_CN_INFERENCE,
+            MINIMAX_OAUTH_GLOBAL_BASE,
+            MINIMAX_OAUTH_GLOBAL_INFERENCE,
         )
         pconfig = PROVIDER_REGISTRY["minimax-oauth"]
         assert pconfig.portal_base_url == MINIMAX_OAUTH_GLOBAL_BASE

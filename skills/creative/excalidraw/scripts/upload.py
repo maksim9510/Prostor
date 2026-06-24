@@ -17,13 +17,13 @@ Example:
     # prints: https://excalidraw.com/#json=abc123,encryptionKeyHere
 """
 
+import base64
 import json
 import os
 import struct
 import sys
-import zlib
-import base64
 import urllib.request
+import zlib
 
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -112,7 +112,7 @@ def main():
         print(f"Error: File not found: {file_path}")
         sys.exit(1)
 
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         content = f.read()
 
     # Basic validation: should be valid JSON with an "elements" key

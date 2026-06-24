@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
-from prostor_cli.auth import get_auth_status
 from plugins.spotify.client import (
     SpotifyAPIError,
     SpotifyAuthRequiredError,
@@ -14,6 +13,7 @@ from plugins.spotify.client import (
     normalize_spotify_uri,
     normalize_spotify_uris,
 )
+from prostor_cli.auth import get_auth_status
 from tools.registry import tool_error, tool_result
 
 
@@ -56,7 +56,7 @@ def _coerce_bool(raw: Any, default: bool = False) -> bool:
     return default
 
 
-def _as_list(raw: Any) -> List[str]:
+def _as_list(raw: Any) -> list[str]:
     if raw is None:
         return []
     if isinstance(raw, list):

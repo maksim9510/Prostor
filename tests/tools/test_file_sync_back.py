@@ -13,16 +13,16 @@ import pytest
 fcntl = pytest.importorskip("fcntl")
 
 from tools.environments.file_sync import (
-    FileSyncManager,
-    _sha256_file,
     _SYNC_BACK_BACKOFF,
     _SYNC_BACK_MAX_RETRIES,
+    FileSyncManager,
+    _sha256_file,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_tar(files: dict[str, bytes], dest: Path):
     """Write a tar archive containing the given arcname->content pairs."""

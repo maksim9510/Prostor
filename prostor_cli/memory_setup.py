@@ -8,12 +8,12 @@ the provider's config schema. Writes config to config.yaml + .env.
 from __future__ import annotations
 
 import os
-import sys
 import shlex
+import sys
 from pathlib import Path
 
-from prostor_constants import get_prostor_home
 from prostor_cli.secret_prompt import masked_secret_prompt
+from prostor_constants import get_prostor_home
 
 _CANCELLED = -1
 
@@ -80,6 +80,7 @@ def _prompt(label: str, default: str | None = None, secret: bool = False) -> str
 def _install_dependencies(provider_name: str) -> None:
     """Install pip dependencies declared in plugin.yaml."""
     import subprocess
+
     from plugins.memory import find_provider_dir
 
     plugin_dir = find_provider_dir(provider_name)
@@ -185,7 +186,7 @@ def _get_available_providers() -> list:
         raw = []
 
     results = []
-    for name, desc, available in raw:
+    for name, _desc, _available in raw:
         try:
             provider = load_memory_provider(name)
             if not provider:

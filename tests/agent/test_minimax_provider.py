@@ -49,6 +49,7 @@ class TestMinimaxM3StaleCacheGuard:
     def test_stale_m3_cache_dropped_and_reresolves(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         import importlib
+
         import agent.model_metadata as mm
         importlib.reload(mm)
         base = "https://api.minimaxi.com/anthropic"
@@ -67,6 +68,7 @@ class TestMinimaxM3StaleCacheGuard:
     def test_correct_m3_cache_preserved(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         import importlib
+
         import agent.model_metadata as mm
         importlib.reload(mm)
         base = "https://api.minimaxi.com/anthropic"
@@ -79,6 +81,7 @@ class TestMinimaxM3StaleCacheGuard:
     def test_m2_cache_not_clobbered(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         import importlib
+
         import agent.model_metadata as mm
         importlib.reload(mm)
         base = "https://api.minimaxi.com/anthropic"
@@ -250,26 +253,26 @@ class TestMinimaxBetaHeaders:
     # -- _common_betas_for_base_url unit tests ---------------------------
 
     def test_common_betas_none_url(self):
-        from agent.anthropic_adapter import _common_betas_for_base_url, _COMMON_BETAS
+        from agent.anthropic_adapter import _COMMON_BETAS, _common_betas_for_base_url
         assert _common_betas_for_base_url(None) == _COMMON_BETAS
 
     def test_common_betas_empty_url(self):
-        from agent.anthropic_adapter import _common_betas_for_base_url, _COMMON_BETAS
+        from agent.anthropic_adapter import _COMMON_BETAS, _common_betas_for_base_url
         assert _common_betas_for_base_url("") == _COMMON_BETAS
 
     def test_common_betas_minimax_url(self):
-        from agent.anthropic_adapter import _common_betas_for_base_url, _TOOL_STREAMING_BETA
+        from agent.anthropic_adapter import _TOOL_STREAMING_BETA, _common_betas_for_base_url
         betas = _common_betas_for_base_url("https://api.minimax.io/anthropic")
         assert _TOOL_STREAMING_BETA not in betas
         assert len(betas) > 0  # still has other betas
 
     def test_common_betas_minimax_cn_url(self):
-        from agent.anthropic_adapter import _common_betas_for_base_url, _TOOL_STREAMING_BETA
+        from agent.anthropic_adapter import _TOOL_STREAMING_BETA, _common_betas_for_base_url
         betas = _common_betas_for_base_url("https://api.minimaxi.com/anthropic")
         assert _TOOL_STREAMING_BETA not in betas
 
     def test_common_betas_regular_url(self):
-        from agent.anthropic_adapter import _common_betas_for_base_url, _COMMON_BETAS
+        from agent.anthropic_adapter import _COMMON_BETAS, _common_betas_for_base_url
         assert _common_betas_for_base_url("https://api.anthropic.com") == _COMMON_BETAS
 
 
@@ -422,7 +425,7 @@ class TestMinimaxSwitchModelCredentialGuard:
 
     def test_switch_to_minimax_does_not_resolve_anthropic_token(self):
         """switch_model() should NOT call resolve_anthropic_token() for MiniMax."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         with patch("run_agent.AIAgent.__init__", return_value=None):
             from run_agent import AIAgent

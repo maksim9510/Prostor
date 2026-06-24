@@ -16,14 +16,14 @@ import os
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Match the logger run.py uses (logging.getLogger(__name__) where __name__ ==
 # "gateway.run") so extracted log records keep their original logger name.
 logger = logging.getLogger("gateway.run")
 
 
-def _acquire_singleton_lock(lock_path) -> "tuple[Optional[object], str]":
+def _acquire_singleton_lock(lock_path) -> tuple[object | None, str]:
     """Take an exclusive, non-blocking advisory lock for the sole dispatcher.
 
     Only one gateway process machine-wide may run the embedded kanban
@@ -441,7 +441,7 @@ class GatewayKanbanWatchersMixin:
                 await asyncio.sleep(1)
 
     def _kanban_advance(
-        self, sub: dict, cursor: int, board: Optional[str] = None,
+        self, sub: dict, cursor: int, board: str | None = None,
     ) -> None:
         """Sync helper: advance a subscription's cursor. Runs in to_thread.
 
@@ -462,7 +462,7 @@ class GatewayKanbanWatchersMixin:
         finally:
             conn.close()
 
-    def _kanban_unsub(self, sub: dict, board: Optional[str] = None) -> None:
+    def _kanban_unsub(self, sub: dict, board: str | None = None) -> None:
         from prostor_cli import kanban_db as _kb
         conn = _kb.connect(board=board)
         try:
@@ -481,7 +481,7 @@ class GatewayKanbanWatchersMixin:
         sub: dict,
         claimed_cursor: int,
         old_cursor: int,
-        board: Optional[str] = None,
+        board: str | None = None,
     ) -> None:
         """Sync helper: undo a claimed notification cursor after send failure."""
         from prostor_cli import kanban_db as _kb
@@ -505,7 +505,7 @@ class GatewayKanbanWatchersMixin:
         adapter,
         chat_id: str,
         metadata: dict,
-        event_payload: Optional[dict],
+        event_payload: dict | None,
         task,
     ) -> None:
         """Upload artifact files referenced by a completed kanban task.
@@ -839,7 +839,7 @@ class GatewayKanbanWatchersMixin:
                 or "database disk image is malformed" in msg
             )
 
-        def _tick_once_for_board(slug: str) -> "Optional[object]":
+        def _tick_once_for_board(slug: str) -> object | None:
             """Run one dispatch_once for a specific board.
 
             Runs in a worker thread via `asyncio.to_thread`. `board=slug`
@@ -927,7 +927,7 @@ class GatewayKanbanWatchersMixin:
                     except Exception:
                         pass
 
-        def _tick_once() -> "list[tuple[str, Optional[object]]]":
+        def _tick_once() -> list[tuple[str, object | None]]:
             """Run one dispatch_once per board. Returns (slug, result) pairs.
 
             Enumerating boards on every tick keeps the dispatcher honest
@@ -938,7 +938,7 @@ class GatewayKanbanWatchersMixin:
                 boards = _kb.list_boards(include_archived=False)
             except Exception:
                 boards = [_kb.read_board_metadata(_kb.DEFAULT_BOARD)]
-            out: list[tuple[str, "Optional[object]"]] = []
+            out: list[tuple[str, object | None]] = []
             for b in boards:
                 slug = b.get("slug") or _kb.DEFAULT_BOARD
                 out.append((slug, _tick_once_for_board(slug)))

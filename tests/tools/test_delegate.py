@@ -17,21 +17,21 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from tools.delegate_tool import (
+    _LEGACY_EVENT_MAP,
     DELEGATE_BLOCKED_TOOLS,
     DELEGATE_TASK_SCHEMA,
-    DelegateEvent,
-    _get_max_concurrent_children,
-    _LEGACY_EVENT_MAP,
     MAX_DEPTH,
-    check_delegate_requirements,
-    delegate_task,
+    DelegateEvent,
     _build_child_agent,
     _build_child_progress_callback,
     _build_child_system_prompt,
     _extract_output_tail,
-    _strip_blocked_tools,
+    _get_max_concurrent_children,
     _resolve_child_credential_pool,
     _resolve_delegation_credentials,
+    _strip_blocked_tools,
+    check_delegate_requirements,
+    delegate_task,
 )
 
 
@@ -903,8 +903,9 @@ class TestBlockedTools(unittest.TestCase):
 
     def test_constants(self):
         from tools.delegate_tool import (
-            _get_max_spawn_depth, _get_orchestrator_enabled,
             _MIN_SPAWN_DEPTH,
+            _get_max_spawn_depth,
+            _get_orchestrator_enabled,
         )
         self.assertEqual(_get_max_concurrent_children(), 3)
         self.assertEqual(MAX_DEPTH, 1)
@@ -2032,6 +2033,7 @@ class TestDispatchDelegateTask(unittest.TestCase):
             self.assertEqual(kwargs["override_acp_command"], "claude")
             self.assertEqual(kwargs["override_acp_args"], ["--acp", "--stdio"])
 
+
 class TestDelegateEventEnum(unittest.TestCase):
     """Tests for DelegateEvent enum and back-compat aliases."""
 
@@ -2046,7 +2048,7 @@ class TestDelegateEventEnum(unittest.TestCase):
         self.assertEqual(set(_LEGACY_EVENT_MAP.keys()), expected_legacy)
 
     def test_legacy_map_values_are_delegate_events(self):
-        for old_name, event in _LEGACY_EVENT_MAP.items():
+        for _old_name, event in _LEGACY_EVENT_MAP.items():
             self.assertIsInstance(event, DelegateEvent)
 
     def test_progress_callback_normalises_tool_started(self):
@@ -2208,6 +2210,7 @@ class TestMaxSpawnDepth(unittest.TestCase):
            return_value={"max_spawn_depth": 0})
     def test_max_spawn_depth_clamped_below_one(self, mock_cfg):
         import logging
+
         from tools.delegate_tool import _get_max_spawn_depth
         with self.assertLogs("tools.delegate_tool", level=logging.WARNING) as cm:
             result = _get_max_spawn_depth()
@@ -2717,11 +2720,14 @@ class TestSubagentApprovalCallback(unittest.TestCase):
         not the parent's — verifies the fix actually scopes to workers.
         """
         from concurrent.futures import ThreadPoolExecutor
+
+        from tools.delegate_tool import _subagent_auto_deny
         from tools.terminal_tool import (
-            set_approval_callback as _set_cb,
             _get_approval_callback,
         )
-        from tools.delegate_tool import _subagent_auto_deny
+        from tools.terminal_tool import (
+            set_approval_callback as _set_cb,
+        )
 
         # Parent thread has no callback.
         _set_cb(None)

@@ -21,10 +21,10 @@ from pathlib import Path
 
 import pytest
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
+
 
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch, tmp_path):
@@ -113,7 +113,7 @@ class TestClientCredResolution:
 
     def test_shipped_default_used_when_no_env(self):
         """Out of the box, the public gemini-cli desktop client is used."""
-        from agent.google_oauth import _get_client_id, _DEFAULT_CLIENT_ID
+        from agent.google_oauth import _DEFAULT_CLIENT_ID, _get_client_id
 
         # Confirmed PUBLIC: baked into Google's open-source gemini-cli
         assert _DEFAULT_CLIENT_ID.endswith(".apps.googleusercontent.com")
@@ -232,9 +232,11 @@ class TestCredentialIo:
 
     def test_update_project_ids(self):
         from agent.google_oauth import (
-            load_credentials, save_credentials, update_project_ids,
+            GoogleCredentials,
+            load_credentials,
+            save_credentials,
+            update_project_ids,
         )
-        from agent.google_oauth import GoogleCredentials
 
         save_credentials(GoogleCredentials(
             access_token="at", refresh_token="rt",
@@ -1080,8 +1082,8 @@ class TestGeminiHttpErrorParsing:
         _extract_status_code must see it and FailoverReason.rate_limit must
         fire, so the main loop triggers fallback_providers.
         """
+        from agent.error_classifier import FailoverReason, classify_api_error
         from agent.gemini_cloudcode_adapter import _gemini_http_error
-        from agent.error_classifier import classify_api_error, FailoverReason
 
         body = {
             "error": {

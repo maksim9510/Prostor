@@ -2,9 +2,12 @@
 Extracted from gateway/run.py (#23).
 """
 from __future__ import annotations
-import logging, re
-from typing import Any, Dict, Optional
+
+import logging
+from typing import Any
+
 logger = logging.getLogger(__name__)
+
 
 def _is_interrupted_tool_result(content: Any) -> bool:
     """Return True if a tool result indicates the tool was interrupted."""
@@ -19,8 +22,8 @@ def _is_interrupted_tool_result(content: Any) -> bool:
 
 
 def _strip_interrupted_tool_tails(
-    agent_history: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    agent_history: List[dict[str, Any]],
+) -> List[dict[str, Any]]:
     """Strip interrupted assistant→tool sequences from replay history.
 
     Older interrupted gateway turns can be followed by a queued real user
@@ -32,14 +35,14 @@ def _strip_interrupted_tool_tails(
     if not agent_history:
         return agent_history
 
-    cleaned: List[Dict[str, Any]] = []
+    cleaned: List[dict[str, Any]] = []
     i = 0
     n = len(agent_history)
     while i < n:
         msg = agent_history[i]
         if msg.get("role") == "assistant" and "tool_calls" in msg:
             j = i + 1
-            tool_results: List[Dict[str, Any]] = []
+            tool_results: List[dict[str, Any]] = []
             while j < n and agent_history[j].get("role") == "tool":
                 tool_results.append(agent_history[j])
                 j += 1
@@ -65,8 +68,8 @@ def _strip_interrupted_tool_tails(
 
 
 def _strip_dangling_tool_call_tail(
-    agent_history: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    agent_history: List[dict[str, Any]],
+) -> List[dict[str, Any]]:
     """Strip a trailing ``assistant(tool_calls)`` block left with NO answers.
 
     When a tool call itself kills the gateway process (``docker restart``,

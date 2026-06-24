@@ -8,13 +8,11 @@ humans before any changes.
 Everything else gets the regex rebrand (Hermes → Prostor,
 hermes-agent → prostor-agent, etc.).
 """
+# Allow direct execution
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-# Allow direct execution
-import os
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -22,7 +20,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from scripts.sync_upstream.rebrand import (  # type: ignore
     apply_rebrand,
     safe_rglob,
-    sha256,
 )
 
 # Patterns that identify "leave alone" files. These contain upstream's
@@ -56,7 +53,7 @@ SKIP_EXTS = {
     ".exe", ".msi", ".asar", ".pak", ".dll",
     ".so", ".dylib", ".pyc", ".pyo", ".blockmap",
     ".icns", ".pdf", ".zip", ".tar", ".gz",
-    ".png", ".jpg", ".lock",
+    ".lock",
     ".mp4", ".mov", ".webm", ".mp3", ".wav",
 }
 

@@ -8,8 +8,8 @@ import pytest
 
 from tools.credential_files import (
     clear_credential_files,
-    get_credential_file_mounts,
     get_cache_directory_mounts,
+    get_credential_file_mounts,
     get_skills_directory_mount,
     iter_cache_files,
     iter_skills_files,
@@ -202,6 +202,7 @@ class TestIterSkillsFiles:
 
         with patch.dict(os.environ, {"PROSTOR_HOME": str(prostor_home)}):
             assert iter_skills_files() == []
+
 
 class TestPathTraversalSecurity:
     """Path traversal and absolute path rejection.

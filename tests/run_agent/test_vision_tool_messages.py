@@ -13,9 +13,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -182,10 +179,11 @@ class TestToolResultContentProactiveDowngrade:
 
 class TestProviderProfileField:
     def test_default_is_true(self):
-        from providers.base import ProviderProfile
         # ProviderProfile uses __init__ with defaults; check via a minimal instance
         # by reading the class-level default from a dataclass-like field
         import dataclasses
+
+        from providers.base import ProviderProfile
         if dataclasses.is_dataclass(ProviderProfile):
             fields = {f.name: f.default for f in dataclasses.fields(ProviderProfile)}
             assert fields.get("supports_vision_tool_messages", True) is True

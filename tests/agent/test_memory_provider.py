@@ -1,12 +1,13 @@
 """Tests for the memory provider interface, manager, and builtin provider."""
 
 import json
-import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from agent.memory_provider import MemoryProvider
+import pytest
+
 from agent.memory_manager import MemoryManager, inject_memory_provider_tools
+from agent.memory_provider import MemoryProvider
 
 # ---------------------------------------------------------------------------
 # Concrete test provider
@@ -492,7 +493,7 @@ class TestUserInstalledProviderDiscovery:
 
     def test_bundled_takes_precedence(self, tmp_path, monkeypatch):
         """Bundled provider wins when user plugin has the same name."""
-        from plugins.memory import load_memory_provider, discover_memory_providers
+        from plugins.memory import discover_memory_providers, load_memory_provider
         # Create user plugin named "holographic" (same as bundled)
         plugin_dir = tmp_path / "plugins" / "holographic"
         plugin_dir.mkdir(parents=True)

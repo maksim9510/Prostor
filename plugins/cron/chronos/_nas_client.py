@@ -13,7 +13,7 @@ Wire contract: ``docs/chronos-managed-cron-contract.md``.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("cron.chronos")
 
@@ -45,7 +45,7 @@ class NasCronClient:
         from prostor_cli.auth import resolve_nous_access_token
         return resolve_nous_access_token()
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._access_token()}",
             "Content-Type": "application/json",
@@ -53,7 +53,7 @@ class NasCronClient:
 
     # -- HTTP -------------------------------------------------------------
 
-    def _post(self, path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         import requests  # lazy: agent already depends on requests
 
         url = f"{self.portal_url}{path}"
@@ -72,7 +72,7 @@ class NasCronClient:
         except Exception:
             return {}
 
-    def _get(self, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         import requests
 
         url = f"{self.portal_url}{path}"
@@ -94,7 +94,7 @@ class NasCronClient:
     # -- endpoints --------------------------------------------------------
 
     def provision(self, *, job_id: str, fire_at: str, agent_callback_url: str,
-                  dedup_key: str) -> Dict[str, Any]:
+                  dedup_key: str) -> dict[str, Any]:
         """Ask NAS to arm a one-shot for ``job_id`` at ``fire_at`` (ISO 8601).
 
         ``dedup_key`` (``{job_id}:{fire_at}``) makes re-arming the same fire
@@ -107,11 +107,11 @@ class NasCronClient:
             "dedup_key": dedup_key,
         })
 
-    def cancel(self, *, job_id: str) -> Dict[str, Any]:
+    def cancel(self, *, job_id: str) -> dict[str, Any]:
         """Ask NAS to cancel any armed one-shot for ``job_id``."""
         return self._post(_CANCEL_PATH, {"job_id": job_id})
 
-    def list_armed(self) -> List[Dict[str, Any]]:
+    def list_armed(self) -> list[dict[str, Any]]:
         """List the one-shots NAS currently has armed for this agent.
 
         Returns a list of ``{job_id, fire_at, schedule_id}``. Best-effort: used

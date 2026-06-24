@@ -17,7 +17,6 @@ import yaml
 
 from prostor_cli.plugins import PluginManager
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_DIR = REPO_ROOT / "plugins" / "observability" / "nemo_relay"
 
@@ -986,9 +985,8 @@ def test_nemo_relay_downstream_unwrap_matches_real_middleware_wrapper_shape(monk
     # callback's ``next_call`` and assert the plugin's detector unwraps it to the
     # original exception. If core middleware changes the wrapper shape, this fails
     # here instead of silently defeating the unwrap in production.
-    from prostor_cli import middleware
-
     from plugins.observability.nemo_relay import _original_downstream_error
+    from prostor_cli import middleware
 
     class ProviderError(Exception):
         status_code = 403

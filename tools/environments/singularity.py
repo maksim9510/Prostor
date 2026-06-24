@@ -12,7 +12,6 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from prostor_constants import get_prostor_home
 from tools.environments.base import (
@@ -181,7 +180,7 @@ class SingularityEnvironment(BaseEnvironment):
         self._instance_started = False
         self._persistent = persistent_filesystem
         self._task_id = task_id
-        self._overlay_dir: Optional[Path] = None
+        self._overlay_dir: Path | None = None
         self._cpu = cpu
         self._memory = memory
 

@@ -1606,8 +1606,9 @@ def test_auto_detected_codex_auth_failure_falls_through_to_openrouter(monkeypatc
 
 def test_explicit_nous_auth_failure_still_raises(monkeypatch):
     """When user explicitly requests Nous and auth fails, the error should propagate."""
-    from prostor_cli.auth import AuthError
     import pytest
+
+    from prostor_cli.auth import AuthError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-or-key")
     monkeypatch.setattr(rp, "load_config", lambda: {})
@@ -2303,6 +2304,7 @@ class TestProviderEntryApiKeyEnvAlias:
 # Tencent TokenHub — API-key provider runtime resolution
 # =============================================================================
 
+
 class TestTencentTokenhubRuntimeResolution:
     """Verify Tencent TokenHub resolves correctly through the generic
     API-key provider path in resolve_runtime_provider."""
@@ -2383,6 +2385,7 @@ class TestTencentTokenhubRuntimeResolution:
 # ---------------------------------------------------------------------------
 # minimax-oauth runtime resolution tests (added by feat/minimax-oauth-provider)
 # ---------------------------------------------------------------------------
+
 
 def test_minimax_oauth_runtime_returns_anthropic_messages_mode(monkeypatch):
     """resolve_runtime_provider for minimax-oauth must return api_mode='anthropic_messages'."""

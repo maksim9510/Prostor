@@ -29,7 +29,6 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import List, Optional, Tuple
 
 from agent.skill_utils import is_excluded_skill_path
 
@@ -165,7 +164,7 @@ def _clone_all_copytree_ignore(source_dir: Path):
     source_resolved = source_dir.resolve()
     is_default_source = source_resolved == _get_default_prostor_home().resolve()
 
-    def _ignore(directory: str, names: List[str]) -> List[str]:
+    def _ignore(directory: str, names: list[str]) -> list[str]:
         ignored: list[str] = []
         for entry in names:
             # Universal exclusions at any depth.
@@ -348,7 +347,7 @@ def profile_exists(name: str) -> bool:
 # Alias / wrapper script management
 # ---------------------------------------------------------------------------
 
-def check_alias_collision(name: str) -> Optional[str]:
+def check_alias_collision(name: str) -> str | None:
     """Return a human-readable collision message, or None if the name is safe.
 
     Checks: reserved names, prostor subcommands, existing binaries in PATH.
@@ -391,7 +390,7 @@ def _is_wrapper_dir_in_path() -> bool:
     return wrapper_dir in os.environ.get("PATH", "").split(os.pathsep)
 
 
-def create_wrapper_script(name: str, target: Optional[str] = None) -> Optional[Path]:
+def create_wrapper_script(name: str, target: str | None = None) -> Path | None:
     """Create a shell wrapper script at ~/.local/bin/<name>.
 
     The wrapper file is named after ``name`` (the alias). The profile it
@@ -469,8 +468,8 @@ def _migrate_profile_config_if_outdated(profile_dir: Path) -> None:
         return
 
     try:
-        from prostor_constants import reset_prostor_home_override, set_prostor_home_override
         from prostor_cli.config import check_config_version, migrate_config
+        from prostor_constants import reset_prostor_home_override, set_prostor_home_override
 
         token = set_prostor_home_override(str(profile_dir))
         try:
@@ -486,7 +485,7 @@ def _migrate_profile_config_if_outdated(profile_dir: Path) -> None:
         pass
 
 
-def find_alias_for_profile(profile_name: str) -> Optional[str]:
+def find_alias_for_profile(profile_name: str) -> str | None:
     """Return the alias name of the wrapper that activates *profile_name*, or None.
 
     A wrapper created by :func:`create_wrapper_script` is a file named after the
@@ -506,8 +505,8 @@ def find_alias_for_profile(profile_name: str) -> Optional[str]:
     is_windows = sys.platform == "win32"
     needle = f"prostor -p {canon}"
 
-    custom: Optional[str] = None
-    profile_named: Optional[str] = None
+    custom: str | None = None
+    profile_named: str | None = None
     for entry in sorted(wrapper_dir.iterdir()):
         if not entry.is_file():
             continue
@@ -541,19 +540,19 @@ class ProfileInfo:
     path: Path
     is_default: bool
     gateway_running: bool
-    model: Optional[str] = None
-    provider: Optional[str] = None
+    model: str | None = None
+    provider: str | None = None
     has_env: bool = False
     skill_count: int = 0
-    alias_path: Optional[Path] = None
+    alias_path: Path | None = None
     # Custom alias name (the wrapper file name) when it differs from ``name``;
     # falls back to ``name`` when a profile-named wrapper exists. None if no
     # wrapper points at this profile. See ``find_alias_for_profile``.
-    alias_name: Optional[str] = None
+    alias_name: str | None = None
     # Distribution metadata (None if the profile wasn't installed from a distribution).
-    distribution_name: Optional[str] = None
-    distribution_version: Optional[str] = None
-    distribution_source: Optional[str] = None
+    distribution_name: str | None = None
+    distribution_version: str | None = None
+    distribution_source: str | None = None
     # Free-form description (1-2 sentences) of what this profile is good
     # at. Persisted in ``<profile_dir>/profile.yaml``. Empty when the
     # user has not described the profile (legacy profiles, fresh
@@ -579,7 +578,7 @@ def _read_distribution_meta(profile_dir: Path) -> tuple:
         return None, None, None
     try:
         import yaml
-        with open(mf_path, "r", encoding="utf-8") as f:
+        with open(mf_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         if not isinstance(data, dict):
             return None, None, None
@@ -599,7 +598,7 @@ def _read_config_model(profile_dir: Path) -> tuple:
         return None, None
     try:
         import yaml
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
         model_cfg = cfg.get("model", {})
         if isinstance(model_cfg, str):
@@ -664,7 +663,7 @@ def read_profile_meta(profile_dir: Path) -> dict:
         return {"description": "", "description_auto": False}
     try:
         import yaml
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except Exception:
         return {"description": "", "description_auto": False}
@@ -679,8 +678,8 @@ def read_profile_meta(profile_dir: Path) -> dict:
 def write_profile_meta(
     profile_dir: Path,
     *,
-    description: Optional[str] = None,
-    description_auto: Optional[bool] = None,
+    description: str | None = None,
+    description_auto: bool | None = None,
 ) -> None:
     """Update ``<profile_dir>/profile.yaml`` in place.
 
@@ -695,7 +694,7 @@ def write_profile_meta(
     existing: dict = {}
     if path.is_file():
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 loaded = yaml.safe_load(f) or {}
             if isinstance(loaded, dict):
                 existing = loaded
@@ -713,7 +712,7 @@ def write_profile_meta(
 # CRUD operations
 # ---------------------------------------------------------------------------
 
-def list_profiles() -> List[ProfileInfo]:
+def list_profiles() -> list[ProfileInfo]:
     """Return info for all profiles, including the default."""
     profiles = []
     wrapper_dir = _get_wrapper_dir()
@@ -781,7 +780,7 @@ def list_profiles() -> List[ProfileInfo]:
     return profiles
 
 
-def profiles_to_serve(multiplex: bool) -> List[Tuple[str, Path]]:
+def profiles_to_serve(multiplex: bool) -> list[tuple[str, Path]]:
     """Return the ``(profile_name, prostor_home)`` pairs a gateway should serve.
 
     This is the single chokepoint for "which profiles does the inbound gateway
@@ -805,7 +804,7 @@ def profiles_to_serve(multiplex: bool) -> List[Tuple[str, Path]]:
     if not multiplex:
         return [(active, get_profile_dir(active))]
 
-    serve: List[Tuple[str, Path]] = [("default", _get_default_prostor_home())]
+    serve: list[tuple[str, Path]] = [("default", _get_default_prostor_home())]
 
     profiles_root = _get_profiles_root()
     if profiles_root.is_dir():
@@ -824,12 +823,12 @@ def profiles_to_serve(multiplex: bool) -> List[Tuple[str, Path]]:
 
 def create_profile(
     name: str,
-    clone_from: Optional[str] = None,
+    clone_from: str | None = None,
     clone_all: bool = False,
     clone_config: bool = False,
     no_alias: bool = False,
     no_skills: bool = False,
-    description: Optional[str] = None,
+    description: str | None = None,
 ) -> Path:
     """Create a new profile directory.
 
@@ -1014,7 +1013,7 @@ def create_profile(
     return profile_dir
 
 
-def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> Optional[dict]:
+def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> dict | None:
     """Seed bundled skills into a profile via subprocess.
 
     Uses subprocess because sync_skills() caches PROSTOR_HOME at module level.
@@ -1059,7 +1058,7 @@ def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> Optional[dict
         return None
 
 
-def backfill_profile_envs(quiet: bool = False) -> List[str]:
+def backfill_profile_envs(quiet: bool = False) -> list[str]:
     """Give every named profile that predates per-profile ``.env`` files one.
 
     Profiles created before the dashboard/CLI started seeding a ``.env``
@@ -1077,7 +1076,7 @@ def backfill_profile_envs(quiet: bool = False) -> List[str]:
 
     Returns the list of profile names that received a backfilled ``.env``.
     """
-    backfilled: List[str] = []
+    backfilled: list[str] = []
     profiles_root = _get_profiles_root()
     if not profiles_root.is_dir():
         return backfilled
@@ -1355,7 +1354,7 @@ def _cleanup_gateway_service(name: str, profile_dir: Path) -> None:
     old_home = os.environ.get("PROSTOR_HOME")
     try:
         os.environ["PROSTOR_HOME"] = str(profile_dir)
-        from prostor_cli.gateway import get_service_name, get_launchd_plist_path
+        from prostor_cli.gateway import get_launchd_plist_path, get_service_name
 
         if _platform.system() == "Linux":
             svc_name = get_service_name()
@@ -1411,8 +1410,8 @@ def _stop_gateway_process(profile_dir: Path) -> None:
         # _signal.SIGKILL raises AttributeError at import time on Windows,
         # and raw os.kill with SIGTERM doesn't cascade to child processes
         # the same way taskkill /T does.
-        from gateway.status import terminate_pid as _terminate_pid
         from gateway.status import _pid_exists
+        from gateway.status import terminate_pid as _terminate_pid
         _terminate_pid(pid)  # graceful first
         # Wait up to 10s for graceful shutdown. On Windows, os.kill(pid, 0)
         # is NOT a no-op — use the handle-based existence check.
@@ -1576,7 +1575,7 @@ def export_profile(name: str, output_path: str) -> Path:
         return Path(result)
 
 
-def _normalize_profile_archive_parts(member_name: str) -> List[str]:
+def _normalize_profile_archive_parts(member_name: str) -> list[str]:
     """Return safe path parts for a profile archive member."""
     normalized_name = member_name.replace("\\", "/")
     posix_path = PurePosixPath(normalized_name)
@@ -1653,7 +1652,7 @@ def _inspect_profile_archive_roots(archive: Path) -> set[str]:
     return top_dirs
 
 
-def import_profile(archive_path: str, name: Optional[str] = None) -> Path:
+def import_profile(archive_path: str, name: str | None = None) -> Path:
     """Import a profile from a tar.gz archive.
 
     If *name* is not given, infers it from the archive's top-level directory.

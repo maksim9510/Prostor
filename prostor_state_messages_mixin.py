@@ -5,7 +5,7 @@ Extracted from prostor_state.py (#26).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ class SessionMessagesMixin:
 
         return self._execute_write(_do)
 
-    def _insert_message_rows(self, conn, session_id: str, messages: List[Dict[str, Any]]) -> tuple[int, int]:
+    def _insert_message_rows(self, conn, session_id: str, messages: list[dict[str, Any]]) -> tuple[int, int]:
         """Insert *messages* as fresh active rows for *session_id*.
 
         Shared by :meth:`replace_messages` (delete-then-insert) and
@@ -202,7 +202,7 @@ class SessionMessagesMixin:
             now_ts = max(now_ts + 1e-6, message_timestamp + 1e-6)
         return inserted, tool_calls_total
 
-    def replace_messages(self, session_id: str, messages: List[Dict[str, Any]]) -> None:
+    def replace_messages(self, session_id: str, messages: list[dict[str, Any]]) -> None:
         """Atomically replace every message for a session.
 
         Used by transcript-rewrite flows such as /retry, /undo, and /compress.
@@ -234,7 +234,7 @@ class SessionMessagesMixin:
 
     def get_messages(
         self, session_id: str, include_inactive: bool = False
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Load messages for a session in insertion order.
 
         By default only active messages are returned. Pass
@@ -272,7 +272,7 @@ class SessionMessagesMixin:
         session_id: str,
         around_message_id: int,
         window: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Load a window of messages anchored on a specific message id.
 
         Returns a dict with:
@@ -350,7 +350,7 @@ class SessionMessagesMixin:
         session_id: str,
         include_ancestors: bool = False,
         include_inactive: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Load messages in the OpenAI conversation format (role + content dicts).
         Used by the gateway to restore conversation history.
@@ -435,7 +435,7 @@ class SessionMessagesMixin:
             messages.append(msg)
         return messages
 
-    def _is_duplicate_replayed_user_message(messages: List[Dict[str, Any]], msg: Dict[str, Any]) -> bool:
+    def _is_duplicate_replayed_user_message(messages: list[dict[str, Any]], msg: dict[str, Any]) -> bool:
         if msg.get("role") != "user":
             return False
         content = msg.get("content")
@@ -450,7 +450,7 @@ class SessionMessagesMixin:
 
     def rewind_to_message(
         self, session_id: str, target_message_id: int
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Soft-delete all messages with id >= ``target_message_id`` in *session_id*.
 
         The target message itself becomes inactive as well so the caller
@@ -497,7 +497,7 @@ class SessionMessagesMixin:
         # Decode content for callers (prefill the prompt buffer).
         target_row["content"] = self._decode_content(target_row.get("content"))
 
-        rewound: List[int] = []
+        rewound: list[int] = []
 
         def _do(conn):
             cursor = conn.execute(
@@ -540,7 +540,7 @@ class SessionMessagesMixin:
         session_id: str,
         limit: int = 20,
         include_inactive: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Return the *limit* most-recent user messages, newest first.
 
         Each entry is a dict with keys ``id``, ``timestamp``, ``preview``.
@@ -561,7 +561,7 @@ class SessionMessagesMixin:
             )
             rows = cursor.fetchall()
 
-        result: List[Dict[str, Any]] = []
+        result: list[dict[str, Any]] = []
         for row in rows:
             decoded = self._decode_content(row["content"])
             if isinstance(decoded, list):
@@ -592,14 +592,14 @@ class SessionMessagesMixin:
     def search_messages(
         self,
         query: str,
-        source_filter: List[str] = None,
-        exclude_sources: List[str] = None,
-        role_filter: List[str] = None,
+        source_filter: list[str] = None,
+        exclude_sources: list[str] = None,
+        role_filter: list[str] = None,
         limit: int = 20,
         offset: int = 0,
         sort: str = None,
         include_inactive: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Full-text search across session messages using FTS5.
 

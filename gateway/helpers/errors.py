@@ -2,8 +2,12 @@
 Extracted from gateway/run.py (#23).
 """
 from __future__ import annotations
-import asyncio, logging, re
-from typing import Any, Dict, Optional
+
+import asyncio
+import logging
+import re
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 _TELEGRAM_COMMAND_MENTION_RE = re.compile(r"(?<![\w:/])/([A-Za-z0-9][A-Za-z0-9_-]*)")
@@ -136,10 +140,10 @@ def _gateway_platform_value(platform: Any) -> str:
 
 
 def _non_conversational_metadata(
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
     *,
     platform: Any = None,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Mark Discord lifecycle/status sends without changing other platforms."""
     if _gateway_platform_value(platform) != "discord":
         return metadata
@@ -162,7 +166,7 @@ def _is_transient_network_error(exc: BaseException) -> bool:
     classified. The chain is bounded to avoid pathological cycles.
     """
     seen: set[int] = set()
-    cur: Optional[BaseException] = exc
+    cur: BaseException | None = exc
     depth = 0
     transient_class_names = {
         "TimedOut",
@@ -193,7 +197,7 @@ def _is_transient_network_error(exc: BaseException) -> bool:
 
 
 def _gateway_loop_exception_handler(
-    loop: "asyncio.AbstractEventLoop", context: Dict[str, Any]
+    loop: asyncio.AbstractEventLoop, context: dict[str, Any]
 ) -> None:
     """Loop-level safety net for transient network errors.
 
@@ -311,7 +315,7 @@ def _sanitize_gateway_final_response(platform: Any, text: str) -> str:
     return redacted
 
 
-def _prepare_gateway_status_message(platform: Any, event_type: str, message: str) -> Optional[str]:
+def _prepare_gateway_status_message(platform: Any, event_type: str, message: str) -> str | None:
     """Filter/sanitize agent status callbacks before platform delivery."""
     text = str(message or "").strip()
     if not text:

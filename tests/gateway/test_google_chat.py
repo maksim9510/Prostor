@@ -138,7 +138,6 @@ from plugins.platforms.google_chat.adapter import (  # noqa: E402
     check_google_chat_requirements,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
@@ -1554,7 +1553,8 @@ class TestUserOAuthHelper:
         legacy single-user JSON stays addressable on disk."""
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         from plugins.platforms.google_chat.oauth import (
-            _token_path, _legacy_token_path,
+            _legacy_token_path,
+            _token_path,
         )
         per_user = _token_path("alice@example.com")
         legacy = _legacy_token_path()
@@ -1994,8 +1994,9 @@ class TestThreadCountStore:
     def test_invalid_shape_dropped_silently(self, tmp_path):
         """If someone hand-edits the file with weird shapes, drop the
         bad entries but keep the valid ones."""
-        from plugins.platforms.google_chat.adapter import _ThreadCountStore
         import json
+
+        from plugins.platforms.google_chat.adapter import _ThreadCountStore
         path = tmp_path / "counts.json"
         path.write_text(json.dumps({
             "spaces/OK": {"spaces/OK/threads/T": 3},
@@ -2081,7 +2082,8 @@ class TestThreadCountStore:
         # Simulate restart: build a fresh adapter pointing at the SAME
         # persistence file the previous one used.
         from plugins.platforms.google_chat.adapter import (
-            GoogleChatAdapter, _ThreadCountStore,
+            GoogleChatAdapter,
+            _ThreadCountStore,
         )
         store_path = adapter._thread_count_store._path
         fresh = GoogleChatAdapter(_base_config())

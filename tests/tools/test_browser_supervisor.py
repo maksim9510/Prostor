@@ -24,7 +24,6 @@ import time
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     not shutil.which("google-chrome") and not shutil.which("chromium"),
     reason="Chrome/Chromium not installed",
@@ -141,6 +140,7 @@ def _test_page_url() -> str:
 def _fire_on_page(cdp_url: str, expression: str) -> None:
     """Navigate the first page target to a data URL and fire `expression`."""
     import asyncio
+
     import websockets as _ws_mod
 
     async def run():
@@ -511,6 +511,7 @@ def test_bridge_captures_prompt_and_returns_reply_text(chrome_cdp, supervisor_re
     url = "data:text/html;base64," + _b64.b64encode(html.encode()).decode()
 
     import asyncio as _asyncio
+
     import websockets as _ws_mod
 
     async def nav_and_read():

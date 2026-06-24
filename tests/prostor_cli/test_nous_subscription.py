@@ -1,8 +1,7 @@
 """Tests for Nous subscription feature detection."""
 
-from prostor_cli.nous_account import NousPortalAccountInfo, NousToolAccessInfo
 from prostor_cli import nous_subscription as ns
-
+from prostor_cli.nous_account import NousPortalAccountInfo, NousToolAccessInfo
 
 _POOL_COVERAGE = {
     "firecrawl": True,

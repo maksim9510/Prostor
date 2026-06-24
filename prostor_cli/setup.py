@@ -11,20 +11,19 @@ Modular wizard with independently-runnable sections:
 Config files are stored in ~/.prostor/ for easy access.
 """
 
+import copy
 import importlib.util
 import logging
 import os
 import re
 import shutil
 import sys
-import copy
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 
 from prostor_cli.nous_subscription import get_nous_subscription_features
-from tools.tool_backend_helpers import managed_nous_tools_enabled
-from utils import base_url_hostname
 from prostor_constants import get_optional_skills_dir
+from tools.tool_backend_helpers import managed_nous_tools_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 _DOCS_BASE = "https://github.com/maksim9510/Prostor/docs"
 
 
-def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
+def _model_config_dict(config: dict[str, Any]) -> dict[str, Any]:
     current_model = config.get("model")
     if isinstance(current_model, dict):
         return dict(current_model)
@@ -42,12 +41,12 @@ def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def _get_credential_pool_strategies(config: Dict[str, Any]) -> Dict[str, str]:
+def _get_credential_pool_strategies(config: dict[str, Any]) -> dict[str, str]:
     strategies = config.get("credential_pool_strategies")
     return dict(strategies) if isinstance(strategies, dict) else {}
 
 
-def _set_credential_pool_strategy(config: Dict[str, Any], provider: str, strategy: str) -> None:
+def _set_credential_pool_strategy(config: dict[str, Any], provider: str, strategy: str) -> None:
     if not provider:
         return
     strategies = _get_credential_pool_strategies(config)
@@ -111,14 +110,14 @@ _DEFAULT_PROVIDER_MODELS = {
 }
 
 
-def _current_reasoning_effort(config: Dict[str, Any]) -> str:
+def _current_reasoning_effort(config: dict[str, Any]) -> str:
     agent_cfg = config.get("agent")
     if isinstance(agent_cfg, dict):
         return str(agent_cfg.get("reasoning_effort") or "").strip().lower()
     return ""
 
 
-def _set_reasoning_effort(config: Dict[str, Any], effort: str) -> None:
+def _set_reasoning_effort(config: dict[str, Any], effort: str) -> None:
     agent_cfg = config.get("agent")
     if not isinstance(agent_cfg, dict):
         agent_cfg = {}
@@ -127,22 +126,21 @@ def _set_reasoning_effort(config: Dict[str, Any], effort: str) -> None:
 
 
 # Import config helpers
+# display_prostor_home imported lazily at call sites (stale-module safety during prostor update)
+from prostor_cli.colors import Colors, color
 from prostor_cli.config import (
-    cfg_get,
     DEFAULT_CONFIG,
-    get_prostor_home,
+    cfg_get,
+    ensure_prostor_home,
     get_config_path,
     get_env_path,
+    get_env_value,
+    get_prostor_home,
     load_config,
+    remove_env_value,
     save_config,
     save_env_value,
-    remove_env_value,
-    get_env_value,
-    ensure_prostor_home,
 )
-# display_prostor_home imported lazily at call sites (stale-module safety during prostor update)
-
-from prostor_cli.colors import Colors, color
 
 
 def print_header(title: str):
@@ -1924,7 +1922,7 @@ def _setup_webhooks():
 
 def setup_gateway(config: dict):
     """Configure messaging platform integrations."""
-    from prostor_cli.gateway import _all_platforms, _platform_status, _configure_platform
+    from prostor_cli.gateway import _all_platforms, _configure_platform, _platform_status
 
     print_header("Messaging Platforms")
     print_info("Connect to messaging platforms to chat with Prostor from anywhere.")
@@ -2009,23 +2007,23 @@ def setup_gateway(config: dict):
         _is_windows = _platform.system() == "Windows"
 
         from prostor_cli.gateway import (
+            SystemScopeRequiresRootError,
+            UserSystemdUnavailableError,
             _is_service_installed,
             _is_service_running,
-            supports_systemd_services,
+            _print_system_scope_remediation,
+            _system_scope_wizard_would_need_root,
             has_conflicting_systemd_units,
             has_legacy_prostor_units,
             install_linux_gateway_from_setup,
-            print_systemd_scope_conflict_warning,
-            print_legacy_unit_warning,
-            systemd_start,
-            systemd_restart,
             launchd_install,
-            launchd_start,
             launchd_restart,
-            UserSystemdUnavailableError,
-            SystemScopeRequiresRootError,
-            _system_scope_wizard_would_need_root,
-            _print_system_scope_remediation,
+            launchd_start,
+            print_legacy_unit_warning,
+            print_systemd_scope_conflict_warning,
+            supports_systemd_services,
+            systemd_restart,
+            systemd_start,
         )
 
         service_installed = _is_service_installed()
@@ -2250,7 +2248,7 @@ def _gateway_platform_short_label(label: str) -> str:
     return base or label
 
 
-def _get_section_config_summary(config: dict, section_key: str) -> Optional[str]:
+def _get_section_config_summary(config: dict, section_key: str) -> str | None:
     """Return a short summary if a setup section is already configured, else None.
 
     Used after OpenClaw migration to detect which sections can be skipped.
@@ -3001,8 +2999,8 @@ def _blank_slate_minimal_toolsets(config: dict):
     config.setdefault("platform_toolsets", {})["cli"] = sorted(keep)
 
     try:
-        from toolsets import TOOLSETS
         from prostor_cli.tools_config import CONFIGURABLE_TOOLSETS, _get_plugin_toolset_keys
+        from toolsets import TOOLSETS
 
         all_keys = set()
         all_keys.update(k for k, _, _ in CONFIGURABLE_TOOLSETS)
@@ -3061,7 +3059,6 @@ def _run_blank_slate_setup(config: dict, prostor_home, is_existing: bool):
 
     Either way nothing is enabled that the user did not explicitly choose.
     """
-    from prostor_cli.config import load_config
 
     print()
     print_header("Blank Slate Setup")
@@ -3215,9 +3212,9 @@ def _blank_slate_walkthrough(config: dict, prostor_home):
 def _run_quick_setup(config: dict, prostor_home):
     """Quick setup — only configure items that are missing."""
     from prostor_cli.config import (
-        get_missing_env_vars,
-        get_missing_config_fields,
         check_config_version,
+        get_missing_config_fields,
+        get_missing_env_vars,
     )
 
     print()

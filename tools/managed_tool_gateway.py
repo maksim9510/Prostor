@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def auth_json_path():
     return get_prostor_home() / "auth.json"
 
 
-def _read_nous_provider_state() -> Optional[dict]:
+def _read_nous_provider_state() -> dict | None:
     try:
         path = auth_json_path()
         if not path.is_file():
@@ -49,7 +49,7 @@ def _read_nous_provider_state() -> Optional[dict]:
     return None
 
 
-def _parse_timestamp(value: object) -> Optional[datetime]:
+def _parse_timestamp(value: object) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
     normalized = value.strip()
@@ -60,19 +60,19 @@ def _parse_timestamp(value: object) -> Optional[datetime]:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _access_token_is_expiring(expires_at: object, skew_seconds: int) -> bool:
     expires = _parse_timestamp(expires_at)
     if expires is None:
         return True
-    remaining = (expires - datetime.now(timezone.utc)).total_seconds()
+    remaining = (expires - datetime.now(UTC)).total_seconds()
     return remaining <= max(0, int(skew_seconds))
 
 
-def peek_nous_access_token() -> Optional[str]:
+def peek_nous_access_token() -> str | None:
     """Cheap probe for a Nous gateway token without triggering refresh.
 
     Availability scans (`prostor tools`, banner/status paint, provider
@@ -93,7 +93,7 @@ def peek_nous_access_token() -> Optional[str]:
     return None
 
 
-def read_nous_access_token() -> Optional[str]:
+def read_nous_access_token() -> str | None:
     """Read a Nous Subscriber OAuth access token from auth store or env override."""
     explicit = os.getenv("TOOL_GATEWAY_USER_TOKEN")
     if isinstance(explicit, str) and explicit.strip():
@@ -150,9 +150,9 @@ def build_vendor_gateway_url(vendor: str) -> str:
 
 def resolve_managed_tool_gateway(
     vendor: str,
-    gateway_builder: Optional[Callable[[str], str]] = None,
-    token_reader: Optional[Callable[[], Optional[str]]] = None,
-) -> Optional[ManagedToolGatewayConfig]:
+    gateway_builder: Callable[[str], str] | None = None,
+    token_reader: Callable[[], str | None] | None = None,
+) -> ManagedToolGatewayConfig | None:
     """Resolve shared managed-tool gateway config for a vendor."""
     if not managed_nous_tools_enabled():
         return None
@@ -175,8 +175,8 @@ def resolve_managed_tool_gateway(
 
 def is_managed_tool_gateway_ready(
     vendor: str,
-    gateway_builder: Optional[Callable[[str], str]] = None,
-    token_reader: Optional[Callable[[], Optional[str]]] = None,
+    gateway_builder: Callable[[str], str] | None = None,
+    token_reader: Callable[[], str | None] | None = None,
 ) -> bool:
     """Return True when gateway URL and a likely-usable Nous token are present.
 

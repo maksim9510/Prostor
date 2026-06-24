@@ -20,7 +20,6 @@ from prostor_cli.telegram_managed_bot import (
     render_qr_terminal,
 )
 
-
 VALID_TOKEN = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
 SECOND_VALID_TOKEN = "987654321:abcdefghijklmnopqrstuvwxyzABCDEF"
 

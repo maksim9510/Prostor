@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -559,8 +558,9 @@ class TestStreamingFallback:
     @patch("run_agent.AIAgent._close_request_openai_client")
     def test_exhausted_transient_stream_error_propagates(self, mock_close, mock_create):
         """Transient stream errors retry first, then propagate after retries exhausted."""
-        from run_agent import AIAgent
         import httpx
+
+        from run_agent import AIAgent
 
         mock_client = MagicMock()
         mock_client.chat.completions.create.side_effect = httpx.ConnectError("socket closed")
@@ -594,12 +594,13 @@ class TestStreamingFallback:
         this.  It should be retried at the streaming level, same as httpx connection
         errors, then propagate to the main retry loop after exhaustion.
         """
-        from run_agent import AIAgent
         import httpx
 
         # Create an APIError that mimics what the OpenAI SDK raises from SSE error events.
         # Key: no status_code attribute (unlike APIStatusError which has one).
         from openai import APIError as OAIAPIError
+
+        from run_agent import AIAgent
         sse_error = OAIAPIError(
             message="Network connection lost.",
             request=httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions"),
@@ -633,10 +634,10 @@ class TestStreamingFallback:
     @patch("run_agent.AIAgent._close_request_openai_client")
     def test_sse_non_connection_error_propagates_immediately(self, mock_close, mock_create):
         """SSE errors that aren't connection-related propagate immediately (no stream retry)."""
-        from run_agent import AIAgent
         import httpx
-
         from openai import APIError as OAIAPIError
+
+        from run_agent import AIAgent
         sse_error = OAIAPIError(
             message="Invalid model configuration.",
             request=httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions"),
@@ -854,8 +855,9 @@ class TestCodexStreamCallbacks:
         raises ``httpx.RemoteProtocolError``, we retry once (matching the
         old behavior on the helper) and re-raise on the second failure.
         """
-        from run_agent import AIAgent
         import httpx
+
+        from run_agent import AIAgent
 
         agent = AIAgent(
             api_key="test-key",
@@ -1224,8 +1226,9 @@ class TestSilentRetryMidToolCall:
         """First attempt: text + partial tool-call + connection drop.
         Second attempt: text + complete tool-call.  Response should contain
         the recovered tool call; no warning stub should be returned."""
-        from run_agent import AIAgent
         import httpx as _httpx
+
+        from run_agent import AIAgent
 
         attempts = {"n": 0}
 
@@ -1319,8 +1322,9 @@ class TestSilentRetryMidToolCall:
         """When all retry attempts fail with connection errors, fall back
         to the original stub-with-warning behaviour so the user isn't left
         with zero signal."""
-        from run_agent import AIAgent
         import httpx as _httpx
+
+        from run_agent import AIAgent
 
         def _always_fails():
             yield _make_stream_chunk(content="Let me write the audit: ")
@@ -1374,8 +1378,9 @@ class TestSilentRetryMidToolCall:
         """Text-only stall (no tool call in flight) must NOT trigger silent
         retry — that's the case where the user saw the model's text reply
         and retrying would duplicate it with no benefit."""
-        from run_agent import AIAgent
         import httpx as _httpx
+
+        from run_agent import AIAgent
 
         attempts = {"n": 0}
 

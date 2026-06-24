@@ -23,12 +23,12 @@ from gateway.config import (
     PlatformConfig,
 )
 from gateway.platforms.base import MessageEvent, SendResult
-from gateway.platforms.webhook import WebhookAdapter, _INSECURE_NO_AUTH
-
+from gateway.platforms.webhook import _INSECURE_NO_AUTH, WebhookAdapter
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_adapter(routes, **extra_kw) -> WebhookAdapter:
     """Create a WebhookAdapter with the given routes."""

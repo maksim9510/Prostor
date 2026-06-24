@@ -23,16 +23,16 @@ import threading
 import time
 import uuid
 from types import SimpleNamespace
-from typing import Any, Dict, Optional
+from typing import Any
 
-from prostor_cli.timeouts import get_provider_request_timeout, get_provider_stale_timeout
-from prostor_constants import PARTIAL_STREAM_STUB_ID, FINISH_REASON_LENGTH
 from agent.error_classifier import FailoverReason
-from agent.model_metadata import is_local_endpoint
 from agent.message_sanitization import (
-    _sanitize_surrogates,
     _repair_tool_call_arguments,
+    _sanitize_surrogates,
 )
+from agent.model_metadata import is_local_endpoint
+from prostor_cli.timeouts import get_provider_request_timeout, get_provider_stale_timeout
+from prostor_constants import FINISH_REASON_LENGTH, PARTIAL_STREAM_STUB_ID
 from tools.terminal_tool import is_persistent_env
 from utils import base_url_host_matches, base_url_hostname, env_float, env_int
 
@@ -382,7 +382,7 @@ def interruptible_api_call(agent, api_kwargs: dict):
             and _elapsed > _ttfb_timeout
             and getattr(agent, "_codex_stream_last_event_ts", None) is None
         ):
-            _silent_hint: Optional[str] = None
+            _silent_hint: str | None = None
             _hint_fn = getattr(agent, "_codex_silent_hang_hint", None)
             if callable(_hint_fn):
                 try:
@@ -473,7 +473,7 @@ def interruptible_api_call(agent, api_kwargs: dict):
         # arrives within the configured timeout.
         if _elapsed > _stale_timeout:
             _est_ctx = estimate_request_context_tokens(api_kwargs)
-            _silent_hint: Optional[str] = None
+            _silent_hint: str | None = None
             _hint_fn = getattr(agent, "_codex_silent_hang_hint", None)
             if callable(_hint_fn):
                 try:
@@ -627,6 +627,7 @@ def build_api_kwargs(agent, api_messages: list) -> dict:
         if is_xai_responses:
             try:
                 import copy as _copy
+
                 from tools.schema_sanitizer import (
                     strip_pattern_and_format,
                     strip_slash_enum,
@@ -681,7 +682,7 @@ def build_api_kwargs(agent, api_messages: list) -> dict:
     # Temperature: _fixed_temperature_for_model may return OMIT_TEMPERATURE
     # sentinel (temperature omitted entirely), a numeric override, or None.
     try:
-        from agent.auxiliary_client import _fixed_temperature_for_model, OMIT_TEMPERATURE
+        from agent.auxiliary_client import OMIT_TEMPERATURE, _fixed_temperature_for_model
         _ft = _fixed_temperature_for_model(agent.model, agent.base_url)
         _omit_temp = _ft is OMIT_TEMPERATURE
         _fixed_temp = _ft if not _omit_temp else None
@@ -690,7 +691,7 @@ def build_api_kwargs(agent, api_messages: list) -> dict:
         _fixed_temp = None
 
     # Provider preferences (OpenRouter-style)
-    _prefs: Dict[str, Any] = {}
+    _prefs: dict[str, Any] = {}
     if agent.providers_allowed:
         _prefs["only"] = agent.providers_allowed
     if agent.providers_ignored:
@@ -1068,7 +1069,7 @@ def rewrite_prompt_model_identity(agent, model: str, provider: str) -> None:
     agent._cached_system_prompt = sp
 
 
-def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool:
+def try_activate_fallback(agent, reason: FailoverReason | None = None) -> bool:
     """Switch to the next fallback model/provider in the chain.
 
     Called when the current model is failing after retries.  Swaps the
@@ -1233,7 +1234,7 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
 
         if fb_api_mode == "anthropic_messages":
             # Build native Anthropic client instead of using OpenAI client
-            from agent.anthropic_adapter import build_anthropic_client, resolve_anthropic_token, _is_oauth_token
+            from agent.anthropic_adapter import _is_oauth_token, build_anthropic_client, resolve_anthropic_token
             effective_key = (fb_client.api_key or resolve_anthropic_token() or "") if fb_provider == "anthropic" else (fb_client.api_key or "")
             agent.api_key = effective_key
             agent._anthropic_api_key = effective_key
@@ -1391,7 +1392,8 @@ def handle_max_iterations(agent, messages: list, api_call_count: int) -> str:
 
         summary_extra_body = {}
         try:
-            from agent.auxiliary_client import _fixed_temperature_for_model, OMIT_TEMPERATURE as _OMIT_TEMP
+            from agent.auxiliary_client import OMIT_TEMPERATURE as _OMIT_TEMP
+            from agent.auxiliary_client import _fixed_temperature_for_model
         except Exception:
             _fixed_temperature_for_model = None
             _OMIT_TEMP = None

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -29,8 +30,8 @@ class SpotifyAPIError(SpotifyError):
         self,
         message: str,
         *,
-        status_code: Optional[int] = None,
-        response_body: Optional[str] = None,
+        status_code: int | None = None,
+        response_body: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -42,7 +43,7 @@ class SpotifyClient:
     def __init__(self) -> None:
         self._runtime = self._resolve_runtime(refresh_if_expiring=True)
 
-    def _resolve_runtime(self, *, force_refresh: bool = False, refresh_if_expiring: bool = True) -> Dict[str, Any]:
+    def _resolve_runtime(self, *, force_refresh: bool = False, refresh_if_expiring: bool = True) -> dict[str, Any]:
         try:
             return resolve_spotify_runtime_credentials(
                 force_refresh=force_refresh,
@@ -55,7 +56,7 @@ class SpotifyClient:
     def base_url(self) -> str:
         return str(self._runtime.get("base_url") or "").rstrip("/")
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._runtime['access_token']}",
             "Content-Type": "application/json",
@@ -66,10 +67,10 @@ class SpotifyClient:
         method: str,
         path: str,
         *,
-        params: Optional[Dict[str, Any]] = None,
-        json_body: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
         allow_retry_on_401: bool = True,
-        empty_response: Optional[Dict[str, Any]] = None,
+        empty_response: dict[str, Any] | None = None,
     ) -> Any:
         url = f"{self.base_url}{path}"
         response = httpx.request(
@@ -119,7 +120,7 @@ class SpotifyClient:
             "play": play,
         })
 
-    def get_playback_state(self, *, market: Optional[str] = None) -> Any:
+    def get_playback_state(self, *, market: str | None = None) -> Any:
         return self.request(
             "GET",
             "/me/player",
@@ -131,7 +132,7 @@ class SpotifyClient:
             },
         )
 
-    def get_currently_playing(self, *, market: Optional[str] = None) -> Any:
+    def get_currently_playing(self, *, market: str | None = None) -> Any:
         return self.request(
             "GET",
             "/me/player/currently-playing",
@@ -146,11 +147,11 @@ class SpotifyClient:
     def start_playback(
         self,
         *,
-        device_id: Optional[str] = None,
-        context_uri: Optional[str] = None,
-        uris: Optional[list[str]] = None,
-        offset: Optional[Dict[str, Any]] = None,
-        position_ms: Optional[int] = None,
+        device_id: str | None = None,
+        context_uri: str | None = None,
+        uris: list[str] | None = None,
+        offset: dict[str, Any] | None = None,
+        position_ms: int | None = None,
     ) -> Any:
         return self.request(
             "PUT",
@@ -164,28 +165,28 @@ class SpotifyClient:
             },
         )
 
-    def pause_playback(self, *, device_id: Optional[str] = None) -> Any:
+    def pause_playback(self, *, device_id: str | None = None) -> Any:
         return self.request("PUT", "/me/player/pause", params={"device_id": device_id})
 
-    def skip_next(self, *, device_id: Optional[str] = None) -> Any:
+    def skip_next(self, *, device_id: str | None = None) -> Any:
         return self.request("POST", "/me/player/next", params={"device_id": device_id})
 
-    def skip_previous(self, *, device_id: Optional[str] = None) -> Any:
+    def skip_previous(self, *, device_id: str | None = None) -> Any:
         return self.request("POST", "/me/player/previous", params={"device_id": device_id})
 
-    def seek(self, *, position_ms: int, device_id: Optional[str] = None) -> Any:
+    def seek(self, *, position_ms: int, device_id: str | None = None) -> Any:
         return self.request("PUT", "/me/player/seek", params={
             "position_ms": position_ms,
             "device_id": device_id,
         })
 
-    def set_repeat(self, *, state: str, device_id: Optional[str] = None) -> Any:
+    def set_repeat(self, *, state: str, device_id: str | None = None) -> Any:
         return self.request("PUT", "/me/player/repeat", params={"state": state, "device_id": device_id})
 
-    def set_shuffle(self, *, state: bool, device_id: Optional[str] = None) -> Any:
+    def set_shuffle(self, *, state: bool, device_id: str | None = None) -> Any:
         return self.request("PUT", "/me/player/shuffle", params={"state": str(bool(state)).lower(), "device_id": device_id})
 
-    def set_volume(self, *, volume_percent: int, device_id: Optional[str] = None) -> Any:
+    def set_volume(self, *, volume_percent: int, device_id: str | None = None) -> Any:
         return self.request("PUT", "/me/player/volume", params={
             "volume_percent": volume_percent,
             "device_id": device_id,
@@ -194,7 +195,7 @@ class SpotifyClient:
     def get_queue(self) -> Any:
         return self.request("GET", "/me/player/queue")
 
-    def add_to_queue(self, *, uri: str, device_id: Optional[str] = None) -> Any:
+    def add_to_queue(self, *, uri: str, device_id: str | None = None) -> Any:
         return self.request("POST", "/me/player/queue", params={"uri": uri, "device_id": device_id})
 
     def search(
@@ -204,8 +205,8 @@ class SpotifyClient:
         search_types: list[str],
         limit: int = 10,
         offset: int = 0,
-        market: Optional[str] = None,
-        include_external: Optional[str] = None,
+        market: str | None = None,
+        include_external: str | None = None,
     ) -> Any:
         return self.request("GET", "/search", params={
             "q": query,
@@ -219,7 +220,7 @@ class SpotifyClient:
     def get_my_playlists(self, *, limit: int = 20, offset: int = 0) -> Any:
         return self.request("GET", "/me/playlists", params={"limit": limit, "offset": offset})
 
-    def get_playlist(self, *, playlist_id: str, market: Optional[str] = None) -> Any:
+    def get_playlist(self, *, playlist_id: str, market: str | None = None) -> Any:
         return self.request("GET", f"/playlists/{playlist_id}", params={"market": market})
 
     def create_playlist(
@@ -228,7 +229,7 @@ class SpotifyClient:
         name: str,
         public: bool = False,
         collaborative: bool = False,
-        description: Optional[str] = None,
+        description: str | None = None,
     ) -> Any:
         return self.request("POST", "/me/playlists", json_body={
             "name": name,
@@ -242,7 +243,7 @@ class SpotifyClient:
         *,
         playlist_id: str,
         uris: list[str],
-        position: Optional[int] = None,
+        position: int | None = None,
     ) -> Any:
         return self.request("POST", f"/playlists/{playlist_id}/items", json_body={
             "uris": uris,
@@ -254,7 +255,7 @@ class SpotifyClient:
         *,
         playlist_id: str,
         uris: list[str],
-        snapshot_id: Optional[str] = None,
+        snapshot_id: str | None = None,
     ) -> Any:
         return self.request("DELETE", f"/playlists/{playlist_id}/items", json_body={
             "items": [{"uri": uri} for uri in uris],
@@ -265,10 +266,10 @@ class SpotifyClient:
         self,
         *,
         playlist_id: str,
-        name: Optional[str] = None,
-        public: Optional[bool] = None,
-        collaborative: Optional[bool] = None,
-        description: Optional[str] = None,
+        name: str | None = None,
+        public: bool | None = None,
+        collaborative: bool | None = None,
+        description: str | None = None,
     ) -> Any:
         return self.request("PUT", f"/playlists/{playlist_id}", json_body={
             "name": name,
@@ -277,17 +278,17 @@ class SpotifyClient:
             "description": description,
         })
 
-    def get_album(self, *, album_id: str, market: Optional[str] = None) -> Any:
+    def get_album(self, *, album_id: str, market: str | None = None) -> Any:
         return self.request("GET", f"/albums/{album_id}", params={"market": market})
 
-    def get_album_tracks(self, *, album_id: str, limit: int = 20, offset: int = 0, market: Optional[str] = None) -> Any:
+    def get_album_tracks(self, *, album_id: str, limit: int = 20, offset: int = 0, market: str | None = None) -> Any:
         return self.request("GET", f"/albums/{album_id}/tracks", params={
             "limit": limit,
             "offset": offset,
             "market": market,
         })
 
-    def get_saved_tracks(self, *, limit: int = 20, offset: int = 0, market: Optional[str] = None) -> Any:
+    def get_saved_tracks(self, *, limit: int = 20, offset: int = 0, market: str | None = None) -> Any:
         return self.request("GET", "/me/tracks", params={"limit": limit, "offset": offset, "market": market})
 
     def save_library_items(self, *, uris: list[str]) -> Any:
@@ -296,7 +297,7 @@ class SpotifyClient:
     def library_contains(self, *, uris: list[str]) -> Any:
         return self.request("GET", "/me/library/contains", params={"uris": ",".join(uris)})
 
-    def get_saved_albums(self, *, limit: int = 20, offset: int = 0, market: Optional[str] = None) -> Any:
+    def get_saved_albums(self, *, limit: int = 20, offset: int = 0, market: str | None = None) -> Any:
         return self.request("GET", "/me/albums", params={"limit": limit, "offset": offset, "market": market})
 
     def remove_saved_tracks(self, *, track_ids: list[str]) -> Any:
@@ -311,8 +312,8 @@ class SpotifyClient:
         self,
         *,
         limit: int = 20,
-        after: Optional[int] = None,
-        before: Optional[int] = None,
+        after: int | None = None,
+        before: int | None = None,
     ) -> Any:
         return self.request("GET", "/me/player/recently-played", params={
             "limit": limit,
@@ -342,7 +343,7 @@ def _friendly_spotify_error_message(
     detail: str,
     method: str,
     path: str,
-    retry_after: Optional[str],
+    retry_after: str | None,
 ) -> str:
     normalized_detail = detail.lower()
     is_playback_path = path.startswith("/me/player")
@@ -376,13 +377,13 @@ def _friendly_spotify_error_message(
     return f"Spotify API request failed with status {status_code}."
 
 
-def _strip_none(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _strip_none(payload: dict[str, Any] | None) -> dict[str, Any]:
     if not payload:
         return {}
     return {key: value for key, value in payload.items() if value is not None}
 
 
-def normalize_spotify_id(value: str, expected_type: Optional[str] = None) -> str:
+def normalize_spotify_id(value: str, expected_type: str | None = None) -> str:
     cleaned = (value or "").strip()
     if not cleaned:
         raise SpotifyError("Spotify id/uri/url is required.")
@@ -404,7 +405,7 @@ def normalize_spotify_id(value: str, expected_type: Optional[str] = None) -> str
     return cleaned
 
 
-def normalize_spotify_uri(value: str, expected_type: Optional[str] = None) -> str:
+def normalize_spotify_uri(value: str, expected_type: str | None = None) -> str:
     cleaned = (value or "").strip()
     if not cleaned:
         raise SpotifyError("Spotify URI/url/id is required.")
@@ -420,7 +421,7 @@ def normalize_spotify_uri(value: str, expected_type: Optional[str] = None) -> st
     return cleaned
 
 
-def normalize_spotify_uris(values: Iterable[str], expected_type: Optional[str] = None) -> list[str]:
+def normalize_spotify_uris(values: Iterable[str], expected_type: str | None = None) -> list[str]:
     uris: list[str] = []
     for value in values:
         uri = normalize_spotify_uri(str(value), expected_type)

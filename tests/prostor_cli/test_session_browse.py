@@ -9,11 +9,10 @@ Covers:
 import time
 from unittest.mock import MagicMock, patch
 
-
 from prostor_cli.main import _session_browse_picker
 
-
 # ─── Sample session data ──────────────────────────────────────────────────────
+
 
 def _make_sessions(n=5):
     """Generate a list of fake rich-session dicts."""

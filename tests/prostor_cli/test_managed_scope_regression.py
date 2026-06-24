@@ -35,7 +35,7 @@ def _write_user_config(home, body: str):
 
 
 def test_user_config_overrides_default(prostor_home, monkeypatch):
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     _write_user_config(
         prostor_home,
@@ -49,7 +49,7 @@ def test_user_config_overrides_default(prostor_home, monkeypatch):
 
 
 def test_env_expansion_in_user_config(prostor_home, monkeypatch):
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     monkeypatch.setenv("MY_BASE", "https://example.test")
     _write_user_config(
@@ -66,7 +66,7 @@ def test_env_expansion_in_user_config(prostor_home, monkeypatch):
 
 def test_no_managed_dir_means_user_value_wins(prostor_home):
     """Sanity: with the managed override pointing at an absent dir, nothing changes."""
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     _write_user_config(
         prostor_home,

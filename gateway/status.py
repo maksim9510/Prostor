@@ -18,10 +18,11 @@ import shlex
 import signal
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
 from prostor_core import get_prostor_home
-from typing import Any, Optional
 from utils import atomic_json_write
 
 if sys.platform == "win32":
@@ -48,7 +49,7 @@ def _get_pid_path() -> Path:
     return home / "gateway.pid"
 
 
-def _get_gateway_lock_path(pid_path: Optional[Path] = None) -> Path:
+def _get_gateway_lock_path(pid_path: Path | None = None) -> Path:
     """Return the path to the runtime gateway lock file."""
     if pid_path is not None:
         return pid_path.with_name(_GATEWAY_LOCK_FILENAME)
@@ -71,7 +72,7 @@ def _get_lock_dir() -> Path:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def terminate_pid(pid: int, *, force: bool = False) -> None:
@@ -109,7 +110,7 @@ def _get_scope_lock_path(scope: str, identity: str) -> Path:
     return _get_lock_dir() / f"{scope}-{_scope_hash(identity)}.lock"
 
 
-def _get_process_start_time(pid: int) -> Optional[int]:
+def _get_process_start_time(pid: int) -> int | None:
     """Return the kernel start time for a process when available."""
     stat_path = Path(f"/proc/{pid}/stat")
     try:
@@ -119,12 +120,12 @@ def _get_process_start_time(pid: int) -> Optional[int]:
         return None
 
 
-def get_process_start_time(pid: int) -> Optional[int]:
+def get_process_start_time(pid: int) -> int | None:
     """Public wrapper for retrieving a process start time when available."""
     return _get_process_start_time(pid)
 
 
-def _read_process_cmdline(pid: int) -> Optional[str]:
+def _read_process_cmdline(pid: int) -> str | None:
     """Return the process command line as a space-separated string.
 
     On Linux, reads /proc/<pid>/cmdline directly.  On macOS and other
@@ -282,7 +283,7 @@ def _build_runtime_status_record() -> dict[str, Any]:
     return payload
 
 
-def _read_json_file(path: Path) -> Optional[dict[str, Any]]:
+def _read_json_file(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     try:
@@ -305,7 +306,7 @@ def _write_json_file(path: Path, payload: dict[str, Any]) -> None:
     atomic_json_write(path, payload, indent=None, separators=(",", ":"))
 
 
-def _read_pid_record(pid_path: Optional[Path] = None) -> Optional[dict]:
+def _read_pid_record(pid_path: Path | None = None) -> dict | None:
     pid_path = pid_path or _get_pid_path()
     if not pid_path.exists():
         return None
@@ -334,11 +335,11 @@ def _read_pid_record(pid_path: Optional[Path] = None) -> Optional[dict]:
     return None
 
 
-def _read_gateway_lock_record(lock_path: Optional[Path] = None) -> Optional[dict[str, Any]]:
+def _read_gateway_lock_record(lock_path: Path | None = None) -> dict[str, Any] | None:
     return _read_pid_record(lock_path or _get_gateway_lock_path())
 
 
-def _pid_from_record(record: Optional[dict[str, Any]]) -> Optional[int]:
+def _pid_from_record(record: dict[str, Any] | None) -> int | None:
     if not record:
         return None
     try:
@@ -516,7 +517,7 @@ def release_gateway_runtime_lock() -> None:
         pass
 
 
-def is_gateway_runtime_lock_active(lock_path: Optional[Path] = None) -> bool:
+def is_gateway_runtime_lock_active(lock_path: Path | None = None) -> bool:
     """Return True when some process currently owns the gateway runtime lock."""
     global _gateway_lock_handle
     resolved_lock_path = lock_path or _get_gateway_lock_path()
@@ -615,14 +616,14 @@ def write_runtime_status(
     _write_json_file(path, payload)
 
 
-def read_runtime_status() -> Optional[dict[str, Any]]:
+def read_runtime_status() -> dict[str, Any] | None:
     """Read the persisted gateway runtime health/status information."""
     return _read_json_file(_get_runtime_status_path())
 
 
 def get_runtime_status_running_pid(
-    runtime: Optional[dict[str, Any]] = None,
-) -> Optional[int]:
+    runtime: dict[str, Any] | None = None,
+) -> int | None:
     """Return a live gateway PID from the runtime status record, if valid.
 
     ``get_running_pid()`` is the primary liveness source because it verifies the
@@ -679,7 +680,7 @@ def remove_pid_file() -> None:
         pass
 
 
-def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, Any]] = None) -> tuple[bool, Optional[dict[str, Any]]]:
+def acquire_scoped_lock(scope: str, identity: str, metadata: dict[str, Any] | None = None) -> tuple[bool, dict[str, Any] | None]:
     """Acquire a machine-local lock keyed by scope + identity.
 
     Used to prevent multiple local gateways from using the same external identity
@@ -815,8 +816,8 @@ def release_scoped_lock(scope: str, identity: str) -> None:
 
 def release_all_scoped_locks(
     *,
-    owner_pid: Optional[int] = None,
-    owner_start_time: Optional[int] = None,
+    owner_pid: int | None = None,
+    owner_start_time: int | None = None,
 ) -> int:
     """Remove scoped lock files in the lock directory.
 
@@ -898,7 +899,7 @@ def _get_planned_stop_marker_path() -> Path:
 def _marker_is_stale(written_at: str, ttl_s: int) -> bool:
     try:
         written_dt = datetime.fromisoformat(written_at)
-        age = (datetime.now(timezone.utc) - written_dt).total_seconds()
+        age = (datetime.now(UTC) - written_dt).total_seconds()
         return age > ttl_s
     except (TypeError, ValueError):
         return True
@@ -1116,10 +1117,10 @@ def clear_planned_stop_marker() -> None:
 
 
 def get_running_pid(
-    pid_path: Optional[Path] = None,
+    pid_path: Path | None = None,
     *,
     cleanup_stale: bool = True,
-) -> Optional[int]:
+) -> int | None:
     """Return the PID of a running gateway instance, or ``None``.
 
     Checks the PID file and verifies the process is actually alive.
@@ -1156,7 +1157,7 @@ def get_running_pid(
 
 
 def is_gateway_running(
-    pid_path: Optional[Path] = None,
+    pid_path: Path | None = None,
     *,
     cleanup_stale: bool = True,
 ) -> bool:

@@ -33,7 +33,8 @@ from __future__ import annotations
 
 import functools
 import threading
-from typing import Callable, Generic, Optional, TypeVar
+from collections.abc import Callable
+from typing import Generic, TypeVar
 
 __all__ = ["lazy_singleton", "SingletonSlot"]
 
@@ -108,7 +109,7 @@ class SingletonSlot(Generic[T]):
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._value: Optional[T] = None
+        self._value: T | None = None
         self._set = False
 
     def get(self, factory: Callable[[], T]) -> T:
@@ -124,7 +125,7 @@ class SingletonSlot(Generic[T]):
             self._set = True
             return value
 
-    def peek(self) -> Optional[T]:
+    def peek(self) -> T | None:
         """Return the cached instance without building it (None if unset)."""
         return self._value if self._set else None
 

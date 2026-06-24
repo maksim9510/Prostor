@@ -11,17 +11,19 @@ test_yuanbao_integration.py - Yuanbao 模块集成测试
   - Toolset 注册
 """
 
-import sys
 import os
+import sys
 
 # 确保 prostor-agent 根目录在 sys.path 中
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-import pytest
 from unittest.mock import MagicMock, patch
-from gateway.config import Platform, PlatformConfig, GatewayConfig
+
+import pytest
+
+from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.yuanbao import YuanbaoAdapter
 
 
@@ -52,7 +54,7 @@ class TestYuanbaoAdapterInit:
         config = make_config()
         adapter = YuanbaoAdapter(config)
         status = adapter.get_status()
-        assert status["connected"] == False
+        assert not status["connected"]
         assert status["bot_id"] is None
 
 
@@ -179,7 +181,7 @@ class TestProtoRoundTrip:
     """验证 proto 编解码基本功能"""
 
     def test_conn_msg_roundtrip(self):
-        from gateway.platforms.yuanbao_proto import encode_conn_msg, decode_conn_msg
+        from gateway.platforms.yuanbao_proto import decode_conn_msg, encode_conn_msg
         encoded = encode_conn_msg(msg_type=1, seq_no=42, data=b"hello")
         decoded = decode_conn_msg(encoded)
         assert decoded["seq_no"] == 42
@@ -262,7 +264,7 @@ class TestManagerImports:
 
     def test_outbound_composes_sub_managers(self):
         adapter = YuanbaoAdapter(make_config())
-        from gateway.platforms.yuanbao import MessageSender, HeartbeatManager, SlowResponseNotifier
+        from gateway.platforms.yuanbao import HeartbeatManager, MessageSender, SlowResponseNotifier
         assert isinstance(adapter._outbound.sender, MessageSender)
         assert isinstance(adapter._outbound.heartbeat, HeartbeatManager)
         assert isinstance(adapter._outbound.slow_notifier, SlowResponseNotifier)
@@ -274,7 +276,7 @@ class TestManagerImports:
 
 class TestMediaModule:
     def test_import_ok(self):
-        from gateway.platforms.yuanbao_media import upload_to_cos, download_url
+        from gateway.platforms.yuanbao_media import download_url, upload_to_cos
         assert callable(upload_to_cos)
         assert callable(download_url)
 

@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+
 import pytest
 
 from agent.credits_tracker import CreditsState, parse_credits_headers
-
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 

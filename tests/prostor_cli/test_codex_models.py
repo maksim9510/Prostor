@@ -85,6 +85,7 @@ def test_fetch_from_api_keeps_supported_in_api_false_models(monkeypatch):
     the separate signal that *should* still filter entries out.
     """
     import sys
+
     from prostor_cli import codex_models
 
     class _FakeResp:

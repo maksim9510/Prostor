@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ──────────────────────────────────────────────────────────────────────
 # Fixtures
@@ -428,7 +427,7 @@ class TestJudgeParseFailureAutoPause:
     def test_auto_pause_after_three_consecutive_parse_failures(self, prostor_home):
         """N=3 consecutive parse failures → auto-pause with config pointer."""
         from prostor_cli import goals
-        from prostor_cli.goals import GoalManager, DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES
+        from prostor_cli.goals import DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES, GoalManager
 
         assert DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES == 3
         mgr = GoalManager(session_id="parse-fail-sid-1", default_max_turns=20)
@@ -558,6 +557,7 @@ class TestGoalManagerSubgoals:
 
     def test_add_subgoal_requires_active_goal(self, prostor_home):
         import pytest
+
         from prostor_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-noactive")
         with pytest.raises(RuntimeError):
@@ -565,6 +565,7 @@ class TestGoalManagerSubgoals:
 
     def test_add_empty_subgoal_rejected(self, prostor_home):
         import pytest
+
         from prostor_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-empty")
         mgr.set("g")
@@ -584,6 +585,7 @@ class TestGoalManagerSubgoals:
 
     def test_remove_subgoal_out_of_range(self, prostor_home):
         import pytest
+
         from prostor_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-oob")
         mgr.set("g")
@@ -647,6 +649,7 @@ class TestJudgeGoalWithSubgoals:
         capture the prompt that would be sent.
         """
         from unittest.mock import patch
+
         from prostor_cli import goals
 
         captured = {}
@@ -693,6 +696,7 @@ class TestJudgeGoalWithSubgoals:
 
     def test_judge_uses_original_template_when_no_subgoals(self, prostor_home):
         from unittest.mock import patch
+
         from prostor_cli import goals
 
         captured = {}

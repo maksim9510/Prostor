@@ -2,10 +2,12 @@
 Extracted from gateway/run.py (#23).
 """
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Optional
+
 logger = logging.getLogger(__name__)
+
 
 def _dequeue_pending_event(adapter, session_key: str) -> MessageEvent | None:
     """Consume and return the full pending event for a session.
@@ -36,7 +38,7 @@ _CONTROL_INTERRUPT_MESSAGES = frozenset(
 )
 
 
-def _is_control_interrupt_message(message: Optional[str]) -> bool:
+def _is_control_interrupt_message(message: str | None) -> bool:
     """Return True when an interrupt message is internal control flow."""
     if not message:
         return False
@@ -111,8 +113,8 @@ def _check_unavailable_skill(command_name: str) -> str | None:
     # Normalize: command uses hyphens, skill names may use hyphens or underscores
     normalized = command_name.lower().replace("_", "-")
     try:
-        from tools.skills_tool import _get_disabled_skill_names
         from agent.skill_utils import get_all_skills_dirs, is_excluded_skill_path
+        from tools.skills_tool import _get_disabled_skill_names
         disabled = _get_disabled_skill_names()
 
         # Check disabled skills across all dirs (local + external)

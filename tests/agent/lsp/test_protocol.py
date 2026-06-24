@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+
 import pytest
 
 from agent.lsp.protocol import (
@@ -28,7 +29,6 @@ from agent.lsp.protocol import (
     make_response,
     read_message,
 )
-
 
 # ---------------------------------------------------------------------------
 # encode_message

@@ -40,7 +40,7 @@ import re
 import struct
 import sys
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from tools.computer_use.backend import (
     ActionResult,
@@ -109,7 +109,7 @@ _BLOCKED_TYPE_PATTERNS = [
 ]
 
 
-def _is_blocked_type(text: str) -> Optional[str]:
+def _is_blocked_type(text: str) -> str | None:
     for pat in _BLOCKED_TYPE_PATTERNS:
         if pat.search(text):
             return pat.pattern
@@ -122,7 +122,7 @@ def _is_blocked_type(text: str) -> Optional[str]:
 
 # Per-process cached backend; lazily instantiated on first call.
 _backend_lock = threading.Lock()
-_backend: Optional[ComputerUseBackend] = None
+_backend: ComputerUseBackend | None = None
 # Session-scoped approval state.
 _session_auto_approve = False
 _always_allow: set = set()  # action names the user unlocked for the session
@@ -162,14 +162,14 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
     """Test/CI stub. Records calls; returns trivial results."""
 
     def __init__(self) -> None:
-        self.calls: List[Tuple[str, Dict[str, Any]]] = []
+        self.calls: list[tuple[str, dict[str, Any]]] = []
         self._started = False
 
     def start(self) -> None: self._started = True
     def stop(self) -> None: self._started = False
     def is_available(self) -> bool: return True
 
-    def capture(self, mode: str = "som", app: Optional[str] = None) -> CaptureResult:
+    def capture(self, mode: str = "som", app: str | None = None) -> CaptureResult:
         self.calls.append(("capture", {"mode": mode, "app": app}))
         return CaptureResult(mode=mode, width=1024, height=768, png_b64=None,
                              elements=[], app=app or "", window_title="")
@@ -194,7 +194,7 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
         self.calls.append(("key", {"keys": keys}))
         return ActionResult(ok=True, action="key")
 
-    def list_apps(self) -> List[Dict[str, Any]]:
+    def list_apps(self) -> list[dict[str, Any]]:
         self.calls.append(("list_apps", {}))
         return []
 
@@ -202,7 +202,7 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
         self.calls.append(("focus_app", {"app": app, "raise": raise_window}))
         return ActionResult(ok=True, action="focus_app")
 
-    def set_value(self, value: str, element: Optional[int] = None) -> ActionResult:
+    def set_value(self, value: str, element: int | None = None) -> ActionResult:
         self.calls.append(("set_value", {"value": value, "element": element}))
         return ActionResult(ok=True, action="set_value")
 
@@ -211,7 +211,7 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
 # Dispatch
 # ---------------------------------------------------------------------------
 
-def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
+def handle_computer_use(args: dict[str, Any], **kwargs) -> Any:
     """Main entry point — dispatched by tools.registry.
 
     Returns either a JSON string (text-only) or a dict marked `_multimodal`
@@ -263,7 +263,7 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
         return json.dumps({"error": f"{action} failed: {e}"})
 
 
-def _request_approval(action: str, args: Dict[str, Any]) -> Optional[str]:
+def _request_approval(action: str, args: dict[str, Any]) -> str | None:
     """Return None if approved, or a JSON error string if denied."""
     global _session_auto_approve, _always_allow
     if _session_auto_approve:
@@ -291,7 +291,7 @@ def _request_approval(action: str, args: Dict[str, Any]) -> Optional[str]:
     return json.dumps({"error": "denied by user", "action": action})
 
 
-def _summarize_action(action: str, args: Dict[str, Any]) -> str:
+def _summarize_action(action: str, args: dict[str, Any]) -> str:
     if action in {"click", "double_click", "right_click", "middle_click"}:
         if args.get("element") is not None:
             return f"{action} element #{args['element']}"
@@ -315,7 +315,7 @@ def _summarize_action(action: str, args: Dict[str, Any]) -> str:
     return action
 
 
-def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) -> Any:
+def _dispatch(backend: ComputerUseBackend, action: str, args: dict[str, Any]) -> Any:
     capture_after = bool(args.get("capture_after"))
 
     if action == "capture":
@@ -414,7 +414,7 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) ->
 # ---------------------------------------------------------------------------
 
 def _text_response(res: ActionResult) -> str:
-    payload: Dict[str, Any] = {"ok": res.ok, "action": res.action}
+    payload: dict[str, Any] = {"ok": res.ok, "action": res.action}
     if res.message:
         payload["message"] = res.message
     if res.meta:
@@ -434,7 +434,7 @@ _MAX_ALLOWED_MAX_ELEMENTS = 1000
 _MIN_PROVIDER_IMAGE_DIMENSION = 8
 
 
-def _image_dimensions_from_b64(image_b64: str) -> Optional[Tuple[int, int]]:
+def _image_dimensions_from_b64(image_b64: str) -> tuple[int, int] | None:
     """Return (width, height) for common inline screenshot formats.
 
     Some providers reject images below 8x8 before the model sees the tool
@@ -594,7 +594,7 @@ def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEME
             f"raise max_elements or pass app= to narrow)"
         )
     summary = "\n".join(summary_lines)
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "mode": cap.mode,
         "width": response_width,
         "height": response_height,
@@ -648,7 +648,7 @@ def _should_route_through_aux_vision() -> bool:
 def _route_capture_through_aux_vision(
     cap: CaptureResult,
     summary: str,
-) -> Optional[str]:
+) -> str | None:
     """Pre-analyse the captured PNG via ``vision_analyze`` and return a text result.
 
     The captured base64 PNG is materialised to ``$PROSTOR_HOME/cache/vision/``
@@ -669,8 +669,8 @@ def _route_capture_through_aux_vision(
         import os as _os
         import uuid as _uuid
 
-        from prostor_constants import get_prostor_dir
         from model_tools import _run_async
+        from prostor_constants import get_prostor_dir
         from tools.vision_tools import vision_analyze_tool
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("computer_use: aux-vision import failed: %s", exc)
@@ -782,8 +782,8 @@ def _maybe_follow_capture(
     return json.dumps(data)
 
 
-def _format_elements(elements: List[UIElement], max_lines: int = 40) -> List[str]:
-    out: List[str] = []
+def _format_elements(elements: list[UIElement], max_lines: int = 40) -> list[str]:
+    out: list[str] = []
     for e in elements[:max_lines]:
         label = e.label.replace("\n", " ")[:60]
         out.append(f"  #{e.index} {e.role} {label!r} @ {e.bounds}"
@@ -793,7 +793,7 @@ def _format_elements(elements: List[UIElement], max_lines: int = 40) -> List[str
     return out
 
 
-def _element_to_dict(e: UIElement) -> Dict[str, Any]:
+def _element_to_dict(e: UIElement) -> dict[str, Any]:
     return {
         "index": e.index,
         "role": e.role,
@@ -818,6 +818,6 @@ def check_computer_use_requirements() -> bool:
     return cua_driver_binary_available()
 
 
-def get_computer_use_schema() -> Dict[str, Any]:
+def get_computer_use_schema() -> dict[str, Any]:
     from tools.computer_use.schema import COMPUTER_USE_SCHEMA
     return COMPUTER_USE_SCHEMA

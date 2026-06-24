@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 pytestmark = pytest.mark.usefixtures("disable_lazy_stt_install")
 
 
@@ -46,6 +45,7 @@ class TestProviderSelectionGate:
         not freeze that temporary helper into this module forever.
         """
         import importlib
+
         import prostor_cli.config as config_mod
         from tools import transcription_tools as tt
 
@@ -66,6 +66,7 @@ class TestProviderSelectionGate:
     def test_xai_resolver_import_after_config_env_patch_uses_restored_dotenv_loader(self):
         """xAI HTTP auth must not cache a temporarily patched env helper."""
         import importlib
+
         import prostor_cli.config as config_mod
         from tools import xai_http
 

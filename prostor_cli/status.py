@@ -5,11 +5,13 @@ Shows the status of all Prostor Agent components.
 """
 
 import os
-import sys
 import subprocess  # noqa: F401 — re-exported for tests that monkeypatch status.subprocess to guard against regressions
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+
+from datetime import UTC
 
 from prostor_cli.auth import AuthError, resolve_provider
 from prostor_cli.colors import Colors, color
@@ -24,10 +26,12 @@ from prostor_cli.runtime_provider import resolve_requested_provider
 from prostor_constants import OPENROUTER_MODELS_URL
 from tools.tool_backend_helpers import managed_nous_tools_enabled
 
+
 def check_mark(ok: bool) -> str:
     if ok:
         return color("✓", Colors.GREEN)
     return color("✗", Colors.RED)
+
 
 def redact_key(key: str) -> str:
     """Redact an API key for display.
@@ -45,7 +49,7 @@ def _format_iso_timestamp(value) -> str:
     """Format ISO timestamps for status output, converting to local timezone."""
     if not value or not isinstance(value, str):
         return "(unknown)"
-    from datetime import datetime, timezone
+    from datetime import datetime
     text = value.strip()
     if not text:
         return "(unknown)"
@@ -54,7 +58,7 @@ def _format_iso_timestamp(value) -> str:
     try:
         parsed = datetime.fromisoformat(text)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
     except Exception:
         return value
     return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -84,6 +88,7 @@ def _effective_provider_label() -> str:
         effective = "custom"
 
     return provider_label(effective)
+
 
 
 from prostor_constants import is_termux as _is_termux
@@ -181,10 +186,10 @@ def show_status(args):
 
     try:
         from prostor_cli.auth import (
-            get_nous_auth_status,
             get_codex_auth_status,
-            get_qwen_auth_status,
             get_minimax_oauth_auth_status,
+            get_nous_auth_status,
+            get_qwen_auth_status,
         )
         nous_status = get_nous_auth_status()
         codex_status = get_codex_auth_status()
@@ -273,8 +278,8 @@ def show_status(args):
         print(f"    Auth file:  {qwen_auth_file}")
     qwen_exp = qwen_status.get("expires_at_ms")
     if qwen_exp:
-        from datetime import datetime, timezone
-        print(f"    Access exp: {datetime.fromtimestamp(int(qwen_exp) / 1000, tz=timezone.utc).isoformat()}")
+        from datetime import datetime
+        print(f"    Access exp: {datetime.fromtimestamp(int(qwen_exp) / 1000, tz=UTC).isoformat()}")
     if qwen_status.get("error") and not qwen_logged_in:
         print(f"    Error:      {qwen_status.get('error')}")
 
@@ -476,7 +481,7 @@ def show_status(args):
     print(color("◆ Gateway Service", Colors.CYAN, Colors.BOLD))
 
     try:
-        from prostor_cli.gateway import get_gateway_runtime_snapshot, _format_gateway_pids
+        from prostor_cli.gateway import _format_gateway_pids, get_gateway_runtime_snapshot
 
         snapshot = get_gateway_runtime_snapshot()
         is_running = snapshot.running

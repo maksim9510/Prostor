@@ -1,22 +1,23 @@
 """Tests for tools/skills_sync.py — manifest-based skill seeding and updating."""
 
-import shutil
 import json
-import pytest
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from tools.skills_sync import (
+    _compute_relative_dest,
+    _dir_hash,
+    _discover_bundled_skills,
     _get_bundled_dir,
     _read_manifest,
     _read_skill_name,
     _write_manifest,
-    _discover_bundled_skills,
-    _compute_relative_dest,
-    _dir_hash,
-    sync_skills,
     reset_bundled_skill,
     restore_official_optional_skill,
+    sync_skills,
 )
 
 
@@ -202,7 +203,7 @@ class TestRmtreeWritableScopeGuard:
 
     def test_refuses_root_path(self, tmp_path):
         """``Path('/')`` is the entire filesystem — must always be rejected."""
-        from tools.skills_sync import _rmtree_writable, SKILLS_DIR
+        from tools.skills_sync import _rmtree_writable
 
         skills = tmp_path / "skills"
         skills.mkdir()
@@ -1110,7 +1111,8 @@ class TestOptOutToggleAndRemove:
 
     def test_marker_toggle(self, tmp_path):
         from tools.skills_sync import (
-            set_bundled_skills_opt_out, is_bundled_skills_opt_out,
+            is_bundled_skills_opt_out,
+            set_bundled_skills_opt_out,
         )
         home = tmp_path / "home"
         home.mkdir()
@@ -1129,7 +1131,8 @@ class TestOptOutToggleAndRemove:
 
     def test_remove_keeps_user_modified(self, tmp_path):
         from tools.skills_sync import (
-            sync_skills, remove_pristine_bundled_skills,
+            remove_pristine_bundled_skills,
+            sync_skills,
         )
         bundled = self._setup_bundled(tmp_path)
         skills_dir = tmp_path / "user_skills"

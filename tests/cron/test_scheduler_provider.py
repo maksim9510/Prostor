@@ -89,6 +89,7 @@ def test_desktop_ticker_calls_tick_then_stops():
 def test_cronscheduler_is_abstract():
     """name + start are abstract — the bare ABC can't be instantiated."""
     import pytest
+
     from cron.scheduler_provider import CronScheduler
 
     with pytest.raises(TypeError):
@@ -218,8 +219,8 @@ def test_resolve_unknown_provider_falls_back_to_builtin(monkeypatch):
 
 def test_resolve_unavailable_provider_falls_back(monkeypatch):
     """A provider that loads but reports is_available()==False → built-in."""
-    import prostor_cli.config as cfg
     import plugins.cron as pc
+    import prostor_cli.config as cfg
     from cron import scheduler_provider as sp
     from cron.scheduler_provider import CronScheduler
 
@@ -242,8 +243,8 @@ def test_resolve_unavailable_provider_falls_back(monkeypatch):
 
 def test_resolve_available_provider_is_used(monkeypatch):
     """A provider that loads and is available is returned (not the fallback)."""
-    import prostor_cli.config as cfg
     import plugins.cron as pc
+    import prostor_cli.config as cfg
     from cron import scheduler_provider as sp
     from cron.scheduler_provider import CronScheduler
 

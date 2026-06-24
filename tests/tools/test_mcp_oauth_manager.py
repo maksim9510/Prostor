@@ -84,8 +84,9 @@ def test_manager_remove_evicts_cache(tmp_path, monkeypatch):
 
 def test_prostor_provider_subclass_exists():
     """ProstorMCPOAuthProvider is defined and subclasses OAuthClientProvider."""
-    from tools.mcp_oauth_manager import _PROSTOR_PROVIDER_CLS
     from mcp.client.auth.oauth2 import OAuthClientProvider
+
+    from tools.mcp_oauth_manager import _PROSTOR_PROVIDER_CLS
 
     assert _PROSTOR_PROVIDER_CLS is not None
     assert issubclass(_PROSTOR_PROVIDER_CLS, OAuthClientProvider)
@@ -137,7 +138,9 @@ async def test_disk_watch_invalidates_on_mtime_change(tmp_path, monkeypatch):
 def test_manager_builds_prostor_provider_subclass(tmp_path, monkeypatch):
     """get_or_build_provider returns ProstorMCPOAuthProvider, not plain OAuthClientProvider."""
     from tools.mcp_oauth_manager import (
-        MCPOAuthManager, _PROSTOR_PROVIDER_CLS, reset_manager_for_tests,
+        _PROSTOR_PROVIDER_CLS,
+        MCPOAuthManager,
+        reset_manager_for_tests,
     )
     reset_manager_for_tests()
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))

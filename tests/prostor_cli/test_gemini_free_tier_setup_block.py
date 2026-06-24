@@ -34,8 +34,8 @@ class TestGeminiSetupFreeTierBlock:
         """Free-tier probe result -> provider is NOT saved, message is printed."""
         monkeypatch.setenv("GOOGLE_API_KEY", "fake-free-tier-key")
 
-        from prostor_cli.main import _model_flow_api_key_provider
         from prostor_cli.config import load_config
+        from prostor_cli.main import _model_flow_api_key_provider
 
         # Mock the probe to claim this is a free-tier key
         with patch(
@@ -68,8 +68,8 @@ class TestGeminiSetupFreeTierBlock:
         """Paid-tier probe result -> provider IS saved normally."""
         monkeypatch.setenv("GOOGLE_API_KEY", "fake-paid-tier-key")
 
-        from prostor_cli.main import _model_flow_api_key_provider
         from prostor_cli.config import load_config
+        from prostor_cli.main import _model_flow_api_key_provider
 
         with patch(
             "agent.gemini_native_adapter.probe_gemini_tier",
@@ -97,8 +97,8 @@ class TestGeminiSetupFreeTierBlock:
         """Probe returning 'unknown' (network/auth error) -> proceed without blocking."""
         monkeypatch.setenv("GOOGLE_API_KEY", "fake-key")
 
-        from prostor_cli.main import _model_flow_api_key_provider
         from prostor_cli.config import load_config
+        from prostor_cli.main import _model_flow_api_key_provider
 
         with patch(
             "agent.gemini_native_adapter.probe_gemini_tier",
@@ -125,8 +125,8 @@ class TestGeminiSetupFreeTierBlock:
         """Probe must only run for provider_id == 'gemini', not for other providers."""
         monkeypatch.setenv("DEEPSEEK_API_KEY", "fake-key")
 
-        from prostor_cli.main import _model_flow_api_key_provider
         from prostor_cli.config import load_config
+        from prostor_cli.main import _model_flow_api_key_provider
 
         with patch(
             "agent.gemini_native_adapter.probe_gemini_tier",

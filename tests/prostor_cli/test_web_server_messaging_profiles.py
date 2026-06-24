@@ -14,8 +14,8 @@ import yaml
 @pytest.fixture
 def isolated_profiles(tmp_path, monkeypatch, _isolate_prostor_home):
     """Isolated default home + one named profile, each with its own .env."""
-    from prostor_constants import get_prostor_home
     from prostor_cli import profiles
+    from prostor_constants import get_prostor_home
 
     default_home = get_prostor_home()
     profiles_root = default_home / "profiles"
@@ -42,8 +42,8 @@ def client(monkeypatch, isolated_profiles):
         pytest.skip("fastapi/starlette not installed")
 
     import prostor_state
+    from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
     from prostor_constants import get_prostor_home
-    from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
     monkeypatch.setattr(prostor_state, "DEFAULT_DB_PATH", get_prostor_home() / "state.db")
     # The dashboard process's os.environ may carry root-install credentials;

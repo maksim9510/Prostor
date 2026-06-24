@@ -213,7 +213,8 @@ class TestRunConversationCodexPath:
         background review fires with review_skills=True and the right
         messages_snapshot signature."""
         from agent.transports.codex_app_server_session import (
-            CodexAppServerSession, TurnResult,
+            CodexAppServerSession,
+            TurnResult,
         )
         # Make the fake session report 10 tool iterations in one turn
         # (matching the default skill threshold).
@@ -305,7 +306,8 @@ class TestReviewForkApiModeDowngrade:
         """Live test against the real _spawn_background_review code path:
         verify the review_agent gets api_mode=codex_responses when the
         parent is codex_app_server."""
-        from unittest.mock import MagicMock, patch as _patch
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as _patch
         agent = _make_codex_agent()
         # Pretend memory + skills are configured so the review fork
         # reaches the AIAgent constructor.

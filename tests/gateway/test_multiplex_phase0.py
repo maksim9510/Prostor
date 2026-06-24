@@ -8,8 +8,9 @@ Covers the three Phase 0 deliverables:
      on, without disturbing the positional key layout downstream parsers rely
      on.
 """
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from gateway.config import GatewayConfig, Platform
 from gateway.session import SessionSource, SessionStore, build_session_key

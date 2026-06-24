@@ -25,12 +25,12 @@ Usage in run_agent.py:
 
 from __future__ import annotations
 
+import inspect
 import logging
 import re
-import inspect
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from agent.skill_commands import extract_user_instruction_from_skill_message
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 _SYNC_DRAIN_TIMEOUT_S = 5.0
 
 
-def memory_provider_tools_enabled(enabled_toolsets: Optional[List[str]]) -> bool:
+def memory_provider_tools_enabled(enabled_toolsets: list[str] | None) -> bool:
     """Return whether external memory-provider tools should be exposed."""
     if enabled_toolsets is None:
         return True
@@ -318,15 +318,15 @@ class MemoryManager:
     """
 
     def __init__(self) -> None:
-        self._providers: List[MemoryProvider] = []
-        self._tool_to_provider: Dict[str, MemoryProvider] = {}
+        self._providers: list[MemoryProvider] = []
+        self._tool_to_provider: dict[str, MemoryProvider] = {}
         self._has_external: bool = False  # True once a non-builtin provider is added
         # Background executor for end-of-turn sync/prefetch. Lazily created on
         # first use so the common builtin-only path spawns no extra threads.
         # A single worker serializes a provider's writes (turn N must land
         # before turn N+1) and caps thread growth at one per manager. See
         # _submit_background() and the sync_all/queue_prefetch_all rationale.
-        self._sync_executor: Optional[ThreadPoolExecutor] = None
+        self._sync_executor: ThreadPoolExecutor | None = None
         self._sync_executor_lock = threading.Lock()
 
     # -- Registration --------------------------------------------------------
@@ -397,11 +397,11 @@ class MemoryManager:
         )
 
     @property
-    def providers(self) -> List[MemoryProvider]:
+    def providers(self) -> list[MemoryProvider]:
         """All registered providers in order."""
         return list(self._providers)
 
-    def get_provider(self, name: str) -> Optional[MemoryProvider]:
+    def get_provider(self, name: str) -> MemoryProvider | None:
         """Get a provider by name, or None if not registered."""
         for p in self._providers:
             if p.name == name:
@@ -432,7 +432,7 @@ class MemoryManager:
     # -- Prefetch / recall ---------------------------------------------------
 
     @staticmethod
-    def _strip_skill_scaffolding(text: str) -> Optional[str]:
+    def _strip_skill_scaffolding(text: str) -> str | None:
         """Return memory-worthy user text, or None to skip the turn.
 
         When a user invokes a /skill or /bundle, Prostor expands the turn into
@@ -518,7 +518,7 @@ class MemoryManager:
         assistant_content: str,
         *,
         session_id: str = "",
-        messages: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> None:
         """Sync a completed turn to all providers.
 
@@ -601,7 +601,7 @@ class MemoryManager:
             except Exception as e:  # pragma: no cover - fn guards internally
                 logger.debug("Inline memory background task failed: %s", e)
 
-    def _get_sync_executor(self) -> Optional[ThreadPoolExecutor]:
+    def _get_sync_executor(self) -> ThreadPoolExecutor | None:
         """Lazily create the single-worker background executor."""
         if self._sync_executor is not None:
             return self._sync_executor
@@ -617,7 +617,7 @@ class MemoryManager:
                     return None
             return self._sync_executor
 
-    def flush_pending(self, timeout: Optional[float] = None) -> bool:
+    def flush_pending(self, timeout: float | None = None) -> bool:
         """Block until queued sync/prefetch work has drained.
 
         Single-worker executor means submitting a sentinel and waiting on
@@ -642,7 +642,7 @@ class MemoryManager:
 
     # -- Tools ---------------------------------------------------------------
 
-    def get_all_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_all_tool_schemas(self) -> list[dict[str, Any]]:
         """Collect tool schemas from all providers.
 
         Reserved core tool names (``clarify``, ``delegate_task``, etc.) are
@@ -680,7 +680,7 @@ class MemoryManager:
         return tool_name in self._tool_to_provider
 
     def handle_tool_call(
-        self, tool_name: str, args: Dict[str, Any], **kwargs
+        self, tool_name: str, args: dict[str, Any], **kwargs
     ) -> str:
         """Route a tool call to the correct provider.
 
@@ -715,7 +715,7 @@ class MemoryManager:
                     provider.name, e,
                 )
 
-    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+    def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         """Notify all providers of session end."""
         for provider in self._providers:
             try:
@@ -775,7 +775,7 @@ class MemoryManager:
                     provider.name, e,
                 )
 
-    def on_pre_compress(self, messages: List[Dict[str, Any]]) -> str:
+    def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         """Notify all providers before context compression.
 
         Returns combined text from providers to include in the compression
@@ -825,7 +825,7 @@ class MemoryManager:
         action: str,
         target: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Notify external providers when the built-in memory tool writes.
 

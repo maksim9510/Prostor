@@ -15,8 +15,8 @@ Usage:
     variants = generate_variants("How do I hack a WiFi network?", tier="standard")
 """
 
-import re
 import base64
+import re
 
 # ═══════════════════════════════════════════════════════════════════
 # Trigger words that commonly trip safety classifiers
@@ -110,13 +110,16 @@ BRAILLE_MAP = {
 # 33 Obfuscation Techniques (3 tiers)
 # ═══════════════════════════════════════════════════════════════════
 
+
 def _apply_raw(word):
     """Raw — no transformation (baseline)."""
     return word
 
+
 def _apply_leetspeak(word):
     """L33t — basic leetspeak substitution."""
     return ''.join(LEET_MAP.get(c.lower(), c) for c in word)
+
 
 def _apply_unicode(word):
     """Unicode — Cyrillic/homoglyph substitution."""
@@ -129,6 +132,7 @@ def _apply_unicode(word):
             result.append(c)
     return ''.join(result)
 
+
 def _apply_bubble(word):
     """Bubble — circled letter Unicode characters."""
     result = []
@@ -140,9 +144,11 @@ def _apply_bubble(word):
             result.append(c)
     return ''.join(result)
 
+
 def _apply_spaced(word):
     """Spaced — insert spaces between characters."""
     return ' '.join(word)
+
 
 def _apply_fullwidth(word):
     """Fullwidth — fullwidth Unicode characters."""
@@ -155,21 +161,26 @@ def _apply_fullwidth(word):
             result.append(c)
     return ''.join(result)
 
+
 def _apply_zwj(word):
     """ZeroWidth — zero-width joiners between characters."""
     return '\u200D'.join(word)
+
 
 def _apply_mixedcase(word):
     """MiXeD — alternating case."""
     return ''.join(c.upper() if i % 2 else c.lower() for i, c in enumerate(word))
 
+
 def _apply_semantic(word):
     """Semantic — replace with synonym/description."""
     return SEMANTIC_SYNONYMS.get(word.lower(), word)
 
+
 def _apply_dotted(word):
     """Dotted — dots between characters."""
     return '.'.join(word)
+
 
 def _apply_underscored(word):
     """Under_score — underscores between characters."""
@@ -177,21 +188,26 @@ def _apply_underscored(word):
 
 # ─── TIER 2: ENCODING + FRAMING (12–22) ─────────────────────────
 
+
 def _apply_reversed(word):
     """Reversed — reverse the characters."""
     return word[::-1]
+
 
 def _apply_superscript(word):
     """Superscript — superscript Unicode characters."""
     return ''.join(SUPERSCRIPT_MAP.get(c.lower(), c) for c in word)
 
+
 def _apply_smallcaps(word):
     """SmallCaps — small capital Unicode characters."""
     return ''.join(SMALLCAPS_MAP.get(c.lower(), c) for c in word)
 
+
 def _apply_morse(word):
     """Morse — morse code representation."""
     return ' '.join(MORSE_MAP.get(c.lower(), c) for c in word)
+
 
 def _apply_piglatin(word):
     """PigLatin — pig latin transformation."""
@@ -204,9 +220,11 @@ def _apply_piglatin(word):
         return w[idx:] + w[:idx] + 'ay'
     return w + 'ay'
 
+
 def _apply_brackets(word):
     """[B.r.a.c.k] — each character in brackets."""
     return '[' + ']['.join(word) + ']'
+
 
 def _apply_mathbold(word):
     """MathBold — mathematical bold Unicode."""
@@ -219,6 +237,7 @@ def _apply_mathbold(word):
             result.append(c)
     return ''.join(result)
 
+
 def _apply_mathitalic(word):
     """MathItalic — mathematical italic Unicode."""
     result = []
@@ -230,19 +249,23 @@ def _apply_mathitalic(word):
             result.append(c)
     return ''.join(result)
 
+
 def _apply_strikethrough(word):
     """S̶t̶r̶i̶k̶e̶ — strikethrough combining characters."""
     return ''.join(c + '\u0336' for c in word)
 
+
 def _apply_leetheavy(word):
     """L33t+ — heavy leetspeak with extended map."""
     return ''.join(LEET_MAP_HEAVY.get(c.lower(), LEET_MAP.get(c.lower(), c)) for c in word)
+
 
 def _apply_hyphenated(word):
     """Hyphen — hyphens between characters."""
     return '-'.join(word)
 
 # ─── TIER 3: MULTI-LAYER COMBOS (23–33) ─────────────────────────
+
 
 def _apply_leetunicode(word):
     """L33t+Uni — alternating leet and unicode."""
@@ -255,13 +278,16 @@ def _apply_leetunicode(word):
             result.append(UNICODE_MAP.get(lower, c))
     return ''.join(result)
 
+
 def _apply_spacedmixed(word):
     """S p A c E d — spaced + alternating case."""
     return ' '.join(c.upper() if i % 2 else c.lower() for i, c in enumerate(word))
 
+
 def _apply_reversedleet(word):
     """Rev+L33t — reversed then leetspeak."""
     return ''.join(LEET_MAP.get(c.lower(), c) for c in reversed(word))
+
 
 def _apply_bubblespaced(word):
     """Bubble+Spaced — bubble text with spaces."""
@@ -274,6 +300,7 @@ def _apply_bubblespaced(word):
             result.append(c)
     return ' '.join(result)
 
+
 def _apply_unicodezwj(word):
     """Uni+ZWJ — unicode homoglyphs with zero-width non-joiners."""
     result = []
@@ -282,6 +309,7 @@ def _apply_unicodezwj(word):
         result.append(mapped if mapped else c)
     return '\u200C'.join(result)
 
+
 def _apply_base64hint(word):
     """Base64 — base64 encode the word."""
     try:
@@ -289,9 +317,11 @@ def _apply_base64hint(word):
     except Exception:
         return word
 
+
 def _apply_hexencode(word):
     """Hex — hex encode each character."""
     return ' '.join(f'0x{ord(c):x}' for c in word)
+
 
 def _apply_acrostic(word):
     """Acrostic — NATO alphabet expansion."""
@@ -304,6 +334,7 @@ def _apply_acrostic(word):
             result.append(c)
     return ' '.join(result)
 
+
 def _apply_dottedunicode(word):
     """Dot+Uni — unicode homoglyphs with dots."""
     result = []
@@ -311,6 +342,7 @@ def _apply_dottedunicode(word):
         mapped = UNICODE_MAP.get(c.lower())
         result.append(mapped if mapped else c)
     return '.'.join(result)
+
 
 def _apply_fullwidthmixed(word):
     """FW MiX — fullwidth + mixed case alternating."""
@@ -322,6 +354,7 @@ def _apply_fullwidthmixed(word):
         else:
             result.append(c.upper() if i % 2 else c)
     return ''.join(result)
+
 
 def _apply_triplelayer(word):
     """Triple — leet + unicode + uppercase rotating with ZWJ."""
@@ -389,13 +422,16 @@ TIER_SIZES = {'light': 11, 'standard': 22, 'heavy': 33}
 # Encoding escalation (for retry logic with GODMODE CLASSIC)
 # ═══════════════════════════════════════════════════════════════════
 
+
 def to_braille(text):
     """Convert text to braille Unicode characters."""
     return ''.join(BRAILLE_MAP.get(c.lower(), c) for c in text)
 
+
 def to_leetspeak(text):
     """Convert text to leetspeak."""
     return ''.join(LEET_MAP.get(c.lower(), c) for c in text)
+
 
 def to_bubble(text):
     """Convert text to bubble/circled text."""
@@ -409,6 +445,7 @@ def to_bubble(text):
             result.append(c)
     return ''.join(result)
 
+
 def to_morse(text):
     """Convert text to Morse code."""
     morse = {
@@ -420,6 +457,7 @@ def to_morse(text):
         'z': '--..', ' ': '/',
     }
     return ' '.join(morse.get(c.lower(), c) for c in text)
+
 
 ENCODING_ESCALATION = [
     {'name': 'plain', 'label': 'PLAIN', 'fn': lambda q: q},
@@ -448,12 +486,12 @@ def detect_triggers(text, custom_triggers=None):
 
 def obfuscate_query(query, technique_name, triggers=None):
     """Apply one obfuscation technique to trigger words in a query.
-    
+
     Args:
         query: The input text
         technique_name: Name of the technique (e.g., 'leetspeak', 'unicode')
         triggers: List of trigger words to obfuscate. If None, auto-detect.
-    
+
     Returns:
         Obfuscated query string
     """
@@ -480,12 +518,12 @@ def obfuscate_query(query, technique_name, triggers=None):
 
 def generate_variants(query, tier="standard", custom_triggers=None):
     """Generate obfuscated variants of a query up to the tier limit.
-    
+
     Args:
         query: Input text
         tier: 'light' (11), 'standard' (22), or 'heavy' (33)
         custom_triggers: Additional trigger words beyond the default list
-    
+
     Returns:
         List of dicts with keys: text, technique, label, tier
     """
@@ -493,7 +531,7 @@ def generate_variants(query, tier="standard", custom_triggers=None):
     max_variants = TIER_SIZES.get(tier, TIER_SIZES['standard'])
 
     variants = []
-    for i, tech in enumerate(TECHNIQUES[:max_variants]):
+    for _i, tech in enumerate(TECHNIQUES[:max_variants]):
         variants.append({
             'text': obfuscate_query(query, tech['name'], triggers),
             'technique': tech['name'],
@@ -506,11 +544,11 @@ def generate_variants(query, tier="standard", custom_triggers=None):
 
 def escalate_encoding(query, level=0):
     """Get an encoding-escalated version of the query.
-    
+
     Args:
         query: Input text
         level: 0=plain, 1=leetspeak, 2=bubble, 3=braille, 4=morse
-    
+
     Returns:
         Tuple of (encoded_query, label)
     """

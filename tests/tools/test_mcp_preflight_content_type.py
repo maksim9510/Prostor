@@ -45,7 +45,7 @@ def _serve(handler_cls):
 
 
 def _handler(status: int = 200,
-             content_type: "str | None" = "text/html; charset=utf-8",
+             content_type: str | None = "text/html; charset=utf-8",
              body: bytes = b"<html>x</html>", head_status=None, record=None):
     """Build a BaseHTTPRequestHandler that replies with the given shape.
 

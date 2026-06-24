@@ -22,12 +22,11 @@ import shlex
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from prostor_cli import kanban_db as kb
 from prostor_cli import kanban_swarm as ks
 from prostor_cli.profiles import get_active_profile_name, get_profile_dir, seed_profile_skills
-
 
 # ---------------------------------------------------------------------------
 # Small formatting helpers
@@ -44,7 +43,7 @@ _STATUS_ICONS = {
 }
 
 
-def _fmt_ts(ts: Optional[int]) -> str:
+def _fmt_ts(ts: int | None) -> str:
     if not ts:
         return ""
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
@@ -82,7 +81,7 @@ def _task_to_dict(t: kb.Task) -> dict[str, Any]:
     }
 
 
-def _run_state_kwargs(args: argparse.Namespace) -> Optional[dict[str, str]]:
+def _run_state_kwargs(args: argparse.Namespace) -> dict[str, str] | None:
     st = getattr(args, "state_type", None)
     sn = getattr(args, "state_name", None)
     if (st is None) != (sn is None):
@@ -92,7 +91,7 @@ def _run_state_kwargs(args: argparse.Namespace) -> Optional[dict[str, str]]:
     return {"state_type": st, "state_name": sn}
 
 
-def _parse_workspace_flag(value: str) -> tuple[str, Optional[str]]:
+def _parse_workspace_flag(value: str) -> tuple[str, str | None]:
     """Parse ``--workspace`` into ``(kind, path|None)``.
 
     Accepts: ``scratch``, ``worktree``, ``worktree:<path>``, ``dir:<path>``.
@@ -117,7 +116,7 @@ def _parse_workspace_flag(value: str) -> tuple[str, Optional[str]]:
     )
 
 
-def _parse_branch_flag(value: Optional[str]) -> Optional[str]:
+def _parse_branch_flag(value: str | None) -> str | None:
     """Normalize an optional branch name from ``kanban create --branch``."""
     if value is None:
         return None
@@ -1194,7 +1193,7 @@ def _cmd_boards_set_default_workdir(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _parse_duration(val) -> Optional[int]:
+def _parse_duration(val) -> int | None:
     """Parse ``30s`` / ``5m`` / ``2h`` / ``1d`` or a raw integer → seconds.
 
     Returns None for empty input. Raises ValueError on malformed input so
@@ -1851,7 +1850,7 @@ def _cmd_comment(args: argparse.Namespace) -> int:
     return 0
 
 
-def _worker_run_id_for(task_id: str) -> Optional[int]:
+def _worker_run_id_for(task_id: str) -> int | None:
     if os.environ.get("PROSTOR_KANBAN_TASK") != task_id:
         return None
     raw = os.environ.get("PROSTOR_KANBAN_RUN_ID")
@@ -2759,8 +2758,8 @@ def run_slash(rest: str) -> str:
     both the interactive CLI (``self._handle_kanban_command``) and the
     gateway (``_handle_kanban_command``) so formatting is identical.
     """
-    import io
     import contextlib
+    import io
 
     tokens = shlex.split(rest) if rest and rest.strip() else []
 

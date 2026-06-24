@@ -86,6 +86,7 @@ def test_background_review_summarizer_receives_captured_messages_after_close(mon
     disappear. The fix snapshots ``_session_messages`` before teardown.
     """
     import json
+
     import agent.background_review as bg_review
 
     review_tool_message = {

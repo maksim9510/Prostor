@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 import base64
 import contextvars
 import json
@@ -11,8 +10,9 @@ import logging
 import os
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Deque, Optional
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 import acp
@@ -20,6 +20,7 @@ from acp.schema import (
     AgentCapabilities,
     AgentMessageChunk,
     AgentThoughtChunk,
+    AudioContentBlock,
     AuthenticateResponse,
     AvailableCommand,
     AvailableCommandsUpdate,
@@ -28,7 +29,6 @@ from acp.schema import (
     EmbeddedResourceContentBlock,
     ForkSessionResponse,
     ImageContentBlock,
-    AudioContentBlock,
     Implementation,
     InitializeResponse,
     ListSessionsResponse,
@@ -40,20 +40,20 @@ from acp.schema import (
     NewSessionResponse,
     PromptCapabilities,
     PromptResponse,
-    ResumeSessionResponse,
-    SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
-    SetSessionModeResponse,
     ResourceContentBlock,
+    ResumeSessionResponse,
     SessionCapabilities,
     SessionForkCapabilities,
+    SessionInfo,
     SessionInfoUpdate,
     SessionListCapabilities,
     SessionMode,
-    SessionModeState,
     SessionModelState,
+    SessionModeState,
     SessionResumeCapabilities,
-    SessionInfo,
+    SetSessionConfigOptionResponse,
+    SetSessionModelResponse,
+    SetSessionModeResponse,
     TextContentBlock,
     TextResourceContents,
     UnstructuredCommandInput,
@@ -517,7 +517,7 @@ class ProstorACPAgent(acp.Agent):
     def __init__(self, session_manager: SessionManager | None = None):
         super().__init__()
         self.session_manager = session_manager or SessionManager()
-        self._conn: Optional[acp.Client] = None
+        self._conn: acp.Client | None = None
 
     # ---- Connection lifecycle -----------------------------------------------
 
@@ -713,8 +713,8 @@ class ProstorACPAgent(acp.Agent):
         self,
         acp_session_id: str,
         current_prostor_session_id: str,
-        previous_prostor_session_id: Optional[str] = None,
-    ) -> Optional[dict]:
+        previous_prostor_session_id: str | None = None,
+    ) -> dict | None:
         """Best-effort ``_meta.prostor.sessionProvenance`` for an ACP session."""
         try:
             return session_provenance_meta(
@@ -733,8 +733,8 @@ class ProstorACPAgent(acp.Agent):
         self,
         session_id: str,
         *,
-        current_prostor_session_id: Optional[str] = None,
-        previous_prostor_session_id: Optional[str] = None,
+        current_prostor_session_id: str | None = None,
+        previous_prostor_session_id: str | None = None,
     ) -> None:
         """Send ACP native session metadata after Prostor changes it.
 
@@ -757,7 +757,7 @@ class ProstorACPAgent(acp.Agent):
         # prostor_state.py schema — only started_at/ended_at). Use "now" as
         # the updated_at since we're emitting this notification precisely
         # because the title was just refreshed.
-        updated_at = datetime.now(timezone.utc).isoformat()
+        updated_at = datetime.now(UTC).isoformat()
         meta = self._provenance_meta(
             session_id,
             current_prostor_session_id or session_id,
@@ -822,8 +822,8 @@ class ProstorACPAgent(acp.Agent):
             return
 
         try:
-            from model_tools import get_tool_definitions
             from agent.memory_manager import inject_memory_provider_tools
+            from model_tools import get_tool_definitions
 
             enabled_toolsets = _expand_acp_enabled_toolsets(
                 getattr(state.agent, "enabled_toolsets", None) or ["prostor-acp"],
@@ -1387,7 +1387,7 @@ class ProstorACPAgent(acp.Agent):
         if state.cancel_event:
             state.cancel_event.clear()
 
-        tool_call_ids: dict[str, Deque[str]] = defaultdict(deque)
+        tool_call_ids: dict[str, deque[str]] = defaultdict(deque)
         tool_call_meta: dict[str, dict[str, Any]] = {}
         previous_approval_cb = None
         edit_approval_requester = None
@@ -1779,9 +1779,10 @@ class ProstorACPAgent(acp.Agent):
 
     def _cmd_tools(self, args: str, state: SessionState) -> str:
         try:
-            from model_tools import get_tool_definitions
             from types import SimpleNamespace
+
             from agent.memory_manager import inject_memory_provider_tools
+            from model_tools import get_tool_definitions
 
             toolsets = _expand_acp_enabled_toolsets(
                 getattr(state.agent, "enabled_toolsets", None) or ["prostor-acp"]
@@ -2030,7 +2031,7 @@ class ProstorACPAgent(acp.Agent):
         normalized_mode = str(mode_id or "").strip()
         if normalized_mode not in self._MODE_TO_EDIT_APPROVAL_POLICY:
             normalized_mode = self._MODE_DEFAULT
-        setattr(state, "mode", normalized_mode)
+        state.mode = normalized_mode
         self.session_manager.save_session(session_id)
         logger.info("Session %s: mode switched to %s", session_id, normalized_mode)
         return SetSessionModeResponse()
@@ -2046,13 +2047,13 @@ class ProstorACPAgent(acp.Agent):
 
         if str(config_id) == self._EDIT_APPROVAL_POLICY_CONFIG_ID:
             mode = self._EDIT_APPROVAL_POLICY_TO_MODE.get(str(value), self._MODE_DEFAULT)
-            setattr(state, "mode", mode)
+            state.mode = mode
         else:
             options = getattr(state, "config_options", None)
             if not isinstance(options, dict):
                 options = {}
             options[str(config_id)] = value
-            setattr(state, "config_options", options)
+            state.config_options = options
         self.session_manager.save_session(session_id)
         logger.info("Session %s: config option %s updated", session_id, config_id)
         return SetSessionConfigOptionResponse(config_options=[])

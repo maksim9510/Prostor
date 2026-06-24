@@ -29,8 +29,9 @@ Usage (gateway side):
 """
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,12 @@ class PlatformEntry:
     # Optional: given a PlatformConfig, is it properly configured?
     # If None, the registry skips config validation and lets the adapter
     # fail at connect() time with a descriptive error.
-    validate_config: Optional[Callable[[Any], bool]] = None
+    validate_config: Callable[[Any], bool] | None = None
 
     # Optional: given a PlatformConfig, is the platform connected/enabled?
     # Used by ``GatewayConfig.get_connected_platforms()`` and setup UI status.
     # If None, falls back to ``validate_config`` or ``check_fn``.
-    is_connected: Optional[Callable[[Any], bool]] = None
+    is_connected: Callable[[Any], bool] | None = None
 
     # Env vars this platform needs (for ``prostor setup`` display).
     required_env: list = field(default_factory=list)
@@ -73,7 +74,7 @@ class PlatformEntry:
     # Signature: () -> None (prompts user, saves env vars).
     # If None, falls back to _setup_standard_platform (needs token_var + vars)
     # or a generic "set these env vars" display.
-    setup_fn: Optional[Callable[[], None]] = None
+    setup_fn: Callable[[], None] | None = None
 
     # "builtin" or "plugin"
     source: str = "plugin"
@@ -117,7 +118,7 @@ class PlatformEntry:
     # ``gateway status`` etc. can reflect env-only configuration without
     # instantiating the adapter.  Return ``None`` (or an empty dict) to skip.
     # Signature: () -> Optional[dict[str, Any]]
-    env_enablement_fn: Optional[Callable[[], Optional[dict]]] = None
+    env_enablement_fn: Callable[[], dict | None] | None = None
 
     # ── YAML→env config bridge ──
     # Optional: translate this platform's ``config.yaml`` keys into env vars
@@ -133,7 +134,7 @@ class PlatformEntry:
     # are caught and logged at debug level.
     # See website/docs/developer-guide/adding-platform-adapters.md for the
     # full contract and a worked example.
-    apply_yaml_config_fn: Optional[Callable[[dict, dict], Optional[dict]]] = None
+    apply_yaml_config_fn: Callable[[dict, dict], dict | None] | None = None
 
     # Optional: home-channel env var name for cron/notification delivery
     # (e.g. ``"IRC_HOME_CHANNEL"``).  When set, ``cron.scheduler`` treats this
@@ -156,7 +157,7 @@ class PlatformEntry:
     # ephemeral connection / acquire a fresh OAuth token, send, and close.
     # Without this hook, plugin platforms cannot serve as cron ``deliver=``
     # targets when the gateway is not co-resident with the cron process.
-    standalone_sender_fn: Optional[Callable[..., Awaitable[dict]]] = None
+    standalone_sender_fn: Callable[..., Awaitable[dict]] | None = None
 
 
 class PlatformRegistry:
@@ -190,7 +191,7 @@ class PlatformRegistry:
         """Remove a platform entry.  Returns True if it existed."""
         return self._entries.pop(name, None) is not None
 
-    def get(self, name: str) -> Optional[PlatformEntry]:
+    def get(self, name: str) -> PlatformEntry | None:
         """Look up a platform entry by name."""
         return self._entries.get(name)
 
@@ -205,7 +206,7 @@ class PlatformRegistry:
     def is_registered(self, name: str) -> bool:
         return name in self._entries
 
-    def create_adapter(self, name: str, config: Any) -> Optional[Any]:
+    def create_adapter(self, name: str, config: Any) -> Any | None:
         """Create an adapter instance for the given platform name.
 
         Returns None if:

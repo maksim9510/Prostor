@@ -126,16 +126,18 @@ class TestResolveBedrocRegion:
         assert resolve_bedrock_region(env) == "ap-northeast-1"
 
     def test_defaults_to_us_east_1(self):
-        from agent.bedrock_adapter import resolve_bedrock_region
         from unittest.mock import MagicMock
+
+        from agent.bedrock_adapter import resolve_bedrock_region
         mock_session = MagicMock()
         mock_session.get_config_variable.return_value = None
         with _mock_botocore_session(return_value=mock_session):
             assert resolve_bedrock_region({}) == "us-east-1"
 
     def test_falls_back_to_botocore_profile_region(self):
-        from agent.bedrock_adapter import resolve_bedrock_region
         from unittest.mock import MagicMock
+
+        from agent.bedrock_adapter import resolve_bedrock_region
         mock_session = MagicMock()
         mock_session.get_config_variable.return_value = "eu-central-1"
         with _mock_botocore_session(return_value=mock_session):
@@ -945,8 +947,8 @@ class TestExtractProviderFromArn:
 class TestClientCache:
     def test_reset_clears_caches(self):
         from agent.bedrock_adapter import (
-            _bedrock_runtime_client_cache,
             _bedrock_control_client_cache,
+            _bedrock_runtime_client_cache,
             reset_client_cache,
         )
         _bedrock_runtime_client_cache["test"] = "dummy"
@@ -1182,7 +1184,7 @@ class TestBedrockContextLength:
         assert get_bedrock_context_length("amazon.nova-micro-v1:0") == 128_000
 
     def test_unknown_model_gets_default(self):
-        from agent.bedrock_adapter import get_bedrock_context_length, BEDROCK_DEFAULT_CONTEXT_LENGTH
+        from agent.bedrock_adapter import BEDROCK_DEFAULT_CONTEXT_LENGTH, get_bedrock_context_length
         assert get_bedrock_context_length("unknown.model-v1:0") == BEDROCK_DEFAULT_CONTEXT_LENGTH
 
     def test_inference_profile_resolves(self):
@@ -1362,28 +1364,32 @@ class TestIsStaleConnectionError:
 
     def test_detects_botocore_connection_closed_error(self):
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
-        from agent.bedrock_adapter import is_stale_connection_error
         from botocore.exceptions import ConnectionClosedError
+
+        from agent.bedrock_adapter import is_stale_connection_error
         exc = ConnectionClosedError(endpoint_url="https://bedrock.example")
         assert is_stale_connection_error(exc) is True
 
     def test_detects_botocore_endpoint_connection_error(self):
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
-        from agent.bedrock_adapter import is_stale_connection_error
         from botocore.exceptions import EndpointConnectionError
+
+        from agent.bedrock_adapter import is_stale_connection_error
         exc = EndpointConnectionError(endpoint_url="https://bedrock.example")
         assert is_stale_connection_error(exc) is True
 
     def test_detects_botocore_read_timeout(self):
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
-        from agent.bedrock_adapter import is_stale_connection_error
         from botocore.exceptions import ReadTimeoutError
+
+        from agent.bedrock_adapter import is_stale_connection_error
         exc = ReadTimeoutError(endpoint_url="https://bedrock.example")
         assert is_stale_connection_error(exc) is True
 
     def test_detects_urllib3_protocol_error(self):
-        from agent.bedrock_adapter import is_stale_connection_error
         from urllib3.exceptions import ProtocolError
+
+        from agent.bedrock_adapter import is_stale_connection_error
         exc = ProtocolError("Connection broken")
         assert is_stale_connection_error(exc) is True
 
@@ -1437,12 +1443,13 @@ class TestCallConverseInvalidatesOnStaleError:
 
     def test_converse_evicts_client_on_stale_error(self):
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
+        from botocore.exceptions import ConnectionClosedError
+
         from agent.bedrock_adapter import (
             _bedrock_runtime_client_cache,
             call_converse,
             reset_client_cache,
         )
-        from botocore.exceptions import ConnectionClosedError
 
         reset_client_cache()
         dead_client = MagicMock()
@@ -1464,12 +1471,13 @@ class TestCallConverseInvalidatesOnStaleError:
 
     def test_converse_stream_evicts_client_on_stale_error(self):
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
+        from botocore.exceptions import ConnectionClosedError
+
         from agent.bedrock_adapter import (
             _bedrock_runtime_client_cache,
             call_converse_stream,
             reset_client_cache,
         )
-        from botocore.exceptions import ConnectionClosedError
 
         reset_client_cache()
         dead_client = MagicMock()
@@ -1490,12 +1498,13 @@ class TestCallConverseInvalidatesOnStaleError:
     def test_converse_does_not_evict_on_non_stale_error(self):
         """Non-stale errors (e.g. ValidationException) leave the client cache alone."""
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
+        from botocore.exceptions import ClientError
+
         from agent.bedrock_adapter import (
             _bedrock_runtime_client_cache,
             call_converse,
             reset_client_cache,
         )
-        from botocore.exceptions import ClientError
 
         reset_client_cache()
         live_client = MagicMock()
@@ -1571,8 +1580,9 @@ class TestStreamingAccessDeniedDetection:
     def test_ignores_access_denied_for_other_actions(self):
         """AccessDenied on InvokeModel itself is NOT a streaming-only denial."""
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
-        from agent.bedrock_adapter import is_streaming_access_denied_error
         from botocore.exceptions import ClientError
+
+        from agent.bedrock_adapter import is_streaming_access_denied_error
         exc = ClientError(
             error_response={
                 "Error": {
@@ -1589,8 +1599,9 @@ class TestStreamingAccessDeniedDetection:
     def test_ignores_validation_error_mentioning_action(self):
         """Non-authz ClientErrors don't match even if the action name appears."""
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
-        from agent.bedrock_adapter import is_streaming_access_denied_error
         from botocore.exceptions import ClientError
+
+        from agent.bedrock_adapter import is_streaming_access_denied_error
         exc = ClientError(
             error_response={
                 "Error": {
@@ -1625,12 +1636,13 @@ class TestCallConverseStreamIamFallback:
 
     def test_falls_back_to_converse_on_streaming_denial(self):
         pytest.importorskip("botocore", reason="botocore required for Bedrock exception tests")
+        from botocore.exceptions import ClientError
+
         from agent.bedrock_adapter import (
             _bedrock_runtime_client_cache,
             call_converse_stream,
             reset_client_cache,
         )
-        from botocore.exceptions import ClientError
 
         reset_client_cache()
         client = MagicMock()

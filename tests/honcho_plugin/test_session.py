@@ -1,17 +1,15 @@
 """Tests for plugins/memory/honcho/session.py — HonchoSession and helpers."""
 
 import time
-
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from plugins.memory.honcho import HonchoMemoryProvider
 from plugins.memory.honcho.session import (
     HonchoSession,
     HonchoSessionManager,
 )
-from plugins.memory.honcho import HonchoMemoryProvider
-
 
 # ---------------------------------------------------------------------------
 # HonchoSession dataclass
@@ -623,7 +621,7 @@ class TestToolsModeInitBehavior:
         provider = HonchoMemoryProvider()
 
         # Patch the config loading and session init to avoid real Honcho calls
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         mock_manager = MagicMock()
         mock_session = MagicMock()
@@ -713,8 +711,9 @@ class TestPerSessionMigrateGuard:
 
     def _make_provider_with_strategy(self, strategy, init_on_session_start=True):
         """Create a HonchoMemoryProvider and track migrate_memory_files calls."""
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
-        from unittest.mock import patch, MagicMock
 
         cfg = HonchoClientConfig(
             api_key="test-key",
@@ -922,7 +921,8 @@ class TestDialecticCadenceDefaults:
     @staticmethod
     def _make_provider(cfg_extra=None):
         """Create a HonchoMemoryProvider with mocked dependencies."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
 
         defaults = dict(api_key="test-key", enabled=True, recall_mode="hybrid")
@@ -993,7 +993,8 @@ class TestDialecticDepth:
 
     @staticmethod
     def _make_provider(cfg_extra=None):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
 
         defaults = dict(api_key="test-key", enabled=True, recall_mode="hybrid")
@@ -1158,7 +1159,8 @@ class TestTrivialPromptHeuristic:
 
     @staticmethod
     def _make_provider():
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
 
         cfg = HonchoClientConfig(api_key="test-key", enabled=True, recall_mode="hybrid")
@@ -1218,7 +1220,8 @@ class TestDialecticCadenceAdvancesOnSuccess:
 
     @staticmethod
     def _make_provider():
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
 
         cfg = HonchoClientConfig(
@@ -1300,7 +1303,8 @@ class TestSessionStartDialecticPrewarm:
 
     @staticmethod
     def _make_provider(cfg_extra=None, dialectic_result="prewarm synthesis"):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
 
         defaults = dict(api_key="test-key", enabled=True, recall_mode="hybrid")
@@ -1372,7 +1376,8 @@ class TestDialecticLiveness:
 
     @staticmethod
     def _make_provider(cfg_extra=None):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
 
         defaults = dict(api_key="test-key", enabled=True, recall_mode="hybrid", timeout=2.0)
@@ -1514,7 +1519,8 @@ class TestDialecticLifecycleSmoke:
 
     @staticmethod
     def _make_provider(cfg_extra=None):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
 
         defaults = dict(
@@ -1570,7 +1576,7 @@ class TestDialecticLifecycleSmoke:
         and the silent-failure retry path without their gates tripping each
         other. Trivial + slash skips apply independent of cadence.
         """
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
         provider, mgr, cfg = self._make_provider(
             cfg_extra={"raw": {"dialecticCadence": 3}}
         )
@@ -1672,7 +1678,8 @@ class TestReasoningHeuristic:
 
     @staticmethod
     def _make_provider(cfg_extra=None):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from plugins.memory.honcho.client import HonchoClientConfig
 
         defaults = dict(

@@ -24,7 +24,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ BATCHABLE = {
 class ToolCallRecord:
     tool_name: str
     timestamp: float
-    args_summary: Dict[str, Any] = field(default_factory=dict)
+    args_summary: dict[str, Any] = field(default_factory=dict)
     tokens_estimated: int = 0
 
 
@@ -69,15 +69,15 @@ class AdaptiveToolRouter:
         self._suggestions_issued: int = 0
         self._tokens_saved_potential: int = 0
         self._auto_batch_enabled: bool = False
-        self._pattern_counts: Dict[str, int] = defaultdict(int)
+        self._pattern_counts: dict[str, int] = defaultdict(int)
         self._session_start: float = time.time()
 
     def record_call(
         self,
         tool_name: str,
-        args: Optional[Dict[str, Any]] = None,
+        args: dict[str, Any] | None = None,
         tokens: int = 0,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Record a tool call and check for batchable patterns.
 
         Returns suggestion dict if a batch alternative is recommended,
@@ -104,7 +104,7 @@ class AdaptiveToolRouter:
         # Check for batchable patterns
         return self._check_pattern(tool_name)
 
-    def _check_pattern(self, tool_name: str) -> Optional[Dict[str, Any]]:
+    def _check_pattern(self, tool_name: str) -> dict[str, Any] | None:
         """Check if recent calls form a batchable pattern."""
         with self._lock:
             recent = list(self._recent_calls)
@@ -177,7 +177,7 @@ class AdaptiveToolRouter:
     def get_pending_batch(
         self,
         tool_name: str,
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """Get pending batchable operations for a tool.
 
         If auto_batch is enabled, collects all consecutive same-tool calls
@@ -203,13 +203,13 @@ class AdaptiveToolRouter:
         batch.reverse()
         return batch
 
-    def get_insights(self) -> Dict[str, Any]:
+    def get_insights(self) -> dict[str, Any]:
         """Get session insights — patterns detected, potential savings."""
         with self._lock:
             recent = list(self._recent_calls)
 
         # Count tool usage
-        tool_counts: Dict[str, int] = defaultdict(int)
+        tool_counts: dict[str, int] = defaultdict(int)
         for call in recent:
             tool_counts[call.tool_name] += 1
 
@@ -232,7 +232,7 @@ class AdaptiveToolRouter:
             "recommendations": self._generate_recommendations(tool_counts, missed),
         }
 
-    def _find_missed_batches(self, calls: List[ToolCallRecord]) -> List[Dict[str, Any]]:
+    def _find_missed_batches(self, calls: list[ToolCallRecord]) -> list[dict[str, Any]]:
         """Find sequences where batch tools should have been used."""
         missed = []
         i = 0
@@ -275,9 +275,9 @@ class AdaptiveToolRouter:
 
     def _generate_recommendations(
         self,
-        tool_counts: Dict[str, int],
-        missed: List[Dict[str, Any]],
-    ) -> List[str]:
+        tool_counts: dict[str, int],
+        missed: list[dict[str, Any]],
+    ) -> list[str]:
         """Generate actionable recommendations."""
         recs = []
 
@@ -320,7 +320,7 @@ class AdaptiveToolRouter:
 # Global singleton
 # ---------------------------------------------------------------------------
 
-_router: Optional[AdaptiveToolRouter] = None
+_router: AdaptiveToolRouter | None = None
 _router_lock = threading.Lock()
 
 

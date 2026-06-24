@@ -8,7 +8,6 @@ the cursor on screen.
 """
 from cli import ProstorCLI
 
-
 _compute = ProstorCLI._compute_model_picker_viewport
 
 

@@ -1,6 +1,6 @@
 """Tests for DingTalk platform adapter."""
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -410,6 +410,7 @@ class TestConnect:
     async def test_disconnect_finalizes_open_streaming_cards(self):
         """Streaming cards must be finalized before HTTP client closes."""
         from unittest.mock import AsyncMock, patch
+
         from plugins.platforms.dingtalk.adapter import DingTalkAdapter
         adapter = DingTalkAdapter(PlatformConfig(enabled=True))
         adapter._http_client = AsyncMock()
@@ -586,8 +587,8 @@ class TestExtractMedia:
     def test_voice_rich_text_item_classified_as_voice(self):
         """Native DingTalk voice notes (type=voice) must enter the auto-STT
         path via MessageType.VOICE — the gateway skips STT for AUDIO."""
-        from plugins.platforms.dingtalk.adapter import DingTalkAdapter
         from gateway.platforms.base import MessageType
+        from plugins.platforms.dingtalk.adapter import DingTalkAdapter
 
         msg = self._msg_with_rich_text(
             [{"type": "voice", "downloadCode": "dl_voice_abc"}]
@@ -602,8 +603,8 @@ class TestExtractMedia:
     def test_audio_rich_text_item_stays_audio(self):
         """Generic audio uploads (e.g. an mp3 the user attached) must NOT
         be auto-transcribed — they stay MessageType.AUDIO."""
-        from plugins.platforms.dingtalk.adapter import DingTalkAdapter, DINGTALK_TYPE_MAPPING
         from gateway.platforms.base import MessageType
+        from plugins.platforms.dingtalk.adapter import DINGTALK_TYPE_MAPPING, DingTalkAdapter
 
         # Simulate a future/non-voice audio rich-text item by extending the
         # mapping so item_type != "voice" but still routes through the
@@ -790,7 +791,7 @@ class TestIncomingHandlerProcess:
     @pytest.mark.asyncio
     async def test_process_extracts_session_webhook(self):
         """session_webhook must be populated from callback data."""
-        from plugins.platforms.dingtalk.adapter import _IncomingHandler, DingTalkAdapter
+        from plugins.platforms.dingtalk.adapter import DingTalkAdapter, _IncomingHandler
 
         adapter = DingTalkAdapter(PlatformConfig(enabled=True))
         adapter._on_message = AsyncMock()
@@ -823,7 +824,7 @@ class TestIncomingHandlerProcess:
         """If ChatbotMessage.from_dict does not map sessionWebhook (e.g. SDK
         version mismatch), the handler should fall back to extracting it
         directly from the raw data dict."""
-        from plugins.platforms.dingtalk.adapter import _IncomingHandler, DingTalkAdapter
+        from plugins.platforms.dingtalk.adapter import DingTalkAdapter, _IncomingHandler
 
         adapter = DingTalkAdapter(PlatformConfig(enabled=True))
         adapter._on_message = AsyncMock()
@@ -851,7 +852,7 @@ class TestIncomingHandlerProcess:
     async def test_process_returns_ack_immediately(self):
         """process() must not block on _on_message — it should return
         the ACK tuple before the message is fully processed."""
-        from plugins.platforms.dingtalk.adapter import _IncomingHandler, DingTalkAdapter
+        from plugins.platforms.dingtalk.adapter import DingTalkAdapter, _IncomingHandler
 
         processing_started = asyncio.Event()
         processing_gate = asyncio.Event()
@@ -1134,7 +1135,7 @@ class TestDingTalkAdapterAICards:
         msg.text = MagicMock(content="Hello")
         msg.session_webhook = "https://api.dingtalk.com/robot/sendBySession?session=test"
         msg.session_webhook_expired_time = 999999999999
-        msg.create_at = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+        msg.create_at = int(datetime.now(tz=UTC).timestamp() * 1000)
         msg.at_users = []
         return msg
 

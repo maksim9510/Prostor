@@ -35,7 +35,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fix A: prelude error surfacing via wire `error` events
 #
@@ -323,8 +322,8 @@ def test_classify_api_error_stream_event_grok_subscription_is_auth():
     skipped.  The explicit pattern added at step 1 must fire first and
     return auth/non-retryable so _is_entitlement_failure can stop the loop.
     """
+    from agent.error_classifier import FailoverReason, classify_api_error
     from run_agent import _StreamErrorEvent
-    from agent.error_classifier import classify_api_error, FailoverReason
 
     err = _StreamErrorEvent(
         "You have either run out of available resources or do not have an "
@@ -339,8 +338,8 @@ def test_classify_api_error_stream_event_grok_subscription_is_auth():
 
 def test_classify_api_error_stream_event_resources_exhausted_grok_is_auth():
     """'out of available resources' + 'grok' variant also classifies as auth."""
+    from agent.error_classifier import FailoverReason, classify_api_error
     from run_agent import _StreamErrorEvent
-    from agent.error_classifier import classify_api_error, FailoverReason
 
     err = _StreamErrorEvent(
         "You have run out of available resources for Grok.",
@@ -352,8 +351,8 @@ def test_classify_api_error_stream_event_resources_exhausted_grok_is_auth():
 
 def test_classify_api_error_stream_event_unrelated_not_reclassified():
     """An unrelated _StreamErrorEvent must not be caught by the xAI guard."""
+    from agent.error_classifier import FailoverReason, classify_api_error
     from run_agent import _StreamErrorEvent
-    from agent.error_classifier import classify_api_error, FailoverReason
 
     err = _StreamErrorEvent("Internal server error — try again later")
     result = classify_api_error(err, provider="xai-oauth", model="grok-4.3")
@@ -612,8 +611,8 @@ def test_recover_with_credential_pool_skips_refresh_on_bare_403_for_xai_oauth():
     subscription", etc.). Before the defense-in-depth guard, the recovery
     path would happily mint a fresh token, get a fresh 403, and spin.
     """
-    from run_agent import AIAgent
     from agent.error_classifier import FailoverReason
+    from run_agent import AIAgent
 
     agent = _make_codex_agent()
     assert agent.provider == "xai-oauth"

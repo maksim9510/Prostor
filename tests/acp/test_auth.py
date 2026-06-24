@@ -3,8 +3,8 @@
 from acp_adapter.auth import (
     TERMINAL_SETUP_AUTH_METHOD_ID,
     build_auth_methods,
-    has_provider,
     detect_provider,
+    has_provider,
 )
 
 

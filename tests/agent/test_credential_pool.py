@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -417,7 +417,7 @@ def test_token_invalidated_marks_credential_dead(tmp_path, monkeypatch):
         },
     )
 
-    from agent.credential_pool import load_pool, STATUS_DEAD
+    from agent.credential_pool import STATUS_DEAD, load_pool
 
     pool = load_pool("openai-codex")
     assert pool.select().id == "cred-dead"
@@ -489,7 +489,7 @@ def test_dead_credential_never_re_enters_rotation_after_ttl(tmp_path, monkeypatc
         },
     )
 
-    from agent.credential_pool import load_pool, STATUS_DEAD
+    from agent.credential_pool import STATUS_DEAD, load_pool
 
     pool = load_pool("openai-codex")
     selected = pool.select()
@@ -542,7 +542,7 @@ def test_429_rate_limit_still_uses_exhausted_not_dead(tmp_path, monkeypatch):
         },
     )
 
-    from agent.credential_pool import load_pool, STATUS_EXHAUSTED
+    from agent.credential_pool import STATUS_EXHAUSTED, load_pool
 
     pool = load_pool("openai-codex")
     assert pool.select().id == "cred-1"
@@ -598,7 +598,7 @@ def test_generic_401_without_terminal_reason_still_uses_exhausted(tmp_path, monk
         },
     )
 
-    from agent.credential_pool import load_pool, STATUS_EXHAUSTED
+    from agent.credential_pool import STATUS_EXHAUSTED, load_pool
 
     pool = load_pool("openai-codex")
     pool.select()
@@ -717,7 +717,7 @@ def test_dead_manual_entry_kept_within_24h(tmp_path, monkeypatch):
         },
     )
 
-    from agent.credential_pool import load_pool, STATUS_DEAD
+    from agent.credential_pool import STATUS_DEAD, load_pool
 
     pool = load_pool("openai-codex")
     selected = pool.select()
@@ -773,7 +773,7 @@ def test_dead_singleton_seeded_entry_not_pruned(tmp_path, monkeypatch):
         },
     )
 
-    from agent.credential_pool import load_pool, STATUS_DEAD
+    from agent.credential_pool import STATUS_DEAD, load_pool
 
     pool = load_pool("openai-codex")
     # No healthy entry available; select returns None (pool empty for rotation).
@@ -1238,7 +1238,7 @@ def test_load_pool_migrates_nous_provider_state(tmp_path, monkeypatch):
 
 def test_load_pool_mirrors_nous_invoke_jwt_agent_key_runtime_api_key(tmp_path, monkeypatch):
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
-    expires_at = datetime.fromtimestamp(time.time() + 3600, tz=timezone.utc).isoformat()
+    expires_at = datetime.fromtimestamp(time.time() + 3600, tz=UTC).isoformat()
     token = _jwt_with_claims({
         "sub": "test-user",
         "scope": ["inference:invoke"],
@@ -1297,7 +1297,7 @@ def test_nous_runtime_api_key_rejects_opaque_agent_key():
         agent_key="opaque-agent-key",
         agent_key_expires_at=datetime.fromtimestamp(
             time.time() + 3600,
-            tz=timezone.utc,
+            tz=UTC,
         ).isoformat(),
         extra={"scope": "inference:invoke"},
     )
@@ -2374,7 +2374,8 @@ class TestLeastUsedStrategy:
     def test_request_count_increments(self):
         """Each select() call should increment the chosen entry's request_count."""
         from unittest.mock import patch as _patch
-        from agent.credential_pool import CredentialPool, PooledCredential, STRATEGY_LEAST_USED
+
+        from agent.credential_pool import STRATEGY_LEAST_USED, CredentialPool, PooledCredential
 
         entries = [
             PooledCredential(provider="test", id="a", label="a", auth_type="api_key",
@@ -2463,6 +2464,7 @@ def test_sync_nous_entry_from_auth_store_adopts_newer_tokens(tmp_path, monkeypat
     assert synced.agent_key == "agent-key-NEW"
     assert synced.agent_key_expires_at == "2026-03-24T14:00:00+00:00"
 
+
 def test_sync_nous_entry_noop_when_tokens_match(tmp_path, monkeypatch):
     """When auth.json has the same refresh token, sync should be a no-op."""
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
@@ -2497,11 +2499,13 @@ def test_sync_nous_entry_noop_when_tokens_match(tmp_path, monkeypatch):
     synced = pool._sync_nous_entry_from_auth_store(entry)
     assert synced is entry
 
+
 def test_nous_exhausted_entry_recovers_via_auth_store_sync(tmp_path, monkeypatch):
     """An exhausted Nous entry should recover when auth.json has newer tokens."""
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
-    from agent.credential_pool import load_pool, STATUS_EXHAUSTED
     from dataclasses import replace as dc_replace
+
+    from agent.credential_pool import STATUS_EXHAUSTED, load_pool
 
     _write_auth_store(
         tmp_path,
@@ -2638,8 +2642,9 @@ def test_codex_exhausted_entry_recovers_via_auth_store_sync(tmp_path, monkeypatc
     request failed with "no available entries (all exhausted or empty)".
     """
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
-    from agent.credential_pool import load_pool, STATUS_EXHAUSTED
     from dataclasses import replace as dc_replace
+
+    from agent.credential_pool import STATUS_EXHAUSTED, load_pool
 
     _write_auth_store(tmp_path, _codex_auth_store("access-OLD", "refresh-OLD"))
 
@@ -2682,8 +2687,9 @@ def test_codex_exhausted_entry_stays_stuck_without_auth_store_update(tmp_path, m
     entry must stay stuck behind its reset window — sync must not spuriously
     clear status just because the entry is STATUS_EXHAUSTED."""
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
-    from agent.credential_pool import load_pool, STATUS_EXHAUSTED
     from dataclasses import replace as dc_replace
+
+    from agent.credential_pool import STATUS_EXHAUSTED, load_pool
 
     _write_auth_store(tmp_path, _codex_auth_store("access-same", "refresh-same"))
 
@@ -2760,8 +2766,8 @@ def test_xai_oauth_terminal_refresh_clears_auth_json_and_removes_pool_entries(
 
     _write_auth_store(tmp_path, _xai_auth_store("old-access-token", "old-refresh-token"))
 
-    from agent.credential_pool import PooledCredential, load_pool
     import prostor_cli.auth as auth_mod
+    from agent.credential_pool import PooledCredential, load_pool
     from prostor_cli.auth import AuthError
 
     pool = load_pool("xai-oauth")
@@ -2820,8 +2826,8 @@ def test_xai_oauth_nonterminal_refresh_does_not_quarantine(tmp_path, monkeypatch
 
     _write_auth_store(tmp_path, _xai_auth_store("old-access-token", "old-refresh-token"))
 
-    from agent.credential_pool import load_pool
     import prostor_cli.auth as auth_mod
+    from agent.credential_pool import load_pool
     from prostor_cli.auth import AuthError
 
     pool = load_pool("xai-oauth")
@@ -2902,8 +2908,8 @@ def test_codex_oauth_terminal_refresh_clears_auth_json_and_removes_pool_entries(
 
     _write_auth_store(tmp_path, _codex_auth_store("old-access-token", "old-refresh-token"))
 
-    from agent.credential_pool import PooledCredential, load_pool
     import prostor_cli.auth as auth_mod
+    from agent.credential_pool import PooledCredential, load_pool
     from prostor_cli.auth import AuthError
 
     pool = load_pool("openai-codex")
@@ -2961,8 +2967,8 @@ def test_codex_oauth_nonterminal_refresh_does_not_quarantine(tmp_path, monkeypat
 
     _write_auth_store(tmp_path, _codex_auth_store("old-access-token", "old-refresh-token"))
 
-    from agent.credential_pool import load_pool
     import prostor_cli.auth as auth_mod
+    from agent.credential_pool import load_pool
     from prostor_cli.auth import AuthError
 
     pool = load_pool("openai-codex")

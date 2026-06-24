@@ -25,10 +25,10 @@ from tools.tts_tool import (
     text_to_speech_tool,
 )
 
-
 # ---------------------------------------------------------------------------
 # Registry / constants
 # ---------------------------------------------------------------------------
+
 
 class TestPiperRegistration:
     def test_piper_is_a_builtin_provider(self):

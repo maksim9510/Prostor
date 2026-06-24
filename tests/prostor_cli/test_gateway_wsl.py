@@ -2,17 +2,17 @@
 
 import subprocess
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
 import prostor_cli.gateway as gateway
 import prostor_constants
 
-
 # =============================================================================
 # is_wsl() in prostor_constants
 # =============================================================================
+
 
 class TestIsWsl:
     """Test the shared is_wsl() utility."""

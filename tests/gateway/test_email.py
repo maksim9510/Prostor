@@ -14,11 +14,11 @@ Covers:
 
 import os
 import unittest
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
 from email import encoders
-from unittest.mock import patch, MagicMock, AsyncMock, ANY
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from gateway.platforms.base import SendResult
 
@@ -61,6 +61,7 @@ class TestConfigEnvOverrides(unittest.TestCase):
         config = GatewayConfig()
         _apply_env_overrides(config)
         self.assertNotIn(Platform.EMAIL, config.platforms)
+
 
 class TestCheckRequirements(unittest.TestCase):
     """Verify check_email_requirements function."""
@@ -367,6 +368,7 @@ class TestDispatchMessage(unittest.TestCase):
     def test_image_attachment_sets_photo_type(self):
         """Email with image attachment should set message type to PHOTO."""
         import asyncio
+
         from gateway.platforms.base import MessageType
         adapter = self._make_adapter()
         captured_events = []
@@ -396,6 +398,7 @@ class TestDispatchMessage(unittest.TestCase):
     def test_document_attachment_sets_document_type(self):
         """Email with a document attachment must set DOCUMENT so run.py injects file context."""
         import asyncio
+
         from gateway.platforms.base import MessageType
         adapter = self._make_adapter()
         captured_events = []
@@ -426,6 +429,7 @@ class TestDispatchMessage(unittest.TestCase):
         """DOCUMENT wins for mixed attachments — image handling keys off per-path
         mime types, but document injection gates strictly on MessageType.DOCUMENT."""
         import asyncio
+
         from gateway.platforms.base import MessageType
         adapter = self._make_adapter()
         captured_events = []
@@ -1021,8 +1025,9 @@ class TestSendEmailStandalone(unittest.TestCase):
         """_send_email should use verified STARTTLS when sending."""
         import asyncio
         import ssl
-        from plugins.platforms.email.adapter import _standalone_send as _email_send
         from types import SimpleNamespace
+
+        from plugins.platforms.email.adapter import _standalone_send as _email_send
 
         async def _send_email(extra, chat_id, message):
             return await _email_send(SimpleNamespace(token=None, api_key=None, extra=extra or {}), chat_id, message)
@@ -1053,8 +1058,9 @@ class TestSendEmailStandalone(unittest.TestCase):
     def test_send_email_tool_failure(self):
         """SMTP failure should return error dict."""
         import asyncio
-        from plugins.platforms.email.adapter import _standalone_send as _email_send
         from types import SimpleNamespace
+
+        from plugins.platforms.email.adapter import _standalone_send as _email_send
 
         async def _send_email(extra, chat_id, message):
             return await _email_send(SimpleNamespace(token=None, api_key=None, extra=extra or {}), chat_id, message)
@@ -1071,8 +1077,9 @@ class TestSendEmailStandalone(unittest.TestCase):
     def test_send_email_tool_not_configured(self):
         """Missing config should return error."""
         import asyncio
-        from plugins.platforms.email.adapter import _standalone_send as _email_send
         from types import SimpleNamespace
+
+        from plugins.platforms.email.adapter import _standalone_send as _email_send
 
         async def _send_email(extra, chat_id, message):
             return await _email_send(SimpleNamespace(token=None, api_key=None, extra=extra or {}), chat_id, message)
@@ -1325,12 +1332,12 @@ class TestConnectSmtp(unittest.TestCase):
 
     def test_ipv6_timeout_falls_back_to_ipv4(self):
         """When default connection times out, retry with an IPv4-only SMTP path."""
-        import socket as _socket
+
         import plugins.platforms.email.adapter as email_mod
 
         adapter = self._make_adapter("587")
 
-        with patch("smtplib.SMTP", side_effect=_socket.timeout("timed out")), \
+        with patch("smtplib.SMTP", side_effect=TimeoutError("timed out")), \
              patch.object(email_mod, "_IPv4SMTP") as mock_ipv4_smtp:
             mock_server = MagicMock()
             mock_ipv4_smtp.return_value = mock_server
@@ -1343,12 +1350,12 @@ class TestConnectSmtp(unittest.TestCase):
 
     def test_port_465_ipv6_fallback(self):
         """Port 465 IPv6 timeout falls back to IPv4 with SMTP_SSL."""
-        import socket as _socket
+
         import plugins.platforms.email.adapter as email_mod
 
         adapter = self._make_adapter("465")
 
-        with patch("smtplib.SMTP_SSL", side_effect=_socket.timeout("timed out")), \
+        with patch("smtplib.SMTP_SSL", side_effect=TimeoutError("timed out")), \
              patch.object(email_mod, "_IPv4SMTP_SSL") as mock_ipv4_smtp_ssl:
             mock_server = MagicMock()
             mock_ipv4_smtp_ssl.return_value = mock_server
@@ -1363,6 +1370,7 @@ class TestConnectSmtp(unittest.TestCase):
     def test_tls_verification_error_does_not_retry_ipv4(self):
         """Certificate failures are security errors, not IPv6 reachability failures."""
         import ssl as _ssl
+
         import plugins.platforms.email.adapter as email_mod
 
         adapter = self._make_adapter("465")
@@ -1377,6 +1385,7 @@ class TestConnectSmtp(unittest.TestCase):
     def test_ipv4_connection_does_not_mutate_global_resolver(self):
         """IPv4 fallback must not monkeypatch process-global socket state."""
         import socket as _socket
+
         from plugins.platforms.email.adapter import _create_ipv4_connection
 
         original_getaddrinfo = _socket.getaddrinfo

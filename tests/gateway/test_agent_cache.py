@@ -341,6 +341,7 @@ class TestExtractCacheBustingConfig:
     def test_honcho_cache_busting_config_memoized_by_mtime(self, monkeypatch, tmp_path):
         """Repeated Honcho extraction for unchanged honcho.json should reuse parse result."""
         from types import SimpleNamespace
+
         from gateway.run import GatewayRunner
 
         config_path = tmp_path / "honcho.json"
@@ -553,8 +554,11 @@ class TestAgentCacheLifecycle:
         )
 
         # Set callbacks like the gateway does per-message
-        cb1 = lambda *a: None
-        cb2 = lambda *a: None
+        def cb1(*a):
+            return None
+
+        def cb2(*a):
+            return None
         agent.tool_progress_callback = cb1
         agent.step_callback = cb2
         agent.stream_delta_callback = None
@@ -564,7 +568,8 @@ class TestAgentCacheLifecycle:
         assert agent.step_callback is cb2
 
         # Update for next message
-        cb3 = lambda *a: None
+        def cb3(*a):
+            return None
         agent.tool_progress_callback = cb3
         assert agent.tool_progress_callback is cb3
 
@@ -575,6 +580,7 @@ class TestAgentCacheBoundedGrowth:
     def _bounded_runner(self):
         """Runner with an OrderedDict cache (matches real gateway init)."""
         from collections import OrderedDict
+
         from gateway.run import GatewayRunner
 
         runner = GatewayRunner.__new__(GatewayRunner)
@@ -756,6 +762,7 @@ class TestAgentCacheActiveSafety:
 
     def _runner(self):
         from collections import OrderedDict
+
         from gateway.run import GatewayRunner
 
         runner = GatewayRunner.__new__(GatewayRunner)
@@ -848,8 +855,9 @@ class TestAgentCacheActiveSafety:
         Better to temporarily exceed the cap than to crash an in-flight
         turn by tearing down its clients.
         """
-        from gateway import run as gw_run
         import logging as _logging
+
+        from gateway import run as gw_run
 
         monkeypatch.setattr(gw_run, "_AGENT_CACHE_MAX_SIZE", 1)
         runner = self._runner()
@@ -973,6 +981,7 @@ class TestAgentCacheSpilloverLive:
 
     def _runner(self):
         from collections import OrderedDict
+
         from gateway.run import GatewayRunner
 
         runner = GatewayRunner.__new__(GatewayRunner)
@@ -1027,8 +1036,9 @@ class TestAgentCacheSpilloverLive:
 
     def test_spillover_all_active_keeps_cache_over_cap(self, monkeypatch, caplog):
         """Every slot active: cache goes over cap, no one gets torn down."""
-        from gateway import run as gw_run
         import logging as _logging
+
+        from gateway import run as gw_run
 
         CAP = 4
         monkeypatch.setattr(gw_run, "_AGENT_CACHE_MAX_SIZE", CAP)
@@ -1119,6 +1129,7 @@ class TestAgentCacheIdleResume:
 
     def _runner(self):
         from collections import OrderedDict
+
         from gateway.run import GatewayRunner
 
         runner = GatewayRunner.__new__(GatewayRunner)
@@ -1161,8 +1172,8 @@ class TestAgentCacheIdleResume:
     def test_release_clients_does_not_touch_terminal_or_browser(self, monkeypatch):
         """release_clients must not call cleanup_vm or cleanup_browser."""
         from run_agent import AIAgent
-        from tools import terminal_tool as _tt
         from tools import browser_tool as _bt
+        from tools import terminal_tool as _tt
 
         agent = AIAgent(
             model="anthropic/claude-sonnet-4", api_key="test",
@@ -1222,8 +1233,8 @@ class TestAgentCacheIdleResume:
         (full teardown — session is done), cache-eviction path uses
         release_clients() (soft — session may resume).
         """
-        from run_agent import AIAgent
         import run_agent as _ra
+        from run_agent import AIAgent
 
         # Agent A: evicted from cache (soft) — terminal survives.
         # Agent B: session expired (hard) — terminal torn down.
@@ -1662,8 +1673,8 @@ class TestAgentCacheMessageCountRebaseline:
     def test_rebaseline_is_fail_safe_and_skips_legacy_and_pending(self, tmp_path):
         """Re-baseline must never crash and must leave legacy 2-tuples and
         pending-sentinel entries untouched."""
-        from prostor_state import SessionDB
         from gateway.run import _AGENT_PENDING_SENTINEL
+        from prostor_state import SessionDB
 
         db = SessionDB(db_path=tmp_path / "sessions.db")
         db.create_session("s1", source="telegram")

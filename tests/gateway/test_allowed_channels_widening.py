@@ -18,10 +18,10 @@ import pytest
 
 from gateway.config import Platform, PlatformConfig
 
-
 # ---------------------------------------------------------------------------
 # Telegram
 # ---------------------------------------------------------------------------
+
 
 def _make_telegram_adapter(*, allowed_chats=None, require_mention=None, guest_mode=False):
     from plugins.platforms.telegram.adapter import TelegramAdapter

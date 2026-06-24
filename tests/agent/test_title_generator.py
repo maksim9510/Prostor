@@ -2,12 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
-
 from agent.title_generator import (
-    generate_title,
-    auto_title_session,
-    maybe_auto_title,
     _title_language,
+    auto_title_session,
+    generate_title,
+    maybe_auto_title,
 )
 
 

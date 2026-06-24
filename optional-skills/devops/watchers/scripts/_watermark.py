@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 
 def _state_dir() -> Path:
@@ -48,10 +49,10 @@ class Watermark:
         self.name = name
         self.max_seen = max_seen
         self._path = _state_dir() / f"{name}.json"
-        self._data: Dict[str, Any] = {"seen_ids": [], "first_run": True}
+        self._data: dict[str, Any] = {"seen_ids": [], "first_run": True}
 
     @classmethod
-    def load(cls, name: str, *, max_seen: int = 500) -> "Watermark":
+    def load(cls, name: str, *, max_seen: int = 500) -> Watermark:
         wm = cls(name, max_seen=max_seen)
         if wm._path.exists():
             try:
@@ -68,12 +69,12 @@ class Watermark:
         return bool(self._data.get("first_run", True))
 
     @property
-    def seen(self) -> List[str]:
+    def seen(self) -> list[str]:
         return list(self._data.get("seen_ids", []))
 
     def filter_new(
-        self, items: Iterable[Dict[str, Any]], *, id_key: str = "id"
-    ) -> List[Dict[str, Any]]:
+        self, items: Iterable[dict[str, Any]], *, id_key: str = "id"
+    ) -> list[dict[str, Any]]:
         """Return items whose id isn't in the stored set.
 
         Side effect: updates the in-memory seen set with every id in the
@@ -83,8 +84,8 @@ class Watermark:
         existing = set(str(x) for x in self._data.get("seen_ids", []))
         was_first_run = self.is_first_run
 
-        new_items: List[Dict[str, Any]] = []
-        batch_ids: List[str] = []
+        new_items: list[dict[str, Any]] = []
+        batch_ids: list[str] = []
         for item in items:
             ident = item.get(id_key)
             if ident is None:
@@ -115,11 +116,11 @@ class Watermark:
 
 
 def format_items_as_markdown(
-    items: List[Dict[str, Any]],
+    items: list[dict[str, Any]],
     *,
     title_key: str = "title",
     url_key: str = "url",
-    body_key: Optional[str] = None,
+    body_key: str | None = None,
     max_body_chars: int = 500,
 ) -> str:
     """Render a list of items as Markdown for cron delivery.
@@ -130,7 +131,7 @@ def format_items_as_markdown(
     """
     if not items:
         return ""
-    lines: List[str] = []
+    lines: list[str] = []
     for item in items:
         title = (item.get(title_key) or "(no title)").strip()
         url = (item.get(url_key) or "").strip()

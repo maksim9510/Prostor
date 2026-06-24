@@ -7,7 +7,6 @@ must sanitize those vars both during installation and at runtime launch.
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SH = REPO_ROOT / "scripts" / "install.sh"
 

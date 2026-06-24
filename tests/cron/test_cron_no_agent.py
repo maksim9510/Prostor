@@ -29,6 +29,7 @@ def prostor_env(tmp_path, monkeypatch):
 
     # Reload modules that cache get_prostor_home() at import time.
     import importlib
+
     import prostor_constants
     importlib.reload(prostor_constants)
     import cron.jobs
@@ -78,7 +79,7 @@ def test_create_job_default_is_not_no_agent(prostor_env):
 
 
 def test_update_job_roundtrips_no_agent_flag(prostor_env):
-    from cron.jobs import create_job, update_job, get_job
+    from cron.jobs import create_job, get_job, update_job
 
     script_path = prostor_env / "scripts" / "w.sh"
     script_path.write_text("echo hi\n")
@@ -213,7 +214,7 @@ def test_run_job_no_agent_success_returns_script_stdout(prostor_env):
 def test_run_job_no_agent_empty_output_is_silent(prostor_env):
     """Empty stdout → SILENT_MARKER, which suppresses delivery downstream."""
     from cron.jobs import create_job
-    from cron.scheduler import run_job, SILENT_MARKER
+    from cron.scheduler import SILENT_MARKER, run_job
 
     script_path = prostor_env / "scripts" / "quiet.sh"
     script_path.write_text("#!/bin/bash\n# nothing to say\n")
@@ -230,7 +231,7 @@ def test_run_job_no_agent_empty_output_is_silent(prostor_env):
 def test_run_job_no_agent_wake_gate_is_silent(prostor_env):
     """wakeAgent=false gate in stdout triggers a silent run."""
     from cron.jobs import create_job
-    from cron.scheduler import run_job, SILENT_MARKER
+    from cron.scheduler import SILENT_MARKER, run_job
 
     script_path = prostor_env / "scripts" / "gated.sh"
     script_path.write_text('#!/bin/bash\necho \'{"wakeAgent": false}\'\n')

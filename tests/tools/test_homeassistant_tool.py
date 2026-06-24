@@ -10,18 +10,17 @@ from unittest.mock import patch
 import pytest
 
 from tools.homeassistant_tool import (
-    _check_ha_available,
-    _filter_and_summarize,
-    _build_service_payload,
-    _parse_service_response,
-    _get_headers,
-    _handle_get_state,
-    _handle_call_service,
     _BLOCKED_DOMAINS,
     _ENTITY_ID_RE,
     _SERVICE_NAME_RE,
+    _build_service_payload,
+    _check_ha_available,
+    _filter_and_summarize,
+    _get_headers,
+    _handle_call_service,
+    _handle_get_state,
+    _parse_service_response,
 )
-
 
 # ---------------------------------------------------------------------------
 # Sample HA state data (matches real HA /api/states response shape)

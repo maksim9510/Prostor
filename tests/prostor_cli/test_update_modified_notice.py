@@ -19,7 +19,6 @@ from pathlib import Path
 
 import prostor_cli.main as main_mod
 
-
 _COUNT_RE = re.compile(r"user-modified \(kept\)")
 _HINT_RE = re.compile(r"prostor skills list-modified")
 

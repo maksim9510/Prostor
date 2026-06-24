@@ -15,7 +15,7 @@ def _reset_registry():
 
 
 def test_fal_provider_registers():
-    from plugins.video_gen.fal import FALVideoGenProvider, DEFAULT_MODEL
+    from plugins.video_gen.fal import DEFAULT_MODEL, FALVideoGenProvider
 
     provider = FALVideoGenProvider()
     video_gen_registry.register_provider(provider)
@@ -84,8 +84,8 @@ def test_fal_list_models_advertises_both_modalities():
 
 
 def test_fal_unavailable_without_key(monkeypatch):
-    from plugins.video_gen.fal import FALVideoGenProvider
     from plugins.video_gen import fal as fal_plugin
+    from plugins.video_gen.fal import FALVideoGenProvider
 
     monkeypatch.delenv("FAL_KEY", raising=False)
     # Also ensure managed gateway is unavailable
@@ -94,8 +94,8 @@ def test_fal_unavailable_without_key(monkeypatch):
 
 
 def test_fal_generate_requires_fal_key(monkeypatch):
-    from plugins.video_gen.fal import FALVideoGenProvider
     from plugins.video_gen import fal as fal_plugin
+    from plugins.video_gen.fal import FALVideoGenProvider
 
     monkeypatch.delenv("FAL_KEY", raising=False)
     # Also ensure managed gateway is unavailable
@@ -106,8 +106,8 @@ def test_fal_generate_requires_fal_key(monkeypatch):
 
 
 def test_fal_available_via_gateway(monkeypatch):
-    from plugins.video_gen.fal import FALVideoGenProvider
     from plugins.video_gen import fal as fal_plugin
+    from plugins.video_gen.fal import FALVideoGenProvider
 
     monkeypatch.delenv("FAL_KEY", raising=False)
     monkeypatch.setattr(
@@ -182,7 +182,7 @@ class TestFamilyRouting:
 
     def test_default_family_text_routing(self, with_fake_fal):
         """No model arg → DEFAULT_MODEL → text-to-video endpoint."""
-        from plugins.video_gen.fal import FALVideoGenProvider, FAL_FAMILIES, DEFAULT_MODEL
+        from plugins.video_gen.fal import DEFAULT_MODEL, FAL_FAMILIES, FALVideoGenProvider
 
         result = FALVideoGenProvider().generate("a dog")
         assert result["success"] is True
@@ -190,7 +190,7 @@ class TestFamilyRouting:
         assert with_fake_fal["endpoint"] == expected_endpoint
 
     def test_default_family_image_routing(self, with_fake_fal):
-        from plugins.video_gen.fal import FALVideoGenProvider, FAL_FAMILIES, DEFAULT_MODEL
+        from plugins.video_gen.fal import DEFAULT_MODEL, FAL_FAMILIES, FALVideoGenProvider
 
         result = FALVideoGenProvider().generate(
             "animate this",
@@ -201,7 +201,7 @@ class TestFamilyRouting:
         assert with_fake_fal["endpoint"] == expected_endpoint
 
     def test_unknown_family_falls_back_to_default(self, with_fake_fal):
-        from plugins.video_gen.fal import FALVideoGenProvider, FAL_FAMILIES, DEFAULT_MODEL
+        from plugins.video_gen.fal import DEFAULT_MODEL, FAL_FAMILIES, FALVideoGenProvider
 
         result = FALVideoGenProvider().generate(
             "x",

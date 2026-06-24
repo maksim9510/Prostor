@@ -3,7 +3,7 @@
 Context Window Optimizer — интеллектуальное управление контекстом разговора.
 
 Проблема: каждый tool result остаётся в истории контекста навсегда.
-После 20 tool calls контекст раздувается до 50K+ токенов, большинство из которых — 
+После 20 tool calls контекст раздувается до 50K+ токенов, большинство из которых —
 устаревшие read_file результаты, которые больше не нужны.
 
 Решение: прогрессивное сжатие старых tool results:
@@ -22,9 +22,9 @@ import json
 import logging
 import threading
 import time
-from collections import OrderedDict, defaultdict
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from collections import OrderedDict
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class ContextEntry:
     result_text: str
     turn: int
     timestamp: float
-    file_path: Optional[str] = None
+    file_path: str | None = None
     original_tokens: int = 0
     current_tokens: int = 0
     state: str = "fresh"  # fresh, warm, cold, frozen
@@ -77,7 +77,7 @@ class ContextWindowOptimizer:
         self._lock = threading.Lock()
         self._current_turn: int = 0
         self._total_saved_tokens: int = 0
-        self._file_refs: Dict[str, str] = {}  # file_path → entry_id
+        self._file_refs: dict[str, str] = {}  # file_path → entry_id
 
     def _estimate_tokens(self, text: str) -> int:
         """Rough token estimate: ~4 chars per token."""
@@ -90,7 +90,7 @@ class ContextWindowOptimizer:
         self,
         tool_name: str,
         result_text: str,
-        file_path: Optional[str] = None,
+        file_path: str | None = None,
     ) -> str:
         """Register a new tool result. Returns entry_id."""
         self._current_turn += 1
@@ -143,7 +143,7 @@ class ContextWindowOptimizer:
 
         return False
 
-    def optimize(self, current_turn: Optional[int] = None) -> Dict[str, Any]:
+    def optimize(self, current_turn: int | None = None) -> dict[str, Any]:
         """Run optimization pass on all entries.
 
         Progressively compresses/summarizes/freeszes entries based on age.
@@ -162,7 +162,7 @@ class ContextWindowOptimizer:
         }
 
         with self._lock:
-            for entry_id, entry in self._entries.items():
+            for _entry_id, entry in self._entries.items():
                 age = self._current_turn - entry.turn
                 priority = TOOL_PRIORITY.get(entry.tool_name, 5)
 
@@ -259,7 +259,7 @@ class ContextWindowOptimizer:
                 return entry.result_text
         return ""
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get optimizer statistics."""
         with self._lock:
             total_original = sum(e.original_tokens for e in self._entries.values())
@@ -298,7 +298,7 @@ class ContextWindowOptimizer:
 # Global singleton
 # ---------------------------------------------------------------------------
 
-_optimizer: Optional[ContextWindowOptimizer] = None
+_optimizer: ContextWindowOptimizer | None = None
 _opt_lock = threading.Lock()
 
 

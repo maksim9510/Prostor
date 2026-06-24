@@ -12,11 +12,9 @@ call is mocked — we never actually shell out during unit tests.
 
 from __future__ import annotations
 
-
 import pytest
 
 import tools.lazy_deps as ld
-
 
 # ---------------------------------------------------------------------------
 # Spec safety

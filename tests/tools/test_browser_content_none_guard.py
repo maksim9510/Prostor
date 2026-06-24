@@ -11,8 +11,8 @@ These tests verify both sites are guarded.
 import types
 from unittest.mock import patch
 
-
 # ── helpers ────────────────────────────────────────────────────────────────
+
 
 def _make_response(content):
     """Build a minimal OpenAI-compatible ChatCompletion response stub."""

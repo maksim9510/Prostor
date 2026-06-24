@@ -1,7 +1,7 @@
 import types
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, patch
 
 from gateway.config import PlatformConfig
 

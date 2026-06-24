@@ -8,7 +8,6 @@ from gateway.message_timestamps import (
 )
 from run_agent import AIAgent
 
-
 BERLIN = ZoneInfo("Europe/Berlin")
 
 

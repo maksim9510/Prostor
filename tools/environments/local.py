@@ -11,8 +11,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from tools.environments.base import BaseEnvironment, _pipe_stdin
 from prostor_cli._subprocess_compat import windows_hide_flags
+from tools.environments.base import BaseEnvironment, _pipe_stdin
 
 _IS_WINDOWS = platform.system() == "Windows"
 

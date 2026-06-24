@@ -6,9 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from prostor_cli.auth import AuthError
 from prostor_cli import main as prostor_main
-
+from prostor_cli.auth import AuthError
 
 # ---------------------------------------------------------------------------
 # Module isolation: _import_cli() wipes tools.* / cli / run_agent from
@@ -16,6 +15,7 @@ from prostor_cli import main as prostor_main
 # modules leak into subsequent tests on the same xdist worker, breaking
 # mock patches that target "tools.file_tools._get_file_ops" etc.
 # ---------------------------------------------------------------------------
+
 
 def _reset_modules(prefixes: tuple[str, ...]):
     for name in list(sys.modules):
@@ -865,6 +865,7 @@ def test_auto_provider_name_remote():
 def test_save_custom_provider_uses_provided_name(monkeypatch, tmp_path):
     """When a display name is passed, it should appear in the saved entry."""
     import yaml
+
     from prostor_cli.main import _save_custom_provider
 
     cfg_path = tmp_path / "config.yaml"

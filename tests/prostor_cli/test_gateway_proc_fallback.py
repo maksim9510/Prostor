@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import prostor_cli.gateway as gateway_mod
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

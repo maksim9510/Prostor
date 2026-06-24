@@ -34,7 +34,7 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from agent.model_metadata import estimate_request_tokens_rough
 
@@ -283,11 +283,11 @@ def compress_context(
     messages: list,
     system_message: str,
     *,
-    approx_tokens: Optional[int] = None,
+    approx_tokens: int | None = None,
     task_id: str = "default",
-    focus_topic: Optional[str] = None,
+    focus_topic: str | None = None,
     force: bool = False,
-) -> Tuple[list, str]:
+) -> tuple[list, str]:
     """Compress conversation context and split the session in SQLite.
 
     Args:
@@ -370,7 +370,7 @@ def compress_context(
     # we just sit out this round and let the winner finish.
     _lock_db = getattr(agent, "_session_db", None)
     _lock_sid = agent.session_id or ""
-    _lock_holder: Optional[str] = None
+    _lock_holder: str | None = None
     # Probe whether the lock subsystem is actually available on this
     # SessionDB instance.  A process running mismatched module versions
     # (e.g. ``conversation_compression.py`` reloaded after a pull but the
@@ -775,7 +775,7 @@ def try_shrink_image_parts_in_messages(
     # actually brought under the target.
     unshrinkable_oversized = 0
 
-    def _decode_pixels(data_url: str) -> Optional[tuple]:
+    def _decode_pixels(data_url: str) -> tuple | None:
         """Return ``(width, height)`` of a base64 data URL, or None on failure.
 
         Soft-depends on Pillow; returns None (caller falls back to a

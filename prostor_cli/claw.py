@@ -16,19 +16,18 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-from prostor_cli.config import get_prostor_home, get_config_path, load_config, save_config
-from prostor_constants import get_optional_skills_dir
+from prostor_cli.config import get_config_path, get_prostor_home, load_config, save_config
 from prostor_cli.setup import (
     Colors,
     color,
+    print_error,
     print_header,
     print_info,
     print_success,
-    print_error,
     prompt_yes_no,
 )
+from prostor_constants import get_optional_skills_dir
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +53,7 @@ _OPENCLAW_SCRIPT_INSTALLED = (
 
 # Known OpenClaw directory names (current + legacy)
 _OPENCLAW_DIR_NAMES = (".openclaw", ".clawdbot", ".moltbot")
+
 
 def _detect_openclaw_processes() -> list[str]:
     """Detect running OpenClaw processes and services.
@@ -182,6 +182,7 @@ def _warn_if_gateway_running(auto_yes: bool) -> None:
     if not auto_yes and not prompt_yes_no("Continue anyway?", default=False):
         print_info("Migration cancelled. Stop the gateway and try again.")
         sys.exit(0)
+
 
 # State files commonly found in OpenClaw workspace directories — listed
 # during cleanup to help the user decide whether to archive
@@ -505,10 +506,10 @@ def _cmd_migrate(args):
     # restorable with `prostor import`.  Mirrors OpenClaw's
     # createPreMigrationBackup posture — one atomic restore point before
     # any mutation, auto-pruned to the last 5 pre-migration zips.
-    backup_archive: Optional[Path] = None
+    backup_archive: Path | None = None
     if not no_backup:
         try:
-            from prostor_cli.backup import create_pre_migration_backup, _format_size
+            from prostor_cli.backup import _format_size, create_pre_migration_backup
             backup_archive = create_pre_migration_backup(prostor_home=prostor_home)
             if backup_archive:
                 size_str = _format_size(backup_archive.stat().st_size)
@@ -657,7 +658,7 @@ def _cmd_cleanup(args):
         if state_files:
             print()
             print(color(f"  {len(state_files)} state file(s) found:", Colors.YELLOW))
-            for path, desc in state_files[:8]:
+            for _path, desc in state_files[:8]:
                 print(f"      {desc}")
             if len(state_files) > 8:
                 print(f"      ... and {len(state_files) - 8} more")

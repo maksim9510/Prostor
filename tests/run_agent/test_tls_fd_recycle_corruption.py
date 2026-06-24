@@ -28,7 +28,6 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-
 # ---------------------------------------------------------------------------
 # Prong 1: force_close_tcp_sockets must NOT release file descriptors.
 # ---------------------------------------------------------------------------

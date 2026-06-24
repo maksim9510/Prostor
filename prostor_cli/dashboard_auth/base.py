@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -145,7 +144,7 @@ class DashboardAuthProvider(ABC):
     ) -> Session: ...
 
     @abstractmethod
-    def verify_session(self, *, access_token: str) -> Optional[Session]: ...
+    def verify_session(self, *, access_token: str) -> Session | None: ...
 
     @abstractmethod
     def refresh_session(self, *, refresh_token: str) -> Session: ...
@@ -155,7 +154,7 @@ class DashboardAuthProvider(ABC):
 
     def complete_password_login(
         self, *, username: str, password: str
-    ) -> "Session":
+    ) -> Session:
         """Verify a username/password pair and mint a :class:`Session`.
 
         Only called when ``supports_password`` is True (the

@@ -1243,6 +1243,7 @@ class TestGatewayServiceDetection:
 
         assert gateway_cli._is_service_running() is False
 
+
 class TestGatewaySystemServiceRouting:
     def test_systemd_restart_gracefully_restarts_running_service_and_waits(self, monkeypatch, capsys):
         calls = []

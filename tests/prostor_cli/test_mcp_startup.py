@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from argparse import Namespace
 import sys
 import threading
 import time
 import types
+from argparse import Namespace
 
 import pytest
 

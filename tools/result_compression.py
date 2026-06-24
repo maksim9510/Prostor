@@ -15,8 +15,7 @@ Tool Result Compression — сжатие результатов tool calls пе�
 
 import logging
 import re
-import textwrap
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +113,7 @@ def compress_result(
     content: str,
     tool_name: str = "",
     max_chars: int = HARD_LIMIT,
-) -> Tuple[str, Dict[str, Any]]:
+) -> tuple[str, dict[str, Any]]:
     """Compress a tool result before sending to LLM.
 
     Args:

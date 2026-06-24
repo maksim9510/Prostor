@@ -8,16 +8,16 @@ Verifies that:
 - Successful sends on retry return success
 - SendResult.retryable flag is respected
 """
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from gateway.platforms.base import BasePlatformAdapter, SendResult, _RETRYABLE_ERROR_PATTERNS
-from gateway.platforms.base import Platform, PlatformConfig
+import pytest
 
+from gateway.platforms.base import _RETRYABLE_ERROR_PATTERNS, BasePlatformAdapter, Platform, PlatformConfig, SendResult
 
 # ---------------------------------------------------------------------------
 # Minimal concrete adapter for testing (no real network)
 # ---------------------------------------------------------------------------
+
 
 class _StubAdapter(BasePlatformAdapter):
     def __init__(self):

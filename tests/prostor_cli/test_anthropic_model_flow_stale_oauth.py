@@ -155,7 +155,9 @@ class TestStaleOAuthGuardLogic:
         existing_is_stale_oauth should be True → has_creds = False.
         """
         existing_key = "sk-ant-oat-expiredtoken123"
-        _is_oauth_token = lambda k: k.startswith("sk-ant-")
+
+        def _is_oauth_token(k):
+            return k.startswith("sk-ant-")
         cc_available = False
 
         existing_is_stale_oauth = (
@@ -174,7 +176,9 @@ class TestStaleOAuthGuardLogic:
         has_creds should be True — the cc_creds will be used instead.
         """
         existing_key = "sk-ant-oat-sometoken"
-        _is_oauth_token = lambda k: k.startswith("sk-ant-")
+
+        def _is_oauth_token(k):
+            return k.startswith("sk-ant-")
         cc_available = True
 
         existing_is_stale_oauth = (
@@ -193,7 +197,9 @@ class TestStaleOAuthGuardLogic:
         even when cc_available is False.
         """
         existing_key = "sk-ant-api03-regular-key"
-        _is_oauth_token = lambda k: k.startswith("sk-ant-") and "oat" in k
+
+        def _is_oauth_token(k):
+            return k.startswith("sk-ant-") and "oat" in k
         cc_available = False
 
         existing_is_stale_oauth = (

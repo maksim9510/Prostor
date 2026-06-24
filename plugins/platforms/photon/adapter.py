@@ -35,9 +35,9 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     # Type checkers see ``httpx`` as the always-imported module, so every use
@@ -134,7 +134,7 @@ def is_connected(cfg: PlatformConfig) -> bool:
     return validate_config(cfg)
 
 
-def _env_enablement() -> Optional[dict]:
+def _env_enablement() -> dict | None:
     """Seed PlatformConfig.extra from env so env-only setups appear in status.
 
     The special ``home_channel`` key is handled by the core plugin hook and
@@ -218,22 +218,22 @@ class PhotonAdapter(BasePlatformAdapter):
         self.supports_code_blocks = _markdown_enabled()
 
         # Runtime state
-        self._sidecar_proc: Optional[subprocess.Popen] = None
-        self._sidecar_supervisor_task: Optional[asyncio.Task] = None
-        self._inbound_task: Optional[asyncio.Task] = None
+        self._sidecar_proc: subprocess.Popen | None = None
+        self._sidecar_supervisor_task: asyncio.Task | None = None
+        self._inbound_task: asyncio.Task | None = None
         self._inbound_running = False
-        self._http_client: Optional["httpx.AsyncClient"] = None
+        self._http_client: httpx.AsyncClient | None = None
         # Lightweight in-memory dedup. The gRPC stream is at-least-once, so we
         # may see the same messageId more than once (e.g. after a reconnect).
-        self._seen_messages: Dict[str, float] = {}
+        self._seen_messages: dict[str, float] = {}
         # Ids of messages WE sent (bounded, insertion-order eviction). Inbound
         # reaction events are only routed to the agent when they target one of
         # these — a tapback on a human↔human message is not addressed to us.
-        self._sent_message_ids: Dict[str, float] = {}
+        self._sent_message_ids: dict[str, float] = {}
         # Latest inbound message id per chat (bounded). Lets the agent-facing
         # react action default to "the message that triggered me" without
         # requiring the model to thread message ids through tool calls.
-        self._last_inbound_by_chat: Dict[str, str] = {}
+        self._last_inbound_by_chat: dict[str, str] = {}
 
         # Group-chat mention gating (parity with BlueBubbles). When enabled,
         # group messages are ignored unless they match a wake word; DMs are
@@ -253,7 +253,7 @@ class PhotonAdapter(BasePlatformAdapter):
     # -- Group-mention gating (parity with BlueBubbles) -------------------
 
     @staticmethod
-    def _compile_mention_patterns(raw: Any) -> "list[re.Pattern]":
+    def _compile_mention_patterns(raw: Any) -> list[re.Pattern]:
         """Compile group-mention wake words from config/env.
 
         ``raw`` is a list (config or env JSON), a string (env var: JSON
@@ -279,7 +279,7 @@ class PhotonAdapter(BasePlatformAdapter):
         else:
             patterns = [raw]
 
-        compiled: "list[re.Pattern]" = []
+        compiled: list[re.Pattern] = []
         for pattern in patterns:
             text = str(pattern).strip()
             if not text:
@@ -455,7 +455,7 @@ class PhotonAdapter(BasePlatformAdapter):
                 del seen[old]
         return False
 
-    async def _dispatch_inbound(self, event: Dict[str, Any]) -> None:
+    async def _dispatch_inbound(self, event: dict[str, Any]) -> None:
         """Normalize a sidecar inbound event and dispatch it to the gateway.
 
         Event shape (from ``sidecar/index.mjs``)::
@@ -498,19 +498,19 @@ class PhotonAdapter(BasePlatformAdapter):
             timestamp = (
                 datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                 if ts_str
-                else datetime.now(tz=timezone.utc)
+                else datetime.now(tz=UTC)
             )
         except ValueError:
-            timestamp = datetime.now(tz=timezone.utc)
+            timestamp = datetime.now(tz=UTC)
 
         # Media attachments (local cached paths) handed to the agent via the
         # gateway's image-routing path, exactly like the BlueBubbles channel.
-        media_urls: List[str] = []
-        media_types: List[str] = []
+        media_urls: list[str] = []
+        media_types: list[str] = []
 
         def _normalize_binary_payload(
-            payload: Dict[str, Any]
-        ) -> tuple[str, MessageType, List[str], List[str]]:
+            payload: dict[str, Any]
+        ) -> tuple[str, MessageType, list[str], list[str]]:
             is_voice = payload.get("type") == "voice"
             name = payload.get("name") or ("voice" if is_voice else "(unnamed)")
             mime = payload.get("mimeType") or ""
@@ -585,7 +585,7 @@ class PhotonAdapter(BasePlatformAdapter):
         elif ctype in {"attachment", "voice"}:
             text, mtype, media_urls, media_types = _normalize_binary_payload(content)
         elif ctype == "group":
-            text_parts: List[str] = []
+            text_parts: list[str] = []
             mtype = MessageType.TEXT
             for item in content.get("items") or []:
                 if not isinstance(item, dict):
@@ -656,7 +656,7 @@ class PhotonAdapter(BasePlatformAdapter):
     # -- Sidecar lifecycle -------------------------------------------------
 
     @staticmethod
-    def _find_listener_pids(port: int) -> List[int]:
+    def _find_listener_pids(port: int) -> list[int]:
         """PIDs listening on a local TCP port (empty if none/undeterminable)."""
         try:
             out = subprocess.run(  # noqa: S603, S607
@@ -803,7 +803,7 @@ class PhotonAdapter(BasePlatformAdapter):
 
         # Wait for /healthz to come up — give it up to 15s on cold start.
         deadline = time.time() + 15.0
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
         async with httpx.AsyncClient(timeout=2.0) as client:
             while time.time() < deadline:
                 if self._sidecar_proc.poll() is not None:
@@ -889,8 +889,8 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         return await self._sidecar_send(chat_id, self.format_message(content))
 
@@ -906,9 +906,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         try:
             from gateway.platforms.base import cache_image_from_url
@@ -925,9 +925,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         return await self._sidecar_send_attachment(
@@ -938,9 +938,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         return await self._sidecar_send_attachment(
@@ -951,9 +951,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         return await self._sidecar_send_attachment(
@@ -964,10 +964,10 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         return await self._sidecar_send_attachment(
@@ -978,9 +978,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         animation_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         # iMessage renders GIFs inline as ordinary image attachments.
         return await self.send_image(
@@ -1012,7 +1012,7 @@ class PhotonAdapter(BasePlatformAdapter):
     _SENT_IDS_MAX = 1000
     _LAST_INBOUND_CHATS_MAX = 200
 
-    def _record_sent_message(self, message_id: Optional[str]) -> None:
+    def _record_sent_message(self, message_id: str | None) -> None:
         if not message_id:
             return
         sent = self._sent_message_ids
@@ -1036,7 +1036,7 @@ class PhotonAdapter(BasePlatformAdapter):
         return match.group(1) if match else chat_id
 
     def _record_last_inbound(
-        self, chat_id: Optional[str], message_id: Optional[str]
+        self, chat_id: str | None, message_id: str | None
     ) -> None:
         if not chat_id or not message_id:
             return
@@ -1096,8 +1096,8 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         emoji: str,
-        message_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        message_id: str | None = None,
+    ) -> dict[str, Any]:
         """Tapback ``emoji`` onto a message in ``chat_id``.
 
         Without ``message_id``, targets the chat's most recent inbound
@@ -1123,8 +1123,8 @@ class PhotonAdapter(BasePlatformAdapter):
         return {"success": True, "message_id": target}
 
     async def remove_reaction(
-        self, chat_id: str, message_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, chat_id: str, message_id: str | None = None
+    ) -> dict[str, Any]:
         """Retract our tapback from a message (best-effort)."""
         target = message_id or self._last_inbound_by_chat.get(
             self._normalize_chat_key(chat_id)
@@ -1173,7 +1173,7 @@ class PhotonAdapter(BasePlatformAdapter):
             await self._add_reaction(chat_id, message_id, "\U0001f44e")
         # CANCELLED: leave the message unreacted.
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Return whatever we know about a Spectrum space id.
 
         Photon's ``space.id`` is opaque; the inbound event also carries the
@@ -1193,7 +1193,7 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
+        reply_to: str | None = None,
         metadata: Any = None,
         max_retries: int = 2,
         base_delay: float = 2.0,
@@ -1266,7 +1266,7 @@ class PhotonAdapter(BasePlatformAdapter):
                 len(text), self.MAX_MESSAGE_LENGTH,
             )
             text = text[: self.MAX_MESSAGE_LENGTH]
-        body: Dict[str, Any] = {"spaceId": space_id, "text": text}
+        body: dict[str, Any] = {"spaceId": space_id, "text": text}
         # Omit the key when disabled so an older sidecar (pre-`format`)
         # keeps accepting the body during a half-upgraded restart.
         if _markdown_enabled():
@@ -1283,9 +1283,9 @@ class PhotonAdapter(BasePlatformAdapter):
         space_id: str,
         path: str,
         *,
-        name: Optional[str] = None,
-        mime_type: Optional[str] = None,
-        caption: Optional[str] = None,
+        name: str | None = None,
+        mime_type: str | None = None,
+        caption: str | None = None,
         kind: str = "attachment",
     ) -> SendResult:
         """POST a local file to the sidecar's ``/send-attachment`` endpoint.
@@ -1309,7 +1309,7 @@ class PhotonAdapter(BasePlatformAdapter):
 
             guessed, _ = mimetypes.guess_type(safe_path)
             mime_type = guessed or None
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "spaceId": space_id,
             "path": safe_path,
             "kind": "voice" if kind == "voice" else "attachment",
@@ -1327,7 +1327,7 @@ class PhotonAdapter(BasePlatformAdapter):
         self._record_sent_message(data.get("messageId"))
         return SendResult(success=True, message_id=data.get("messageId"))
 
-    async def _sidecar_call(self, path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    async def _sidecar_call(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         # Guard: adapter not yet connected (no sidecar address known).
         if self._http_client is None:
             raise RuntimeError("Photon adapter not connected")
@@ -1391,12 +1391,12 @@ _AUDIO_EXT_BY_MIME = {
 
 
 def _cache_inbound_attachment(
-    content: Dict[str, Any],
+    content: dict[str, Any],
     name: str,
     mime: str,
     *,
     force_audio: bool = False,
-) -> Optional[str]:
+) -> str | None:
     """Decode a base64-inlined inbound attachment and cache it locally.
 
     The sidecar inlines the attachment bytes as ``content["data"]`` (base64).
@@ -1455,10 +1455,10 @@ async def _standalone_send(
     chat_id: str,
     message: str,
     *,
-    thread_id: Optional[str] = None,  # noqa: ARG001 — Spectrum has no threads yet
-    media_files: Optional[list] = None,
+    thread_id: str | None = None,  # noqa: ARG001 — Spectrum has no threads yet
+    media_files: list | None = None,
     force_document: bool = False,  # noqa: ARG001 — iMessage auto-detects file kind
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if not HTTPX_AVAILABLE:
         return {"error": "httpx not installed"}
     port = _coerce_port(
@@ -1476,12 +1476,12 @@ async def _standalone_send(
         }
     base = f"http://{_DEFAULT_SIDECAR_BIND}:{port}"
     headers = {"X-Prostor-Sidecar-Token": token}
-    last_message_id: Optional[str] = None
+    last_message_id: str | None = None
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             # 1. Text body first (if any), so it leads the conversation.
             if message:
-                send_body: Dict[str, Any] = {
+                send_body: dict[str, Any] = {
                     "spaceId": chat_id,
                     "text": message[:_MAX_MESSAGE_LENGTH],
                 }
@@ -1508,7 +1508,7 @@ async def _standalone_send(
                     logger.warning("[photon] standalone send skipping unsafe path")
                     continue
                 guessed, _ = mimetypes.guess_type(safe_path)
-                att_body: Dict[str, Any] = {
+                att_body: dict[str, Any] = {
                     "spaceId": chat_id,
                     "path": safe_path,
                     "kind": "voice" if is_voice else "attachment",

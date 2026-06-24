@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import shutil
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 __all__ = [
     "IS_WINDOWS",

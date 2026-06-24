@@ -64,7 +64,7 @@ class CapabilityDescriptor:
         return json.dumps(asdict(self), sort_keys=True, ensure_ascii=False)
 
     @classmethod
-    def from_json(cls, data: str) -> "CapabilityDescriptor":
+    def from_json(cls, data: str) -> CapabilityDescriptor:
         """Deserialize from a handshake JSON string.
 
         Unknown keys are ignored (forward-compat: a newer connector may send
@@ -86,7 +86,7 @@ class CapabilityDescriptor:
         supports_edit: bool = True,
         supports_threads: bool = False,
         markdown_dialect: str = "plain",
-    ) -> "CapabilityDescriptor":
+    ) -> CapabilityDescriptor:
         """Project a ``gateway.platform_registry.PlatformEntry`` into a descriptor.
 
         Demonstrates the descriptor is a *subset/projection* of what

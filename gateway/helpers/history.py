@@ -2,11 +2,14 @@
 Extracted from gateway/run.py (#23).
 """
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
-def _build_replay_entry(role: str, content: Any, msg: Dict[str, Any]) -> Dict[str, Any]:
+
+def _build_replay_entry(role: str, content: Any, msg: dict[str, Any]) -> dict[str, Any]:
     """Build a replay entry for a non-tool-calling message, preserving the
     assistant fields the agent's API builders rely on for multi-turn fidelity.
 
@@ -23,7 +26,7 @@ def _build_replay_entry(role: str, content: Any, msg: Dict[str, Any]) -> Dict[st
     all on the next turn, which can cause HTTP 400 from strict thinking
     providers.
     """
-    entry: Dict[str, Any] = {"role": role, "content": content}
+    entry: dict[str, Any] = {"role": role, "content": content}
     if role == "assistant":
         for _rkey in _ASSISTANT_REPLAY_FIELDS:
             if _rkey not in msg:
@@ -44,7 +47,7 @@ _OBSERVED_GROUP_CONTEXT_HEADER = "[Observed Telegram group context - context onl
 _CURRENT_ADDRESSED_MESSAGE_HEADER = "[Current addressed message - answer only this unless it explicitly asks you to use the observed context]"
 
 
-def _uses_telegram_observed_group_context(channel_prompt: Optional[str]) -> bool:
+def _uses_telegram_observed_group_context(channel_prompt: str | None) -> bool:
     """Return True for Telegram group turns that may include observed chatter.
 
     Telegram's observe-unmentioned mode persists skipped group chatter so a
@@ -58,7 +61,7 @@ def _uses_telegram_observed_group_context(channel_prompt: Optional[str]) -> bool
     return bool(channel_prompt and _TELEGRAM_OBSERVED_CONTEXT_PROMPT_MARKER in channel_prompt)
 
 
-def _message_timestamps_enabled(user_config: Optional[dict]) -> bool:
+def _message_timestamps_enabled(user_config: dict | None) -> bool:
     """True when gateway.message_timestamps.enabled is opted in.
 
     Default OFF: injecting a ``[Tue 2026-04-28 13:40:53 CEST]`` prefix onto
@@ -79,11 +82,11 @@ def _message_timestamps_enabled(user_config: Optional[dict]) -> bool:
 
 
 def _build_gateway_agent_history(
-    history: List[Dict[str, Any]],
+    history: list[dict[str, Any]],
     *,
-    channel_prompt: Optional[str] = None,
+    channel_prompt: str | None = None,
     inject_timestamps: bool = False,
-) -> tuple[List[Dict[str, Any]], Optional[str]]:
+) -> tuple[list[dict[str, Any]], str | None]:
     """Convert stored gateway transcript rows into agent replay messages.
 
     Observed Telegram group rows are returned as API-only context for the
@@ -97,14 +100,14 @@ def _build_gateway_agent_history(
     timestamp prefix from its stored metadata.
     """
 
-    from prostor_time import get_timezone as _get_msg_tz
     from gateway.message_timestamps import (
         render_user_content_with_timestamp as _render_msg_ts,
     )
+    from prostor_time import get_timezone as _get_msg_tz
 
     _msg_tz = _get_msg_tz()
-    agent_history: List[Dict[str, Any]] = []
-    observed_group_context: List[str] = []
+    agent_history: list[dict[str, Any]] = []
+    observed_group_context: list[str] = []
     separate_observed_context = _uses_telegram_observed_group_context(channel_prompt)
 
     for msg in history or []:
@@ -169,7 +172,7 @@ def _build_gateway_agent_history(
     return agent_history, observed_context
 
 
-def _wrap_current_message_with_observed_context(message: Any, observed_context: Optional[str]) -> Any:
+def _wrap_current_message_with_observed_context(message: Any, observed_context: str | None) -> Any:
     """Prepend observed Telegram context to the API-only current user turn."""
 
     if not observed_context:
@@ -195,7 +198,7 @@ def _wrap_current_message_with_observed_context(message: Any, observed_context: 
     return message
 
 
-def _last_transcript_timestamp(history: Optional[List[Dict[str, Any]]]) -> Any:
+def _last_transcript_timestamp(history: list[dict[str, Any]] | None) -> Any:
     """Return the ``timestamp`` of the last usable transcript row, if any.
 
     Skips metadata-only rows (``session_meta``, system injections) that are

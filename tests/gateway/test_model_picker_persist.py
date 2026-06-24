@@ -20,8 +20,8 @@ closure the PR changed, against a real temp ``PROSTOR_HOME``.
 
 import types
 
-import yaml
 import pytest
+import yaml
 
 from gateway.config import Platform
 from gateway.platforms.base import MessageEvent, MessageType
@@ -167,7 +167,7 @@ async def test_picker_tap_persists_by_default(tmp_path, monkeypatch, seed_model)
     assert "gpt-5.5" in confirmation
     written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
     assert isinstance(written["model"], dict), (
-        "model: should be coerced to a dict, got %r" % (written["model"],)
+        "model: should be coerced to a dict, got {!r}".format(written["model"])
     )
     assert written["model"]["default"] == "gpt-5.5"
     assert written["model"]["provider"] == "openrouter"

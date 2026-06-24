@@ -27,8 +27,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from sync_upstream.rebrand import apply_rebrand, rebrand_file, Manifest  # noqa: E402
-
+from sync_upstream.rebrand import apply_rebrand  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 UPSTREAM_REMOTE = "upstream"

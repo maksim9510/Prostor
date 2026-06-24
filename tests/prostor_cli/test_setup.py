@@ -2,9 +2,8 @@
 import sys
 import types
 
-
-from prostor_cli.config import load_config, save_config
 from prostor_cli import setup as setup_mod
+from prostor_cli.config import load_config, save_config
 from prostor_cli.setup import setup_model_provider
 
 

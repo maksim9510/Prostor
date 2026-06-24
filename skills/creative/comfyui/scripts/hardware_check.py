@@ -32,7 +32,6 @@ import subprocess
 import sys
 from typing import Any
 
-
 # Thresholds (GiB).
 MIN_VRAM_GB_USABLE = 6
 OK_VRAM_GB = 8
@@ -68,7 +67,7 @@ def is_wsl() -> bool:
     if "microsoft" in platform.release().lower() or "wsl" in platform.release().lower():
         return True
     try:
-        with open("/proc/version", "r") as fh:
+        with open("/proc/version") as fh:
             return "microsoft" in fh.read().lower()
     except OSError:
         return False
@@ -227,7 +226,7 @@ def total_system_ram_gb() -> float:
             return 0.0
     if sysname == "Linux":
         try:
-            with open("/proc/meminfo", "r") as fh:
+            with open("/proc/meminfo") as fh:
                 for line in fh:
                     if line.startswith("MemTotal:"):
                         kb = int(line.split()[1])

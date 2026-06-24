@@ -9,6 +9,7 @@ Requires: PyNaCl>=1.5.0, discord.py[voice] (opus codec)
 
 import struct
 import time
+
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -37,12 +38,13 @@ except Exception:
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-from plugins.platforms.discord.adapter import VoiceReceiver
 
+from plugins.platforms.discord.adapter import VoiceReceiver
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_secret_key():
     """Generate a random 32-byte key."""

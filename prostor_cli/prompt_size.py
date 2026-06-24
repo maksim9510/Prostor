@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 # The skills index is wrapped in this tag pair inside the stable tier.
 _SKILLS_BLOCK_RE = re.compile(r"<available_skills>.*?</available_skills>", re.DOTALL)
@@ -32,8 +32,8 @@ def _build_inspection_agent(platform: str) -> Any:
     ``run_agent.py`` (no provider auto-detection, no network). Toolsets and
     platform come from the caller so the breakdown matches a real session.
     """
-    from run_agent import AIAgent
     from prostor_cli.config import load_config
+    from run_agent import AIAgent
 
     cfg = load_config()
     model_cfg = cfg.get("model", {}) if isinstance(cfg.get("model"), dict) else {}
@@ -49,7 +49,7 @@ def _build_inspection_agent(platform: str) -> Any:
     )
 
 
-def compute_prompt_breakdown(platform: str = "cli") -> Dict[str, Any]:
+def compute_prompt_breakdown(platform: str = "cli") -> dict[str, Any]:
     """Return a dict of prompt-size measurements for a fresh session.
 
     Keys: ``system_prompt`` (chars/bytes), ``skills_index``, ``memory``,
@@ -91,7 +91,7 @@ def compute_prompt_breakdown(platform: str = "cli") -> Dict[str, Any]:
     tools = getattr(agent, "tools", None) or []
     tools_json = json.dumps(tools, ensure_ascii=False)
 
-    sections: List[Tuple[str, int, int]] = [
+    sections: list[tuple[str, int, int]] = [
         ("stable (identity/guidance/skills)", len(stable), _bytes(stable)),
         ("context (AGENTS.md/cwd files)", len(context), _bytes(context)),
         ("volatile (memory/profile/timestamp)", len(volatile), _bytes(volatile)),
@@ -113,9 +113,9 @@ def _fmt_kb(n: int) -> str:
     return f"{n / 1024:.1f} KB"
 
 
-def render_breakdown(data: Dict[str, Any]) -> str:
+def render_breakdown(data: dict[str, Any]) -> str:
     """Render the breakdown as plain text suitable for a terminal."""
-    lines: List[str] = []
+    lines: list[str] = []
     sp = data["system_prompt"]
     lines.append(f"Prompt-size breakdown (platform={data['platform']}, model={data['model'] or 'unset'})")
     lines.append("")
@@ -130,7 +130,7 @@ def render_breakdown(data: Dict[str, Any]) -> str:
     lines.append(f"    user profile       : {up['bytes']:>8,} B  ({_fmt_kb(up['bytes'])})")
     lines.append("")
     lines.append("  Prompt tiers:")
-    for label, chars, byts in data["sections"]:
+    for label, _chars, byts in data["sections"]:
         lines.append(f"    {label:<36}: {byts:>8,} B  ({_fmt_kb(byts)})")
     lines.append("")
     tools = data["tools"]

@@ -2,29 +2,30 @@
 
 import os
 import re
-import pytest
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from tools.file_operations import (
-    _is_write_denied,
-    ReadResult,
-    WriteResult,
-    PatchResult,
-    SearchResult,
-    SearchMatch,
-    LintResult,
-    ShellFileOperations,
     MAX_LINE_LENGTH,
+    LintResult,
+    PatchResult,
+    ReadResult,
+    SearchMatch,
+    SearchResult,
+    ShellFileOperations,
+    WriteResult,
+    _is_write_denied,
     normalize_read_pagination,
     normalize_search_pagination,
 )
 
-
 # =========================================================================
 # Write deny list
 # =========================================================================
+
 
 class TestIsWriteDenied:
     def test_ssh_authorized_keys_denied(self):
@@ -344,7 +345,7 @@ class TestSearchResultDensify:
             else:
                 cur = ln
         assert len(recovered) == 5
-        for orig, rec in zip(matches, recovered):
+        for orig, rec in zip(matches, recovered, strict=False):
             assert rec[0] == orig.path
             assert rec[1] == orig.line_number
             # content is rstrip'd in the dense form; originals here have no

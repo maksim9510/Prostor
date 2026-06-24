@@ -13,7 +13,7 @@ parsing status text, guessing from token drops, or reading ``state.db``.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Bound defensive walks; compression chains this deep are pathological.
 _MAX_WALK = 100
@@ -24,8 +24,8 @@ def build_session_provenance(
     acp_session_id: str,
     current_prostor_session_id: str,
     *,
-    previous_prostor_session_id: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    previous_prostor_session_id: str | None = None,
+) -> dict[str, Any] | None:
     """Build ``_meta.prostor.sessionProvenance`` for an ACP session.
 
     Args:
@@ -89,7 +89,7 @@ def build_session_provenance(
         and previous_prostor_session_id != current_prostor_session_id
     )
 
-    provenance: Dict[str, Any] = {
+    provenance: dict[str, Any] = {
         "acpSessionId": acp_session_id,
         "currentProstorSessionId": current_prostor_session_id,
         "rootProstorSessionId": root_id,
@@ -113,8 +113,8 @@ def session_provenance_meta(
     acp_session_id: str,
     current_prostor_session_id: str,
     *,
-    previous_prostor_session_id: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    previous_prostor_session_id: str | None = None,
+) -> dict[str, Any] | None:
     """Return a ready ``_meta`` payload: ``{"prostor": {"sessionProvenance": ...}}``."""
     prov = build_session_provenance(
         db,

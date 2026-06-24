@@ -256,8 +256,8 @@ def _run(coro):
 
 
 def test_server_handle_request_rejects_bad_token(tmp_path):
-    from plugins.google_meet.node.server import NodeServer
     from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     s = NodeServer(token_path=tmp_path / "t.json")
     s.ensure_token()
@@ -268,8 +268,8 @@ def test_server_handle_request_rejects_bad_token(tmp_path):
 
 
 def test_server_handle_request_ping(tmp_path):
-    from plugins.google_meet.node.server import NodeServer
     from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     s = NodeServer(token_path=tmp_path / "t.json", display_name="node-x")
     tok = s.ensure_token()
@@ -281,9 +281,9 @@ def test_server_handle_request_ping(tmp_path):
 
 
 def test_server_handle_request_status_dispatches_to_pm(tmp_path, monkeypatch):
-    from plugins.google_meet.node.server import NodeServer
-    from plugins.google_meet.node import protocol
     from plugins.google_meet import process_manager as pm
+    from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     monkeypatch.setattr(pm, "status",
                         lambda: {"ok": True, "alive": True, "meetingId": "abc"})
@@ -298,9 +298,9 @@ def test_server_handle_request_status_dispatches_to_pm(tmp_path, monkeypatch):
 
 
 def test_server_handle_request_start_bot_dispatches(tmp_path, monkeypatch):
-    from plugins.google_meet.node.server import NodeServer
-    from plugins.google_meet.node import protocol
     from plugins.google_meet import process_manager as pm
+    from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     captured = {}
 
@@ -326,8 +326,8 @@ def test_server_handle_request_start_bot_dispatches(tmp_path, monkeypatch):
 
 
 def test_server_handle_request_start_bot_missing_url(tmp_path):
-    from plugins.google_meet.node.server import NodeServer
     from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     s = NodeServer(token_path=tmp_path / "t.json")
     tok = s.ensure_token()
@@ -338,9 +338,9 @@ def test_server_handle_request_start_bot_missing_url(tmp_path):
 
 
 def test_server_handle_request_stop_dispatches(tmp_path, monkeypatch):
-    from plugins.google_meet.node.server import NodeServer
-    from plugins.google_meet.node import protocol
     from plugins.google_meet import process_manager as pm
+    from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     got = {}
 
@@ -359,9 +359,9 @@ def test_server_handle_request_stop_dispatches(tmp_path, monkeypatch):
 
 
 def test_server_handle_request_transcript(tmp_path, monkeypatch):
-    from plugins.google_meet.node.server import NodeServer
-    from plugins.google_meet.node import protocol
     from plugins.google_meet import process_manager as pm
+    from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     got = {}
 
@@ -381,9 +381,9 @@ def test_server_handle_request_transcript(tmp_path, monkeypatch):
 
 
 def test_server_handle_request_say_enqueues_when_active(tmp_path, monkeypatch):
-    from plugins.google_meet.node.server import NodeServer
-    from plugins.google_meet.node import protocol
     from plugins.google_meet import process_manager as pm
+    from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     out = tmp_path / "meet-out"
     out.mkdir()
@@ -403,9 +403,9 @@ def test_server_handle_request_say_enqueues_when_active(tmp_path, monkeypatch):
 
 
 def test_server_handle_request_say_without_active_still_ok(tmp_path, monkeypatch):
-    from plugins.google_meet.node.server import NodeServer
-    from plugins.google_meet.node import protocol
     from plugins.google_meet import process_manager as pm
+    from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     monkeypatch.setattr(pm, "_read_active", lambda: None)
 
@@ -419,9 +419,9 @@ def test_server_handle_request_say_without_active_still_ok(tmp_path, monkeypatch
 
 
 def test_server_handle_request_wraps_pm_exceptions(tmp_path, monkeypatch):
-    from plugins.google_meet.node.server import NodeServer
-    from plugins.google_meet.node import protocol
     from plugins.google_meet import process_manager as pm
+    from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.server import NodeServer
 
     def boom():
         raise ValueError("kaboom")
@@ -477,8 +477,8 @@ def _install_fake_ws(monkeypatch, reply_builder):
 
 
 def test_client_rpc_sends_correct_envelope_and_parses_response(monkeypatch):
-    from plugins.google_meet.node.client import NodeClient
     from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.client import NodeClient
 
     def reply(raw_out):
         req = protocol.decode(raw_out)
@@ -499,8 +499,8 @@ def test_client_rpc_sends_correct_envelope_and_parses_response(monkeypatch):
 
 
 def test_client_rpc_raises_on_error_envelope(monkeypatch):
-    from plugins.google_meet.node.client import NodeClient
     from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.client import NodeClient
 
     def reply(raw_out):
         req = protocol.decode(raw_out)
@@ -514,8 +514,8 @@ def test_client_rpc_raises_on_error_envelope(monkeypatch):
 
 
 def test_client_rpc_raises_on_id_mismatch(monkeypatch):
-    from plugins.google_meet.node.client import NodeClient
     from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.client import NodeClient
 
     def reply(raw_out):
         return protocol.encode(protocol.make_response("different-id", {"ok": True}))
@@ -528,8 +528,8 @@ def test_client_rpc_raises_on_id_mismatch(monkeypatch):
 
 
 def test_client_convenience_methods_hit_correct_types(monkeypatch):
-    from plugins.google_meet.node.client import NodeClient
     from plugins.google_meet.node import protocol
+    from plugins.google_meet.node.client import NodeClient
 
     seen = []
 
@@ -618,8 +618,8 @@ def test_cli_remove_missing_returns_nonzero():
 
 
 def test_cli_status_pings_via_node_client(capsys, monkeypatch):
-    from plugins.google_meet.node.registry import NodeRegistry
     from plugins.google_meet.node import cli as node_cli
+    from plugins.google_meet.node.registry import NodeRegistry
 
     NodeRegistry().add("mac", "ws://mac:1", "tok")
 
@@ -651,8 +651,8 @@ def test_cli_status_unknown_node_fails(capsys):
 
 
 def test_cli_status_reports_client_error(capsys, monkeypatch):
-    from plugins.google_meet.node.registry import NodeRegistry
     from plugins.google_meet.node import cli as node_cli
+    from plugins.google_meet.node.registry import NodeRegistry
 
     NodeRegistry().add("mac", "ws://mac:1", "tok")
 

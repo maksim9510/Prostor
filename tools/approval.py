@@ -17,9 +17,8 @@ import sys
 import threading
 import time
 import unicodedata
-from typing import Optional
-from prostor_cli.config import cfg_get
 
+from prostor_cli.config import cfg_get
 from utils import env_var_enabled, is_truthy_value
 
 logger = logging.getLogger(__name__)
@@ -149,6 +148,7 @@ def _is_gateway_approval_context() -> bool:
     if env_var_enabled("PROSTOR_GATEWAY_SESSION"):
         return True
     return bool(_get_session_platform())
+
 
 # Sensitive write targets that should trigger approval even when referenced
 # via shell expansions like $HOME or $PROSTOR_HOME, or by the resolved absolute
@@ -692,7 +692,7 @@ class _ApprovalEntry:
     def __init__(self, data: dict):
         self.event = threading.Event()
         self.data = data          # command, description, pattern_keys, …
-        self.result: Optional[str] = None  # "once"|"session"|"always"|"deny"
+        self.result: str | None = None  # "once"|"session"|"always"|"deny"
 
 
 _gateway_queues: dict[str, list] = {}        # session_key → [_ApprovalEntry, …]

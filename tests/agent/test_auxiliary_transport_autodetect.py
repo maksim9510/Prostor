@@ -62,7 +62,7 @@ def test_endpoint_speaks_anthropic_messages(url, expected, label):
 
 def test_maybe_wrap_anthropic_rewraps_kimi_coding_url():
     """Plain OpenAI client pointed at api.kimi.com/coding gets rewrapped."""
-    from agent.auxiliary_client import _maybe_wrap_anthropic, AnthropicAuxiliaryClient
+    from agent.auxiliary_client import AnthropicAuxiliaryClient, _maybe_wrap_anthropic
 
     plain_client = MagicMock(name="plain_openai")
     fake_anthropic = MagicMock(name="anthropic_sdk_client")
@@ -80,7 +80,7 @@ def test_maybe_wrap_anthropic_rewraps_kimi_coding_url():
 
 def test_maybe_wrap_anthropic_rewraps_slash_anthropic_url():
     """Plain OpenAI client pointed at any /anthropic URL gets rewrapped."""
-    from agent.auxiliary_client import _maybe_wrap_anthropic, AnthropicAuxiliaryClient
+    from agent.auxiliary_client import AnthropicAuxiliaryClient, _maybe_wrap_anthropic
 
     plain_client = MagicMock(name="plain_openai")
     fake_anthropic = MagicMock(name="anthropic_sdk_client")
@@ -98,7 +98,7 @@ def test_maybe_wrap_anthropic_rewraps_slash_anthropic_url():
 
 def test_maybe_wrap_anthropic_skips_openai_wire_urls():
     """OpenRouter / OpenAI / Moonshot-legacy stay as plain OpenAI clients."""
-    from agent.auxiliary_client import _maybe_wrap_anthropic, AnthropicAuxiliaryClient
+    from agent.auxiliary_client import AnthropicAuxiliaryClient, _maybe_wrap_anthropic
 
     plain_client = MagicMock(name="plain_openai")
     # No patch on build_anthropic_client — if the function tried to call it,
@@ -113,7 +113,7 @@ def test_maybe_wrap_anthropic_skips_openai_wire_urls():
 
 def test_maybe_wrap_anthropic_respects_explicit_chat_completions():
     """api_mode=chat_completions overrides URL heuristics."""
-    from agent.auxiliary_client import _maybe_wrap_anthropic, AnthropicAuxiliaryClient
+    from agent.auxiliary_client import AnthropicAuxiliaryClient, _maybe_wrap_anthropic
 
     plain_client = MagicMock(name="plain_openai")
     result = _maybe_wrap_anthropic(
@@ -127,7 +127,7 @@ def test_maybe_wrap_anthropic_respects_explicit_chat_completions():
 
 def test_maybe_wrap_anthropic_honors_explicit_anthropic_messages():
     """api_mode=anthropic_messages wraps even when URL wouldn't trigger."""
-    from agent.auxiliary_client import _maybe_wrap_anthropic, AnthropicAuxiliaryClient
+    from agent.auxiliary_client import AnthropicAuxiliaryClient, _maybe_wrap_anthropic
 
     plain_client = MagicMock(name="plain_openai")
     fake_anthropic = MagicMock(name="anthropic_sdk_client")
@@ -146,7 +146,7 @@ def test_maybe_wrap_anthropic_honors_explicit_anthropic_messages():
 
 def test_maybe_wrap_anthropic_double_wrap_safe():
     """Already-wrapped AnthropicAuxiliaryClient passes through unchanged."""
-    from agent.auxiliary_client import _maybe_wrap_anthropic, AnthropicAuxiliaryClient
+    from agent.auxiliary_client import AnthropicAuxiliaryClient, _maybe_wrap_anthropic
 
     already_wrapped = MagicMock(spec=AnthropicAuxiliaryClient)
     result = _maybe_wrap_anthropic(
@@ -159,9 +159,9 @@ def test_maybe_wrap_anthropic_double_wrap_safe():
 def test_maybe_wrap_anthropic_codex_client_passes_through():
     """CodexAuxiliaryClient is never re-dispatched."""
     from agent.auxiliary_client import (
-        _maybe_wrap_anthropic,
-        CodexAuxiliaryClient,
         AnthropicAuxiliaryClient,
+        CodexAuxiliaryClient,
+        _maybe_wrap_anthropic,
     )
 
     codex_client = MagicMock(spec=CodexAuxiliaryClient)
@@ -175,7 +175,7 @@ def test_maybe_wrap_anthropic_codex_client_passes_through():
 
 def test_maybe_wrap_anthropic_sdk_missing_falls_back():
     """ImportError on anthropic SDK returns plain client with warning."""
-    from agent.auxiliary_client import _maybe_wrap_anthropic, AnthropicAuxiliaryClient
+    from agent.auxiliary_client import AnthropicAuxiliaryClient, _maybe_wrap_anthropic
 
     plain_client = MagicMock(name="plain_openai")
 
@@ -221,8 +221,8 @@ def test_resolve_provider_client_kimi_coding_wraps_anthropic(monkeypatch, tmp_pa
     for every user" aux design shipped.
     """
     from agent.auxiliary_client import (
-        resolve_provider_client,
         AnthropicAuxiliaryClient,
+        resolve_provider_client,
     )
 
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))

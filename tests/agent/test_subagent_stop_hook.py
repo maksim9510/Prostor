@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tools.delegate_tool import delegate_task
 from prostor_cli import plugins
+from tools.delegate_tool import delegate_task
 
 
 def _make_parent(depth: int = 0, session_id: str = "parent-1"):

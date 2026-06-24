@@ -21,8 +21,6 @@ from __future__ import annotations
 
 import platform
 import subprocess
-from typing import Optional
-
 
 _BLACKHOLE_DEVICE = "BlackHole 2ch"
 
@@ -36,9 +34,9 @@ class AudioBridge:
 
     def __init__(self, name_prefix: str = "prostor_meet") -> None:
         self._name_prefix = name_prefix
-        self._platform: Optional[str] = None
-        self._device_name: Optional[str] = None
-        self._write_target: Optional[str] = None
+        self._platform: str | None = None
+        self._device_name: str | None = None
+        self._write_target: str | None = None
         self._module_ids: list[int] = []
         self._torn_down = False
 

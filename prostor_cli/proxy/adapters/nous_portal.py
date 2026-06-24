@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Dict, FrozenSet, Optional
+from typing import Any
 
 from prostor_cli.auth import (
-    AuthError,
     DEFAULT_NOUS_INFERENCE_URL,
-    _load_auth_store,
+    AuthError,
     _auth_store_lock,
     _is_terminal_nous_refresh_error,
+    _load_auth_store,
     _quarantine_nous_oauth_state,
     _quarantine_nous_pool_entries,
     _save_auth_store,
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Endpoints inference-api.nousresearch.com actually serves. Anything else
 # the proxy will reject with 404 — keeps stray clients from leaking weird
 # requests to the upstream.
-_ALLOWED_PATHS: FrozenSet[str] = frozenset(
+_ALLOWED_PATHS: frozenset[str] = frozenset(
     {
         "/chat/completions",
         "/completions",
@@ -58,7 +58,7 @@ class NousPortalAdapter(UpstreamAdapter):
         return "Nous Portal"
 
     @property
-    def allowed_paths(self) -> FrozenSet[str]:
+    def allowed_paths(self) -> frozenset[str]:
         return _ALLOWED_PATHS
 
     def is_authenticated(self) -> bool:
@@ -80,7 +80,7 @@ class NousPortalAdapter(UpstreamAdapter):
         *,
         failed_credential: UpstreamCredential,
         status_code: int,
-    ) -> Optional[UpstreamCredential]:
+    ) -> UpstreamCredential | None:
         _ = failed_credential
         if status_code != 401:
             return None
@@ -149,7 +149,7 @@ class NousPortalAdapter(UpstreamAdapter):
     # to prostor_cli.auth to avoid expanding that module's public surface.
     # ------------------------------------------------------------------
 
-    def _read_state(self) -> Optional[Dict[str, Any]]:
+    def _read_state(self) -> dict[str, Any] | None:
         try:
             with _auth_store_lock():
                 store = _load_auth_store()
@@ -164,10 +164,10 @@ class NousPortalAdapter(UpstreamAdapter):
 
     def _save_state(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         *,
-        quarantine_error: Optional[AuthError] = None,
-        quarantine_reason: Optional[str] = None,
+        quarantine_error: AuthError | None = None,
+        quarantine_reason: str | None = None,
     ) -> None:
         try:
             with _auth_store_lock():

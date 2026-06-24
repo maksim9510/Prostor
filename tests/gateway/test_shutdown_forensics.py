@@ -13,10 +13,10 @@ import pytest
 
 from gateway import shutdown_forensics as sf
 
-
 # ---------------------------------------------------------------------------
 # _signal_name
 # ---------------------------------------------------------------------------
+
 
 class TestSignalName:
     def test_known_signals_resolve_to_names(self):

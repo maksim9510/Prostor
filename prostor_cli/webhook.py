@@ -17,12 +17,10 @@ import secrets
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict
 
+from prostor_cli.config import cfg_get
 from prostor_constants import display_prostor_home
 from utils import atomic_replace
-from prostor_cli.config import cfg_get
-
 
 _SUBSCRIPTIONS_FILENAME = "webhook_subscriptions.json"
 _SUBSCRIPTIONS_FILE_MODE = 0o600
@@ -37,7 +35,7 @@ def _subscriptions_path() -> Path:
     return _prostor_home() / _SUBSCRIPTIONS_FILENAME
 
 
-def _load_subscriptions() -> Dict[str, dict]:
+def _load_subscriptions() -> dict[str, dict]:
     path = _subscriptions_path()
     if not path.exists():
         return {}
@@ -48,7 +46,7 @@ def _load_subscriptions() -> Dict[str, dict]:
         return {}
 
 
-def _save_subscriptions(subs: Dict[str, dict]) -> None:
+def _save_subscriptions(subs: dict[str, dict]) -> None:
     path = _subscriptions_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # webhook_subscriptions.json contains per-route HMAC secrets — write
@@ -271,8 +269,8 @@ def _cmd_test(args):
 
     payload = args.payload or '{"test": true, "event_type": "test", "message": "Hello from prostor webhook test"}'
 
-    import hmac
     import hashlib
+    import hmac
     sig = "sha256=" + hmac.new(
         secret.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()

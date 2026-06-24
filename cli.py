@@ -23,26 +23,26 @@ except ModuleNotFoundError:
     # means UTF-8 stdio setup is skipped on Windows; POSIX is unaffected.
     pass
 
+import atexit
+import base64
+import concurrent.futures
+import errno
+import json
 import logging
 import os
+import re
 import shutil
 import sys
-import json
-import re
-import concurrent.futures
-import base64
-import atexit
-import errno
 import tempfile
+import textwrap
 import time
 import uuid
-import textwrap
 from collections import deque
-from urllib.parse import unquote, urlparse
 from contextlib import contextmanager
-from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from pathlib import Path
+from typing import Any
+from urllib.parse import unquote, urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -50,25 +50,26 @@ logger = logging.getLogger(__name__)
 os.environ["PROSTOR_QUIET"] = "1"  # Our own modules
 
 import yaml
-
-from prostor_cli.fallback_config import get_fallback_chain
-from prostor_cli.cli_agent_setup_mixin import CLIAgentSetupMixin
-from prostor_cli.cli_commands_mixin import CLICommandsMixin
+from prompt_toolkit import print_formatted_text as _pt_print
+from prompt_toolkit.application import Application
+from prompt_toolkit.filters import Condition
+from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
 
 # prompt_toolkit for fixed input area TUI
 from prompt_toolkit.history import FileHistory
-from prompt_toolkit.styles import Style as PTStyle
-from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.application import Application
-from prompt_toolkit.layout import Layout, HSplit, Window, FormattedTextControl, ConditionalContainer
-from prompt_toolkit.layout.processors import Processor, Transformation, PasswordProcessor, ConditionalProcessor
-from prompt_toolkit.filters import Condition
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import ConditionalContainer, FormattedTextControl, HSplit, Layout, Window
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu
+from prompt_toolkit.layout.processors import ConditionalProcessor, PasswordProcessor, Processor, Transformation
+from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.styles import Style as PTStyle
 from prompt_toolkit.widgets import TextArea
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit import print_formatted_text as _pt_print
-from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
+
+from prostor_cli.cli_agent_setup_mixin import CLIAgentSetupMixin
+from prostor_cli.cli_commands_mixin import CLICommandsMixin
+from prostor_cli.fallback_config import get_fallback_chain
+
 try:
     from prompt_toolkit.cursor_shapes import CursorShape
     _STEADY_CURSOR = CursorShape.BLOCK  # Non-blinking block cursor
@@ -87,8 +88,9 @@ try:
     del install_shift_enter_alias, install_ctrl_enter_alias, install_ignored_terminal_sequences
 except Exception:
     pass
-import threading
 import queue
+import threading
+
 
 def CanonicalUsage(*args, **kwargs):
     from agent.usage_pricing import CanonicalUsage as _CanonicalUsage
@@ -110,9 +112,6 @@ def estimate_usage_cost(*args, **kwargs):
 from prostor_cli.cli_utils import (
     format_duration_compact,
     format_token_count_compact,
-    strip_reasoning_tags as _strip_reasoning_tags,
-    assistant_content_as_text as _assistant_content_as_text,
-    assistant_copy_text as _assistant_copy_text,
 )
 
 
@@ -132,6 +131,8 @@ def realign_markdown_tables(*args, **kwargs):
     from agent.markdown_tables import realign_markdown_tables as _realign_markdown_tables
 
     return _realign_markdown_tables(*args, **kwargs)
+
+
 # NOTE: `from agent.account_usage import ...` is deliberately NOT at module
 # top — it transitively pulls the OpenAI SDK chain (~230 ms cold) and is only
 # needed when the user runs `/limits`. Lazy-imported inside the handler below.
@@ -142,14 +143,11 @@ _COMMAND_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧
 
 # Load .env from ~/.prostor/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
-from prostor_constants import get_prostor_home, display_prostor_home
 from prostor_cli.browser_connect import (
-    DEFAULT_BROWSER_CDP_URL,
-    is_browser_debug_ready,
-    manual_chrome_debug_command,
     try_launch_chrome_debug,
 )
 from prostor_cli.env_loader import load_prostor_dotenv
+from prostor_constants import display_prostor_home, get_prostor_home
 from utils import base_url_host_matches
 
 _prostor_home = get_prostor_home()
@@ -166,12 +164,12 @@ load_prostor_dotenv(prostor_home=_prostor_home, project_env=_project_env)
 # Configuration Loading
 # =============================================================================
 
-def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
+def _load_prefill_messages(file_path: str) -> list[dict[str, Any]]:
     """Load ephemeral prefill messages from a JSON file.
-    
+
     The file should contain a JSON array of {role, content} dicts, e.g.:
         [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello!"}]
-    
+
     Relative paths are resolved from ~/.prostor/.
     Returns an empty list if the path is empty or the file doesn't exist.
     """
@@ -184,7 +182,7 @@ def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
         logger.warning("Prefill messages file not found: %s", path)
         return []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, list):
             logger.warning("Prefill messages file must contain a JSON array: %s", path)
@@ -195,7 +193,7 @@ def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
         return []
 
 
-def _resolve_prefill_messages_file(config: Dict[str, Any]) -> str:
+def _resolve_prefill_messages_file(config: dict[str, Any]) -> str:
     """Resolve the prefill file path from env/config.
 
     ``prefill_messages_file`` at the top level is the canonical config key.
@@ -233,14 +231,15 @@ def _parse_service_tier_config(raw: str) -> str | None:
     logger.warning("Unknown service_tier '%s', ignoring", raw)
     return None
 
-def load_cli_config() -> Dict[str, Any]:
+
+def load_cli_config() -> dict[str, Any]:
     """
     Load CLI configuration from config files.
-    
+
     Config lookup order:
     1. ~/.prostor/config.yaml (user config - preferred)
     2. ./cli-config.yaml (project config - fallback)
-    
+
     Environment variables take precedence over config file values.
     Returns default values if no config file exists.
 
@@ -386,7 +385,7 @@ def load_cli_config() -> Dict[str, Any]:
     # Load from file if exists
     if config_path.exists():
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 from prostor_cli.config import _normalize_root_model_keys
 
                 file_config = _normalize_root_model_keys(yaml.safe_load(f) or {})
@@ -595,6 +594,7 @@ def load_cli_config() -> Dict[str, Any]:
 
     return defaults
 
+
 # Load configuration at module startup
 CLI_CONFIG = load_cli_config()
 
@@ -644,8 +644,8 @@ except Exception:
 # be constructed (the import-then-instantiate ordering is enforced by
 # Python's import system).
 try:
-    import sys as _httpx_neuter_sys
     import importlib.util as _httpx_neuter_imp_util
+    import sys as _httpx_neuter_sys
 
     class _AsyncHttpxDelNeuter:
         """Defer ``AsyncHttpxClientWrapper.__del__`` neutering until import.
@@ -695,6 +695,7 @@ from rich.markup import escape as _escape
 from rich.panel import Panel
 from rich.text import Text as _RichText
 
+
 # Import agent and tool systems lazily. Bare interactive startup only needs the
 # prompt; the full agent/tool registry is initialized on first use.
 def AIAgent(*args, **kwargs):
@@ -704,8 +705,8 @@ def AIAgent(*args, **kwargs):
 
 
 def get_tool_definitions(*args, **kwargs):
-    from prostor_cli.mcp_startup import wait_for_mcp_discovery
     from model_tools import get_tool_definitions as _get_tool_definitions
+    from prostor_cli.mcp_startup import wait_for_mcp_discovery
 
     wait_for_mcp_discovery()
     return _get_tool_definitions(*args, **kwargs)
@@ -716,9 +717,10 @@ def get_toolset_for_tool(*args, **kwargs):
 
     return _get_toolset_for_tool(*args, **kwargs)
 
+
 # Extracted CLI modules (Phase 3)
 from prostor_cli.banner import build_welcome_banner
-from prostor_cli.commands import SlashCommandCompleter, SlashCommandAutoSuggest
+from prostor_cli.commands import SlashCommandAutoSuggest, SlashCommandCompleter
 
 
 def get_all_toolsets(*args, **kwargs):
@@ -745,11 +747,13 @@ def _sync_process_session_id(session_id: str) -> None:
 
     set_current_session_id(session_id)
 
+
 # Cron job system for scheduled tasks (execution is handled by the gateway)
 def get_job(*args, **kwargs):
     from cron import get_job as _get_job
 
     return _get_job(*args, **kwargs)
+
 
 # Resource cleanup imports for safe shutdown (terminal VMs, browser sessions)
 from prostor_cli.callbacks import prompt_for_secret
@@ -783,6 +787,7 @@ def _cleanup_all_browsers(*args, **kwargs):
     from tools.browser_tool import _emergency_cleanup_all_sessions
 
     return _emergency_cleanup_all_sessions(*args, **kwargs)
+
 
 # Guard to prevent cleanup from running multiple times on exit
 _cleanup_done = False
@@ -851,6 +856,7 @@ def _prepare_deferred_agent_startup() -> None:
             "shell-hook registration failed at deferred CLI startup",
             exc_info=True,
         )
+
 
 def _run_cleanup(*, notify_session_finalize: bool = True):
     """Run resource cleanup exactly once."""
@@ -1067,16 +1073,15 @@ def _reset_terminal_input_modes_on_exit() -> None:
 # external callers of cli._normalize_git_bash_path etc. keep working.
 # ``_active_worktree`` is re-exported from cli_worktree so the
 # ProstorCLI class can still read/write it through this module.
-from prostor_cli.cli_worktree import active_worktree as _active_worktree
 
 
-def _normalize_git_bash_path(p: Optional[str]) -> Optional[str]:
+def _normalize_git_bash_path(p: str | None) -> str | None:
     """Deprecated alias - moved to prostor_cli.cli_worktree.normalize_git_bash_path."""
     from prostor_cli.cli_worktree import normalize_git_bash_path as _real_impl
     return _real_impl(p)
 
 
-def _git_repo_root() -> Optional[str]:
+def _git_repo_root() -> str | None:
     """Deprecated alias - moved to prostor_cli.cli_worktree.git_repo_root."""
     from prostor_cli.cli_worktree import git_repo_root as _real_impl
     return _real_impl()
@@ -1088,7 +1093,7 @@ def _path_is_within_root(path: Path, root: Path) -> bool:
     return _real_impl(path, root)
 
 
-def _setup_worktree(repo_root: str = None) -> Optional[Dict[str, str]]:
+def _setup_worktree(repo_root: str = None) -> dict[str, str] | None:
     """Deprecated alias - moved to prostor_cli.cli_worktree.setup_worktree."""
     from prostor_cli.cli_worktree import setup_worktree as _real_impl
     return _real_impl(repo_root)
@@ -1100,7 +1105,7 @@ def _worktree_has_unpushed_commits(worktree_path: str, timeout: int = 10) -> boo
     return _real_impl(worktree_path, timeout)
 
 
-def _cleanup_worktree(info: Dict[str, str] = None) -> None:
+def _cleanup_worktree(info: dict[str, str] = None) -> None:
     """Deprecated alias - moved to prostor_cli.cli_worktree.cleanup_worktree."""
     from prostor_cli.cli_worktree import cleanup_worktree as _real_impl
     _real_impl(info)
@@ -1318,6 +1323,7 @@ def _prune_orphaned_branches(repo_root: str) -> None:
 
     logger.debug("Pruned %d orphaned branches", len(orphaned))
 
+
 # ============================================================================
 # ASCII Art & Branding
 # ============================================================================
@@ -1373,20 +1379,29 @@ def _hex_to_ansi(hex_color: str, *, bold: bool = False) -> str:
 # Skin + light-mode helpers moved to prostor_cli.cli_skin. Re-imported
 # here as thin aliases so existing call sites inside cli.py keep working.
 from prostor_cli.cli_skin import (
-    hex_to_ansi as _hex_to_ansi,
-    luminance_from_hex as _luminance_from_hex,
-    query_osc11_background as _query_osc11_background,
-    detect_light_mode as _detect_light_mode,
-    maybe_remap_for_light_mode as _maybe_remap_for_light_mode,
-    install_skin_light_mode_hook as _install_skin_light_mode_hook,
-    SkinAwareAnsi as _SkinAwareAnsi,
-    b as _b,
-    d as _d,
-    accent_hex as _accent_hex,
     ACCENT as _ACCENT,
+)
+from prostor_cli.cli_skin import (
     DIM as _DIM,
 )
-
+from prostor_cli.cli_skin import (
+    accent_hex as _accent_hex,
+)
+from prostor_cli.cli_skin import (
+    b as _b,
+)
+from prostor_cli.cli_skin import (
+    d as _d,
+)
+from prostor_cli.cli_skin import (
+    detect_light_mode as _detect_light_mode,
+)
+from prostor_cli.cli_skin import (
+    install_skin_light_mode_hook as _install_skin_light_mode_hook,
+)
+from prostor_cli.cli_skin import (
+    maybe_remap_for_light_mode as _maybe_remap_for_light_mode,
+)
 
 # Light-mode equivalents of skin colors that are unreadable on cream
 # Terminal.app backgrounds.  Used by _SkinAwareAnsi to remap colors
@@ -2102,8 +2117,8 @@ def _apply_bracketed_paste_timeout_patch() -> None:
     """
     try:
         import prompt_toolkit.input.vt100_parser as _vt100_mod
-        from prompt_toolkit.keys import Keys as _PtKeys
         from prompt_toolkit.key_binding.key_processor import KeyPress as _PtKeyPress
+        from prompt_toolkit.keys import Keys as _PtKeys
 
         if getattr(_vt100_mod, "_prostor_bp_timeout_patched", False):
             return
@@ -2227,7 +2242,7 @@ def _preserve_ctrl_enter_newline() -> bool:
     # WSL detection — env vars can be scrubbed under sudo, also peek /proc.
     for p in ("/proc/version", "/proc/sys/kernel/osrelease"):
         try:
-            with open(p, "r", encoding="utf-8", errors="ignore") as f:
+            with open(p, encoding="utf-8", errors="ignore") as f:
                 if "microsoft" in f.read().lower():
                     return True
         except OSError:
@@ -2331,7 +2346,8 @@ def _estimate_tui_input_height(
     try:
         from prompt_toolkit.utils import get_cwidth
     except Exception:
-        get_cwidth = lambda value: len(value or "")  # type: ignore[assignment]
+        def get_cwidth(value):
+            return len(value or "")  # type: ignore[assignment]
 
     try:
         columns = int(terminal_columns or 0)
@@ -2439,6 +2455,7 @@ class ChatConsole:
         ``ProstorCLI._busy_command()``.
         """
         yield self
+
 
 # ASCII Art - PROSTOR-AGENT logo (full width, single line - requires ~95 char terminal)
 PROSTOR_AGENT_LOGO = """[bold #FFD700]██╗  ██╗███████╗██████╗ ███╗   ███╗███████╗███████╗       █████╗  ██████╗ ███████╗███╗   ██╗████████╗[/]
@@ -2621,15 +2638,15 @@ def _parse_skills_argument(skills: str | list[str] | tuple[str, ...] | None) -> 
 def save_config_value(key_path: str, value: any) -> bool:
     """
     Save a value to the active config file at the specified key path.
-    
+
     Respects the same lookup order as load_cli_config():
     1. ~/.prostor/config.yaml (user config - preferred, used if it exists)
     2. ./cli-config.yaml (project config - fallback)
-    
+
     Args:
         key_path: Dot-separated path like "agent.system_prompt"
         value: Value to save
-    
+
     Returns:
         True if successful, False otherwise
     """
@@ -2666,7 +2683,7 @@ def save_config_value(key_path: str, value: any) -> bool:
 class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     """
     Interactive CLI for the Prostor Agent.
-    
+
     Provides a REPL interface with rich formatting, command history,
     and tool execution capabilities.
     """
@@ -2674,12 +2691,12 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     def __init__(
         self,
         model: str = None,
-        toolsets: List[str] = None,
+        toolsets: list[str] = None,
         provider: str = None,
         api_key: str = None,
         base_url: str = None,
         max_turns: int = None,
-        verbose: Optional[bool] = None,
+        verbose: bool | None = None,
         compact: bool = False,
         resume: str = None,
         checkpoints: bool = False,
@@ -2829,10 +2846,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             or os.getenv("PROSTOR_INFERENCE_PROVIDER")
             or "auto"
         )
-        self._provider_source: Optional[str] = None
+        self._provider_source: str | None = None
         self.provider = self.requested_provider
         self.api_mode = "chat_completions"
-        self.acp_command: Optional[str] = None
+        self.acp_command: str | None = None
         self.acp_args: list[str] = []
         self.base_url = (
             base_url
@@ -2923,7 +2940,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # Empty string / None / out-of-range = unset (let OR pick strongest coder).
         _or_cfg = CLI_CONFIG.get("openrouter", {}) or {}
         _raw_score = _or_cfg.get("min_coding_score")
-        self._openrouter_min_coding_score: Optional[float] = None
+        self._openrouter_min_coding_score: float | None = None
         if _raw_score not in {None, ""}:
             try:
                 _f = float(_raw_score)
@@ -2943,20 +2960,20 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         self._active_agent_route_signature = None
 
         # Agent will be initialized on first use
-        self.agent: Optional[Any] = None
+        self.agent: Any | None = None
         self._tool_callbacks_installed = False
         self._tirith_security_checked = False
         self._app = None  # prompt_toolkit Application (set in run())
 
         # Conversation state
-        self.conversation_history: List[Dict[str, Any]] = []
+        self.conversation_history: list[dict[str, Any]] = []
         self.session_start = datetime.now()
         self._resumed = False
         # Per-prompt elapsed timer — started at the beginning of each chat turn,
         # frozen when the agent thread completes, displayed in the status bar.
-        self._prompt_start_time: Optional[float] = None  # time.time() when turn started
+        self._prompt_start_time: float | None = None  # time.time() when turn started
         self._prompt_duration: float = 0.0  # frozen duration of last completed turn
-        self._last_turn_finished_at: Optional[float] = None  # time.time() when the last agent loop finished
+        self._last_turn_finished_at: float | None = None  # time.time() when the last agent loop finished
         # Initialize SQLite session store early so /title works before first message
         self._session_db = None
         self._session_db_unavailable = False
@@ -3002,7 +3019,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         _run_checkpoint_auto_maintenance()
 
         # Deferred title: stored in memory until the session is created in the DB
-        self._pending_title: Optional[str] = None
+        self._pending_title: str | None = None
 
         # Session ID: reuse existing one when resuming, otherwise generate fresh
         if resume:
@@ -3110,7 +3127,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         self._last_resize_width = None
 
         # Background task tracking: {task_id: threading.Thread}
-        self._background_tasks: Dict[str, threading.Thread] = {}
+        self._background_tasks: dict[str, threading.Thread] = {}
         self._background_task_counter = 0
 
     def _claim_active_session(self, surface: str = "cli", *, stderr: bool = False) -> bool:
@@ -3410,7 +3427,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             self._resize_recovery_pending = False
             self._recover_after_resize(app, original_on_resize)
 
-    def _status_bar_context_style(self, percent_used: Optional[int]) -> str:
+    def _status_bar_context_style(self, percent_used: int | None) -> str:
         if percent_used is None:
             return "class:status-bar-dim"
         if percent_used >= 95:
@@ -3430,13 +3447,13 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             return "class:status-bar-warn"
         return "class:status-bar-dim"
 
-    def _build_context_bar(self, percent_used: Optional[int], width: int = 10) -> str:
+    def _build_context_bar(self, percent_used: int | None, width: int = 10) -> str:
         safe_percent = max(0, min(100, percent_used or 0))
         filled = round((safe_percent / 100) * width)
         return f"[{('█' * filled) + ('░' * max(0, width - filled))}]"
 
     @staticmethod
-    def _format_prompt_elapsed(prompt_start_time: Optional[float], prompt_duration: float, live: bool = False) -> str:
+    def _format_prompt_elapsed(prompt_start_time: float | None, prompt_duration: float, live: bool = False) -> str:
         """Format per-prompt elapsed time for the status bar.
 
         Always returns a string — shows 0s on fresh start before first turn.
@@ -3474,7 +3491,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         return f"{emoji} {time_str}"
 
     @staticmethod
-    def _format_idle_since(last_finished_at: Optional[float], turn_live: bool) -> str:
+    def _format_idle_since(last_finished_at: float | None, turn_live: bool) -> str:
         """Format time since the last final agent response for the status bar.
 
         Returns an empty string while a turn is live (the per-prompt elapsed
@@ -3486,7 +3503,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         idle = max(0.0, time.time() - last_finished_at)
         return f"✓ {format_duration_compact(idle)}"
 
-    def _get_status_bar_snapshot(self) -> Dict[str, Any]:
+    def _get_status_bar_snapshot(self) -> dict[str, Any]:
         # Prefer the agent's model name — it updates on fallback.
         # self.model reflects the originally configured model and never
         # changes mid-session, so the TUI would show a stale name after
@@ -3637,14 +3654,14 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         except Exception:
             return shutil.get_terminal_size(default).columns
 
-    def _use_minimal_tui_chrome(self, width: Optional[int] = None) -> bool:
+    def _use_minimal_tui_chrome(self, width: int | None = None) -> bool:
         """Hide low-value chrome on narrow/mobile terminals to preserve rows."""
         if width is None:
             width = self._get_tui_terminal_width()
         return width < 64
 
     @staticmethod
-    def _scrollback_box_width(width: Optional[int] = None) -> int:
+    def _scrollback_box_width(width: int | None = None) -> int:
         """Return the full viewport width for printed scrollback box rules.
 
         Previously this clamped to ``max(32, min(width, 56))`` as a defense
@@ -3667,7 +3684,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 width = 80
         return max(32, int(width or 80))
 
-    def _tui_input_rule_height(self, position: str, width: Optional[int] = None) -> int:
+    def _tui_input_rule_height(self, position: str, width: int | None = None) -> int:
         """Return the visible height for the top/bottom input separator rules."""
         if position not in {"top", "bottom"}:
             raise ValueError(f"Unknown input rule position: {position}")
@@ -3677,13 +3694,13 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             return 1
         return 0 if self._use_minimal_tui_chrome(width=width) else 1
 
-    def _agent_spacer_height(self, width: Optional[int] = None) -> int:
+    def _agent_spacer_height(self, width: int | None = None) -> int:
         """Return the spacer height shown above the status bar while the agent runs."""
         if not getattr(self, "_agent_running", False):
             return 0
         return 0 if self._use_minimal_tui_chrome(width=width) else 1
 
-    def _spinner_widget_height(self, width: Optional[int] = None) -> int:
+    def _spinner_widget_height(self, width: int | None = None) -> int:
         """Return the visible height for the spinner/status text line above the status bar."""
         spinner_line = self._render_spinner_text()
         if not spinner_line:
@@ -3751,7 +3768,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         except Exception:
             self._voice_record_key_display_cache = "Ctrl+B"
 
-    def _get_voice_status_fragments(self, width: Optional[int] = None):
+    def _get_voice_status_fragments(self, width: int | None = None):
         """Return the voice status bar fragments for the interactive TUI."""
         width = width or self._get_tui_terminal_width()
         compact = self._use_minimal_tui_chrome(width=width)
@@ -3770,7 +3787,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         cont = " | Continuous" if self._voice_continuous else ""
         return [("class:voice-status", f" 🎤 Voice mode{tts}{cont}  —  {label} to record ")]
 
-    def _build_status_bar_text(self, width: Optional[int] = None) -> str:
+    def _build_status_bar_text(self, width: int | None = None) -> str:
         """Return a compact one-line session status string for the TUI footer."""
         try:
             snapshot = self._get_status_bar_snapshot()
@@ -4246,7 +4263,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             # the input to be silently dropped (#17666).
             try:
                 return path.read_text(encoding="utf-8")
-            except (OSError, IOError):
+            except OSError:
                 logger.warning("Paste file gone or unreadable, returning placeholder: %s", path)
                 return match.group(0)
 
@@ -4996,6 +5013,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         image later with ``vision_analyze`` if needed.
         """
         import asyncio as _asyncio
+
         from tools.vision_tools import vision_analyze_tool
 
         analysis_prompt = (
@@ -5506,7 +5524,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         except Exception:
             pass
 
-    def _discard_session_if_empty(self, session_id: Optional[str]) -> bool:
+    def _discard_session_if_empty(self, session_id: str | None) -> bool:
         """Drop a just-ended session row when it never gained content.
 
         Starting the CLI and immediately quitting (or rotating with /new,
@@ -5727,7 +5745,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
     def retry_last(self):
         """Retry the last user message by removing the last exchange and re-sending.
-        
+
         Removes the last assistant response (and any tool-call messages) and
         the last user message, then re-sends that user message to the agent.
         Returns the message to re-send, or None if there's nothing to retry.
@@ -5908,6 +5926,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     def _run_curses_picker(self, title: str, items: list[str], default_index: int = 0) -> int | None:
         """Run curses_single_select via run_in_terminal so prompt_toolkit handles terminal ownership cleanly."""
         import threading
+
         from prostor_cli.curses_ui import curses_single_select
 
         result = [None]
@@ -6495,9 +6514,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         config.yaml, default True). Use ``--session`` for a one-off switch.
         """
         from prostor_cli.model_switch import (
-            switch_model,
             parse_model_flags,
             resolve_persist_behavior,
+            switch_model,
         )
         from prostor_cli.providers import get_label
 
@@ -6782,15 +6801,15 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         if isinstance(value, dict):
             parts = [value.get("system_prompt", "")]
             if value.get("tone"):
-                parts.append(f'Tone: {value["tone"]}' )
+                parts.append(f'Tone: {value["tone"]}')
             if value.get("style"):
-                parts.append(f'Style: {value["style"]}' )
+                parts.append(f'Style: {value["style"]}')
             return "\n".join(p for p in parts if p)
         return str(value)
 
     def _show_gateway_status(self):
         """Show status of the gateway and connected messaging platforms."""
-        from gateway.config import load_gateway_config, Platform
+        from gateway.config import Platform, load_gateway_config
 
         print()
         print("+" + "-" * 60 + "+")
@@ -6848,10 +6867,10 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     def process_command(self, command: str) -> bool:
         """
         Process a slash command.
-        
+
         Args:
             command: The command string (starting with /)
-            
+
         Returns:
             bool: True to continue, False to exit
         """
@@ -7208,7 +7227,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                         loaded = {}
 
                     print(f"User plugins ({len(user_entries)}):")
-                    for name, version, _desc, source, _dir, key in sorted(user_entries):
+                    for name, version, _desc, _source, _dir, key in sorted(user_entries):
                         state = _plugin_status(name, enabled, disabled, key=key)
                         glyph = {"enabled": "✓", "disabled": "✗"}.get(state, "○")
                         ver = f" v{version}" if version else ""
@@ -7445,8 +7464,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         session split).
         """
         try:
-            from prostor_cli.goals import GoalManager
             from prostor_cli.config import load_config
+            from prostor_cli.goals import GoalManager
         except Exception as exc:
             logging.debug("goal manager unavailable: %s", exc)
             return None
@@ -7770,8 +7789,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         original_count = len(self.conversation_history)
         with self._busy_command("Compressing context..."):
             try:
-                from agent.model_metadata import estimate_request_tokens_rough
                 from agent.manual_compression_feedback import summarize_manual_compression
+                from agent.model_metadata import estimate_request_tokens_rough
                 original_history = list(self.conversation_history)
 
                 # Boundary-aware split: only the head is summarized; the
@@ -8748,8 +8767,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 i += 1
 
         try:
-            from prostor_state import SessionDB
             from agent.insights import InsightsEngine
+            from prostor_state import SessionDB
 
             db = SessionDB()
             engine = InsightsEngine(db)
@@ -8823,7 +8842,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     _DESTRUCTIVE_SKIP_TOKENS = frozenset({"now", "--yes", "-y"})
 
     @classmethod
-    def _split_destructive_skip(cls, cmd_text: Optional[str]) -> tuple[str, bool]:
+    def _split_destructive_skip(cls, cmd_text: str | None) -> tuple[str, bool]:
         """Split inline-skip tokens out of a destructive slash command.
 
         Returns ``(remainder, skip)`` where ``remainder`` is the original
@@ -8857,8 +8876,8 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         self,
         command: str,
         detail: str,
-        cmd_original: Optional[str] = None,
-    ) -> Optional[str]:
+        cmd_original: str | None = None,
+    ) -> str | None:
         """Prompt the user to confirm a destructive session slash command.
 
         Used by ``/clear``, ``/new``/``/reset``, and ``/undo`` before they
@@ -9014,7 +9033,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         sees the updated tools on the next turn.
         """
         try:
-            from tools.mcp_tool import shutdown_mcp_servers, discover_mcp_tools, _servers, _lock
+            from tools.mcp_tool import _lock, _servers, discover_mcp_tools, shutdown_mcp_servers
 
             # Capture old server names
             with _lock:
@@ -9125,7 +9144,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         prompt caching intact.
         """
         try:
-            from agent.skill_commands import reload_skills, get_skill_commands
+            from agent.skill_commands import get_skill_commands, reload_skills
 
             if not self._command_running:
                 print("🔄 Reloading skills...")
@@ -9330,7 +9349,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         """Start capturing audio from the microphone."""
         if getattr(self, '_should_exit', False):
             return
-        from tools.voice_mode import create_audio_recorder, check_voice_requirements
+        from tools.voice_mode import check_voice_requirements, create_audio_recorder
 
         reqs = check_voice_requirements()
         if not reqs["audio_available"]:
@@ -9836,7 +9855,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
     def _sudo_password_callback(self) -> str:
         """
         Prompt for sudo password through the prompt_toolkit UI.
-        
+
         Called from the agent thread when a sudo command is encountered.
         Uses the same clarify-style mechanism: sets UI state, waits on a
         queue for the user's response via the Enter key binding.
@@ -10227,22 +10246,22 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             except Exception:
                 pass
 
-    def chat(self, message, images: list = None) -> Optional[str]:
+    def chat(self, message, images: list = None) -> str | None:
         """
         Send a message to the agent and get a response.
-        
+
         Handles streaming output, interrupt detection (user typing while agent
         is working), and re-queueing of interrupted messages.
-        
+
         Uses a dedicated _interrupt_queue (separate from _pending_input) to avoid
         race conditions between the process_loop and interrupt monitoring. Messages
         typed while the agent is running go to _interrupt_queue; messages typed while
         idle go to _pending_input.
-        
+
         Args:
             message: The user's message (str or multimodal content list)
             images: Optional list of Path objects for attached images
-            
+
         Returns:
             The agent's response, or None on error
         """
@@ -10392,11 +10411,15 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             if self._voice_tts:
                 try:
                     from tools.tts_tool import (
-                        _load_tts_config as _load_tts_cfg,
                         _get_provider as _get_prov,
+                    )
+                    from tools.tts_tool import (
                         _import_elevenlabs,
                         _import_sounddevice,
                         stream_tts_to_speaker,
+                    )
+                    from tools.tts_tool import (
+                        _load_tts_config as _load_tts_cfg,
                     )
                     _tts_cfg = _load_tts_cfg()
                     if _get_prov(_tts_cfg) == "elevenlabs":
@@ -11408,7 +11431,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
         def handle_enter(event):
             """Handle Enter key - submit input.
-            
+
             Routes to the correct queue based on active UI state:
             - Sudo password prompt: password goes to sudo response queue
             - Approval selection: selected choice goes to approval response queue
@@ -11835,7 +11858,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
         @kb.add('c-c')
         def handle_ctrl_c(event):
             """Handle Ctrl+C - cancel interactive prompts, interrupt agent, or exit.
-            
+
             Priority:
             0. Cancel active voice recording
             1. Cancel active sudo/approval/clarify prompt
@@ -12068,7 +12091,9 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 event.app.invalidate()
                 return
             import signal as _sig
+
             from prompt_toolkit.application import run_in_terminal
+
             from prostor_cli.skin_engine import get_active_skin
             agent_name = get_active_skin().get_branding("agent_name", "Prostor Agent")
             msg = f"\n{agent_name} has been suspended. Run `fg` to bring {agent_name} back."
@@ -13676,7 +13701,8 @@ def _run_kanban_goal_loop_q(cli: "ProstorCLI", first_response: str) -> None:
         return
 
     from prostor_cli import kanban_db as _kb
-    from prostor_cli.goals import run_kanban_goal_loop as _run_loop, DEFAULT_MAX_TURNS as _DEF_TURNS
+    from prostor_cli.goals import DEFAULT_MAX_TURNS as _DEF_TURNS
+    from prostor_cli.goals import run_kanban_goal_loop as _run_loop
 
     # Resolve goal text from the card (title + body = the acceptance
     # criteria the judge evaluates against).
@@ -13760,7 +13786,7 @@ def main(
     api_key: str = None,
     base_url: str = None,
     max_turns: int = None,
-    verbose: Optional[bool] = None,
+    verbose: bool | None = None,
     quiet: bool = False,
     compact: bool = False,
     list_tools: bool = False,
@@ -13776,7 +13802,7 @@ def main(
 ):
     """
     Prostor Agent CLI - Interactive AI Assistant
-    
+
     Args:
         query: Single query to execute (then exit). Alias: -q
         q: Shorthand for --query
@@ -13795,7 +13821,7 @@ def main(
         resume: Resume a previous session by its ID (e.g., 20260225_143052_a1b2c3)
         worktree: Run in an isolated git worktree (for parallel agents). Alias: -w
         w: Shorthand for --worktree
-    
+
     Examples:
         python cli.py                            # Start interactive mode
         python cli.py --toolsets web,terminal    # Use specific toolsets
@@ -13825,6 +13851,7 @@ def main(
     # Handle gateway mode (messaging + cron)
     if gateway:
         import asyncio
+
         from gateway.run import start_gateway
         print("Starting Prostor Gateway (messaging platforms)...")
         asyncio.run(start_gateway())
@@ -14034,8 +14061,8 @@ def main(
             _kanban_task_id = os.environ.get("PROSTOR_KANBAN_TASK", "").strip()
             if _kanban_task_id:
                 try:
-                    from prostor_cli import kanban_db as _kb
                     from agent.image_routing import extract_image_refs as _extract_refs
+                    from prostor_cli import kanban_db as _kb
 
                     _conn = _kb.connect()
                     try:

@@ -13,9 +13,9 @@ from decimal import Decimal
 
 import pytest
 
-import tui_gateway.server as srv
-import prostor_cli.nous_billing as nb
 import agent.billing_view as bv
+import prostor_cli.nous_billing as nb
+import tui_gateway.server as srv
 from agent.billing_view import BillingState, CardInfo, MonthlyCap
 
 

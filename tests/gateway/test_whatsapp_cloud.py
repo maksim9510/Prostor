@@ -19,10 +19,10 @@ import pytest
 
 from gateway.config import Platform
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_adapter(**overrides):
     """Build a WhatsAppCloudAdapter with test attributes (bypass __init__).

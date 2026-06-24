@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -479,8 +479,8 @@ def test_auth_add_codex_oauth_keeps_distinct_pool_accounts(tmp_path, monkeypatch
     )
     monkeypatch.setattr("prostor_cli.auth._codex_device_code_login", lambda: next(logins))
 
-    from prostor_cli.auth_commands import auth_add_command
     from agent.credential_pool import load_pool
+    from prostor_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "openai-codex"
@@ -544,7 +544,7 @@ def test_codex_runtime_pool_only_rate_limit_is_not_missing_auth(tmp_path, monkey
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
     _write_auth_store(tmp_path, _codex_pool_only_store(exhausted=True))
 
-    from prostor_cli.auth import AuthError, CODEX_RATE_LIMITED_CODE, resolve_codex_runtime_credentials
+    from prostor_cli.auth import CODEX_RATE_LIMITED_CODE, AuthError, resolve_codex_runtime_credentials
 
     with pytest.raises(AuthError) as exc_info:
         resolve_codex_runtime_credentials()
@@ -863,6 +863,7 @@ def test_logout_resets_codex_config_when_auth_state_already_cleared(tmp_path, mo
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth import logout_command
 
     logout_command(SimpleNamespace(provider="openai-codex"))
@@ -887,6 +888,7 @@ def test_logout_defaults_to_configured_codex_when_no_active_provider(tmp_path, m
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth import logout_command
 
     logout_command(SimpleNamespace(provider=None))
@@ -918,6 +920,7 @@ def test_logout_clears_stale_active_codex_without_provider_credentials(tmp_path,
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth import logout_command
 
     logout_command(SimpleNamespace(provider=None))
@@ -1092,7 +1095,7 @@ def test_auth_list_prefers_explicit_reset_time(monkeypatch, capsys):
     monkeypatch.setattr("prostor_cli.auth_commands.load_pool", lambda provider: _Pool())
     monkeypatch.setattr(
         "prostor_cli.auth_commands.time.time",
-        lambda: datetime(2026, 4, 5, 10, 30, tzinfo=timezone.utc).timestamp(),
+        lambda: datetime(2026, 4, 5, 10, 30, tzinfo=UTC).timestamp(),
     )
 
     class _Args:
@@ -1270,6 +1273,7 @@ def test_auth_remove_claude_code_suppresses_reseed(tmp_path, monkeypatch):
     (prostor_home / "auth.json").write_text(json.dumps(auth_store))
 
     from types import SimpleNamespace
+
     from prostor_cli.auth_commands import auth_remove_command
     auth_remove_command(SimpleNamespace(provider="anthropic", target="1"))
 
@@ -1284,7 +1288,7 @@ def test_unsuppress_credential_source_clears_marker(tmp_path, monkeypatch):
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
     _write_auth_store(tmp_path, {"version": 1})
 
-    from prostor_cli.auth import suppress_credential_source, unsuppress_credential_source, is_source_suppressed
+    from prostor_cli.auth import is_source_suppressed, suppress_credential_source, unsuppress_credential_source
 
     suppress_credential_source("openai-codex", "device_code")
     assert is_source_suppressed("openai-codex", "device_code") is True
@@ -1315,9 +1319,9 @@ def test_unsuppress_credential_source_preserves_other_markers(tmp_path, monkeypa
     _write_auth_store(tmp_path, {"version": 1})
 
     from prostor_cli.auth import (
+        is_source_suppressed,
         suppress_credential_source,
         unsuppress_credential_source,
-        is_source_suppressed,
     )
 
     suppress_credential_source("openai-codex", "device_code")
@@ -1362,6 +1366,7 @@ def test_auth_remove_codex_device_code_suppresses_reseed(tmp_path, monkeypatch):
     (prostor_home / "auth.json").write_text(json.dumps(auth_store))
 
     from types import SimpleNamespace
+
     from prostor_cli.auth_commands import auth_remove_command
 
     auth_remove_command(SimpleNamespace(provider="openai-codex", target="1"))
@@ -1409,6 +1414,7 @@ def test_auth_remove_codex_manual_source_suppresses_reseed(tmp_path, monkeypatch
     (prostor_home / "auth.json").write_text(json.dumps(auth_store))
 
     from types import SimpleNamespace
+
     from prostor_cli.auth_commands import auth_remove_command
 
     auth_remove_command(SimpleNamespace(provider="openai-codex", target="1"))
@@ -1537,6 +1543,7 @@ def test_auth_remove_env_seeded_suppresses_shell_exported_var(tmp_path, monkeypa
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth_commands import auth_remove_command
     auth_remove_command(SimpleNamespace(provider="xai", target="1"))
 
@@ -1589,6 +1596,7 @@ def test_auth_remove_env_seeded_dotenv_only_no_shell_hint(tmp_path, monkeypatch,
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth_commands import auth_remove_command
     auth_remove_command(SimpleNamespace(provider="deepseek", target="1"))
 
@@ -1618,6 +1626,7 @@ def test_auth_add_clears_env_suppression_for_provider(tmp_path, monkeypatch):
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth import is_source_suppressed
     from prostor_cli.auth_commands import auth_add_command
 
@@ -1896,6 +1905,7 @@ def test_auth_remove_copilot_suppresses_all_variants(tmp_path, monkeypatch):
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth import is_source_suppressed
     from prostor_cli.auth_commands import auth_remove_command
 
@@ -1935,6 +1945,7 @@ def test_auth_add_clears_all_suppressions_including_non_env(tmp_path, monkeypatc
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth import is_source_suppressed
     from prostor_cli.auth_commands import auth_add_command
 
@@ -1976,6 +1987,7 @@ def test_auth_remove_codex_manual_device_code_suppresses_canonical(tmp_path, mon
     )
 
     from types import SimpleNamespace
+
     from prostor_cli.auth import is_source_suppressed
     from prostor_cli.auth_commands import auth_remove_command
 

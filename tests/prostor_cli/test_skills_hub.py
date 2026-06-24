@@ -81,8 +81,8 @@ def _capture_check(monkeypatch, results, name=None) -> str:
 
 
 def _capture_update(monkeypatch, results) -> tuple[str, list[tuple[str, str, bool]]]:
-    import tools.skills_hub as hub
     import prostor_cli.skills_hub as cli_hub
+    import tools.skills_hub as hub
 
     sink = StringIO()
     console = Console(file=sink, force_terminal=False, color_system=None)
@@ -438,8 +438,8 @@ def _make_url_bundle_fetcher(name="", awaiting_name=True, url="https://example.c
 
 def _install_mocks(monkeypatch, tmp_path, source_factory, category_hint=""):
     """Wire the minimum set of monkeypatches for a do_install dry run."""
-    import tools.skills_hub as hub
     import tools.skills_guard as guard
+    import tools.skills_hub as hub
 
     q_path = tmp_path / "skills" / ".hub" / "quarantine" / "pending"
     q_path.mkdir(parents=True)
@@ -624,8 +624,8 @@ def test_browse_skills_dedup_uses_identifier_not_name(monkeypatch):
     fix, both were keyed by name so only one survived deduplication. After the
     fix, each unique identifier produces a distinct result.
     """
-    from tools.skills_hub import SkillMeta
     from prostor_cli.skills_hub import browse_skills
+    from tools.skills_hub import SkillMeta
 
     airbnb = SkillMeta(
         name="search-listings", description="Airbnb search", source="browse-sh",

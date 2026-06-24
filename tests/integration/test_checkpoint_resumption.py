@@ -19,15 +19,16 @@ Usage:
 """
 
 import pytest
+
 pytestmark = pytest.mark.integration
 
 import json
 import shutil
 import sys
 import time
-from pathlib import Path
-from typing import List, Dict, Any
 import traceback
+from pathlib import Path
+from typing import Any
 
 # Add project root to path to import batch_runner
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -52,14 +53,14 @@ def create_test_dataset(num_prompts: int = 20) -> Path:
     return dataset_file
 
 
-def monitor_checkpoint_during_run(checkpoint_file: Path, duration: int = 30) -> List[Dict[str, Any]]:
+def monitor_checkpoint_during_run(checkpoint_file: Path, duration: int = 30) -> list[dict[str, Any]]:
     """
     Monitor checkpoint file during a batch run to see when it gets updated.
-    
+
     Args:
         checkpoint_file: Path to checkpoint file to monitor
         duration: How long to monitor (seconds)
-    
+
     Returns:
         List of checkpoint snapshots with timestamps
     """
@@ -80,7 +81,7 @@ def monitor_checkpoint_during_run(checkpoint_file: Path, duration: int = 30) -> 
                 elapsed = time.time() - start_time
 
                 try:
-                    with open(checkpoint_file, 'r') as f:
+                    with open(checkpoint_file) as f:
                         checkpoint_data = json.load(f)
 
                     snapshot = {
@@ -237,7 +238,7 @@ def test_interruption_and_resume():
     temp_dataset = Path("tests/test_data/checkpoint_test_resume_partial.jsonl")
     try:
         # Create a modified dataset with only first 5 prompts for initial run
-        with open(dataset_file, 'r') as f:
+        with open(dataset_file) as f:
             lines = f.readlines()[:5]
         with open(temp_dataset, 'w') as f:
             f.writelines(lines)
@@ -260,7 +261,7 @@ def test_interruption_and_resume():
             print("❌ ERROR: Checkpoint file not created after first run")
             return False
 
-        with open(checkpoint_file, 'r') as f:
+        with open(checkpoint_file) as f:
             checkpoint_data = json.load(f)
 
         initial_completed = len(checkpoint_data.get("completed_prompts", []))
@@ -283,7 +284,7 @@ def test_interruption_and_resume():
         runner2.run(resume=True)
 
         # Check final checkpoint
-        with open(checkpoint_file, 'r') as f:
+        with open(checkpoint_file) as f:
             final_checkpoint = json.load(f)
 
         final_completed = len(final_checkpoint.get("completed_prompts", []))
@@ -395,7 +396,7 @@ def main(
 ):
     """
     Run checkpoint behavior tests.
-    
+
     Args:
         test_current: Test current implementation checkpoint timing
         test_resume: Test interruption and resume functionality

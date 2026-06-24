@@ -2,9 +2,12 @@
 Extracted from gateway/run.py (#23).
 """
 from __future__ import annotations
-import logging, os
-from typing import Any, Dict, Optional
+
+import logging
+import os
+
 logger = logging.getLogger(__name__)
+
 
 def _resolve_runtime_agent_kwargs() -> dict:
     """Resolve provider credentials for gateway-created AIAgent instances.
@@ -19,12 +22,12 @@ def _resolve_runtime_agent_kwargs() -> dict:
     resolve credentials using the fallback provider chain from config.yaml
     before giving up.
     """
-    from prostor_cli.runtime_provider import (
-        resolve_runtime_provider,
-        format_runtime_provider_error,
-        _get_model_config,
-    )
     from prostor_cli.auth import AuthError, is_rate_limited_auth_error
+    from prostor_cli.runtime_provider import (
+        _get_model_config,
+        format_runtime_provider_error,
+        resolve_runtime_provider,
+    )
 
     try:
         runtime = resolve_runtime_provider()
@@ -228,7 +231,7 @@ def _preserve_queued_followup_history_offset(
     return merged
 
 
-async def _dispose_unused_adapter(adapter: "BasePlatformAdapter | None") -> None:
+async def _dispose_unused_adapter(adapter: BasePlatformAdapter | None) -> None:
     """Best-effort dispose for an adapter that never made it onto ``self.adapters``.
 
     The reconnect watcher in ``GatewayRunner._platform_reconnect_watcher``

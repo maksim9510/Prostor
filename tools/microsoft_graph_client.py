@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any
 
 import httpx
 
 from tools.microsoft_graph_auth import GraphCredentials, MicrosoftGraphTokenProvider
-
 
 DEFAULT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
@@ -65,7 +65,7 @@ class MicrosoftGraphClient:
         self.user_agent = user_agent
 
     @classmethod
-    def from_env(cls, **kwargs: Any) -> "MicrosoftGraphClient":
+    def from_env(cls, **kwargs: Any) -> MicrosoftGraphClient:
         credentials = GraphCredentials.from_env()
         provider = MicrosoftGraphTokenProvider(credentials)
         return cls(provider, **kwargs)

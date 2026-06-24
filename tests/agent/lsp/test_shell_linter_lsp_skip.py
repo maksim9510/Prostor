@@ -181,7 +181,7 @@ def test_tsx_stays_out_of_linters_table_for_default_compatibility():
     ``.tsx`` in its extensions list) — the diagnostics show up in the
     ``lsp_diagnostics`` field, not the ``lint`` field.
     """
-    from tools.file_operations import LINTERS, _SHELL_LINTER_LSP_REDUNDANT
+    from tools.file_operations import _SHELL_LINTER_LSP_REDUNDANT, LINTERS
 
     assert ".tsx" not in LINTERS
     assert ".tsx" not in _SHELL_LINTER_LSP_REDUNDANT

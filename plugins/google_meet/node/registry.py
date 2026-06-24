@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from prostor_constants import get_prostor_home
 
@@ -35,12 +35,12 @@ class NodeRegistry:
     """Simple file-backed registry. Not concurrent-safe across processes
     — single writer assumed (the gateway CLI)."""
 
-    def __init__(self, path: Optional[Path] = None) -> None:
+    def __init__(self, path: Path | None = None) -> None:
         self.path = Path(path) if path is not None else _default_path()
 
     # ----- storage ------------------------------------------------------
 
-    def _load(self) -> Dict[str, Any]:
+    def _load(self) -> dict[str, Any]:
         if not self.path.is_file():
             return {"nodes": {}}
         try:
@@ -51,7 +51,7 @@ class NodeRegistry:
             return {"nodes": {}}
         return data
 
-    def _save(self, data: Dict[str, Any]) -> None:
+    def _save(self, data: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -59,7 +59,7 @@ class NodeRegistry:
 
     # ----- public API ---------------------------------------------------
 
-    def get(self, name: str) -> Optional[Dict[str, Any]]:
+    def get(self, name: str) -> dict[str, Any] | None:
         data = self._load()
         entry = data["nodes"].get(name)
         if entry is None:
@@ -89,14 +89,14 @@ class NodeRegistry:
             return True
         return False
 
-    def list_all(self) -> List[Dict[str, Any]]:
+    def list_all(self) -> list[dict[str, Any]]:
         data = self._load()
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for name, entry in sorted(data["nodes"].items()):
             out.append({"name": name, **entry})
         return out
 
-    def resolve(self, chrome_node: Optional[str]) -> Optional[Dict[str, Any]]:
+    def resolve(self, chrome_node: str | None) -> dict[str, Any] | None:
         """Resolve a node name to its entry.
 
         If ``chrome_node`` is provided, return that named node (or None).

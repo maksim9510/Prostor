@@ -83,8 +83,9 @@ def patch_load_config(monkeypatch):
 
 class TestAuxAzureFoundryApiKey:
     def test_chat_completions_returns_plain_openai_client(self, monkeypatch, patch_load_config):
-        from agent.auxiliary_client import _try_azure_foundry
         from openai import OpenAI as _OpenAI
+
+        from agent.auxiliary_client import _try_azure_foundry
 
         monkeypatch.setenv("AZURE_FOUNDRY_API_KEY", "sk-azure-static-key")
         patch_load_config({
@@ -100,7 +101,7 @@ class TestAuxAzureFoundryApiKey:
         assert client.api_key == "sk-azure-static-key"
 
     def test_codex_responses_wraps_in_codex_aux_client(self, monkeypatch, patch_load_config):
-        from agent.auxiliary_client import _try_azure_foundry, CodexAuxiliaryClient
+        from agent.auxiliary_client import CodexAuxiliaryClient, _try_azure_foundry
 
         monkeypatch.setenv("AZURE_FOUNDRY_API_KEY", "sk-azure-static-key")
         patch_load_config({
@@ -240,8 +241,8 @@ class TestAuxAzureFoundryEntra:
         detects the callable and installs the bearer-injecting httpx
         event hook on a custom ``httpx.Client`` passed to the
         Anthropic SDK via ``http_client=``."""
-        from agent import auxiliary_client as _aux
         from agent import anthropic_adapter as _anthropic
+        from agent import auxiliary_client as _aux
 
         received = {}
 
@@ -330,6 +331,7 @@ class TestResolveProviderClientAzureFoundry:
         (e.g. no model + no key), we return (None, None) and log a
         clear warning pointing at ``prostor doctor``."""
         import logging
+
         from agent.auxiliary_client import resolve_provider_client
 
         monkeypatch.delenv("AZURE_FOUNDRY_API_KEY", raising=False)

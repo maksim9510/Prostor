@@ -4,14 +4,13 @@ import base64
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 import pytest
 
 from prostor_cli.auth import AuthError, get_provider_auth_state, resolve_nous_runtime_credentials
-
 
 # =============================================================================
 # _resolve_verify: CA bundle path validation
@@ -37,6 +36,7 @@ class TestResolveVerifyFallback:
 
     def test_valid_ca_bundle_in_auth_state_is_returned(self, tmp_path, monkeypatch):
         import ssl
+
         from prostor_cli.auth import _resolve_verify
 
         ca_file = tmp_path / "ca-bundle.pem"
@@ -80,6 +80,7 @@ class TestResolveVerifyFallback:
 
     def test_string_false_in_auth_state_does_not_disable_tls_verify(self):
         import ssl
+
         from prostor_cli.auth import _resolve_verify
 
         result = _resolve_verify(auth_state={"tls": {"insecure": "false"}})
@@ -108,6 +109,7 @@ class TestResolveVerifyFallback:
 
     def test_explicit_ca_bundle_param_valid_is_returned(self, tmp_path, monkeypatch):
         import ssl
+
         from prostor_cli.auth import _resolve_verify
 
         ca_file = tmp_path / "explicit-ca.pem"
@@ -172,7 +174,7 @@ def _jwt_with_claims(claims: dict) -> str:
 
 
 def _future_iso(seconds: int = 3600) -> str:
-    return datetime.fromtimestamp(time.time() + seconds, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(time.time() + seconds, tz=UTC).isoformat()
 
 
 def _invoke_jwt(*, seconds: int = 3600, scope: object = "inference:invoke") -> str:
@@ -226,7 +228,7 @@ def test_resolve_nous_runtime_credentials_invoke_jwt_is_idempotent(
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
     exp = int(time.time() + 3600)
-    expires_at = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
+    expires_at = datetime.fromtimestamp(exp, tz=UTC).isoformat()
     token = _jwt_with_claims({
         "sub": "test-user",
         "scope": auth_mod.DEFAULT_NOUS_SCOPE,
@@ -670,8 +672,8 @@ def test_get_nous_auth_status_auth_store_fallback(tmp_path, monkeypatch):
 
 
 def test_get_nous_auth_status_prefers_runtime_auth_store_over_stale_pool(tmp_path, monkeypatch):
-    from prostor_cli.auth import get_nous_auth_status
     from agent.credential_pool import PooledCredential, load_pool
+    from prostor_cli.auth import get_nous_auth_status
 
     prostor_home = tmp_path / "prostor"
     _setup_nous_auth(prostor_home, access_token="at-fresh")
@@ -1030,7 +1032,9 @@ class TestLoginNousSkipKeepsCurrent:
     def test_skip_keep_current_preserves_provider_and_model(self, tmp_path, monkeypatch):
         """User picks Skip → config.yaml untouched, Nous creds still saved."""
         import argparse
+
         import yaml
+
         from prostor_cli.auth import PROVIDER_REGISTRY, _login_nous
 
         prostor_home, config_path, auth_path = self._setup_home_with_openrouter(
@@ -1061,7 +1065,9 @@ class TestLoginNousSkipKeepsCurrent:
     def test_picking_model_switches_to_nous(self, tmp_path, monkeypatch):
         """User picks a Nous model → provider flips to nous with that model."""
         import argparse
+
         import yaml
+
         from prostor_cli.auth import PROVIDER_REGISTRY, _login_nous
 
         prostor_home, config_path, auth_path = self._setup_home_with_openrouter(
@@ -1089,7 +1095,9 @@ class TestLoginNousSkipKeepsCurrent:
         """Fresh install (no prior active_provider) → Skip clears active_provider
         instead of leaving it as nous."""
         import argparse
+
         import yaml
+
         from prostor_cli.auth import PROVIDER_REGISTRY, _login_nous
 
         prostor_home = tmp_path / "prostor"
@@ -1157,7 +1165,7 @@ def test_persist_nous_credentials_writes_both_pool_and_providers(tmp_path, monke
     agent failed with "Non-retryable client error". Both stores must stay
     in sync at write time.
     """
-    from prostor_cli.auth import persist_nous_credentials, NOUS_DEVICE_CODE_SOURCE
+    from prostor_cli.auth import NOUS_DEVICE_CODE_SOURCE, persist_nous_credentials
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1244,7 +1252,7 @@ def test_persist_nous_credentials_idempotent_no_duplicate_pool_entries(tmp_path,
     materialise the pool entry under the canonical ``device_code`` source, so
     two persists still leave the pool with exactly one row.
     """
-    from prostor_cli.auth import persist_nous_credentials, NOUS_DEVICE_CODE_SOURCE
+    from prostor_cli.auth import NOUS_DEVICE_CODE_SOURCE, persist_nous_credentials
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1285,7 +1293,7 @@ def test_persist_nous_credentials_reloads_pool_after_singleton_write(tmp_path, m
     callers observe the canonical seeded state, including any legacy entries
     that ``_seed_from_singletons`` pruned or upserted.
     """
-    from prostor_cli.auth import persist_nous_credentials, NOUS_DEVICE_CODE_SOURCE
+    from prostor_cli.auth import NOUS_DEVICE_CODE_SOURCE, persist_nous_credentials
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1312,7 +1320,7 @@ def test_persist_nous_credentials_embeds_custom_label(tmp_path, monkeypatch):
     _seed_from_singletons always auto-derived via label_from_token().  The
     fix stashes the label inside providers.nous so seeding prefers it.
     """
-    from prostor_cli.auth import persist_nous_credentials, NOUS_DEVICE_CODE_SOURCE
+    from prostor_cli.auth import NOUS_DEVICE_CODE_SOURCE, persist_nous_credentials
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1336,8 +1344,8 @@ def test_persist_nous_credentials_custom_label_survives_reseed(tmp_path, monkeyp
     """Reopening the pool (which re-runs _seed_from_singletons) must keep the
     user-chosen label instead of clobbering it with label_from_token output.
     """
-    from prostor_cli.auth import persist_nous_credentials
     from agent.credential_pool import load_pool
+    from prostor_cli.auth import persist_nous_credentials
 
     prostor_home = tmp_path / "prostor"
     prostor_home.mkdir(parents=True, exist_ok=True)
@@ -1568,7 +1576,7 @@ def test_shared_store_seat_belt_refuses_real_home_under_pytest(monkeypatch):
 
 def test_shared_store_honors_env_override(tmp_path, monkeypatch):
     """PROSTOR_SHARED_AUTH_DIR must redirect the path."""
-    from prostor_cli.auth import _nous_shared_store_path, NOUS_SHARED_STORE_FILENAME
+    from prostor_cli.auth import NOUS_SHARED_STORE_FILENAME, _nous_shared_store_path
 
     custom_dir = tmp_path / "custom_shared"
     monkeypatch.setenv("PROSTOR_SHARED_AUTH_DIR", str(custom_dir))

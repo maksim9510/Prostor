@@ -8,33 +8,32 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from gateway.config import Platform, PlatformConfig
+from gateway.session import build_session_key
 from plugins.platforms.raft.adapter import (
-    ACTIVITY_DRAIN_SCHEMA,
-    ACTIVITY_EVENT_SCHEMA,
-    ActivityQueue,
-    BRIDGE_TOKEN_HEADER,
-    DEFAULT_PATH,
-    RaftAdapter,
     _ACTIVE_ADAPTERS,
     _ACTIVE_ADAPTERS_LOCK,
     _RAFT_CONTEXT_LOCK,
     _RAFT_PROMPT_TURN_IDS,
     _RAFT_SESSION_IDS,
     _RAFT_TURN_IDS,
-    _has_content_field,
+    ACTIVITY_DRAIN_SCHEMA,
+    ACTIVITY_EVENT_SCHEMA,
+    BRIDGE_TOKEN_HEADER,
+    DEFAULT_PATH,
+    ActivityQueue,
+    RaftAdapter,
     _env_enablement,
+    _has_content_field,
     _is_connected,
-    _on_session_start,
-    _on_pre_llm_call,
-    _on_pre_tool_call,
     _on_post_llm_call,
     _on_post_tool_call,
+    _on_pre_llm_call,
+    _on_pre_tool_call,
     _on_session_end,
     _on_session_finalize,
-    check_raft_requirements,
+    _on_session_start,
     register,
 )
-from gateway.session import build_session_key
 
 RAFT_CHANNEL_SCHEMA = "raft-channel-wake.v1"
 FUTURE_RAFT_CHANNEL_SCHEMA = "raft-channel-wake.v2"
@@ -335,8 +334,8 @@ class TestRaftActivityHttp:
     def test_session_start_registers_raft_profile_env_passthrough(self):
         import tools.env_passthrough as env_passthrough_mod
         from tools.code_execution_tool import _scrub_child_env
-        from tools.environments.local import _make_run_env
         from tools.env_passthrough import clear_env_passthrough, is_env_passthrough
+        from tools.environments.local import _make_run_env
 
         previous_config_passthrough = env_passthrough_mod._config_passthrough
         clear_env_passthrough()

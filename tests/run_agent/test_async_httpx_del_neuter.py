@@ -17,10 +17,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Layer 1: neuter_async_httpx_del
 # ---------------------------------------------------------------------------
+
 
 class TestNeuterAsyncHttpxDel:
     """Verify neuter_async_httpx_del replaces __del__ on the SDK class."""
@@ -256,9 +256,9 @@ class TestClientCacheBoundedGrowth:
     def test_max_cache_size_eviction(self):
         """Cache should not exceed _CLIENT_CACHE_MAX_SIZE."""
         from agent.auxiliary_client import (
+            _CLIENT_CACHE_MAX_SIZE,
             _client_cache,
             _client_cache_lock,
-            _CLIENT_CACHE_MAX_SIZE,
         )
 
         # Save existing cache state

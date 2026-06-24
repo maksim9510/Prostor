@@ -51,9 +51,9 @@ def test_search_sessions_exposes_last_active_column(tmp_path, monkeypatch):
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
-    import prostor_state
-
     from pathlib import Path
+
+    import prostor_state
 
     db = prostor_state.SessionDB(db_path=Path(tmp_path / "state.db"))
     try:
@@ -124,9 +124,9 @@ def test_resolve_last_session_not_limited_to_newest_started_20(tmp_path, monkeyp
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
-    import prostor_state
-
     from pathlib import Path
+
+    import prostor_state
 
     state_db = Path(tmp_path / "state.db")
     real_session_db = prostor_state.SessionDB

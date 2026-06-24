@@ -1,10 +1,11 @@
 """Tests for Signal messenger platform adapter."""
 import asyncio
 import base64
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import quote
+
+import pytest
 
 from gateway.config import Platform, PlatformConfig
 
@@ -81,6 +82,7 @@ class TestSignalConfigLoading:
 # ---------------------------------------------------------------------------
 # Adapter Init & Helpers
 # ---------------------------------------------------------------------------
+
 
 class TestSignalAdapterInit:
     def test_init_parses_config(self, monkeypatch):
@@ -196,7 +198,7 @@ class TestSignalHelpers:
         begins with the ADTS sync word ends up in ``cache_audio_from_bytes``,
         which the remux step then converts to MP4 container.
         """
-        from gateway.platforms.signal import _is_audio_ext, _guess_extension
+        from gateway.platforms.signal import _guess_extension, _is_audio_ext
         ext = _guess_extension(b"\xff\xf1" + b"\x00" * 200)
         assert ext == ".aac"
         assert _is_audio_ext(ext) is True
@@ -212,6 +214,7 @@ class TestSignalHelpers:
         import shutil
         import subprocess
         import tempfile
+
         from gateway.platforms.signal import _remux_aac_to_m4a
 
         ffmpeg = shutil.which("ffmpeg")
@@ -456,8 +459,8 @@ class TestSignalPhoneRedaction:
 class TestSignalAuthorization:
     def test_signal_in_allowlist_maps(self):
         """Signal should be in the platform auth maps."""
-        from gateway.run import GatewayRunner
         from gateway.config import GatewayConfig
+        from gateway.run import GatewayRunner
 
         gw = GatewayRunner.__new__(GatewayRunner)
         gw.config = GatewayConfig()
@@ -1659,6 +1662,7 @@ class TestSignalQuoteExtraction:
 # _rpc rate-limit detection
 # ---------------------------------------------------------------------------
 
+
 class _FakeHttpResponse:
     """Minimal stand-in for httpx.Response — only what _rpc touches."""
 
@@ -1738,7 +1742,8 @@ class TestSignalRpcRateLimit:
         ``error.data.response.results[*].retryAfterSeconds`` — _rpc
         carries that value through SignalRateLimitError.retry_after."""
         from gateway.platforms.signal_rate_limit import (
-            SignalRateLimitError, SIGNAL_RPC_ERROR_RATELIMIT,
+            SIGNAL_RPC_ERROR_RATELIMIT,
+            SignalRateLimitError,
         )
 
         adapter = _make_signal_adapter(monkeypatch)
@@ -2026,7 +2031,7 @@ class TestSignalSendMultipleImages:
         from gateway.platforms.signal import SIGNAL_MAX_ATTACHMENTS_PER_MSG
         from gateway.platforms.signal_rate_limit import (
             SIGNAL_RATE_LIMIT_BUCKET_CAPACITY,
-            SIGNAL_RATE_LIMIT_DEFAULT_RETRY_AFTER
+            SIGNAL_RATE_LIMIT_DEFAULT_RETRY_AFTER,
         )
 
         adapter = _make_signal_adapter(monkeypatch)
@@ -2103,8 +2108,8 @@ class TestSignalRateLimitDetection:
 
     def test_detect_typed_code(self):
         from gateway.platforms.signal_rate_limit import (
-            _is_signal_rate_limit_error,
             SIGNAL_RPC_ERROR_RATELIMIT,
+            _is_signal_rate_limit_error,
         )
         err = {"code": SIGNAL_RPC_ERROR_RATELIMIT, "message": "any text"}
         assert _is_signal_rate_limit_error(err) is True

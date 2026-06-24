@@ -12,8 +12,8 @@ import asyncio
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent, MessageType
-from plugins.platforms.whatsapp.adapter import WhatsAppAdapter
 from gateway.session import SessionSource
+from plugins.platforms.whatsapp.adapter import WhatsAppAdapter
 
 
 def _make_adapter(**extra):

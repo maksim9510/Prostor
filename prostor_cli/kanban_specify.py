@@ -36,10 +36,8 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from prostor_cli import kanban_db as kb
-
 from utils import env_int
 
 PROSTOR_KANBAN_SPECIFY_MAX_TOKENS = max(
@@ -96,7 +94,7 @@ class SpecifyOutcome:
     task_id: str
     ok: bool
     reason: str = ""
-    new_title: Optional[str] = None
+    new_title: str | None = None
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -108,7 +106,7 @@ def _truncate(text: str, limit: int) -> str:
 _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
 
 
-def _extract_json_blob(raw: str) -> Optional[dict]:
+def _extract_json_blob(raw: str) -> dict | None:
     """Lenient JSON extraction — tolerates fenced code blocks and
     leading/trailing whitespace. Returns None if nothing parses."""
     if not raw:
@@ -142,8 +140,8 @@ def _profile_author() -> str:
 def specify_task(
     task_id: str,
     *,
-    author: Optional[str] = None,
-    timeout: Optional[int] = None,
+    author: str | None = None,
+    timeout: int | None = None,
 ) -> SpecifyOutcome:
     """Specify a single triage task and promote it to ``todo``.
 
@@ -212,8 +210,8 @@ def specify_task(
 
     parsed = _extract_json_blob(raw)
 
-    new_title: Optional[str]
-    new_body: Optional[str]
+    new_title: str | None
+    new_body: str | None
     if parsed is None:
         # Fall back: treat the whole reply as the body, leave title as-is.
         # Worst case the user edits afterward — still better than stranding
@@ -258,7 +256,7 @@ def specify_task(
     return SpecifyOutcome(task_id, True, "specified", new_title=new_title)
 
 
-def list_triage_ids(*, tenant: Optional[str] = None) -> list[str]:
+def list_triage_ids(*, tenant: str | None = None) -> list[str]:
     """Return task ids currently in the triage column.
 
     ``tenant`` narrows the sweep; ``None`` returns every triage task.

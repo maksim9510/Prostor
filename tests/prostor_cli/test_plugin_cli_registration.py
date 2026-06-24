@@ -11,13 +11,11 @@ Covers:
 import sys
 from unittest.mock import MagicMock
 
-
 from prostor_cli.plugins import (
     PluginContext,
     PluginManager,
     PluginManifest,
 )
-
 
 # ── PluginContext.register_cli_command ─────────────────────────────────────
 

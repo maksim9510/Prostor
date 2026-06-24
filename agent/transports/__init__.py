@@ -7,12 +7,20 @@ Usage:
 """
 
 from agent.transports.types import (
-    NormalizedResponse,
-    ToolCall,
-    Usage,
-    build_tool_call,
-    map_finish_reason,
+    NormalizedResponse as NormalizedResponse,
 )  # noqa: F401
+from agent.transports.types import (
+    ToolCall as ToolCall,
+)
+from agent.transports.types import (
+    Usage as Usage,
+)
+from agent.transports.types import (
+    build_tool_call as build_tool_call,
+)
+from agent.transports.types import (
+    map_finish_reason as map_finish_reason,
+)
 
 _REGISTRY: dict = {}
 _discovered: bool = False

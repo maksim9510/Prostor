@@ -5,8 +5,9 @@ import stat
 import sys
 import time
 import types
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import MessageType
@@ -1272,8 +1273,9 @@ class TestMatrixRequirements:
         a confusing ``No module named 'asyncpg'`` deep in
         ``MatrixAdapter.connect()``.
         """
-        from plugins.platforms.matrix.adapter import _check_e2ee_deps
         import builtins
+
+        from plugins.platforms.matrix.adapter import _check_e2ee_deps
         real_import = builtins.__import__
 
         def _blocking_import(name, *args, **kwargs):
@@ -1290,8 +1292,9 @@ class TestMatrixRequirements:
         Mautrix's ``Database.create("sqlite:///...")`` driver lookup imports
         aiosqlite lazily — without it, connect fails at ``crypto_db.start()``.
         """
-        from plugins.platforms.matrix.adapter import _check_e2ee_deps
         import builtins
+
+        from plugins.platforms.matrix.adapter import _check_e2ee_deps
         real_import = builtins.__import__
 
         def _blocking_import(name, *args, **kwargs):
@@ -3557,6 +3560,7 @@ class TestMatrixImageOnlyMediaNormalization:
 # ---------------------------------------------------------------------------
 # Message redaction
 # ---------------------------------------------------------------------------
+
 
 class TestMatrixRedaction:
     def setup_method(self):

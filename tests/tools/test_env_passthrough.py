@@ -1,6 +1,7 @@
 """Tests for tools.env_passthrough — skill and config env var passthrough."""
 
 import os
+
 import pytest
 import yaml
 
@@ -163,7 +164,7 @@ class TestTerminalIntegration:
     """Verify that the passthrough is checked in terminal's env sanitizers."""
 
     def test_blocklisted_var_blocked_by_default(self):
-        from tools.environments.local import _sanitize_subprocess_env, _PROSTOR_PROVIDER_ENV_BLOCKLIST
+        from tools.environments.local import _PROSTOR_PROVIDER_ENV_BLOCKLIST, _sanitize_subprocess_env
 
         # Pick a var we know is in the blocklist
         blocked_var = next(iter(_PROSTOR_PROVIDER_ENV_BLOCKLIST))
@@ -178,8 +179,8 @@ class TestTerminalIntegration:
         could declare ANTHROPIC_TOKEN / OPENAI_API_KEY as passthrough and
         defeat the execute_code sandbox scrubbing."""
         from tools.environments.local import (
-            _sanitize_subprocess_env,
             _PROSTOR_PROVIDER_ENV_BLOCKLIST,
+            _sanitize_subprocess_env,
         )
 
         blocked_var = next(iter(_PROSTOR_PROVIDER_ENV_BLOCKLIST))
@@ -199,8 +200,8 @@ class TestTerminalIntegration:
         """_make_run_env must NOT expose a blocklisted var to subprocess env
         even after a skill attempts to register it via passthrough."""
         from tools.environments.local import (
-            _make_run_env,
             _PROSTOR_PROVIDER_ENV_BLOCKLIST,
+            _make_run_env,
         )
 
         blocked_var = next(iter(_PROSTOR_PROVIDER_ENV_BLOCKLIST))

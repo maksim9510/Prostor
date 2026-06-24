@@ -15,11 +15,10 @@ import sys
 import pytest
 
 from prostor_cli.main import (
-    _UpdateOutputStream,
     _finalize_update_output,
     _install_hangup_protection,
+    _UpdateOutputStream,
 )
-
 
 # -----------------------------------------------------------------------------
 # _UpdateOutputStream

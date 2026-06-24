@@ -8,8 +8,6 @@ history.
 """
 from __future__ import annotations
 
-from prostor_constants import get_prostor_home
-
 import copy
 import json
 import logging
@@ -18,10 +16,12 @@ import re
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from prostor_constants import get_prostor_home
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def _format_updated_at(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value
     try:
-        return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+        return datetime.fromtimestamp(float(value), tz=UTC).isoformat()
     except Exception:
         return None
 
@@ -138,11 +138,11 @@ def _register_task_cwd(task_id: str, cwd: str) -> None:
 
 
 def _expand_acp_enabled_toolsets(
-    toolsets: List[str] | None = None,
-    mcp_server_names: List[str] | None = None,
-) -> List[str]:
+    toolsets: list[str] | None = None,
+    mcp_server_names: list[str] | None = None,
+) -> list[str]:
     """Return ACP toolsets plus explicit MCP server toolsets for this session."""
-    expanded: List[str] = []
+    expanded: list[str] = []
     for name in list(toolsets or ["prostor-acp"]):
         if name and name not in expanded:
             expanded.append(name)
@@ -174,10 +174,10 @@ class SessionState:
     agent: Any  # AIAgent instance
     cwd: str = "."
     model: str = ""
-    history: List[Dict[str, Any]] = field(default_factory=list)
+    history: list[dict[str, Any]] = field(default_factory=list)
     cancel_event: Any = None  # threading.Event
     is_running: bool = False
-    queued_prompts: List[str] = field(default_factory=list)
+    queued_prompts: list[str] = field(default_factory=list)
     runtime_lock: Any = field(default_factory=Lock)
     current_prompt_text: str = ""
     interrupted_prompt_text: str = ""
@@ -200,7 +200,7 @@ class SessionManager:
             db:            Optional SessionDB instance. When omitted, the default
                            SessionDB (``~/.prostor/state.db``) is lazily created.
         """
-        self._sessions: Dict[str, SessionState] = {}
+        self._sessions: dict[str, SessionState] = {}
         self._lock = Lock()
         self._agent_factory = agent_factory
         self._db_instance = db  # None → lazy-init on first use
@@ -228,7 +228,7 @@ class SessionManager:
         logger.info("Created ACP session %s (cwd=%s)", session_id, cwd)
         return state
 
-    def get_session(self, session_id: str) -> Optional[SessionState]:
+    def get_session(self, session_id: str) -> SessionState | None:
         """Return the session for *session_id*, or ``None``.
 
         If the session is not in memory but exists in the database (e.g. after
@@ -250,7 +250,7 @@ class SessionManager:
             _clear_task_cwd(session_id)
         return existed or db_existed
 
-    def fork_session(self, session_id: str, cwd: str = ".") -> Optional[SessionState]:
+    def fork_session(self, session_id: str, cwd: str = ".") -> SessionState | None:
         """Deep-copy a session's history into a new session."""
         import threading
 
@@ -280,7 +280,7 @@ class SessionManager:
         logger.info("Forked ACP session %s -> %s", session_id, new_id)
         return state
 
-    def list_sessions(self, cwd: str | None = None) -> List[Dict[str, Any]]:
+    def list_sessions(self, cwd: str | None = None) -> list[dict[str, Any]]:
         """Return lightweight info dicts for all sessions (memory + database)."""
         normalized_cwd = _normalize_cwd_for_compare(cwd) if cwd else None
         db = self._get_db()
@@ -354,7 +354,7 @@ class SessionManager:
         results.sort(key=lambda item: _updated_at_sort_key(item.get("updated_at")), reverse=True)
         return results
 
-    def update_cwd(self, session_id: str, cwd: str) -> Optional[SessionState]:
+    def update_cwd(self, session_id: str, cwd: str) -> SessionState | None:
         """Update the working directory for a session and its tool overrides."""
         cwd = _translate_acp_cwd(cwd)
         state = self.get_session(session_id)  # checks DB too
@@ -468,7 +468,7 @@ class SessionManager:
         except Exception:
             logger.warning("Failed to persist ACP session %s", state.session_id, exc_info=True)
 
-    def _restore(self, session_id: str) -> Optional[SessionState]:
+    def _restore(self, session_id: str) -> SessionState | None:
         """Load a session from the database into memory, recreating the AIAgent."""
         import threading
 
@@ -568,9 +568,9 @@ class SessionManager:
         if self._agent_factory is not None:
             return self._agent_factory()
 
-        from run_agent import AIAgent
         from prostor_cli.config import load_config
         from prostor_cli.runtime_provider import resolve_runtime_provider
+        from run_agent import AIAgent
 
         config = load_config()
         model_cfg = config.get("model")

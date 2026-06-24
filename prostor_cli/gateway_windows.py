@@ -37,6 +37,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import UTC
 from pathlib import Path
 
 # Short timeouts: schtasks occasionally wedges and we don't want to hang forever.
@@ -728,7 +729,7 @@ def _install_startup_fallback(script_path: Path, start_now: bool, detail: str) -
     # Startup-folder fallback only installs login persistence. Starting is
     # controlled by the pre-UAC start_now answer so all user decisions happen
     # before any elevation prompt.
-    from prostor_cli.gateway import find_gateway_pids, _profile_arg
+    from prostor_cli.gateway import _profile_arg, find_gateway_pids
 
     running_pids = list(find_gateway_pids())
     if running_pids:
@@ -850,7 +851,7 @@ def install(
         # Startup-folder fallback only installs login persistence. Starting is
         # controlled by the pre-UAC start_now answer so all user decisions happen
         # before any elevation prompt.
-        from prostor_cli.gateway import find_gateway_pids, _profile_arg
+        from prostor_cli.gateway import _profile_arg, find_gateway_pids
 
         running_pids = list(find_gateway_pids())
         if running_pids:
@@ -1017,7 +1018,7 @@ def _print_deep_probes() -> None:
       [6] Last lifecycle event in gateway-exit-diag.log
     """
     import json
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from prostor_cli.config import get_prostor_home
 
@@ -1093,7 +1094,7 @@ def _print_deep_probes() -> None:
             if updated_at:
                 try:
                     updated_dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-                    now = datetime.now(timezone.utc)
+                    now = datetime.now(UTC)
                     age_seconds = int((now - updated_dt).total_seconds())
                     age_str = f" (updated {age_seconds}s ago)"
                 except Exception:
@@ -1228,7 +1229,7 @@ def _drain_gateway_pid(pid: int, drain_timeout: float) -> bool:
     if pid <= 0:
         return False
     try:
-        from gateway.status import write_planned_stop_marker, _pid_exists
+        from gateway.status import _pid_exists, write_planned_stop_marker
     except ImportError:
         return False
 
@@ -1258,8 +1259,8 @@ def stop() -> None:
     + ``kill_gateway_processes(force=True)`` for any strays.
     """
     _assert_windows()
-    from prostor_cli.gateway import kill_gateway_processes, _get_restart_drain_timeout
     from gateway.status import get_running_pid
+    from prostor_cli.gateway import _get_restart_drain_timeout, kill_gateway_processes
 
     # Phase 1: ask the running gateway (if any) to drain itself by writing
     # the planned-stop marker, then wait briefly for it to exit cleanly.

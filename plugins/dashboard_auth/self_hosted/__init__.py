@@ -72,7 +72,7 @@ import secrets
 import threading
 import time
 import urllib.parse
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 
@@ -190,7 +190,7 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
         # Discovery + JWKS are lazily resolved on first use so plugin
         # registration never makes a network call (the IDP may be down at
         # boot; the gate should still come up and fail per-request).
-        self._discovery: Dict[str, Any] | None = None
+        self._discovery: dict[str, Any] | None = None
         self._discovery_fetched_at: float = 0.0
         self._discovery_lock = threading.Lock()
         self._jwks_client: Any = None
@@ -273,7 +273,7 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
             previous_refresh_token=refresh_token,
         )
 
-    def verify_session(self, *, access_token: str) -> Optional[Session]:
+    def verify_session(self, *, access_token: str) -> Session | None:
         # The session cookie stores the ID token in the access-token slot (see
         # ``_session_from_tokens``) precisely so this per-request check can
         # verify a real JWT. Returns None on expiry/invalidity (middleware
@@ -324,7 +324,7 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
     def _exchange(
         self,
         token_endpoint: str,
-        data: Dict[str, str],
+        data: dict[str, str],
         *,
         bad_request_exc: type[Exception],
         previous_refresh_token: str = "",
@@ -389,7 +389,7 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
 
     # ---- internals: discovery ---------------------------------------------
 
-    def _get_discovery(self) -> Dict[str, Any]:
+    def _get_discovery(self) -> dict[str, Any]:
         """Return the cached OIDC discovery document, fetching if stale."""
         now = time.time()
         if (
@@ -416,7 +416,7 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
         # RFC 8414 / OIDC Discovery: ``{issuer}/.well-known/openid-configuration``.
         return f"{self._issuer}/.well-known/openid-configuration"
 
-    def _fetch_discovery(self) -> Dict[str, Any]:
+    def _fetch_discovery(self) -> dict[str, Any]:
         url = self._discovery_url()
         try:
             response = httpx.get(
@@ -489,7 +489,7 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
             )
         return self._jwks_client
 
-    def _verify_id_token(self, id_token: str) -> Dict[str, Any]:
+    def _verify_id_token(self, id_token: str) -> dict[str, Any]:
         import jwt  # lazy import — keeps startup fast for the ungated path
 
         disco = self._get_discovery()
@@ -547,7 +547,7 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
         *,
         id_token: str,
         refresh_token: str,
-        claims: Dict[str, Any],
+        claims: dict[str, Any],
     ) -> Session:
         """Map verified OIDC claims onto a Session.
 
@@ -615,7 +615,7 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
                 f"got {redirect_uri!r}"
             )
 
-    def _parse_json_body(self, response: httpx.Response) -> Dict[str, Any]:
+    def _parse_json_body(self, response: httpx.Response) -> dict[str, Any]:
         ctype = response.headers.get("content-type", "")
         if not ctype.startswith("application/json"):
             return {}
@@ -709,8 +709,7 @@ def register(ctx) -> None:
             "(PROSTOR_DASHBOARD_OIDC_ISSUER + PROSTOR_DASHBOARD_OIDC_CLIENT_ID) "
             "or under dashboard.oauth.self_hosted.{issuer,client_id} in "
             "config.yaml — or pass --insecure to skip the OAuth gate "
-            "entirely. (issuer set: %s; client_id set: %s)"
-            % (bool(issuer), bool(client_id))
+            f"entirely. (issuer set: {bool(issuer)}; client_id set: {bool(client_id)})"
         )
         logger.debug("dashboard-auth-self-hosted: %s", LAST_SKIP_REASON)
         return

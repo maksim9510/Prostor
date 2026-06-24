@@ -2,8 +2,6 @@
 import sys
 from pathlib import Path
 
-import pytest
-
 # Path setup: pytest's rootdir is the project root (prostor-agent), and
 # `scripts/__init__.py` makes `scripts` a real package. We import via the
 # fully-qualified `scripts.sync_upstream.rebrand` path so pytest's import

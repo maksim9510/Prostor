@@ -6,7 +6,6 @@ accepted as base_url, and unknown keys go unreported.
 
 import logging
 
-
 from prostor_cli.config import _normalize_custom_provider_entry
 
 

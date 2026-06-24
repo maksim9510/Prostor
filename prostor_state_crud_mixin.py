@@ -5,7 +5,6 @@ Extracted from prostor_state.py (#26).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ class SessionCrudMixin:
         self,
         session_id: str,
         model_config_json: str,
-        model: Optional[str] = None,
+        model: str | None = None,
     ) -> None:
         """Update model_config and optionally model for an existing session.
 

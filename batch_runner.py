@@ -12,10 +12,10 @@ across multiple prompts from a dataset. It includes:
 
 Usage:
     python batch_runner.py --dataset_file=data.jsonl --batch_size=10 --run_name=my_run
-    
+
     # Resume an interrupted run
     python batch_runner.py --dataset_file=data.jsonl --batch_size=10 --run_name=my_run --resume
-    
+
     # Use a specific toolset distribution
     python batch_runner.py --dataset_file=data.jsonl --batch_size=10 --run_name=my_run --distribution=image_gen
 """
@@ -35,25 +35,21 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
-from multiprocessing import Pool, Lock
 import traceback
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn, MofNCompleteColumn
+from datetime import datetime
+from multiprocessing import Lock, Pool
+from pathlib import Path
+from typing import Any
+
 from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 
 logger = logging.getLogger(__name__)
 import fire
 
-from run_agent import AIAgent
-from toolset_distributions import (
-    list_distributions, 
-    sample_toolsets_from_distribution,
-    validate_distribution
-)
 from model_tools import TOOL_TO_TOOLSET_MAP
-
+from run_agent import AIAgent
+from toolset_distributions import list_distributions, sample_toolsets_from_distribution, validate_distribution
 
 # Global configuration for worker processes
 _WORKER_CONFIG = {}
@@ -68,16 +64,16 @@ ALL_POSSIBLE_TOOLS = set(TOOL_TO_TOOLSET_MAP.keys())
 DEFAULT_TOOL_STATS = {'count': 0, 'success': 0, 'failure': 0}
 
 
-def _normalize_tool_stats(tool_stats: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
+def _normalize_tool_stats(tool_stats: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
     """
     Normalize tool_stats to include all possible tools with consistent schema.
-    
+
     This ensures HuggingFace datasets can load the JSONL without schema mismatch errors.
     Tools that weren't used get zero counts.
-    
+
     Args:
         tool_stats (Dict): Raw tool statistics from extraction
-        
+
     Returns:
         Dict: Normalized tool statistics with all tools present
     """
@@ -98,13 +94,13 @@ def _normalize_tool_stats(tool_stats: Dict[str, Dict[str, int]]) -> Dict[str, Di
     return normalized
 
 
-def _normalize_tool_error_counts(tool_error_counts: Dict[str, int]) -> Dict[str, int]:
+def _normalize_tool_error_counts(tool_error_counts: dict[str, int]) -> dict[str, int]:
     """
     Normalize tool_error_counts to include all possible tools.
-    
+
     Args:
         tool_error_counts (Dict): Raw error counts mapping
-        
+
     Returns:
         Dict: Normalized error counts with all tools present
     """
@@ -122,13 +118,13 @@ def _normalize_tool_error_counts(tool_error_counts: Dict[str, int]) -> Dict[str,
     return normalized
 
 
-def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
+def _extract_tool_stats(messages: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
     """
     Extract tool usage statistics from message history.
-    
+
     Args:
         messages (List[Dict]): Message history
-        
+
     Returns:
         Dict: Tool statistics with counts and success/failure rates
     """
@@ -205,16 +201,16 @@ def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, i
     return tool_stats
 
 
-def _extract_reasoning_stats(messages: List[Dict[str, Any]]) -> Dict[str, int]:
+def _extract_reasoning_stats(messages: list[dict[str, Any]]) -> dict[str, int]:
     """
     Count how many assistant turns have reasoning vs no reasoning.
-    
+
     Checks for <REASONING_SCRATCHPAD> in content or a non-empty 'reasoning' field
     (native thinking tokens). Returns counts for tracking reasoning coverage.
-    
+
     Args:
         messages: Message history
-        
+
     Returns:
         Dict with 'total_assistant_turns', 'turns_with_reasoning', 'turns_without_reasoning'
     """
@@ -243,19 +239,19 @@ def _extract_reasoning_stats(messages: List[Dict[str, Any]]) -> Dict[str, int]:
 
 def _process_single_prompt(
     prompt_index: int,
-    prompt_data: Dict[str, Any],
+    prompt_data: dict[str, Any],
     batch_num: int,
-    config: Dict[str, Any]
-) -> Dict[str, Any]:
+    config: dict[str, Any]
+) -> dict[str, Any]:
     """
     Process a single prompt with the agent.
-    
+
     Args:
         prompt_index (int): Index of prompt in dataset
         prompt_data (Dict): Prompt data containing 'prompt' field and optional 'image' field
         batch_num (int): Batch number
         config (Dict): Configuration dict with agent parameters
-        
+
     Returns:
         Dict: Result containing trajectory, stats, and metadata
     """
@@ -397,13 +393,13 @@ def _process_single_prompt(
         }
 
 
-def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
+def _process_batch_worker(args: tuple) -> dict[str, Any]:
     """
     Worker function to process a single batch of prompts.
-    
+
     Args:
         args (Tuple): (batch_num, batch_data, output_dir, completed_prompts, config)
-        
+
     Returns:
         Dict: Batch results with statistics
     """
@@ -465,7 +461,7 @@ def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
 
             # Create normalized tool_error_counts mapping tool names to their failure counts
             raw_error_counts = {
-                tool_name: stats.get("failure", 0) 
+                tool_name: stats.get("failure", 0)
                 for tool_name, stats in raw_tool_stats.items()
             }
             tool_error_counts = _normalize_tool_error_counts(raw_error_counts)
@@ -543,14 +539,14 @@ class BatchRunner:
         verbose: bool = False,
         ephemeral_system_prompt: str = None,
         log_prefix_chars: int = 100,
-        providers_allowed: List[str] = None,
-        providers_ignored: List[str] = None,
-        providers_order: List[str] = None,
+        providers_allowed: list[str] = None,
+        providers_ignored: list[str] = None,
+        providers_order: list[str] = None,
         provider_sort: str = None,
-        openrouter_min_coding_score: Optional[float] = None,
+        openrouter_min_coding_score: float | None = None,
         max_tokens: int = None,
-        reasoning_config: Dict[str, Any] = None,
-        prefill_messages: List[Dict[str, Any]] = None,
+        reasoning_config: dict[str, Any] = None,
+        prefill_messages: list[dict[str, Any]] = None,
         max_samples: int = None,
     ):
         """
@@ -639,10 +635,10 @@ class BatchRunner:
             prompt_preview = self.ephemeral_system_prompt[:60] + "..." if len(self.ephemeral_system_prompt) > 60 else self.ephemeral_system_prompt
             print(f"   🔒 Ephemeral system prompt: '{prompt_preview}'")
 
-    def _load_dataset(self) -> List[Dict[str, Any]]:
+    def _load_dataset(self) -> list[dict[str, Any]]:
         """
         Load dataset from JSONL file.
-        
+
         Returns:
             List[Dict]: List of dataset entries
         """
@@ -650,7 +646,7 @@ class BatchRunner:
             raise FileNotFoundError(f"Dataset file not found: {self.dataset_file}")
 
         dataset = []
-        with open(self.dataset_file, 'r', encoding='utf-8') as f:
+        with open(self.dataset_file, encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
@@ -671,10 +667,10 @@ class BatchRunner:
 
         return dataset
 
-    def _create_batches(self) -> List[List[Tuple[int, Dict[str, Any]]]]:
+    def _create_batches(self) -> list[list[tuple[int, dict[str, Any]]]]:
         """
         Split dataset into batches with indices.
-        
+
         Returns:
             List of batches, where each batch is a list of (index, entry) tuples
         """
@@ -685,10 +681,10 @@ class BatchRunner:
 
         return batches
 
-    def _load_checkpoint(self) -> Dict[str, Any]:
+    def _load_checkpoint(self) -> dict[str, Any]:
         """
         Load checkpoint data if it exists.
-        
+
         Returns:
             Dict: Checkpoint data with completed prompt indices
         """
@@ -701,7 +697,7 @@ class BatchRunner:
             }
 
         try:
-            with open(self.checkpoint_file, 'r', encoding='utf-8') as f:
+            with open(self.checkpoint_file, encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
             print(f"⚠️  Warning: Failed to load checkpoint: {e}")
@@ -712,10 +708,10 @@ class BatchRunner:
                 "last_updated": None
             }
 
-    def _save_checkpoint(self, checkpoint_data: Dict[str, Any], lock: Optional[Lock] = None):
+    def _save_checkpoint(self, checkpoint_data: dict[str, Any], lock: Lock | None = None):
         """
         Save checkpoint data.
-        
+
         Args:
             checkpoint_data (Dict): Checkpoint data to save
             lock (Lock): Optional lock for thread-safe access
@@ -732,10 +728,10 @@ class BatchRunner:
     def _scan_completed_prompts_by_content(self) -> set:
         """
         Scan all batch files and extract completed prompts by their actual content.
-        
+
         This provides a more robust resume mechanism that matches on prompt text
         rather than indices, allowing recovery even if indices don't match.
-        
+
         Returns:
             set: Set of prompt texts that have been successfully processed
         """
@@ -749,7 +745,7 @@ class BatchRunner:
 
         for batch_file in batch_files:
             try:
-                with open(batch_file, 'r', encoding='utf-8') as f:
+                with open(batch_file, encoding='utf-8') as f:
                     for line in f:
                         try:
                             entry = json.loads(line.strip())
@@ -773,13 +769,13 @@ class BatchRunner:
 
         return completed_prompts
 
-    def _filter_dataset_by_completed(self, completed_prompts: set) -> Tuple[List[Dict], List[int]]:
+    def _filter_dataset_by_completed(self, completed_prompts: set) -> tuple[list[dict], list[int]]:
         """
         Filter the dataset to exclude prompts that have already been completed.
-        
+
         Args:
             completed_prompts: Set of prompt texts that have been completed
-            
+
         Returns:
             Tuple of (filtered_dataset, skipped_indices)
         """
@@ -810,7 +806,7 @@ class BatchRunner:
     def run(self, resume: bool = False):
         """
         Run the batch processing pipeline.
-        
+
         Args:
             resume (bool): Whether to resume from checkpoint
         """
@@ -1044,7 +1040,7 @@ class BatchRunner:
                 batch_files_found += 1
                 batch_num = batch_file.stem.split("_")[1]  # Extract batch number for logging
 
-                with open(batch_file, 'r', encoding='utf-8') as infile:
+                with open(batch_file, encoding='utf-8') as infile:
                     for line in infile:
                         total_entries += 1
                         try:
@@ -1196,25 +1192,25 @@ def main(
         reasoning_disabled (bool): Completely disable reasoning/thinking tokens (default: False)
         prefill_messages_file (str): Path to JSON file containing prefill messages (list of {role, content} dicts)
         max_samples (int): Only process the first N samples from the dataset (optional, processes all if not set)
-        
+
     Examples:
         # Basic usage
         python batch_runner.py --dataset_file=data.jsonl --batch_size=10 --run_name=my_run
-        
+
         # Resume interrupted run
         python batch_runner.py --dataset_file=data.jsonl --batch_size=10 --run_name=my_run --resume
-        
+
         # Use specific distribution
         python batch_runner.py --dataset_file=data.jsonl --batch_size=10 --run_name=image_test --distribution=image_gen
-        
+
         # With disabled reasoning and max tokens
         python batch_runner.py --dataset_file=data.jsonl --batch_size=10 --run_name=my_run \\
                                --reasoning_disabled --max_tokens=128000
-        
+
         # With prefill messages from file
         python batch_runner.py --dataset_file=data.jsonl --batch_size=10 --run_name=my_run \\
                                --prefill_messages_file=configs/prefill_opus.json
-        
+
         # List available distributions
         python batch_runner.py --list_distributions
     """
@@ -1272,7 +1268,7 @@ def main(
     prefill_messages = None
     if prefill_messages_file:
         try:
-            with open(prefill_messages_file, 'r', encoding='utf-8') as f:
+            with open(prefill_messages_file, encoding='utf-8') as f:
                 prefill_messages = json.load(f)
             if not isinstance(prefill_messages, list):
                 print("❌ Error: prefill_messages_file must contain a JSON array of messages")

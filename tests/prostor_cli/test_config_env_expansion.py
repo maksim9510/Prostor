@@ -1,6 +1,7 @@
 """Tests for ${ENV_VAR} substitution in config.yaml values."""
 
 import pytest
+
 from prostor_cli.config import _expand_env_vars, load_config
 
 

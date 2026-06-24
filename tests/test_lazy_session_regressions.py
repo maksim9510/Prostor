@@ -13,10 +13,10 @@ import time
 import types
 from unittest.mock import MagicMock, patch
 
-
 # ===========================================================================
 # Helpers
 # ===========================================================================
+
 
 def _make_session_db(tmp_path):
     """Create a real SessionDB for integration-style tests."""

@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import re
 import tomllib
-from pathlib import Path
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "acp_registry" / "agent.json"

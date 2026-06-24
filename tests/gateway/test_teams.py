@@ -9,14 +9,14 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from gateway.config import Platform, PlatformConfig, HomeChannel
+from gateway.config import HomeChannel, Platform, PlatformConfig
 from plugins.teams_pipeline.models import TeamsMeetingRef, TeamsMeetingSummaryPayload
 from tests.gateway._plugin_adapter_loader import load_plugin_adapter
-
 
 # ---------------------------------------------------------------------------
 # SDK Mock — install in sys.modules before importing the adapter
 # ---------------------------------------------------------------------------
+
 
 def _ensure_teams_mock():
     """Install a teams SDK mock in sys.modules if the real package isn't present."""
@@ -132,7 +132,7 @@ def _ensure_teams_mock():
     # HttpResponse TypedDict mock
     HttpResponse = dict
     HttpMethod = str
-    from typing import Callable
+    from collections.abc import Callable
     HttpRouteHandler = Callable
 
     microsoft_teams_apps_http_adapter.HttpRequest = HttpRequest
@@ -174,6 +174,7 @@ _teams_mod.AIOHTTP_AVAILABLE = True
 # Ensure SDK symbols that were None (import failed on Python <3.12) are
 # replaced with the mocked versions so runtime calls don't silently no-op.
 import sys as _sys
+
 _mt = _sys.modules.get("microsoft_teams.api.activities.typing")
 if _mt and _teams_mod.TypingActivityInput is None:
     _teams_mod.TypingActivityInput = _mt.TypingActivityInput
@@ -396,6 +397,7 @@ class TestTeamsInteractiveSetup:
         env_text = (prostor_home / ".env").read_text(encoding="utf-8")
         assert "TEAMS_CLIENT_ID=client-id" in env_text
         assert "TEAMS_TENANT_ID=tenant-id" in env_text
+
 
 class TestTeamsConnect:
     @pytest.mark.anyio

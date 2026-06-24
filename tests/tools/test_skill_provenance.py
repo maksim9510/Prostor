@@ -5,9 +5,9 @@ import contextvars
 
 def test_set_and_get_origin():
     from tools.skill_provenance import (
-        set_current_write_origin,
-        reset_current_write_origin,
         get_current_write_origin,
+        reset_current_write_origin,
+        set_current_write_origin,
     )
     token = set_current_write_origin("background_review")
     try:
@@ -18,9 +18,9 @@ def test_set_and_get_origin():
 
 def test_reset_restores_prior_origin():
     from tools.skill_provenance import (
-        set_current_write_origin,
-        reset_current_write_origin,
         get_current_write_origin,
+        reset_current_write_origin,
+        set_current_write_origin,
     )
     outer = set_current_write_origin("assistant_tool")
     try:
@@ -36,10 +36,10 @@ def test_reset_restores_prior_origin():
 
 def test_is_background_review_truthy_only_for_review():
     from tools.skill_provenance import (
-        set_current_write_origin,
-        reset_current_write_origin,
-        is_background_review,
         BACKGROUND_REVIEW,
+        is_background_review,
+        reset_current_write_origin,
+        set_current_write_origin,
     )
     for origin, expected in (
         ("foreground", False),
@@ -58,9 +58,9 @@ def test_is_background_review_truthy_only_for_review():
 
 def test_empty_origin_falls_back_to_foreground():
     from tools.skill_provenance import (
-        set_current_write_origin,
-        reset_current_write_origin,
         get_current_write_origin,
+        reset_current_write_origin,
+        set_current_write_origin,
     )
     token = set_current_write_origin("")
     try:
@@ -73,9 +73,9 @@ def test_empty_origin_falls_back_to_foreground():
 def test_context_isolation_between_copies():
     """ContextVar scoping: modifications in one copy do not leak out."""
     from tools.skill_provenance import (
-        set_current_write_origin,
-        get_current_write_origin,
         BACKGROUND_REVIEW,
+        get_current_write_origin,
+        set_current_write_origin,
     )
 
     # Start at the module default.

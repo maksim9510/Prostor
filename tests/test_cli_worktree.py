@@ -14,18 +14,18 @@ import pytest
 
 from prostor_cli.cli_worktree import (
     active_worktree,
+    cleanup_worktree,
     git_repo_root,
     normalize_git_bash_path,
     path_is_within_root,
     setup_worktree,
-    cleanup_worktree,
     worktree_has_unpushed_commits,
 )
-
 
 # ---------------------------------------------------------------------------
 # normalize_git_bash_path
 # ---------------------------------------------------------------------------
+
 
 class TestNormalizeGitBashPath:
     def test_empty_returns_empty(self):

@@ -42,11 +42,10 @@ of "ignore all instructions").  This mirrors the fix applied to
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Tuple
 
 # Each entry: (regex, pattern_id, scope)
 # scope ∈ {"all", "context", "strict"}
-_PATTERNS: List[Tuple[str, str, str]] = [
+_PATTERNS: list[tuple[str, str, str]] = [
     # ── Classic prompt injection (applies everywhere) ────────────────
     (r'ignore\s+(?:\w+\s+)*(previous|all|above|prior)\s+(?:\w+\s+)*instructions', "prompt_injection", "all"),
     (r'system\s+prompt\s+override', "sys_prompt_override", "all"),
@@ -141,7 +140,7 @@ INVISIBLE_CHARS = frozenset({
 
 # Compiled pattern sets, indexed by scope.  Compiled once at import time;
 # scan_for_threats() looks them up.
-_COMPILED: dict[str, List[Tuple[re.Pattern, str]]] = {}
+_COMPILED: dict[str, list[tuple[re.Pattern, str]]] = {}
 
 
 def _compile() -> None:
@@ -155,9 +154,9 @@ def _compile() -> None:
     if _COMPILED:
         return
 
-    all_patterns: List[Tuple[re.Pattern, str]] = []
-    context_patterns: List[Tuple[re.Pattern, str]] = []
-    strict_patterns: List[Tuple[re.Pattern, str]] = []
+    all_patterns: list[tuple[re.Pattern, str]] = []
+    context_patterns: list[tuple[re.Pattern, str]] = []
+    strict_patterns: list[tuple[re.Pattern, str]] = []
 
     for pattern, pid, scope in _PATTERNS:
         compiled = re.compile(pattern, re.IGNORECASE)
@@ -184,7 +183,7 @@ def _compile() -> None:
 _compile()
 
 
-def scan_for_threats(content: str, scope: str = "context") -> List[str]:
+def scan_for_threats(content: str, scope: str = "context") -> list[str]:
     """Return a list of matched pattern IDs in ``content`` at the given scope.
 
     ``scope`` selects which pattern set to apply:
@@ -204,7 +203,7 @@ def scan_for_threats(content: str, scope: str = "context") -> List[str]:
     if not content:
         return []
 
-    findings: List[str] = []
+    findings: list[str] = []
 
     # Invisible unicode — single pass through the content set, not 17
     # ``in`` lookups.
@@ -224,7 +223,7 @@ def scan_for_threats(content: str, scope: str = "context") -> List[str]:
     return findings
 
 
-def first_threat_message(content: str, scope: str = "strict") -> Optional[str]:
+def first_threat_message(content: str, scope: str = "strict") -> str | None:
     """Return a human-readable error string for the first threat found, or None.
 
     Convenience wrapper used by paths that block on the first hit

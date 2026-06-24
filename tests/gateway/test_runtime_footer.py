@@ -15,10 +15,10 @@ from gateway.runtime_footer import (
     resolve_footer_config,
 )
 
-
 # ---------------------------------------------------------------------------
 # _model_short + _home_relative_cwd
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "model,expected",

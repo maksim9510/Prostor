@@ -6,7 +6,6 @@ from agent.prompt_caching import (
     apply_anthropic_cache_control,
 )
 
-
 MARKER = {"type": "ephemeral"}
 
 

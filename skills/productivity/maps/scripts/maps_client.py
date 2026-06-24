@@ -136,6 +136,7 @@ def _tags_for(category):
         return list(entry)
     return [entry]
 
+
 OSRM_PROFILES = {
     "driving": "driving",
     "walking": "foot",
@@ -145,6 +146,7 @@ OSRM_PROFILES = {
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
+
 
 def print_json(data):
     """Print data as pretty-printed JSON to stdout."""

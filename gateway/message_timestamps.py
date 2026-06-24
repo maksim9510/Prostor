@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Optional, Tuple
-
+from typing import Any
 
 # Current gateway format: [Tue 2026-04-28 13:40:53 CEST]
 _HUMAN_TIMESTAMP_RE = re.compile(
@@ -26,7 +25,7 @@ _ISO_TIMESTAMP_RE = re.compile(
 )
 
 
-def coerce_message_timestamp(ts_value: Any, tz=None) -> Optional[float]:
+def coerce_message_timestamp(ts_value: Any, tz=None) -> float | None:
     """Coerce a timestamp-like value to Unix epoch seconds.
 
     Accepts Unix epoch numbers, datetime objects, ISO strings, and the gateway's
@@ -85,7 +84,7 @@ def format_message_timestamp(ts_value: Any, tz=None) -> str:
     return "[" + dt.strftime("%a %Y-%m-%d %H:%M:%S %Z") + "]"
 
 
-def strip_leading_message_timestamps(content: str, tz=None) -> Tuple[str, Optional[float]]:
+def strip_leading_message_timestamps(content: str, tz=None) -> tuple[str, float | None]:
     """Strip one or more leading gateway timestamp prefixes from ``content``.
 
     Returns ``(clean_content, embedded_epoch)``.  If multiple timestamp prefixes
@@ -97,7 +96,7 @@ def strip_leading_message_timestamps(content: str, tz=None) -> Tuple[str, Option
         return content, None
 
     text = content
-    embedded_epoch: Optional[float] = None
+    embedded_epoch: float | None = None
 
     while True:
         match = _HUMAN_TIMESTAMP_RE.match(text) or _ISO_TIMESTAMP_RE.match(text)
@@ -129,14 +128,14 @@ def render_user_content_with_timestamp(content: str, ts_value: Any = None, tz=No
     return prefix
 
 
-def _parse_timestamp_prefix(text: str, tz=None) -> Optional[float]:
+def _parse_timestamp_prefix(text: str, tz=None) -> float | None:
     match = _HUMAN_TIMESTAMP_RE.match(text) or _ISO_TIMESTAMP_RE.match(text)
     if not match:
         return None
     return _parse_timestamp_match(match, tz=tz)
 
 
-def _parse_timestamp_match(match: re.Match, tz=None) -> Optional[float]:
+def _parse_timestamp_match(match: re.Match, tz=None) -> float | None:
     if "iso" in match.groupdict() and match.group("iso"):
         iso_text = match.group("iso")
         try:

@@ -13,7 +13,6 @@ hosted agents don't expose). It must:
     background, returning 202.
 """
 
-import pytest
 from starlette.testclient import TestClient
 
 from prostor_cli import web_server
@@ -32,12 +31,12 @@ def _client(auth_required: bool):
 def _restore(prev_auth, prev_host):
     if prev_auth is None:
         if hasattr(web_server.app.state, "auth_required"):
-            delattr(web_server.app.state, "auth_required")
+            del web_server.app.state.auth_required
     else:
         web_server.app.state.auth_required = prev_auth
     if prev_host is None:
         if hasattr(web_server.app.state, "bound_host"):
-            delattr(web_server.app.state, "bound_host")
+            del web_server.app.state.bound_host
     else:
         web_server.app.state.bound_host = prev_host
 

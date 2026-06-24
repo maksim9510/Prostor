@@ -9,13 +9,12 @@ isolation — no real package metadata, no real config, no real cache.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 
 import prostor_cli.security_advisories as adv
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from prostor_cli import kanban_db as kb
 from prostor_cli import goals
+from prostor_cli import kanban_db as kb
 
 
 @pytest.fixture

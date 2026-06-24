@@ -12,7 +12,6 @@ from gateway.slash_access import (
     policy_from_extra,
 )
 
-
 # ---------------------------------------------------------------------------
 # policy_from_extra — input normalization + scope resolution
 # ---------------------------------------------------------------------------

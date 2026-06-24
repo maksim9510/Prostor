@@ -23,14 +23,14 @@ The universal fix is reactive: when a call returns an
 These tests lock in that behaviour for both sync and async paths.
 """
 
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from agent.auxiliary_client import (
-    call_llm,
-    async_call_llm,
     _is_unsupported_temperature_error,
+    async_call_llm,
+    call_llm,
 )
 
 

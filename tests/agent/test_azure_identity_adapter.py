@@ -26,6 +26,7 @@ from typing import cast
 
 import pytest
 
+
 # Ensure we always import a fresh adapter module — credential caches in
 # the adapter persist across tests otherwise, polluting assertions
 # about cache invalidation.
@@ -115,6 +116,7 @@ class TestBuildBearerHttpClient:
 
     def test_returns_httpx_client_with_request_hook(self):
         import httpx
+
         from agent.azure_identity_adapter import build_bearer_http_client
 
         client = build_bearer_http_client(lambda: "jwt")
@@ -127,6 +129,7 @@ class TestBuildBearerHttpClient:
 
     def test_hook_overrides_authorization_header(self):
         import httpx
+
         from agent.azure_identity_adapter import build_bearer_http_client
 
         minted_tokens = []
@@ -178,7 +181,9 @@ class TestBuildBearerHttpClient:
              sentinel string into upstream access logs.
         """
         import logging
+
         import httpx
+
         from agent.azure_identity_adapter import build_bearer_http_client
 
         def bad_provider():
@@ -216,6 +221,7 @@ class TestBuildBearerHttpClient:
 
     def test_forwards_httpx_kwargs(self):
         import httpx
+
         from agent.azure_identity_adapter import build_bearer_http_client
 
         timeout = httpx.Timeout(60.0, connect=5.0)
@@ -301,7 +307,7 @@ class TestEntraIdentityConfig:
         from agent.azure_identity_adapter import EntraIdentityConfig
         cfg = EntraIdentityConfig()
         with pytest.raises((AttributeError, Exception)):
-            setattr(cfg, "scope", "mutated")
+            cfg.scope = "mutated"
 
 
 # ---------------------------------------------------------------------------
@@ -566,6 +572,7 @@ class TestHasAzureIdentityCredentials:
     def test_returns_false_on_timeout(self, monkeypatch):
         """Slow IMDS / network must time out, not hang the caller."""
         import threading
+
         from agent import azure_identity_adapter as _adapter
 
         slow_release = threading.Event()

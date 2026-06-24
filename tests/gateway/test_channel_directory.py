@@ -6,19 +6,18 @@ import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from gateway.channel_directory import (
-    build_channel_directory,
-    lookup_channel_type,
-    resolve_channel_name,
-    format_directory_for_display,
-    load_directory,
     _apply_channel_aliases,
     _build_from_sessions,
     _build_slack,
+    build_channel_directory,
+    format_directory_for_display,
+    load_directory,
+    lookup_channel_type,
+    resolve_channel_name,
 )
-
-
-import pytest
 
 
 @pytest.fixture(autouse=True)

@@ -31,8 +31,6 @@ version can change at runtime (editable installs, hot-reload tooling), and
 
 from __future__ import annotations
 
-from typing import List
-
 
 def _prostor_version() -> str:
     """Return the current Prostor release version, e.g. ``"0.13.0"``.
@@ -55,7 +53,7 @@ def prostor_client_tag() -> str:
     return f"client=prostor-client-v{_prostor_version()}"
 
 
-def nous_portal_tags() -> List[str]:
+def nous_portal_tags() -> list[str]:
     """Return the canonical list of Nous Portal product tags.
 
     Always returns a fresh list so callers can mutate it freely

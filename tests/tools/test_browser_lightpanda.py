@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _reset_engine_cache():
     """Reset the module-level engine cache so tests start clean."""
@@ -324,6 +324,7 @@ class TestLightpandaFallbackWarning:
 
     def test_browser_navigate_surfaces_fallback_warning(self):
         import json
+
         import tools.browser_tool as bt
 
         result = bt._annotate_lightpanda_fallback(
@@ -351,6 +352,7 @@ class TestLightpandaFallbackWarning:
 
     def test_browser_navigate_surfaces_auto_snapshot_fallback_warning(self):
         import json
+
         import tools.browser_tool as bt
 
         snapshot_result = bt._annotate_lightpanda_fallback(
@@ -377,6 +379,7 @@ class TestLightpandaFallbackWarning:
 
     def test_failed_fallback_warning_is_preserved_on_click_error(self):
         import json
+
         import tools.browser_tool as bt
 
         result = bt._annotate_lightpanda_fallback(
@@ -394,6 +397,7 @@ class TestLightpandaFallbackWarning:
 
     def test_browser_vision_lightpanda_uses_chrome_capture_and_normal_call_llm_shape(self, tmp_path):
         import json
+
         import tools.browser_tool as bt
 
         chrome_shot = tmp_path / "chrome.png"
@@ -433,6 +437,7 @@ class TestLightpandaFallbackWarning:
 
     def test_browser_get_images_preserves_fallback_warning(self):
         import json
+
         import tools.browser_tool as bt
 
         result = bt._annotate_lightpanda_fallback(
@@ -450,6 +455,7 @@ class TestLightpandaFallbackWarning:
 
     def test_browser_vision_lightpanda_response_has_structured_fallback(self, tmp_path):
         import json
+
         import tools.browser_tool as bt
 
         chrome_shot = tmp_path / "chrome-structured.png"
@@ -484,6 +490,7 @@ class TestLightpandaFallbackWarning:
 # ---------------------------------------------------------------------------
 # _engine_override parameter
 # ---------------------------------------------------------------------------
+
 
 class TestEngineOverride:
     """Verify _engine_override bypasses the cached engine."""

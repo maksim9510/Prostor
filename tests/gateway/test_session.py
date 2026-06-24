@@ -1,9 +1,11 @@
 """Tests for gateway session management."""
 import json
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-from gateway.config import Platform, HomeChannel, GatewayConfig, PlatformConfig
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from gateway.config import GatewayConfig, HomeChannel, Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent
 from gateway.session import (
     SessionSource,
@@ -1113,8 +1115,9 @@ class TestLastPromptTokens:
 
     def test_session_entry_default(self):
         """New sessions should have last_prompt_tokens=0."""
-        from gateway.session import SessionEntry
         from datetime import datetime
+
+        from gateway.session import SessionEntry
         entry = SessionEntry(
             session_key="test",
             session_id="s1",
@@ -1125,8 +1128,9 @@ class TestLastPromptTokens:
 
     def test_session_entry_roundtrip(self):
         """last_prompt_tokens should survive serialization/deserialization."""
-        from gateway.session import SessionEntry
         from datetime import datetime
+
+        from gateway.session import SessionEntry
         entry = SessionEntry(
             session_key="test",
             session_id="s1",
@@ -1164,8 +1168,9 @@ class TestLastPromptTokens:
         store._db = None
         store._save = MagicMock()
 
-        from gateway.session import SessionEntry
         from datetime import datetime
+
+        from gateway.session import SessionEntry
         entry = SessionEntry(
             session_key="k1",
             session_id="s1",
@@ -1186,8 +1191,9 @@ class TestLastPromptTokens:
         store._db = None
         store._save = MagicMock()
 
-        from gateway.session import SessionEntry
         from datetime import datetime
+
+        from gateway.session import SessionEntry
         entry = SessionEntry(
             session_key="k1",
             session_id="s1",
@@ -1209,8 +1215,9 @@ class TestLastPromptTokens:
         store._db = None
         store._save = MagicMock()
 
-        from gateway.session import SessionEntry
         from datetime import datetime
+
+        from gateway.session import SessionEntry
         entry = SessionEntry(
             session_key="k1",
             session_id="s1",
@@ -1222,6 +1229,7 @@ class TestLastPromptTokens:
 
         store.update_session("k1", last_prompt_tokens=0)
         assert entry.last_prompt_tokens == 0
+
 
 class TestRewriteTranscriptPreservesReasoning:
     """rewrite_transcript must not drop reasoning fields from SQLite."""

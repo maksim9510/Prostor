@@ -41,7 +41,7 @@ def test_mixin_writes_active_agent_ref_to_cli_module():
         cli_mod._active_agent_ref = prev_cli
         if prev_mixin == "<unset>":
             if hasattr(mixin_mod, "_active_agent_ref"):
-                delattr(mixin_mod, "_active_agent_ref")
+                del mixin_mod._active_agent_ref
         else:
             mixin_mod._active_agent_ref = prev_mixin
 

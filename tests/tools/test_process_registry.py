@@ -7,15 +7,16 @@ import subprocess
 import sys
 import threading
 import time
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from tools.environments.local import _PROSTOR_PROVIDER_ENV_FORCE_PREFIX
 from tools.process_registry import (
-    ProcessRegistry,
-    ProcessSession,
     FINISHED_TTL_SECONDS,
     MAX_PROCESSES,
+    ProcessRegistry,
+    ProcessSession,
 )
 
 
@@ -1222,8 +1223,9 @@ class TestTerminateHostPidWindows:
     def test_windows_does_not_call_psutil(self, monkeypatch):
         """The Windows branch must NOT exercise the psutil tree-walk
         (it's unreliable on Windows — see the function docstring)."""
-        from tools import process_registry as pr
         import psutil
+
+        from tools import process_registry as pr
 
         psutil_calls = []
 
@@ -1256,8 +1258,9 @@ class TestTerminateHostPidPosix:
     """POSIX branch walks the tree via psutil and SIGTERMs children first."""
 
     def test_posix_walks_tree_and_terminates_children_then_parent(self, monkeypatch):
-        from tools import process_registry as pr
         import psutil
+
+        from tools import process_registry as pr
 
         terminate_order = []
 
@@ -1289,8 +1292,9 @@ class TestTerminateHostPidPosix:
         )
 
     def test_posix_no_such_process_swallowed(self, monkeypatch):
-        from tools import process_registry as pr
         import psutil
+
+        from tools import process_registry as pr
 
         def boom(pid):
             raise psutil.NoSuchProcess(pid)
@@ -1302,8 +1306,9 @@ class TestTerminateHostPidPosix:
         pr.ProcessRegistry._terminate_host_pid(999999999)
 
     def test_posix_oserror_falls_back_to_os_kill(self, monkeypatch):
-        from tools import process_registry as pr
         import psutil
+
+        from tools import process_registry as pr
 
         def boom(pid):
             raise PermissionError("can't read /proc")

@@ -10,9 +10,9 @@ import os
 import sys
 from pathlib import Path
 
-from prostor_constants import get_prostor_home
-from plugins.memory.honcho.client import _host_block, profile_host_key, resolve_active_host, resolve_config_path, HOST
+from plugins.memory.honcho.client import HOST, _host_block, profile_host_key, resolve_active_host, resolve_config_path
 from prostor_cli.config import cfg_get
+from prostor_constants import get_prostor_home
 
 
 def clone_honcho_for_profile(profile_name: str) -> bool:

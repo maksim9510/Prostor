@@ -6,18 +6,15 @@ Verifies that:
 - Preflight compression proactively compresses oversized sessions before API calls
 """
 
-import pytest
 #pytestmark = pytest.mark.skip(reason="Hangs in non-interactive environments")
-
-
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 
+import run_agent
 from agent.context_compressor import SUMMARY_PREFIX
 from run_agent import AIAgent
-import run_agent
-
 
 # ---------------------------------------------------------------------------
 # Fast backoff for compression retry tests

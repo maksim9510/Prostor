@@ -28,8 +28,9 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 from agent.codex_responses_adapter import _format_responses_error
 from agent.redact import redact_sensitive_text
@@ -69,12 +70,12 @@ class TurnResult:
     projected_messages: list[dict] = field(default_factory=list)
     tool_iterations: int = 0
     interrupted: bool = False
-    error: Optional[str] = None  # Set if turn ended in a non-recoverable error
-    turn_id: Optional[str] = None
-    thread_id: Optional[str] = None
-    token_usage_last: Optional[dict[str, Any]] = None
-    token_usage_total: Optional[dict[str, Any]] = None
-    model_context_window: Optional[int] = None
+    error: str | None = None  # Set if turn ended in a non-recoverable error
+    turn_id: str | None = None
+    thread_id: str | None = None
+    token_usage_last: dict[str, Any] | None = None
+    token_usage_total: dict[str, Any] | None = None
+    model_context_window: int | None = None
     # Hint to the caller that the underlying codex subprocess is likely
     # wedged (turn-level timeout fired, post-tool watchdog tripped, or
     # token-refresh failure killed the child). The caller should retire
@@ -154,7 +155,7 @@ _OAUTH_REFRESH_FAILURE_HINTS = (
 )
 
 
-def _classify_oauth_failure(*parts: str) -> Optional[str]:
+def _classify_oauth_failure(*parts: str) -> str | None:
     """Return a user-friendly re-auth hint if any of the provided strings
     look like a codex OAuth/token-refresh failure; otherwise None.
 
@@ -200,14 +201,14 @@ class CodexAppServerSession:
     def __init__(
         self,
         *,
-        cwd: Optional[str] = None,
+        cwd: str | None = None,
         codex_bin: str = "codex",
-        codex_home: Optional[str] = None,
-        permission_profile: Optional[str] = None,
-        approval_callback: Optional[Callable[..., str]] = None,
-        on_event: Optional[Callable[[dict], None]] = None,
-        request_routing: Optional[_ServerRequestRouting] = None,
-        client_factory: Optional[Callable[..., CodexAppServerClient]] = None,
+        codex_home: str | None = None,
+        permission_profile: str | None = None,
+        approval_callback: Callable[..., str] | None = None,
+        on_event: Callable[[dict], None] | None = None,
+        request_routing: _ServerRequestRouting | None = None,
+        client_factory: Callable[..., CodexAppServerClient] | None = None,
     ) -> None:
         self._cwd = cwd or os.getcwd()
         self._codex_bin = codex_bin
@@ -223,8 +224,8 @@ class CodexAppServerSession:
         self._routing = request_routing or _ServerRequestRouting()
         self._client_factory = client_factory or CodexAppServerClient
 
-        self._client: Optional[CodexAppServerClient] = None
-        self._thread_id: Optional[str] = None
+        self._client: CodexAppServerClient | None = None
+        self._thread_id: str | None = None
         self._interrupt_event = threading.Event()
         # Pending file-change items, keyed by item id. Populated on
         # item/started for fileChange items; consumed by the approval
@@ -308,7 +309,7 @@ class CodexAppServerSession:
             self._client = None
         self._thread_id = None
 
-    def __enter__(self) -> "CodexAppServerSession":
+    def __enter__(self) -> CodexAppServerSession:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -449,7 +450,7 @@ class CodexAppServerSession:
         # a tool-shaped item completes; if no further notification arrives
         # within post_tool_quiet_timeout and the turn hasn't completed, we
         # fast-fail and retire the session.
-        last_tool_completion_at: Optional[float] = None
+        last_tool_completion_at: float | None = None
 
         while time.monotonic() < deadline and not turn_complete:
             if self._interrupt_event.is_set():
@@ -621,7 +622,7 @@ class CodexAppServerSession:
 
     # ---------- internals ----------
 
-    def _issue_interrupt(self, turn_id: Optional[str]) -> None:
+    def _issue_interrupt(self, turn_id: str | None) -> None:
         if self._client is None or self._thread_id is None or turn_id is None:
             return
         try:
@@ -795,7 +796,7 @@ class CodexAppServerSession:
         elif method == "item/completed":
             self._pending_file_changes.pop(item_id, None)
 
-    def _lookup_pending_file_change(self, item_id: str) -> Optional[str]:
+    def _lookup_pending_file_change(self, item_id: str) -> str | None:
         """Look up an in-progress fileChange item by id and summarize its
         changes for the approval prompt. Returns None when we don't have
         the item cached (e.g. approval arrived before item/started, or

@@ -37,14 +37,14 @@ def _ensure_feishu_mocks():
 
 _ensure_feishu_mocks()
 
-from gateway.config import PlatformConfig
 import plugins.platforms.feishu.adapter as feishu_module
+from gateway.config import PlatformConfig
 from plugins.platforms.feishu.adapter import FeishuAdapter
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_adapter() -> FeishuAdapter:
     """Create a FeishuAdapter with mocked internals."""
@@ -410,6 +410,7 @@ class TestResolveApproval:
 # ===========================================================================
 # _handle_card_action_event — non-approval card actions
 # ===========================================================================
+
 
 class TestNonApprovalCardAction:
     """Non-approval card actions should still route as synthetic commands."""

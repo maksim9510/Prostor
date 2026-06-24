@@ -10,10 +10,10 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_prostor_tree(root: Path) -> None:
     """Create a realistic ~/.prostor directory structure for testing."""
@@ -189,6 +189,7 @@ class TestShouldExclude:
 # ---------------------------------------------------------------------------
 # Backup tests
 # ---------------------------------------------------------------------------
+
 
 class TestBackup:
     def test_creates_zip(self, tmp_path, monkeypatch):
@@ -885,6 +886,7 @@ class TestValidation:
     def test_validate_with_config(self):
         """Zip with config.yaml passes validation."""
         import io
+
         from prostor_cli.backup import _validate_backup_zip
 
         buf = io.BytesIO()
@@ -898,6 +900,7 @@ class TestValidation:
     def test_validate_with_env(self):
         """Zip with .env passes validation."""
         import io
+
         from prostor_cli.backup import _validate_backup_zip
 
         buf = io.BytesIO()
@@ -911,6 +914,7 @@ class TestValidation:
     def test_validate_rejects_random(self):
         """Zip without prostor markers fails validation."""
         import io
+
         from prostor_cli.backup import _validate_backup_zip
 
         buf = io.BytesIO()
@@ -924,6 +928,7 @@ class TestValidation:
     def test_detect_prefix_prostor(self):
         """Detects .prostor/ prefix wrapping all entries."""
         import io
+
         from prostor_cli.backup import _detect_prefix
 
         buf = io.BytesIO()
@@ -937,6 +942,7 @@ class TestValidation:
     def test_detect_prefix_none(self):
         """No prefix when entries are at root."""
         import io
+
         from prostor_cli.backup import _detect_prefix
 
         buf = io.BytesIO()
@@ -950,6 +956,7 @@ class TestValidation:
     def test_detect_prefix_only_dirs(self):
         """Prefix detection returns empty for zip with only directory entries."""
         import io
+
         from prostor_cli.backup import _detect_prefix
 
         buf = io.BytesIO()
@@ -1498,14 +1505,14 @@ class TestQuickSnapshot:
         assert restore_quick_snapshot("nonexistent", prostor_home=prostor_home) is False
 
     def test_auto_prune(self, prostor_home):
-        from prostor_cli.backup import create_quick_snapshot, list_quick_snapshots, _QUICK_DEFAULT_KEEP
+        from prostor_cli.backup import _QUICK_DEFAULT_KEEP, create_quick_snapshot, list_quick_snapshots
         for i in range(_QUICK_DEFAULT_KEEP + 5):
             create_quick_snapshot(label=f"snap-{i:03d}", prostor_home=prostor_home)
         snaps = list_quick_snapshots(limit=100, prostor_home=prostor_home)
         assert len(snaps) <= _QUICK_DEFAULT_KEEP
 
     def test_manual_prune(self, prostor_home):
-        from prostor_cli.backup import create_quick_snapshot, prune_quick_snapshots, list_quick_snapshots
+        from prostor_cli.backup import create_quick_snapshot, list_quick_snapshots, prune_quick_snapshots
         for i in range(10):
             create_quick_snapshot(label=f"s{i}", prostor_home=prostor_home)
         deleted = prune_quick_snapshots(keep=3, prostor_home=prostor_home)
@@ -1593,6 +1600,7 @@ class TestQuickSnapshot:
 # Pre-update backup (prostor update safety net)
 # ---------------------------------------------------------------------------
 
+
 class TestPreUpdateBackup:
     """Tests for create_pre_update_backup — the auto-backup ``prostor update``
     runs before touching anything."""
@@ -1655,6 +1663,7 @@ class TestPreUpdateBackup:
         """After more than ``keep`` backups are created, older ones are
         pruned automatically."""
         import time as _t
+
         from prostor_cli.backup import create_pre_update_backup
 
         created = []
@@ -1678,6 +1687,7 @@ class TestPreUpdateBackup:
         """Hand-dropped zips in ``backups/`` must not be touched by
         rotation — it only prunes files matching ``pre-update-*.zip``."""
         import time as _t
+
         from prostor_cli.backup import create_pre_update_backup
 
         (prostor_home / "backups").mkdir(exist_ok=True)
@@ -1723,6 +1733,7 @@ class TestPreUpdateBackup:
         still remove pre-existing backups beyond the (floored) limit of 1.
         """
         import time as _t
+
         from prostor_cli.backup import create_pre_update_backup
 
         first = create_pre_update_backup(prostor_home=prostor_home, keep=5)
@@ -1923,7 +1934,7 @@ class TestPreMigrationBackup:
     def test_restorable_with_prostor_import(self, prostor_home, tmp_path):
         """The zip produced by pre-migration backup must be a valid Prostor
         backup — `prostor import` should accept it."""
-        from prostor_cli.backup import create_pre_migration_backup, _validate_backup_zip
+        from prostor_cli.backup import _validate_backup_zip, create_pre_migration_backup
         out = create_pre_migration_backup(prostor_home=prostor_home)
         assert out is not None
         with zipfile.ZipFile(out) as zf:
@@ -1942,6 +1953,7 @@ class TestPreMigrationBackup:
 
     def test_rotation_keeps_only_n(self, prostor_home):
         import time as _t
+
         from prostor_cli.backup import create_pre_migration_backup
 
         created = []
@@ -1964,7 +1976,7 @@ class TestPreMigrationBackup:
     def test_does_not_touch_pre_update_backups(self, prostor_home):
         """Pre-migration rotation must only prune pre-migration-*.zip files,
         leaving pre-update-*.zip backups untouched."""
-        from prostor_cli.backup import create_pre_update_backup, create_pre_migration_backup
+        from prostor_cli.backup import create_pre_migration_backup, create_pre_update_backup
         update_backup = create_pre_update_backup(prostor_home=prostor_home, keep=5)
         assert update_backup is not None and update_backup.exists()
         # Spin up a lot of migration backups with keep=1

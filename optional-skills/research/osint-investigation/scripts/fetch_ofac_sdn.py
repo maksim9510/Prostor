@@ -69,7 +69,7 @@ def _read_csv(url: str, columns: list[str]) -> list[dict[str, str]]:
             continue
         # Pad/truncate to expected width.
         row = row[: len(columns)] + [""] * (len(columns) - len(row))
-        out.append(dict(zip(columns, row)))
+        out.append(dict(zip(columns, row, strict=False)))
     return out
 
 

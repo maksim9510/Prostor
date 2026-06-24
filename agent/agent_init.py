@@ -26,9 +26,10 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
-from urllib.parse import urlparse, parse_qs, urlunparse
+from typing import Any
+from urllib.parse import parse_qs, urlparse, urlunparse
 
 from agent.context_compressor import ContextCompressor
 from agent.iteration_budget import IterationBudget
@@ -68,7 +69,7 @@ def _ra():
     return run_agent
 
 
-def _build_codex_gpt55_autoraise_notice(autoraise: Dict[str, float]) -> str:
+def _build_codex_gpt55_autoraise_notice(autoraise: dict[str, float]) -> str:
     """Build the one-time notice shown when Codex gpt-5.5 raises compaction.
 
     ``autoraise`` is ``{"from": <old_ratio>, "to": <new_ratio>}``. The same
@@ -92,7 +93,7 @@ def _normalized_custom_base_url(value: Any) -> str:
     return value.strip().rstrip("/")
 
 
-def _custom_provider_model_matches(agent_model: str, entry: Dict[str, Any]) -> bool:
+def _custom_provider_model_matches(agent_model: str, entry: dict[str, Any]) -> bool:
     provider_model = str(entry.get("model", "") or "").strip().lower()
     if not provider_model:
         return True
@@ -104,8 +105,8 @@ def _custom_provider_extra_body_for_agent(
     provider: str,
     model: str,
     base_url: str,
-    custom_providers: List[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
+    custom_providers: list[dict[str, Any]],
+) -> dict[str, Any] | None:
     if (provider or "").strip().lower() != "custom":
         return None
 
@@ -113,7 +114,7 @@ def _custom_provider_extra_body_for_agent(
     if not target_url:
         return None
 
-    fallback: Optional[Dict[str, Any]] = None
+    fallback: dict[str, Any] | None = None
     for entry in custom_providers or []:
         if not isinstance(entry, dict):
             continue
@@ -132,7 +133,7 @@ def _custom_provider_extra_body_for_agent(
     return fallback
 
 
-def _merge_custom_provider_extra_body(agent, custom_providers: List[Dict[str, Any]]) -> None:
+def _merge_custom_provider_extra_body(agent, custom_providers: list[dict[str, Any]]) -> None:
     extra_body = _custom_provider_extra_body_for_agent(
         provider=agent.provider,
         model=agent.model,
@@ -164,8 +165,8 @@ def init_agent(
     model: str = "",
     max_iterations: int = 90,  # Default tool-calling iterations (shared with subagents)
     tool_delay: float = 1.0,
-    enabled_toolsets: List[str] = None,
-    disabled_toolsets: List[str] = None,
+    enabled_toolsets: list[str] = None,
+    disabled_toolsets: list[str] = None,
     save_trajectories: bool = False,
     verbose_logging: bool = False,
     quiet_mode: bool = False,
@@ -173,13 +174,13 @@ def init_agent(
     ephemeral_system_prompt: str = None,
     log_prefix_chars: int = 100,
     log_prefix: str = "",
-    providers_allowed: List[str] = None,
-    providers_ignored: List[str] = None,
-    providers_order: List[str] = None,
+    providers_allowed: list[str] = None,
+    providers_ignored: list[str] = None,
+    providers_order: list[str] = None,
     provider_sort: str = None,
     provider_require_parameters: bool = False,
     provider_data_collection: str = None,
-    openrouter_min_coding_score: Optional[float] = None,
+    openrouter_min_coding_score: float | None = None,
     session_id: str = None,
     tool_progress_callback: callable = None,
     tool_start_callback: callable = None,
@@ -195,12 +196,12 @@ def init_agent(
     status_callback: callable = None,
     notice_callback: callable = None,
     notice_clear_callback: callable = None,
-    event_callback: Optional[Callable[[str, dict], None]] = None,
+    event_callback: Callable[[str, dict], None] | None = None,
     max_tokens: int = None,
-    reasoning_config: Dict[str, Any] = None,
+    reasoning_config: dict[str, Any] = None,
     service_tier: str = None,
-    request_overrides: Dict[str, Any] = None,
-    prefill_messages: List[Dict[str, Any]] = None,
+    request_overrides: dict[str, Any] = None,
+    prefill_messages: list[dict[str, Any]] = None,
     platform: str = None,
     user_id: str = None,
     user_id_alt: str = None,
@@ -215,8 +216,8 @@ def init_agent(
     skip_memory: bool = False,
     session_db=None,
     parent_session_id: str = None,
-    iteration_budget: "IterationBudget" = None,
-    fallback_model: Dict[str, Any] = None,
+    iteration_budget: IterationBudget = None,
+    fallback_model: dict[str, Any] = None,
     credential_pool=None,
     checkpoints_enabled: bool = False,
     checkpoint_max_snapshots: int = 20,
@@ -450,7 +451,7 @@ def init_agent(
     # last tool result's content so the model sees it on its next
     # iteration. Message-role alternation is preserved (we modify an
     # existing tool message rather than inserting a new user turn).
-    agent._pending_steer: Optional[str] = None
+    agent._pending_steer: str | None = None
     agent._pending_steer_lock = threading.Lock()
 
     # Concurrent-tool worker thread tracking.  `_execute_tool_calls_concurrent`
@@ -540,7 +541,7 @@ def init_agent(
     agent._tool_snapshot_generation = 0
     # Rate limit tracking — updated from x-ratelimit-* response headers
     # after each API call.  Accessed by /usage slash command.
-    agent._rate_limit_state: Optional["RateLimitState"] = None
+    agent._rate_limit_state: RateLimitState | None = None
 
     # Credits tracking (dev-only, L0 usage-aware-credits) — updated from
     # x-nous-credits-* response headers after each API call.  Session-start
@@ -610,7 +611,7 @@ def init_agent(
     # Cache anthropic image-to-text fallbacks per image payload/URL so a
     # single tool loop does not repeatedly re-run auxiliary vision on the
     # same image history.
-    agent._anthropic_image_fallback_cache: Dict[str, str] = {}
+    agent._anthropic_image_fallback_cache: dict[str, str] = {}
 
     # Initialize LLM client via centralized provider router.
     # The router handles auth resolution, base URL, headers, and
@@ -1066,7 +1067,7 @@ def init_agent(
     # breadcrumb path written by agent_runtime_helpers.dump_api_request_debug).
 
     # Track conversation messages for session logging
-    agent._session_messages: List[Dict[str, Any]] = []
+    agent._session_messages: list[dict[str, Any]] = []
     # Responses encrypted reasoning replay state.  Some OpenAI-compatible
     # routes accept GPT-5 Responses requests but later reject replayed
     # encrypted reasoning blobs (HTTP 400 ``invalid_encrypted_content``).
@@ -1078,7 +1079,7 @@ def init_agent(
     agent._memory_write_context = "foreground"
 
     # Cached system prompt -- built once per session, only rebuilt on compression
-    agent._cached_system_prompt: Optional[str] = None
+    agent._cached_system_prompt: str | None = None
 
     # Filesystem checkpoint manager (transparent — not a tool)
     from tools.checkpoint_manager import CheckpointManager
@@ -1297,6 +1298,8 @@ def init_agent(
     try:
         from agent.auxiliary_client import (
             _compression_threshold_for_model as _cthresh_fn,
+        )
+        from agent.auxiliary_client import (
             _is_codex_gpt55 as _is_codex_gpt55_fn,
         )
         _model_cthresh = _cthresh_fn(

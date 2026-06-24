@@ -30,7 +30,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DESKTOP_PKG = REPO_ROOT / "apps" / "desktop" / "package.json"
 ROOT_LOCK = REPO_ROOT / "package-lock.json"

@@ -65,7 +65,6 @@ import logging
 import os
 import secrets
 import time
-from typing import Any, Optional
 
 from prostor_cli.dashboard_auth import (
     DashboardAuthProvider,
@@ -179,7 +178,7 @@ def _sign(payload: dict, secret: bytes) -> str:
     return base64.urlsafe_b64encode(raw + sig).decode()
 
 
-def _unsign(token: str, secret: bytes) -> Optional[dict]:
+def _unsign(token: str, secret: bytes) -> dict | None:
     try:
         blob = base64.urlsafe_b64decode(token.encode())
         if len(blob) <= _SIG_LEN:
@@ -260,7 +259,7 @@ class BasicAuthProvider(DashboardAuthProvider):
 
     # ---- session lifecycle -------------------------------------------------
 
-    def verify_session(self, *, access_token: str) -> Optional[Session]:
+    def verify_session(self, *, access_token: str) -> Session | None:
         payload = _unsign(access_token, self._secret)
         if (
             payload is None

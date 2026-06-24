@@ -15,6 +15,7 @@ Covers the bundled plugin at ``plugins/disk-cleanup/``:
 import importlib
 import json
 import sys
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -282,8 +283,8 @@ class TestStaleCronEntryMigration:
         run_md.write_text("x")
 
         # Old enough to be deleted (>14 days)
-        from datetime import datetime, timezone, timedelta
-        old_ts = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
+        from datetime import datetime, timedelta
+        old_ts = (datetime.now(UTC) - timedelta(days=20)).isoformat()
 
         tracked_file = _isolate_env / "disk-cleanup" / "tracked.json"
         tracked_file.parent.mkdir(parents=True, exist_ok=True)

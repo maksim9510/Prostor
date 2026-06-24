@@ -22,7 +22,6 @@ from unittest import mock
 
 import pytest
 
-
 # Make the worktree importable without depending on the installed wheel.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

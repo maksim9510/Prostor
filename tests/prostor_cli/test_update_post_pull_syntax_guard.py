@@ -19,10 +19,10 @@ from types import SimpleNamespace
 
 from prostor_cli import main as prostor_main
 
-
 # ---------------------------------------------------------------------------
 # _capture_head_sha
 # ---------------------------------------------------------------------------
+
 
 def test_capture_head_sha_returns_stripped_sha(monkeypatch, tmp_path):
     def fake_run(cmd, **kwargs):

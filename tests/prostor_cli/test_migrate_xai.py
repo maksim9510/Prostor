@@ -11,10 +11,10 @@ from prostor_cli.xai_retirement import (
     find_retired_xai_refs,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def trap_config(tmp_path: Path) -> Path:

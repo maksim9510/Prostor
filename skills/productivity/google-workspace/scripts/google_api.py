@@ -27,7 +27,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -182,8 +182,8 @@ def get_credentials():
     """Load and refresh credentials from token file."""
     _ensure_authenticated()
 
-    from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
 
     creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), _stored_token_scopes())
     if creds.expired and creds.refresh_token:
@@ -457,7 +457,7 @@ def gmail_modify(args):
 
 
 def calendar_list(args):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     time_min = _datetime_with_timezone(args.start or now.isoformat())
     time_max = _datetime_with_timezone(args.end or (now + timedelta(days=7)).isoformat())
 
@@ -604,6 +604,7 @@ def drive_upload(args):
     """Upload a local file to Drive. Falls through to Python client even when gws
     is installed, because gws doesn't do multipart uploads."""
     import mimetypes
+
     from googleapiclient.http import MediaFileUpload
 
     local_path = Path(args.path).expanduser()
@@ -636,6 +637,7 @@ def drive_download(args):
     """Download a Drive file to a local path. Google-native files (Docs/Sheets/Slides)
     must be exported; binary files are downloaded as-is."""
     import io
+
     from googleapiclient.http import MediaIoBaseDownload
 
     service = build_service("drive", "v3")

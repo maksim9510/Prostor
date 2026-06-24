@@ -12,7 +12,7 @@ import os
 import sys
 import tempfile
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 _PROSTOR_HOME = Path(os.environ.get("PROSTOR_HOME", Path.home() / ".prostor"))
@@ -23,7 +23,7 @@ RETIRED_SENTINEL = "9999-12-31T23:59:59+00:00"
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _iso(dt: datetime) -> str:
@@ -42,7 +42,7 @@ def _load() -> dict:
     if not CARDS_FILE.exists():
         return _empty_store()
     try:
-        with open(CARDS_FILE, "r", encoding="utf-8") as f:
+        with open(CARDS_FILE, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict) or "cards" not in data:
             return _empty_store()
@@ -240,7 +240,7 @@ def cmd_import(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     created = 0
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         reader = csv.reader(f)
         for row in reader:
             if len(row) < 2:

@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # build_or_headers
 # ---------------------------------------------------------------------------
+
 
 class TestBuildOrHeaders:
     """Test the build_or_headers() helper in agent/auxiliary_client.py."""
@@ -219,6 +219,7 @@ class TestEnvVarOverrides:
         headers = build_or_headers(or_config={"response_cache": True, "response_cache_ttl": 600})
         assert headers["X-OpenRouter-Cache"] == "true"
         assert headers["X-OpenRouter-Cache-TTL"] == "600"
+
 
 class TestDefaultConfig:
     """Verify the openrouter config section is in DEFAULT_CONFIG."""

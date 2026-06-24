@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 from prostor_cli.tools_config import tools_disable_enable_command
 
-
 # ── Built-in toolset disable ────────────────────────────────────────────────
 
 

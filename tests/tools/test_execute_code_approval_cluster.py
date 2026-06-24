@@ -24,10 +24,10 @@ import pytest
 from tools import approval as A
 from tools.thread_context import propagate_context_to_thread
 
-
 # ---------------------------------------------------------------------------
 # 1. Context + callback propagation helper
 # ---------------------------------------------------------------------------
+
 
 def test_helper_propagates_contextvar_and_approval_callback():
     from tools import terminal_tool as TT
@@ -86,6 +86,7 @@ def test_both_rpc_threads_use_propagation_helper():
     propagate_context_to_thread, or the gateway approval bypass (#33057)
     silently returns."""
     import inspect
+
     import tools.code_execution_tool as cet
 
     src = inspect.getsource(cet)

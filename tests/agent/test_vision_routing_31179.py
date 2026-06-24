@@ -32,7 +32,6 @@ import tempfile
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Test infrastructure
 # ---------------------------------------------------------------------------
@@ -124,8 +123,9 @@ auxiliary:
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         _fresh_modules()
 
-        from agent.auxiliary_client import resolve_vision_provider_client
         from urllib.parse import urlparse
+
+        from agent.auxiliary_client import resolve_vision_provider_client
         provider, client, model = resolve_vision_provider_client()
         assert client is not None, "openai alias should produce a usable client"
         # Exact hostname comparison (not substring) — defends against URLs

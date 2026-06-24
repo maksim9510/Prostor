@@ -12,24 +12,24 @@ import os
 import tempfile
 import time
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from tools.file_tools import (
-    read_file_tool,
-    write_file_tool,
-    reset_file_dedup,
-    _is_blocked_device,
-    _invalidate_dedup_for_path,
-    _READ_DEDUP_STATUS_MESSAGE,
     _DEFAULT_MAX_READ_CHARS,
+    _READ_DEDUP_STATUS_MESSAGE,
+    _invalidate_dedup_for_path,
+    _is_blocked_device,
     _read_tracker,
     notify_other_tool_call,
+    read_file_tool,
+    reset_file_dedup,
+    write_file_tool,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _FakeReadResult:
     """Minimal stand-in for FileOperations.read_file return value."""

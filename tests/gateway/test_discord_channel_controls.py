@@ -1,9 +1,9 @@
 """Tests for Discord ignored_channels and no_thread_channels config."""
 
-from types import SimpleNamespace
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
 import sys
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -94,7 +94,7 @@ def make_message(*, channel, content: str, mentions=None):
         mentions=list(mentions or []),
         attachments=[],
         reference=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         channel=channel,
         author=author,
     )

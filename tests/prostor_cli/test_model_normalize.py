@@ -6,14 +6,14 @@ must NOT be mangled to hyphens (minimax-m2-7).
 import pytest
 
 from prostor_cli.model_normalize import (
-    normalize_model_for_provider,
     _DOT_TO_HYPHEN_PROVIDERS,
     _normalize_for_deepseek,
     detect_vendor,
+    normalize_model_for_provider,
 )
 
-
 # ── Regression: issue #5211 ────────────────────────────────────────────
+
 
 class TestIssue5211OpenCodeGoDotPreservation:
     """OpenCode Go model names with dots must pass through unchanged."""

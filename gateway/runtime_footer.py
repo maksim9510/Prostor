@@ -26,7 +26,8 @@ piecemeal, the footer is sent as a separate trailing message via
 from __future__ import annotations
 
 import os
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 _DEFAULT_FIELDS: tuple[str, ...] = ("model", "context_pct", "cwd")
 _SEP = " · "
@@ -46,7 +47,7 @@ def _home_relative_cwd(cwd: str) -> str:
         return cwd
 
 
-def _model_short(model: Optional[str]) -> str:
+def _model_short(model: str | None) -> str:
     """Drop ``vendor/`` prefix for readability (``openai/gpt-5.4`` → ``gpt-5.4``)."""
     if not model:
         return ""
@@ -90,10 +91,10 @@ def resolve_footer_config(
 
 def format_runtime_footer(
     *,
-    model: Optional[str],
+    model: str | None,
     context_tokens: int,
-    context_length: Optional[int],
-    cwd: Optional[str] = None,
+    context_length: int | None,
+    cwd: str | None = None,
     fields: Iterable[str] = _DEFAULT_FIELDS,
 ) -> str:
     """Render the footer line, or return "" if no fields have data.
@@ -126,10 +127,10 @@ def build_footer_line(
     *,
     user_config: dict[str, Any] | None,
     platform_key: str | None,
-    model: Optional[str],
+    model: str | None,
     context_tokens: int,
-    context_length: Optional[int],
-    cwd: Optional[str] = None,
+    context_length: int | None,
+    cwd: str | None = None,
 ) -> str:
     """Top-level entry point used by gateway/run.py.
 

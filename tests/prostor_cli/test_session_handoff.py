@@ -195,7 +195,7 @@ class TestHandoffCommandRegistration:
 
     def test_command_is_cli_only(self):
         """`/handoff` is initiated from the CLI; gateway shouldn't expose it."""
-        from prostor_cli.commands import resolve_command, GATEWAY_KNOWN_COMMANDS
+        from prostor_cli.commands import GATEWAY_KNOWN_COMMANDS, resolve_command
         cmd = resolve_command("handoff")
         assert cmd is not None
         assert cmd.cli_only is True

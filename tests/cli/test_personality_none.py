@@ -1,10 +1,11 @@
 """Tests for /personality none — clearing personality overlay."""
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 import yaml
 
-
 # ── CLI tests ──────────────────────────────────────────────────────────────
+
 
 class TestCLIPersonalityNone:
 

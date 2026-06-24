@@ -13,7 +13,6 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -205,8 +204,8 @@ class TestManifestParsing:
 class TestInstall:
     def test_install_simple_stdio_writes_config(self, catalog_dir):
         _write_manifest(catalog_dir, "demo", _basic_manifest())
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         install_entry(_entry("demo"), enable=True)
 
@@ -259,8 +258,8 @@ class TestInstall:
         fake_clone.mkdir()
 
         from prostor_cli import mcp_catalog
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         with patch.object(mcp_catalog, "_do_git_install", return_value=fake_clone):
             install_entry(_entry("demo"), enable=True)
@@ -282,8 +281,8 @@ class TestInstall:
 
         monkeypatch.setattr(mcp_catalog, "_prompt_input", lambda *a, **kw: "secret-val")
 
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import get_env_value, load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         install_entry(_entry("demo"), enable=True)
 
@@ -297,8 +296,8 @@ class TestInstall:
         )
         _write_manifest(catalog_dir, "demo", body)
 
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         install_entry(_entry("demo"), enable=True)
 
@@ -316,7 +315,7 @@ class TestInstall:
         _write_manifest(catalog_dir, "demo", body)
 
         from prostor_cli import mcp_catalog
-        from prostor_cli.mcp_catalog import install_entry, CatalogError
+        from prostor_cli.mcp_catalog import CatalogError, install_entry
 
         # User hits enter — empty input, no default
         monkeypatch.setattr(mcp_catalog, "_prompt_input", lambda *a, **kw: "")
@@ -333,8 +332,8 @@ class TestInstall:
 class TestUninstall:
     def test_uninstall_removes_server_block(self, catalog_dir):
         _write_manifest(catalog_dir, "demo", _basic_manifest())
-        from prostor_cli.mcp_catalog import install_entry, uninstall_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry, uninstall_entry
 
         install_entry(_entry("demo"), enable=True)
         assert "demo" in load_config().get("mcp_servers", {})
@@ -379,8 +378,8 @@ class TestPicker:
 
     def test_install_by_name_success(self, catalog_dir):
         _write_manifest(catalog_dir, "demo", _basic_manifest())
-        from prostor_cli.mcp_picker import install_by_name
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_picker import install_by_name
 
         rc = install_by_name("demo")
         assert rc == 0
@@ -411,8 +410,8 @@ class TestToolSelection:
     def test_probe_fail_no_default_writes_no_filter(self, catalog_dir):
         body = _basic_manifest()
         _write_manifest(catalog_dir, "demo", body)
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         install_entry(_entry("demo"), enable=True)
         server = load_config()["mcp_servers"]["demo"]
@@ -424,8 +423,8 @@ class TestToolSelection:
             tools={"default_enabled": ["a", "b", "c"]},
         )
         _write_manifest(catalog_dir, "demo", body)
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         install_entry(_entry("demo"), enable=True)
         server = load_config()["mcp_servers"]["demo"]
@@ -445,8 +444,8 @@ class TestToolSelection:
         import sys as _sys
         monkeypatch.setattr(_sys.stdin, "isatty", lambda: False)
 
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         install_entry(_entry("demo"), enable=True)
         server = load_config()["mcp_servers"]["demo"]
@@ -464,8 +463,8 @@ class TestToolSelection:
         import sys as _sys
         monkeypatch.setattr(_sys.stdin, "isatty", lambda: False)
 
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         install_entry(_entry("demo"), enable=True)
         server = load_config()["mcp_servers"]["demo"]
@@ -487,8 +486,8 @@ class TestToolSelection:
         import sys as _sys
         monkeypatch.setattr(_sys.stdin, "isatty", lambda: False)
 
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config
+        from prostor_cli.mcp_catalog import install_entry
 
         install_entry(_entry("demo"), enable=True)
         server = load_config()["mcp_servers"]["demo"]
@@ -510,8 +509,8 @@ class TestToolSelection:
         import sys as _sys
         monkeypatch.setattr(_sys.stdin, "isatty", lambda: False)
 
-        from prostor_cli.mcp_catalog import install_entry
         from prostor_cli.config import load_config, save_config
+        from prostor_cli.mcp_catalog import install_entry
 
         # First install
         install_entry(_entry("demo"), enable=True)
@@ -550,7 +549,7 @@ class TestCatalogDiagnostics:
         # Plus one valid entry
         _write_manifest(catalog_dir, "demo", _basic_manifest())
 
-        from prostor_cli.mcp_catalog import list_catalog, catalog_diagnostics
+        from prostor_cli.mcp_catalog import catalog_diagnostics, list_catalog
 
         entries = list_catalog()
         assert [e.name for e in entries] == ["demo"]
@@ -566,7 +565,7 @@ class TestCatalogDiagnostics:
         body["transport"] = {"type": "unsupported"}
         _write_manifest(catalog_dir, "broken", body)
 
-        from prostor_cli.mcp_catalog import list_catalog, catalog_diagnostics
+        from prostor_cli.mcp_catalog import catalog_diagnostics, list_catalog
 
         entries = list_catalog()
         assert entries == []

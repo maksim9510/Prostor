@@ -11,7 +11,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
 from gateway.config import Platform
 from gateway.run import GatewayRunner
 

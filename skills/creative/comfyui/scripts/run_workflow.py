@@ -60,17 +60,29 @@ from urllib.parse import urlencode, urlparse
 # Local import — _common.py sits next to this script.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import (  # noqa: E402
-    DEFAULT_LOCAL_HOST, ENV_API_KEY,
-    coerce_seed, emit_json, http_get, http_post, http_request,
-    is_cloud_host, is_link, log, looks_like_video_workflow,
-    media_type_from_filename, new_client_id, resolve_api_key, resolve_url,
-    safe_path_join, unwrap_workflow,
+    DEFAULT_LOCAL_HOST,
+    ENV_API_KEY,
+    coerce_seed,
+    emit_json,
+    http_get,
+    http_post,
+    http_request,
+    is_cloud_host,
+    is_link,
+    log,
+    looks_like_video_workflow,
+    media_type_from_filename,
+    new_client_id,
+    resolve_api_key,
+    resolve_url,
+    safe_path_join,
+    unwrap_workflow,
 )
-
 
 # =============================================================================
 # Runner
 # =============================================================================
+
 
 class WorkflowRunError(Exception):
     """Raised when a workflow run fails (validation, execution, timeout)."""

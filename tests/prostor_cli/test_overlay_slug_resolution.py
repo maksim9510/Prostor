@@ -10,11 +10,10 @@ Covers: #5223, #6492
 import os
 from unittest.mock import patch
 
-
 from prostor_cli.model_switch import list_authenticated_providers
 
-
 # -- Copilot slug resolution (env var path) ----------------------------------
+
 
 @patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "fake-ghu"}, clear=False)
 def test_copilot_uses_prostor_slug():

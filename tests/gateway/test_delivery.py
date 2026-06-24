@@ -87,7 +87,7 @@ class TestCaseSensitiveChatIdParsing:
 
     def test_matrix_room_id_preserved(self):
         """Matrix room IDs like !RoomABC:example.org should preserve case.
-        
+
         Note: Matrix room IDs contain colons (e.g., !RoomABC:example.org).
         Due to the platform:chat_id:thread_id format, these are parsed as
         chat_id=!RoomABC and thread_id=example.org. This is a known limitation
@@ -124,6 +124,7 @@ class TestPlatformNameCaseInsensitivity:
         target = DeliveryTarget.parse("TeleGram:12345")
         assert target.platform == Platform.TELEGRAM
         assert target.chat_id == "12345"
+
 
 class RecordingAdapter:
     def __init__(self):

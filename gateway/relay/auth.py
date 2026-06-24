@@ -35,7 +35,7 @@ import base64
 import hashlib
 import hmac
 import time
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 # Header names the connector uses for inbound delivery signatures
 # (connector ``src/core/deliverySigning.ts`` — DELIVERY_TS_HEADER / SIG_HEADER).
@@ -90,7 +90,7 @@ def make_token(payload: str, secret: str, ttl_seconds: int = 0) -> str:
     exp = int(time.time()) + ttl_seconds if ttl_seconds > 0 else 0
     signed = f"{payload}:{exp}"
     sig = _hmac_hex(signed, secret)
-    raw = f"{signed}:{sig}".encode("utf-8")
+    raw = f"{signed}:{sig}".encode()
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
@@ -106,7 +106,7 @@ def make_upgrade_token(
     return make_token(gateway_id, secret, ttl_seconds)
 
 
-def verify_token(token: str, secrets: Sequence[str]) -> Optional[str]:
+def verify_token(token: str, secrets: Sequence[str]) -> str | None:
     """Verify a token built by ``make_token``; return the payload or None.
 
     Splits from the right so a payload may itself contain colons (mirrors the
@@ -141,12 +141,12 @@ def _delivery_payload(ts: int, body_json: str) -> str:
 
 def verify_delivery_signature(
     body_json: str,
-    timestamp: Optional[str],
-    signature: Optional[str],
+    timestamp: str | None,
+    signature: str | None,
     verify_keys: Sequence[str],
     max_skew_seconds: int = _DEFAULT_MAX_SKEW_SECONDS,
     *,
-    now: Optional[int] = None,
+    now: int | None = None,
 ) -> bool:
     """Verify a connector→gateway inbound delivery signature.
 

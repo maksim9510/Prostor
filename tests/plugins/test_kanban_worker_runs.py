@@ -22,10 +22,10 @@ from fastapi.testclient import TestClient
 
 from prostor_cli import kanban_db as kb
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _load_plugin_router():
     """Dynamically load plugins/kanban/dashboard/plugin_api.py and return its router."""

@@ -7,7 +7,6 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-
 mcp = FastMCP("__SERVER_NAME__")
 
 DATABASE_PATH = os.getenv("SQLITE_PATH", "./app.db")
@@ -69,7 +68,7 @@ def query(sql: str, limit: int = 50) -> dict[str, Any]:
     with _connect() as conn:
         cursor = conn.execute(wrapped_sql)
         columns = [column[0] for column in cursor.description or []]
-        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
     return {"limit": safe_limit, "columns": columns, "rows": rows}
 
 

@@ -16,7 +16,6 @@ import os
 
 import pytest
 
-
 _VARS = ("PROSTOR_SAFE_MODE", "PROSTOR_IGNORE_USER_CONFIG", "PROSTOR_IGNORE_RULES")
 
 

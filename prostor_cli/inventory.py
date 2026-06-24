@@ -34,8 +34,6 @@ Substrate facts (verified May 2026):
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Optional
-
 
 # ─── Public types ───────────────────────────────────────────────────────
 
@@ -56,10 +54,10 @@ class ConfigContext:
     def with_overrides(
         self,
         *,
-        current_provider: Optional[str] = None,
-        current_model: Optional[str] = None,
-        current_base_url: Optional[str] = None,
-    ) -> "ConfigContext":
+        current_provider: str | None = None,
+        current_model: str | None = None,
+        current_base_url: str | None = None,
+    ) -> ConfigContext:
         """Return a copy with truthy overrides applied.
 
         Truthy-only because the TUI reads agent attributes that may be
@@ -262,7 +260,7 @@ def _apply_capabilities(rows: list[dict]) -> None:
 
 def _append_unconfigured_rows(rows: list[dict], ctx: ConfigContext) -> list[dict]:
     """Build skeleton rows for canonical providers missing from ``rows``."""
-    from prostor_cli.models import CANONICAL_PROVIDERS, _PROVIDER_LABELS
+    from prostor_cli.models import _PROVIDER_LABELS, CANONICAL_PROVIDERS
 
     seen = {r["slug"].lower() for r in rows}
     cur = (ctx.current_provider or "").lower()
@@ -373,7 +371,7 @@ def _apply_pricing(
     )
 
     # Resolve Nous free-tier once (cached in models.py for the TTL window).
-    nous_free_tier: Optional[bool] = None
+    nous_free_tier: bool | None = None
 
     for row in rows:
         slug = str(row.get("slug", "")).lower()

@@ -18,21 +18,15 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import random
 import re
 import ssl
-import threading
 import time
-import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.codex_responses_adapter import _summarize_user_message_for_log
 from agent.display import KawaiiSpinner
 from agent.error_classifier import FailoverReason, classify_api_error
-from agent.iteration_budget import IterationBudget
-from agent.turn_context import build_turn_context
-from agent.turn_retry_state import TurnRetryState
 from agent.memory_manager import build_memory_context_block
 from agent.message_sanitization import (
     _repair_tool_call_arguments,
@@ -57,6 +51,8 @@ from agent.process_bootstrap import _install_safe_stdio
 from agent.prompt_caching import apply_anthropic_cache_control
 from agent.retry_utils import jittered_backoff
 from agent.trajectory import has_incomplete_scratchpad
+from agent.turn_context import build_turn_context
+from agent.turn_retry_state import TurnRetryState
 from agent.usage_pricing import estimate_usage_cost, normalize_usage
 from prostor_constants import PARTIAL_STREAM_STUB_ID
 from prostor_logging import set_session_context
@@ -71,7 +67,7 @@ logger = logging.getLogger(__name__)
 INTERRUPT_WAITING_FOR_MODEL_PREFIX = "Operation interrupted: waiting for model response ("
 
 
-def _image_error_max_dimension(error: Exception) -> Optional[int]:
+def _image_error_max_dimension(error: Exception) -> int | None:
     """Extract a provider-reported image dimension ceiling, if present."""
     parts = []
     for value in (
@@ -100,7 +96,7 @@ def _image_error_max_dimension(error: Exception) -> Optional[int]:
     return None
 
 
-def _ollama_context_limit_error(agent: Any, request_tokens: int) -> Optional[str]:
+def _ollama_context_limit_error(agent: Any, request_tokens: int) -> str | None:
     """Return a user-facing error when Ollama is loaded with too little context."""
     if not getattr(agent, "tools", None):
         return None
@@ -399,7 +395,7 @@ def _stored_prompt_matches_runtime(agent, prompt: str) -> bool:
     return True
 
 
-def _get_continuation_prompt(is_partial_stub: bool, dropped_tools: Optional[List[str]] = None) -> str:
+def _get_continuation_prompt(is_partial_stub: bool, dropped_tools: list[str] | None = None) -> str:
     if is_partial_stub and dropped_tools:
         tool_list = ", ".join(dropped_tools[:3])
         return (
@@ -442,12 +438,12 @@ _CONTENT_POLICY_RECOVERY_HINT = (
 
 
 def _content_policy_blocked_result(
-    messages: List[Dict],
+    messages: list[dict],
     api_call_count: int,
     *,
     final_response: str,
     error_detail: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build the terminal turn result for a content-policy block.
 
     A content-policy refusal is deterministic for the unchanged prompt, so the
@@ -496,12 +492,12 @@ def run_conversation(
     agent,
     user_message: str,
     system_message: str = None,
-    conversation_history: List[Dict[str, Any]] = None,
+    conversation_history: list[dict[str, Any]] = None,
     task_id: str = None,
-    stream_callback: Optional[callable] = None,
-    persist_user_message: Optional[str] = None,
-    persist_user_timestamp: Optional[float] = None,
-) -> Dict[str, Any]:
+    stream_callback: callable | None = None,
+    persist_user_message: str | None = None,
+    persist_user_timestamp: float | None = None,
+) -> dict[str, Any]:
     """
     Run a complete conversation with tool calling until completion.
 
@@ -568,7 +564,7 @@ def run_conversation(
     codex_ack_continuations = 0
     length_continue_retries = 0
     truncated_tool_call_retries = 0
-    truncated_response_parts: List[str] = []
+    truncated_response_parts: list[str] = []
     compression_attempts = 0
     _turn_exit_reason = "unknown"  # Diagnostic: why the loop ended
 
@@ -952,8 +948,10 @@ def run_conversation(
             if agent.provider == "nous":
                 try:
                     from agent.nous_rate_guard import (
-                        nous_rate_limit_remaining,
                         format_remaining as _fmt_nous_remaining,
+                    )
+                    from agent.nous_rate_guard import (
+                        nous_rate_limit_remaining,
                     )
                     _nous_remaining = nous_rate_limit_remaining()
                     if _nous_remaining is not None and _nous_remaining > 0:
@@ -1035,6 +1033,8 @@ def run_conversation(
                 try:
                     from prostor_cli.plugins import (
                         has_hook,
+                    )
+                    from prostor_cli.plugins import (
                         invoke_hook as _invoke_hook,
                     )
                     if has_hook("pre_api_request"):
@@ -3627,6 +3627,8 @@ def run_conversation(
             try:
                 from prostor_cli.plugins import (
                     has_hook,
+                )
+                from prostor_cli.plugins import (
                     invoke_hook as _invoke_hook,
                 )
                 if has_hook("post_api_request"):

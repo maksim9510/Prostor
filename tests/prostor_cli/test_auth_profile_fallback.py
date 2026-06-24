@@ -399,7 +399,7 @@ def test_classic_mode_does_not_double_read_same_file(tmp_path, monkeypatch):
         }],
     }))
 
-    from prostor_cli.auth import read_credential_pool, _global_auth_file_path
+    from prostor_cli.auth import _global_auth_file_path, read_credential_pool
 
     # Classic mode: PROSTOR_HOME is set to a custom path that is NOT under
     # ~/.prostor/profiles/ — get_default_prostor_root() returns PROSTOR_HOME

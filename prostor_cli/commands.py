@@ -666,7 +666,7 @@ def _collect_gateway_skill_entries(
     max_slots: int,
     reserved_names: set[str],
     desc_limit: int = 100,
-    sanitize_name: "Callable[[str], str] | None" = None,
+    sanitize_name: Callable[[str], str] | None = None,
 ) -> tuple[list[tuple[str, str, str]], int]:
     """Collect plugin + skill entries for a gateway platform.
 
@@ -731,8 +731,8 @@ def _collect_gateway_skill_entries(
     skill_triples: list[tuple[str, str, str]] = []
     try:
         from agent.skill_commands import get_skill_commands
-        from tools.skills_tool import SKILLS_DIR
         from agent.skill_utils import get_external_skills_dirs
+        from tools.skills_tool import SKILLS_DIR
         _skills_dir = str(SKILLS_DIR.resolve())
         _hub_dir = str((SKILLS_DIR / ".hub").resolve()).rstrip("/") + "/"
         # Build set of allowed directory prefixes: local skills dir + any

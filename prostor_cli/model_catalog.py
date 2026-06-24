@@ -356,7 +356,7 @@ def get_curated_nous_models() -> list[str] | None:
     return out or None
 
 
-def seed_cache_from_checkout(project_root: "Path | str") -> bool:
+def seed_cache_from_checkout(project_root: Path | str) -> bool:
     """Overwrite the disk cache with the catalog shipped in a local checkout.
 
     ``prostor update`` pulls the latest repo, so the freshly-pulled

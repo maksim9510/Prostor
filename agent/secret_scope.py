@@ -23,10 +23,9 @@ Design rationale lives in ``docs/design/multiplexing-gateway.md`` (Workstream A)
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from contextvars import ContextVar, Token
 from pathlib import Path
-from typing import Dict, Mapping, Optional
-
 
 # ── multiplex-active flag ────────────────────────────────────────────────
 # Process-global: set once at gateway startup when gateway.multiplex_profiles
@@ -52,7 +51,7 @@ def is_multiplex_active() -> bool:
 
 
 # ── the secret scope contextvar ──────────────────────────────────────────
-_SECRET_SCOPE: ContextVar[Optional[Mapping[str, str]]] = ContextVar(
+_SECRET_SCOPE: ContextVar[Mapping[str, str] | None] = ContextVar(
     "_SECRET_SCOPE", default=None
 )
 
@@ -68,7 +67,7 @@ class UnscopedSecretError(RuntimeError):
     """
 
 
-def set_secret_scope(secrets: Optional[Mapping[str, str]]) -> Token:
+def set_secret_scope(secrets: Mapping[str, str] | None) -> Token:
     """Install the active profile's secret mapping for the current context.
 
     Returns a token for ``reset_secret_scope``. Pass ``None`` to clear.
@@ -81,7 +80,7 @@ def reset_secret_scope(token: Token) -> None:
     _SECRET_SCOPE.reset(token)
 
 
-def current_secret_scope() -> Optional[Mapping[str, str]]:
+def current_secret_scope() -> Mapping[str, str] | None:
     """Return the active secret mapping, or None when no scope is installed."""
     return _SECRET_SCOPE.get()
 
@@ -120,7 +119,7 @@ def _is_global_env(name: str) -> bool:
     return any(name.startswith(p) for p in _GLOBAL_ENV_PREFIXES)
 
 
-def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
+def get_secret(name: str, default: str | None = None) -> str | None:
     """Resolve a credential by env-var name, honoring the active profile scope.
 
     Resolution order:
@@ -160,7 +159,7 @@ def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
     return val if val is not None else default
 
 
-def load_env_file(env_path: Path) -> Dict[str, str]:
+def load_env_file(env_path: Path) -> dict[str, str]:
     """Parse a ``.env`` file into a plain dict WITHOUT touching ``os.environ``.
 
     Used to load a profile's secrets into an isolated mapping for
@@ -168,7 +167,7 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
     ``export`` prefix, ``#`` comments, optional matching quotes) but never
     mutates the process environment — that isolation is the whole point.
     """
-    secrets: Dict[str, str] = {}
+    secrets: dict[str, str] = {}
     try:
         text = env_path.read_text(encoding="utf-8")
     except (FileNotFoundError, OSError, UnicodeDecodeError):
@@ -194,7 +193,7 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
     return secrets
 
 
-def build_profile_secret_scope(prostor_home: Path) -> Dict[str, str]:
+def build_profile_secret_scope(prostor_home: Path) -> dict[str, str]:
     """Build a profile's secret mapping from its ``<home>/.env``.
 
     Returns a fresh dict (safe to install via ``set_secret_scope``). Genuinely

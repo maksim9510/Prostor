@@ -25,7 +25,7 @@ import secrets
 import struct
 import time
 import urllib.parse
-from typing import Optional, Any
+from typing import Any
 
 import httpx
 
@@ -117,7 +117,7 @@ def generate_file_id() -> str:
 
 # ============ 图片尺寸解析（纯 Python，无需 Pillow） ============
 
-def parse_image_size(data: bytes) -> Optional[dict[str, int]]:
+def parse_image_size(data: bytes) -> dict[str, int] | None:
     """
     解析图片宽高（支持 JPEG/PNG/GIF/WebP），无需第三方依赖。
     返回 {"width": w, "height": h} 或 None（无法识别）。
@@ -130,7 +130,7 @@ def parse_image_size(data: bytes) -> Optional[dict[str, int]]:
     )
 
 
-def _parse_png_size(buf: bytes) -> Optional[dict[str, int]]:
+def _parse_png_size(buf: bytes) -> dict[str, int] | None:
     if len(buf) < 24:
         return None
     if buf[:4] != b"\x89PNG":
@@ -140,7 +140,7 @@ def _parse_png_size(buf: bytes) -> Optional[dict[str, int]]:
     return {"width": w, "height": h}
 
 
-def _parse_jpeg_size(buf: bytes) -> Optional[dict[str, int]]:
+def _parse_jpeg_size(buf: bytes) -> dict[str, int] | None:
     if len(buf) < 4 or buf[0] != 0xFF or buf[1] != 0xD8:
         return None
     i = 2
@@ -160,7 +160,7 @@ def _parse_jpeg_size(buf: bytes) -> Optional[dict[str, int]]:
     return None
 
 
-def _parse_gif_size(buf: bytes) -> Optional[dict[str, int]]:
+def _parse_gif_size(buf: bytes) -> dict[str, int] | None:
     if len(buf) < 10:
         return None
     sig = buf[:6].decode("ascii", errors="replace")
@@ -171,7 +171,7 @@ def _parse_gif_size(buf: bytes) -> Optional[dict[str, int]]:
     return {"width": w, "height": h}
 
 
-def _parse_webp_size(buf: bytes) -> Optional[dict[str, int]]:
+def _parse_webp_size(buf: bytes) -> dict[str, int] | None:
     if len(buf) < 16:
         return None
     if buf[:4] != b"RIFF" or buf[8:12] != b"WEBP":
@@ -258,7 +258,7 @@ def _cos_sign(
     headers: dict[str, str],
     secret_id: str,
     secret_key: str,
-    start_time: Optional[int] = None,
+    start_time: int | None = None,
     expire_seconds: int = 3600,
 ) -> str:
     """
@@ -290,8 +290,8 @@ def _cos_sign(
 
     # Step 2: HttpString
     # 参数和头部需按字典序排列，key 小写
-    sorted_params = sorted((k.lower(), urllib.parse.quote(str(v), safe="") ) for k, v in params.items())
-    sorted_headers = sorted((k.lower(), urllib.parse.quote(str(v), safe="") ) for k, v in headers.items())
+    sorted_params = sorted((k.lower(), urllib.parse.quote(str(v), safe="")) for k, v in params.items())
+    sorted_headers = sorted((k.lower(), urllib.parse.quote(str(v), safe="")) for k, v in headers.items())
 
     url_param_list = ";".join(k for k, _ in sorted_params)
     url_params = "&".join(f"{k}={v}" for k, v in sorted_params)
@@ -340,7 +340,7 @@ async def get_cos_credentials(
     api_domain: str,
     token: str,
     filename: str = "file",
-    file_id: Optional[str] = None,
+    file_id: str | None = None,
     bot_id: str = "",
     route_env: str = "",
 ) -> dict:
@@ -457,8 +457,8 @@ async def upload_to_cos(
     session_token: str = credentials.get("encryptToken", "")
     cos_key: str = credentials.get("location", "")
     resource_url: str = credentials.get("resourceUrl", "")
-    start_time: Optional[int] = credentials.get("startTime")
-    expired_time: Optional[int] = credentials.get("expiredTime")
+    start_time: int | None = credentials.get("startTime")
+    expired_time: int | None = credentials.get("expiredTime")
 
     if not secret_id or not secret_key or not cos_key:
         raise RuntimeError(
@@ -553,8 +553,8 @@ async def upload_to_cos(
 
 def build_image_msg_body(
     url: str,
-    uuid: Optional[str] = None,
-    filename: Optional[str] = None,
+    uuid: str | None = None,
+    filename: str | None = None,
     size: int = 0,
     width: int = 0,
     height: int = 0,
@@ -602,7 +602,7 @@ def build_image_msg_body(
 def build_file_msg_body(
     url: str,
     filename: str,
-    uuid: Optional[str] = None,
+    uuid: str | None = None,
     size: int = 0,
 ) -> list[dict]:
     """

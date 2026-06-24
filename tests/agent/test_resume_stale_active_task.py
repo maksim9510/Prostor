@@ -25,11 +25,10 @@ mechanism that makes the stale task historical rather than active.
 
 from agent.context_compressor import (
     HISTORICAL_TASK_HEADING,
-    SUMMARY_PREFIX,
     LEGACY_SUMMARY_PREFIX,
+    SUMMARY_PREFIX,
     ContextCompressor,
 )
-
 
 # The conflicting prefix that shipped before the #35344 fix. A handoff
 # persisted in a resumed lineage could carry this verbatim.

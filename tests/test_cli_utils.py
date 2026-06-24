@@ -3,11 +3,11 @@
 import pytest
 
 from prostor_cli.cli_utils import (
+    assistant_content_as_text,
+    assistant_copy_text,
     format_duration_compact,
     format_token_count_compact,
     strip_reasoning_tags,
-    assistant_content_as_text,
-    assistant_copy_text,
 )
 
 

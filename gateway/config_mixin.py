@@ -5,7 +5,7 @@ Extracted from gateway/run.py (#23 Phase 2).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 class GatewayConfigMixin:
     """Configuration loading mixin for GatewayRunner."""
 
-    def _load_prefill_messages() -> List[Dict[str, Any]]:
+    def _load_prefill_messages() -> list[dict[str, Any]]:
         """Load ephemeral prefill messages from config or env var.
-        
+
         Checks PROSTOR_PREFILL_MESSAGES_FILE env var first, then falls back to
         the top-level prefill_messages_file key in ~/.prostor/config.yaml.
         agent.prefill_messages_file is accepted as a legacy fallback.
@@ -36,7 +36,7 @@ class GatewayConfigMixin:
             logger.warning("Prefill messages file not found: %s", path)
             return []
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             if not isinstance(data, list):
                 logger.warning("Prefill messages file must contain a JSON array: %s", path)
@@ -49,7 +49,7 @@ class GatewayConfigMixin:
     @staticmethod
     def _load_ephemeral_system_prompt() -> str:
         """Load ephemeral system prompt from config or env var.
-        
+
         Checks PROSTOR_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
         agent.system_prompt in ~/.prostor/config.yaml.
         """
@@ -104,8 +104,8 @@ class GatewayConfigMixin:
     def _resolve_session_reasoning_config(
         self,
         *,
-        source: Optional[SessionSource] = None,
-        session_key: Optional[str] = None,
+        source: SessionSource | None = None,
+        session_key: str | None = None,
     ) -> dict | None:
         """Resolve reasoning effort for a session, honoring session overrides."""
         resolved_session_key = session_key
@@ -123,7 +123,7 @@ class GatewayConfigMixin:
     def _set_session_reasoning_override(
         self,
         session_key: str,
-        reasoning_config: Optional[dict],
+        reasoning_config: dict | None,
     ) -> None:
         """Set or clear the session-scoped reasoning override."""
         if not session_key:

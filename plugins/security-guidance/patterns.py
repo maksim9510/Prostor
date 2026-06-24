@@ -29,7 +29,6 @@ Modifications by maksim9510 for the Prostor Agent plugin port:
 """
 from enum import IntEnum
 
-
 _JS_EXTS = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts", ".vue", ".svelte")
 _PY_EXTS = (".py", ".pyi", ".ipynb")
 _DOC_EXTS = (".md", ".mdx", ".txt", ".rst", ".json", ".yaml", ".yml")

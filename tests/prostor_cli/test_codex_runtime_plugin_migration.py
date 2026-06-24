@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-
 import pytest
 
 from prostor_cli.codex_runtime_plugin_migration import (
-    MIGRATION_MARKER,
     MIGRATION_END_MARKER,
+    MIGRATION_MARKER,
     _build_prostor_tools_mcp_entry,
     _format_toml_value,
     _looks_like_test_tempdir,
@@ -18,8 +17,8 @@ from prostor_cli.codex_runtime_plugin_migration import (
     render_codex_toml_section,
 )
 
-
 # ---- per-server translation ----
+
 
 class TestTranslateOneServer:
     def test_stdio_basic(self):
@@ -368,8 +367,9 @@ class TestMigrate:
         be skipped — they're broken/uninstallable on codex's side, so
         migrating them would write config that fails at activation
         time. Cf. openclaw#80815."""
-        from prostor_cli.codex_runtime_plugin_migration import _query_codex_plugins
         from unittest.mock import patch
+
+        from prostor_cli.codex_runtime_plugin_migration import _query_codex_plugins
 
         # Fake a plugin/list response where one plugin is unavailable
         fake_response = {

@@ -12,10 +12,8 @@ import json
 import os
 import tempfile
 import time
-from typing import Optional
 
 from prostor_core import get_prostor_home
-
 
 CACHE_PATH = get_prostor_home() / "sticker_cache.json"
 
@@ -56,7 +54,7 @@ def _save_cache(cache: dict) -> None:
         raise
 
 
-def get_cached_description(file_unique_id: str) -> Optional[dict]:
+def get_cached_description(file_unique_id: str) -> dict | None:
     """
     Look up a cached sticker description.
 

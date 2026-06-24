@@ -22,7 +22,6 @@ import pytest
 
 from agent.lsp.install import INSTALL_RECIPES
 
-
 # ---------------------------------------------------------------------------
 # Fix 1: typescript install recipe carries the typescript SDK
 # ---------------------------------------------------------------------------

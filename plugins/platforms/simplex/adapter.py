@@ -52,9 +52,9 @@ import os
 import random
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Lazy import: BasePlatformAdapter and friends live in the main repo.
 # Imported at module top because they're stdlib-only inside Prostor — no
@@ -86,7 +86,7 @@ _CORR_PREFIX = "prostor-"
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _parse_comma_list(value: str) -> List[str]:
+def _parse_comma_list(value: str) -> list[str]:
     """Split a comma-separated string into a stripped list."""
     return [v.strip() for v in value.split(",") if v.strip()]
 
@@ -169,8 +169,8 @@ class SimplexAdapter(BasePlatformAdapter):
 
         # Running state
         self._ws = None  # websockets connection
-        self._ws_task: Optional[asyncio.Task] = None
-        self._health_task: Optional[asyncio.Task] = None
+        self._ws_task: asyncio.Task | None = None
+        self._health_task: asyncio.Task | None = None
         self._running = False
         self._last_ws_activity = 0.0
 
@@ -181,12 +181,12 @@ class SimplexAdapter(BasePlatformAdapter):
         # File transfers awaiting rcvFileComplete (keyed by fileId). Populated
         # when a newChatItems event carries an unfinished rcvFileTransfer,
         # consumed when the file finishes downloading.
-        self._pending_file_transfers: Dict[int, dict] = {}
+        self._pending_file_transfers: dict[int, dict] = {}
 
         # Correlation tracking for ``_send_command``. Separate from
         # ``_pending_corr_ids`` (which is the upstream cosmetic echo filter)
         # because we actually await responses to commands we send.
-        self._pending_responses: Dict[str, asyncio.Future] = {}
+        self._pending_responses: dict[str, asyncio.Future] = {}
         self._corr_counter = 0
 
         # Text message batching — concatenate rapid-fire messages into one
@@ -194,8 +194,8 @@ class SimplexAdapter(BasePlatformAdapter):
         self._text_batch_delay = float(
             os.getenv("PROSTOR_SIMPLEX_TEXT_BATCH_DELAY", "0.8")
         )
-        self._pending_text_batches: Dict[str, MessageEvent] = {}
-        self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
+        self._pending_text_batches: dict[str, MessageEvent] = {}
+        self._pending_text_batch_tasks: dict[str, asyncio.Task] = {}
 
         logger.info(
             "SimpleX adapter initialized: url=%s auto_accept=%s groups=%s",
@@ -555,8 +555,8 @@ class SimplexAdapter(BasePlatformAdapter):
 
         # File / image / voice attachment handling. File info is at
         # chatItem.chatItem.file (sibling of meta, content, chatDir).
-        media_urls: List[str] = []
-        media_types: List[str] = []
+        media_urls: list[str] = []
+        media_types: list[str] = []
         file_info = chat_item_data.get("file")
 
         if file_info and isinstance(file_info, dict):
@@ -637,9 +637,9 @@ class SimplexAdapter(BasePlatformAdapter):
             if ts_str:
                 timestamp = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
             else:
-                timestamp = datetime.now(tz=timezone.utc)
+                timestamp = datetime.now(tz=UTC)
         except (ValueError, AttributeError):
-            timestamp = datetime.now(tz=timezone.utc)
+            timestamp = datetime.now(tz=UTC)
 
         msg_event = MessageEvent(
             source=source,
@@ -757,7 +757,7 @@ class SimplexAdapter(BasePlatformAdapter):
 
     async def _send_command(
         self, command: str, timeout: float = 30.0
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Send a command and await the correlated response."""
         ws = self._ws
         if not ws:
@@ -775,7 +775,7 @@ class SimplexAdapter(BasePlatformAdapter):
             await ws.send(payload)
             result = await asyncio.wait_for(fut, timeout=timeout)
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("SimpleX: command timed out: %s", command[:50])
             self._pending_responses.pop(corr_id, None)
             return None
@@ -802,8 +802,8 @@ class SimplexAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a text message.
 
@@ -931,7 +931,7 @@ class SimplexAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
+        caption: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send an image. Supports ``file://`` URLs and ``http(s)://`` URLs."""
@@ -983,8 +983,8 @@ class SimplexAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a local image file via SimpleX."""
@@ -996,8 +996,8 @@ class SimplexAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a video file via SimpleX (as a file attachment)."""
@@ -1007,8 +1007,8 @@ class SimplexAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        filename: Optional[str] = None,
+        caption: str | None = None,
+        filename: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a document/file attachment."""
@@ -1039,8 +1039,8 @@ class SimplexAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         duration: int = 0,
         **kwargs,
     ) -> SendResult:
@@ -1081,7 +1081,7 @@ class SimplexAdapter(BasePlatformAdapter):
     async def send_typing(self, chat_id: str, metadata=None) -> None:
         """SimpleX has no typing-indicator API — no-op."""
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Return basic chat info."""
         if chat_id.startswith("group:"):
             return {"chat_id": chat_id, "type": "group", "name": chat_id[6:]}
@@ -1122,7 +1122,7 @@ def is_connected(config) -> bool:
     return bool(ws_url)
 
 
-def _env_enablement() -> Optional[dict]:
+def _env_enablement() -> dict | None:
     """Seed ``PlatformConfig.extra`` from env vars during gateway config load.
 
     Called by the platform registry's env-enablement hook BEFORE adapter
@@ -1161,10 +1161,10 @@ async def _standalone_send(
     chat_id: str,
     message: str,
     *,
-    thread_id: Optional[str] = None,
-    media_files: Optional[List[str]] = None,
+    thread_id: str | None = None,
+    media_files: list[str] | None = None,
     force_document: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Open an ephemeral WebSocket to the daemon, send, and close.
 
     Used by ``tools/send_message_tool._send_via_adapter`` when the gateway

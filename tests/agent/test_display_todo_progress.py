@@ -5,6 +5,7 @@ todo tool call paths: read, create (merge=False), update (merge=True).
 """
 
 import json
+
 from agent.display import get_cute_tool_message
 
 

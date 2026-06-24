@@ -83,8 +83,8 @@ class TestPortBindingHardError:
 
     @pytest.mark.asyncio
     async def test_secondary_webhook_raises(self, monkeypatch):
-        from gateway.run import MultiplexConfigError
         from gateway.config import GatewayConfig, Platform, PlatformConfig
+        from gateway.run import MultiplexConfigError
 
         runner = GatewayRunner.__new__(GatewayRunner)
         runner.config = GatewayConfig(multiplex_profiles=True)

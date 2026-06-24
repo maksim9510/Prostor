@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import os
 from collections import Counter
-from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
 # How many recent user/assistant turns we consider "recent activity".
 _RECENT_TURN_WINDOW = 20
@@ -58,7 +59,7 @@ def _coerce_text(value: Any) -> str:
     if isinstance(value, str):
         return value
     if isinstance(value, list):
-        parts: List[str] = []
+        parts: list[str] = []
         for block in value:
             if isinstance(block, str):
                 parts.append(block)
@@ -71,7 +72,7 @@ def _coerce_text(value: Any) -> str:
     return str(value)
 
 
-def _tool_call_name_and_args(tool_call: Any) -> Tuple[str, Mapping[str, Any]]:
+def _tool_call_name_and_args(tool_call: Any) -> tuple[str, Mapping[str, Any]]:
     """Extract ``(name, arguments_dict)`` from a tool_call entry.
 
     ``arguments`` may be a JSON string or a dict depending on provider.
@@ -100,7 +101,7 @@ def _tool_call_name_and_args(tool_call: Any) -> Tuple[str, Mapping[str, Any]]:
 
 def _iter_assistant_tool_calls(
     messages: Sequence[Mapping[str, Any]],
-) -> Iterable[Tuple[str, Mapping[str, Any]]]:
+) -> Iterable[tuple[str, Mapping[str, Any]]]:
     for msg in messages:
         if not isinstance(msg, Mapping):
             continue
@@ -117,7 +118,7 @@ def _iter_assistant_tool_calls(
 
 def _count_visible_turns(
     messages: Sequence[Mapping[str, Any]],
-) -> Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     """Return ``(user_turn_count, assistant_turn_count, tool_message_count)``."""
     users = assistants = tools = 0
     for msg in messages:
@@ -135,7 +136,7 @@ def _count_visible_turns(
 
 def _latest_user_prompt(
     messages: Sequence[Mapping[str, Any]],
-) -> Optional[str]:
+) -> str | None:
     for msg in reversed(messages):
         if isinstance(msg, Mapping) and msg.get("role") == "user":
             text = _coerce_text(msg.get("content")).strip()
@@ -146,7 +147,7 @@ def _latest_user_prompt(
 
 def _latest_assistant_text(
     messages: Sequence[Mapping[str, Any]],
-) -> Optional[str]:
+) -> str | None:
     for msg in reversed(messages):
         if not isinstance(msg, Mapping):
             continue
@@ -160,7 +161,7 @@ def _latest_assistant_text(
 
 def _recent_window(
     messages: Sequence[Mapping[str, Any]], window: int = _RECENT_TURN_WINDOW
-) -> List[Mapping[str, Any]]:
+) -> list[Mapping[str, Any]]:
     """Return the tail slice of ``messages`` covering at most ``window``
     user+assistant turns (tool messages ride along inside the window).
 
@@ -201,8 +202,8 @@ def _shortened_path(path: str) -> str:
 
 
 def _summarise_tool_activity(
-    tool_calls: Sequence[Tuple[str, Mapping[str, Any]]],
-) -> Tuple[List[Tuple[str, int]], List[str]]:
+    tool_calls: Sequence[tuple[str, Mapping[str, Any]]],
+) -> tuple[list[tuple[str, int]], list[str]]:
     """Return ``(tool_counts_sorted, recently_edited_files)``.
 
     ``tool_counts_sorted`` is descending by count, keeping the full list
@@ -210,7 +211,7 @@ def _summarise_tool_activity(
     distinct paths (most recent first) from file-editing tools.
     """
     counter: Counter[str] = Counter()
-    files_seen: List[str] = []
+    files_seen: list[str] = []
     files_set: set[str] = set()
     # Walk in reverse so "most recent first" drops out of order-preserved iteration.
     for name, args in reversed(list(tool_calls)):
@@ -238,9 +239,9 @@ def _truncate(text: str, limit: int) -> str:
 def build_recap(
     messages: Sequence[Mapping[str, Any]],
     *,
-    session_title: Optional[str] = None,
-    session_id: Optional[str] = None,
-    platform: Optional[str] = None,
+    session_title: str | None = None,
+    session_id: str | None = None,
+    platform: str | None = None,
 ) -> str:
     """Build a multi-line recap of recent activity.
 
@@ -257,9 +258,9 @@ def build_recap(
     (with 80-col wrapping) and a gateway message bubble.
     """
     _ = platform  # reserved for future use
-    lines: List[str] = []
+    lines: list[str] = []
 
-    header_bits: List[str] = ["Session recap"]
+    header_bits: list[str] = ["Session recap"]
     if session_title:
         header_bits.append(f"— {session_title}")
     elif session_id:

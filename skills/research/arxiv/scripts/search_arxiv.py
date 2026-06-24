@@ -11,11 +11,12 @@ Usage:
     python search_arxiv.py --id 2402.03300,2401.12345
 """
 import sys
-import urllib.request
 import urllib.parse
+import urllib.request
 import xml.etree.ElementTree as ET
 
 NS = {'a': 'http://www.w3.org/2005/Atom'}
+
 
 def search(query=None, author=None, category=None, ids=None, max_results=5, sort="relevance"):
     params = {}

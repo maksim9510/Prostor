@@ -50,6 +50,7 @@ class TestUserConfigMerge:
 
         monkeypatch.setenv("PROSTOR_HOME", str(home))
         import importlib
+
         import prostor_cli.config as cfg_mod
         importlib.reload(cfg_mod)
 
@@ -79,6 +80,7 @@ class TestUserConfigMerge:
 
         monkeypatch.setenv("PROSTOR_HOME", str(home))
         import importlib
+
         import prostor_cli.config as cfg_mod
         importlib.reload(cfg_mod)
 

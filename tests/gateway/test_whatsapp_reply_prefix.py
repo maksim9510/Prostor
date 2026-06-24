@@ -9,9 +9,7 @@ Covers:
 
 from unittest.mock import patch
 
-
 from gateway.config import Platform, PlatformConfig
-
 
 # ---------------------------------------------------------------------------
 # Config bridging from config.yaml

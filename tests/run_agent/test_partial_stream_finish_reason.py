@@ -20,11 +20,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prostor_constants import PARTIAL_STREAM_STUB_ID, FINISH_REASON_LENGTH
 from agent.conversation_loop import _get_continuation_prompt
-
+from prostor_constants import FINISH_REASON_LENGTH, PARTIAL_STREAM_STUB_ID
 
 # ── Helpers (mirrors test_streaming.py) ────────────────────────────────────
+
 
 def _make_stream_chunk(content=None, tool_calls=None, finish_reason=None):
     delta = SimpleNamespace(
@@ -310,7 +310,7 @@ class TestConversationLoopPartialStreamContinuation:
         through length_continue_retries — the loop persists the partial
         content and asks the model to continue."""
 
-        from tests.run_agent.test_run_agent import _mock_response, _mock_assistant_msg
+        from tests.run_agent.test_run_agent import _mock_assistant_msg, _mock_response
 
         # First API call: the partial-stream stub (length on partial-stream-stub id).
         partial_stub = SimpleNamespace(

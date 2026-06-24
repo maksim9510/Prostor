@@ -25,16 +25,9 @@ def _reset_signal_scheduler():
     yield
     _reset_scheduler()
 
+
 from gateway.config import Platform
-from tools.send_message_tool import (
-    _is_telegram_thread_not_found,
-    _parse_target_ref,
-    _send_matrix_via_adapter,
-    _send_signal,
-    _send_telegram,
-    _send_to_platform,
-    send_message_tool,
-)
+
 # Discord helpers moved to the plugin in #24325.  Import from the new path
 # and provide a thin ``_send_discord(token, ...)`` shim that mirrors the
 # pre-migration signature so the existing test bodies keep working.
@@ -43,6 +36,15 @@ from plugins.platforms.discord.adapter import (
     _probe_is_forum_cached,
     _remember_channel_is_forum,
     _standalone_send,
+)
+from tools.send_message_tool import (
+    _is_telegram_thread_not_found,
+    _parse_target_ref,
+    _send_matrix_via_adapter,
+    _send_signal,
+    _send_telegram,
+    _send_to_platform,
+    send_message_tool,
 )
 
 
@@ -71,8 +73,8 @@ async def _send_discord(
 def _discord_entry():
     """Return the live Discord PlatformEntry, importing lazily so plugin
     discovery is forced exactly once and patches survive across tests."""
-    from prostor_cli.plugins import discover_plugins
     from gateway.platform_registry import platform_registry
+    from prostor_cli.plugins import discover_plugins
     discover_plugins()
     return platform_registry.get("discord")
 
@@ -118,8 +120,8 @@ class _patch_discord_sender:
 def _slack_entry():
     """Return the live Slack PlatformEntry, importing lazily so plugin
     discovery is forced exactly once and patches survive across tests."""
-    from prostor_cli.plugins import discover_plugins
     from gateway.platform_registry import platform_registry
+    from prostor_cli.plugins import discover_plugins
     discover_plugins()
     return platform_registry.get("slack")
 
@@ -193,7 +195,9 @@ def _install_telegram_mock(monkeypatch, bot):
     constants_mod = SimpleNamespace(ParseMode=parse_mode)
     # MessageEntity needed by #27865 mention-detection path; tests don't
     # inspect it but the import must succeed.
-    _MessageEntity = lambda **_kw: SimpleNamespace(**_kw)
+
+    def _MessageEntity(**_kw):
+        return SimpleNamespace(**_kw)
     telegram_mod = SimpleNamespace(Bot=lambda token: bot, MessageEntity=_MessageEntity, constants=constants_mod)
     monkeypatch.setitem(sys.modules, "telegram", telegram_mod)
     monkeypatch.setitem(sys.modules, "telegram.constants", constants_mod)
@@ -836,8 +840,8 @@ class TestSendToPlatformChunking:
 
         Post-#41112 the lightweight text path flows through the matrix plugin's
         registry standalone_sender_fn (not the via-adapter media path)."""
-        from prostor_cli.plugins import discover_plugins
         from gateway.platform_registry import platform_registry
+        from prostor_cli.plugins import discover_plugins
         discover_plugins()
         helper = AsyncMock()
         lightweight = AsyncMock(return_value={"success": True, "platform": "matrix", "chat_id": "!room:ex.com", "message_id": "$txt"})
@@ -923,8 +927,8 @@ class TestSendToPlatformWhatsapp:
         """WhatsApp delivery routes through the plugin's registry
         standalone_sender_fn (was tools.send_message_tool._send_whatsapp
         before the #41112 plugin migration)."""
-        from prostor_cli.plugins import discover_plugins
         from gateway.platform_registry import platform_registry
+        from prostor_cli.plugins import discover_plugins
         discover_plugins()
         chat_id = "test-user@lid"
         async_mock = AsyncMock(return_value={"success": True, "platform": "whatsapp", "chat_id": chat_id, "message_id": "abc123"})
@@ -2764,8 +2768,8 @@ class TestSendViaAdapterStandaloneFallback:
     @pytest.mark.asyncio
     async def test_standalone_sender_fn_called_when_no_adapter(self, monkeypatch):
         """Registry has hook, runner ref returns None: the hook is awaited."""
-        from tools.send_message_tool import _send_via_adapter
         from gateway.platform_registry import platform_registry
+        from tools.send_message_tool import _send_via_adapter
 
         recorded = {}
 
@@ -2798,8 +2802,8 @@ class TestSendViaAdapterStandaloneFallback:
     @pytest.mark.asyncio
     async def test_standalone_sender_fn_kwargs_forwarded(self, monkeypatch):
         """thread_id, media_files, and force_document all reach the hook."""
-        from tools.send_message_tool import _send_via_adapter
         from gateway.platform_registry import platform_registry
+        from tools.send_message_tool import _send_via_adapter
 
         recorded = {}
 
@@ -2834,8 +2838,8 @@ class TestSendViaAdapterStandaloneFallback:
     async def test_standalone_sender_fn_absent_returns_helpful_error(self, monkeypatch):
         """Registry entry has no hook: the fall-through error explains both
         options (gateway-running and standalone hook)."""
-        from tools.send_message_tool import _send_via_adapter
         from gateway.platform_registry import platform_registry
+        from tools.send_message_tool import _send_via_adapter
 
         platform_registry.register(self._make_entry(None))
         try:
@@ -2857,8 +2861,8 @@ class TestSendViaAdapterStandaloneFallback:
     @pytest.mark.asyncio
     async def test_standalone_sender_fn_raises_is_caught_and_formatted(self, monkeypatch):
         """Hook raises: error dict has 'Plugin standalone send failed: ...'"""
-        from tools.send_message_tool import _send_via_adapter
         from gateway.platform_registry import platform_registry
+        from tools.send_message_tool import _send_via_adapter
 
         async def boom(pconfig, chat_id, message, **kwargs):
             raise ValueError("boom!")
@@ -2881,8 +2885,8 @@ class TestSendViaAdapterStandaloneFallback:
     @pytest.mark.asyncio
     async def test_standalone_sender_fn_return_shape_passed_through(self, monkeypatch):
         """Hook returns success dict: passed through unchanged."""
-        from tools.send_message_tool import _send_via_adapter
         from gateway.platform_registry import platform_registry
+        from tools.send_message_tool import _send_via_adapter
 
         async def fake_send(pconfig, chat_id, message, **kwargs):
             return {"success": True, "message_id": "abc-123", "extra_field": "preserved"}

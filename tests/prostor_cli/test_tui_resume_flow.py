@@ -1,8 +1,8 @@
-from argparse import Namespace
 import os
-from pathlib import Path
 import sys
 import types
+from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
@@ -680,8 +680,9 @@ def test_oneshot_fails_closed_on_agent_exception(monkeypatch, capsys):
 
 def test_oneshot_reraises_keyboard_interrupt(monkeypatch):
     _stub_plugin_discovery(monkeypatch)
-    import prostor_cli.oneshot as oneshot_mod
     import pytest as _pytest
+
+    import prostor_cli.oneshot as oneshot_mod
 
     def _interrupt(*_args, **_kwargs):
         raise KeyboardInterrupt
@@ -725,7 +726,6 @@ def test_oneshot_all_toolsets_warns_about_ignored_extra_entries(monkeypatch, cap
 
 def test_oneshot_accepts_plugin_toolset_after_discovery(monkeypatch):
     import toolsets
-
     from prostor_cli.oneshot import _validate_explicit_toolsets
 
     discovered = {"ready": False}
@@ -752,7 +752,6 @@ def test_oneshot_accepts_plugin_toolset_after_discovery(monkeypatch):
 def test_oneshot_rejects_disabled_mcp_toolset(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
     import prostor_cli.config as config_mod
-
     from prostor_cli.oneshot import _validate_explicit_toolsets
 
     monkeypatch.setattr(
@@ -773,7 +772,6 @@ def test_oneshot_rejects_disabled_mcp_toolset(monkeypatch, capsys):
 def test_oneshot_distinguishes_disabled_mcp_from_unknown(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
     import prostor_cli.config as config_mod
-
     from prostor_cli.oneshot import _validate_explicit_toolsets
 
     monkeypatch.setattr(

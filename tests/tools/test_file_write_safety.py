@@ -202,7 +202,7 @@ class TestBomHandling:
         return ShellFileOperations(env, cwd=str(tmp_path))
 
     def test_helpers(self):
-        from tools.file_operations import _strip_bom, _has_bom
+        from tools.file_operations import _has_bom, _strip_bom
         assert _strip_bom("\ufeffhello") == ("hello", True)
         assert _strip_bom("hello") == ("hello", False)
         assert _strip_bom("") == ("", False)

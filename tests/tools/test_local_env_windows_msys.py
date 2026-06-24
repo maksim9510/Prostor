@@ -20,7 +20,6 @@ on the real OS.
 
 from unittest.mock import patch
 
-
 from tools.environments import local as local_mod
 from tools.environments.local import (
     LocalEnvironment,
@@ -28,10 +27,10 @@ from tools.environments.local import (
     _resolve_safe_cwd,
 )
 
-
 # ---------------------------------------------------------------------------
 # _msys_to_windows_path — pure-function unit tests
 # ---------------------------------------------------------------------------
+
 
 class TestMsysToWindowsPath:
     def test_noop_on_non_windows(self, monkeypatch):

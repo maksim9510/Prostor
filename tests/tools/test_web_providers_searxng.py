@@ -18,7 +18,6 @@ import pytest
 
 from tests.tools.conftest import register_all_web_providers
 
-
 # ---------------------------------------------------------------------------
 # SearXNGWebSearchProvider unit tests
 # ---------------------------------------------------------------------------
@@ -348,6 +347,7 @@ class TestSearXNGOnlyExtractCrawlErrors:
 
     def test_web_extract_searxng_returns_clear_error(self, monkeypatch):
         import asyncio
+
         from tools import web_tools
 
         monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": "searxng"})

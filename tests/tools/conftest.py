@@ -19,7 +19,7 @@ def register_all_web_providers():
     This is the single source of truth for the provider list used by
     test classes that need the registry populated for dispatch checks.
     """
-    from agent.web_search_registry import register_provider, _reset_for_tests
+    from agent.web_search_registry import _reset_for_tests, register_provider
     from plugins.web.brave_free.provider import BraveFreeWebSearchProvider
     from plugins.web.ddgs.provider import DDGSWebSearchProvider
     from plugins.web.exa.provider import ExaWebSearchProvider

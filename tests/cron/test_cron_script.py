@@ -134,8 +134,8 @@ class TestRunJobScript:
 
     def test_script_subprocess_env_sanitized(self, cron_env, monkeypatch):
         """Cron scripts must not inherit Prostor provider env (SECURITY.md §2.3)."""
-        from tools.environments.local import _PROSTOR_PROVIDER_ENV_BLOCKLIST
         from cron.scheduler import _run_job_script
+        from tools.environments.local import _PROSTOR_PROVIDER_ENV_BLOCKLIST
 
         # sorted() so the probed var is deterministic across runs
         # (frozenset iteration order varies with PYTHONHASHSEED).

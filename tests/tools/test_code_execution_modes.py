@@ -31,9 +31,9 @@ def _force_local_terminal(monkeypatch):
 
 
 from tools.code_execution_tool import (
-    SANDBOX_ALLOWED_TOOLS,
     DEFAULT_EXECUTION_MODE,
     EXECUTION_MODES,
+    SANDBOX_ALLOWED_TOOLS,
     _get_execution_mode,
     _is_usable_python,
     _resolve_child_cwd,
@@ -137,7 +137,8 @@ class TestResolveChildPython(unittest.TestCase):
                 "Windows venvs use Scripts/python.exe and symlink creation "
                 "requires elevated privileges (WinError 1314)."
             )
-        import tempfile, pathlib
+        import pathlib
+        import tempfile
         with tempfile.TemporaryDirectory() as td:
             fake_venv = pathlib.Path(td)
             (fake_venv / "bin").mkdir()
@@ -166,7 +167,8 @@ class TestResolveChildPython(unittest.TestCase):
                 "Windows venvs use Scripts/python.exe and symlink creation "
                 "requires elevated privileges (WinError 1314)."
             )
-        import tempfile, pathlib
+        import pathlib
+        import tempfile
         with tempfile.TemporaryDirectory() as ve_td, tempfile.TemporaryDirectory() as conda_td:
             ve = pathlib.Path(ve_td)
             (ve / "bin").mkdir()

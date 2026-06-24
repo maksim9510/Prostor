@@ -34,8 +34,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +50,12 @@ class _ClarifyEntry:
     clarify_id: str
     session_key: str
     question: str
-    choices: Optional[List[str]]
+    choices: list[str] | None
     event: threading.Event = field(default_factory=threading.Event)
-    response: Optional[str] = None
+    response: str | None = None
     awaiting_text: bool = False  # set when user picked "Other" or clarify is open-ended
 
-    def signature(self) -> Dict[str, object]:
+    def signature(self) -> dict[str, object]:
         return {
             "clarify_id": self.clarify_id,
             "session_key": self.session_key,
@@ -66,9 +66,9 @@ class _ClarifyEntry:
 
 _lock = threading.RLock()
 # clarify_id → _ClarifyEntry  (primary lookup for button callbacks)
-_entries: Dict[str, _ClarifyEntry] = {}
+_entries: dict[str, _ClarifyEntry] = {}
 # session_key → list[clarify_id]  (FIFO; for text-fallback intercept and session cleanup)
-_session_index: Dict[str, List[str]] = {}
+_session_index: dict[str, list[str]] = {}
 
 
 # =========================================================================
@@ -79,7 +79,7 @@ def register(
     clarify_id: str,
     session_key: str,
     question: str,
-    choices: Optional[List[str]],
+    choices: list[str] | None,
 ) -> _ClarifyEntry:
     """Register a pending clarify request and return the entry.
 
@@ -100,7 +100,7 @@ def register(
     return entry
 
 
-def wait_for_response(clarify_id: str, timeout: float) -> Optional[str]:
+def wait_for_response(clarify_id: str, timeout: float) -> str | None:
     """Block on the entry's event until resolved or timeout fires.
 
     Polls in 1-second slices so the agent's inactivity heartbeat keeps
@@ -162,7 +162,7 @@ def resolve_gateway_clarify(clarify_id: str, response: str) -> bool:
     return True
 
 
-def get_pending_for_session(session_key: str) -> Optional[_ClarifyEntry]:
+def get_pending_for_session(session_key: str) -> _ClarifyEntry | None:
     """Return the OLDEST pending clarify entry for a session, or None.
 
     Used by the text-fallback intercept in ``_handle_message`` — when a
@@ -255,7 +255,7 @@ def get_clarify_timeout() -> int:
 # callback bridges sync→async (runs on the agent thread; schedules the
 # adapter ``send_clarify`` call on the event loop).
 
-_notify_cbs: Dict[str, Callable[[_ClarifyEntry], None]] = {}
+_notify_cbs: dict[str, Callable[[_ClarifyEntry], None]] = {}
 
 
 def register_notify(session_key: str, cb: Callable[[_ClarifyEntry], None]) -> None:
@@ -273,6 +273,6 @@ def unregister_notify(session_key: str) -> None:
     clear_session(session_key)
 
 
-def get_notify(session_key: str) -> Optional[Callable[[_ClarifyEntry], None]]:
+def get_notify(session_key: str) -> Callable[[_ClarifyEntry], None] | None:
     with _lock:
         return _notify_cbs.get(session_key)

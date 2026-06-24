@@ -14,10 +14,10 @@ import pytest
 
 from gateway.config import PlatformConfig
 
-
 # ---------------------------------------------------------------------------
 # Mock the telegram package if it's not installed
 # ---------------------------------------------------------------------------
+
 
 def _ensure_telegram_mock():
     if "telegram" in sys.modules and hasattr(sys.modules["telegram"], "__file__"):
@@ -42,10 +42,10 @@ from plugins.platforms.telegram.adapter import (  # noqa: E402
     _wrap_markdown_tables,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def adapter():

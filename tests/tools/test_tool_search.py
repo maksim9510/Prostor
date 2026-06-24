@@ -10,17 +10,14 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import List, Dict, Any
-
-import pytest
-
+from typing import Any
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-def _td(name: str, description: str = "", properties: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def _td(name: str, description: str = "", properties: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "type": "function",
         "function": {
@@ -102,7 +99,7 @@ class TestClassification:
             )
 
     def test_bridge_tools_never_defer(self):
-        from tools.tool_search import is_deferrable_tool_name, BRIDGE_TOOL_NAMES
+        from tools.tool_search import BRIDGE_TOOL_NAMES, is_deferrable_tool_name
         for name in BRIDGE_TOOL_NAMES:
             assert not is_deferrable_tool_name(name)
 
@@ -187,7 +184,7 @@ class TestThresholdGate:
 class TestRetrieval:
     def _fake_catalog(self):
         """Build a catalog directly without touching the registry."""
-        from tools.tool_search import CatalogEntry, _tokenize, _entry_search_text
+        from tools.tool_search import CatalogEntry, _entry_search_text, _tokenize
         defs = [
             _td("github_create_issue", "Open a new issue in a GitHub repository",
                 {"title": {"type": "string"}, "body": {"type": "string"}}),
@@ -240,7 +237,7 @@ class TestRetrieval:
 class TestAssembly:
     def test_no_deferrable_returns_unchanged(self):
         """Pure-core toolset: pass-through, no bridge tools added."""
-        from tools.tool_search import assemble_tool_defs, ToolSearchConfig
+        from tools.tool_search import ToolSearchConfig, assemble_tool_defs
         defs = [_td("terminal", "Run shell"), _td("read_file", "Read a file")]
         result = assemble_tool_defs(
             defs,
@@ -252,7 +249,7 @@ class TestAssembly:
 
     def test_below_threshold_returns_unchanged(self):
         """Tiny deferrable surface: don't bother."""
-        from tools.tool_search import assemble_tool_defs, ToolSearchConfig
+        from tools.tool_search import ToolSearchConfig, assemble_tool_defs
         # _td renders to ~80 chars / 20 tokens. 3 of them = ~60 tokens.
         # 10% of 200K = 20K. Way below.
         defs = [_td("unknown_tool_a"), _td("unknown_tool_b"), _td("unknown_tool_c")]
@@ -266,7 +263,7 @@ class TestAssembly:
         assert "tool_search" not in names
 
     def test_idempotent_when_bridge_already_present(self):
-        from tools.tool_search import assemble_tool_defs, ToolSearchConfig, BRIDGE_TOOL_NAMES
+        from tools.tool_search import ToolSearchConfig, assemble_tool_defs
         defs = [_td("terminal", "Run shell"), _td("tool_search", "old")]
         result = assemble_tool_defs(
             defs,
@@ -337,7 +334,7 @@ class TestBridgeDispatch:
 
     def test_resolve_underlying_call_rejects_recursion(self):
         """tool_call cannot invoke tool_call itself."""
-        from tools.tool_search import resolve_underlying_call, TOOL_CALL_NAME
+        from tools.tool_search import TOOL_CALL_NAME, resolve_underlying_call
         name, args, err = resolve_underlying_call({
             "name": TOOL_CALL_NAME,
             "arguments": {},
@@ -379,7 +376,8 @@ class TestRegression_OpenClawCron84141:
 
     def test_core_tool_survives_alongside_many_mcp_tools(self):
         from tools.tool_search import (
-            assemble_tool_defs, ToolSearchConfig, BRIDGE_TOOL_NAMES,
+            ToolSearchConfig,
+            assemble_tool_defs,
             classify_tools,
         )
         # 1 core tool + 50 unknown/MCP-shaped tools (deferrable).

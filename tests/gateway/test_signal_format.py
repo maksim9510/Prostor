@@ -11,10 +11,10 @@ from gateway.config import PlatformConfig
 from gateway.platforms.signal import SignalAdapter
 from gateway.platforms.signal_format import markdown_to_signal
 
-
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 def _m2s(text: str):
     """Shorthand: call the static method and return (plain_text, styles)."""
@@ -344,7 +344,7 @@ class TestEdgeCases:
 
 class TestMarkdownStripPatch:
     """Tests for the original signal-markdown-strip-patch.
-    
+
     Covers: fenced code blocks with language tags, links preserved,
     headings converted to bold, multiple headings, UTF-16 correctness
     for multi-byte characters, and marker stripping completeness.
@@ -441,7 +441,7 @@ class TestMarkdownStripPatch:
 
 class TestSignalStreamingPatch:
     """Tests for signal-streaming-patch: cursor suppression and edit support.
-    
+
     These verify the adapter-level properties that prevent the streaming
     cursor from leaking into Signal messages.
     """

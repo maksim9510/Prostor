@@ -57,8 +57,8 @@ def _setup_doctor_env(monkeypatch, tmp_path, venv_name="venv"):
 
 def _run_doctor(fix=False):
     """Run doctor and capture stdout."""
-    import io
     import contextlib
+    import io
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):

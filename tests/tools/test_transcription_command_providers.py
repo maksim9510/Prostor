@@ -24,7 +24,6 @@ import wave
 from pathlib import Path
 from unittest.mock import patch
 
-
 from tools.transcription_tools import (
     BUILTIN_STT_PROVIDERS,
     COMMAND_STT_OUTPUT_FORMATS,
@@ -41,7 +40,6 @@ from tools.transcription_tools import (
     _transcribe_command_stt,
     transcribe_audio,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

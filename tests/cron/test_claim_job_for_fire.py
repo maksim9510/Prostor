@@ -21,7 +21,7 @@ def temp_home(tmp_path, monkeypatch):
 def test_claim_succeeds_once_then_blocks(temp_home):
     """First claim for a fire wins; a second claim for the same fire loses, and
     next_run_at is advanced (a re-delivery for the old time can't re-fire)."""
-    from cron.jobs import create_job, claim_job_for_fire, get_job
+    from cron.jobs import claim_job_for_fire, create_job, get_job
 
     job = create_job(prompt="x", schedule="every 5m", name="t")
     jid = job["id"]
@@ -34,7 +34,7 @@ def test_claim_succeeds_once_then_blocks(temp_home):
 
 def test_claim_oneshot_cannot_be_double_claimed(temp_home):
     """A one-shot can't be double-claimed (the fresh claim blocks the retry)."""
-    from cron.jobs import create_job, claim_job_for_fire
+    from cron.jobs import claim_job_for_fire, create_job
 
     job = create_job(prompt="x", schedule="30m", name="o")
     assert claim_job_for_fire(job["id"]) is True
@@ -49,7 +49,7 @@ def test_claim_unknown_job_returns_false(temp_home):
 
 def test_claim_paused_job_returns_false(temp_home):
     """A paused job can't be claimed."""
-    from cron.jobs import create_job, claim_job_for_fire, pause_job
+    from cron.jobs import claim_job_for_fire, create_job, pause_job
 
     job = create_job(prompt="x", schedule="every 5m", name="p")
     pause_job(job["id"])
@@ -59,7 +59,7 @@ def test_claim_paused_job_returns_false(temp_home):
 def test_stale_claim_is_reclaimable(temp_home, monkeypatch):
     """A claim older than the TTL is overwritten — the fire isn't stuck forever
     if the winning machine crashed before mark_job_run cleared the claim."""
-    from cron.jobs import create_job, claim_job_for_fire
+    from cron.jobs import claim_job_for_fire, create_job
 
     job = create_job(prompt="x", schedule="every 5m", name="s")
     jid = job["id"]
@@ -71,7 +71,7 @@ def test_stale_claim_is_reclaimable(temp_home, monkeypatch):
 def test_mark_job_run_clears_claim(temp_home):
     """After a recurring job completes, its claim is cleared so the next fire
     can be claimed again."""
-    from cron.jobs import create_job, claim_job_for_fire, mark_job_run, get_job
+    from cron.jobs import claim_job_for_fire, create_job, get_job, mark_job_run
 
     job = create_job(prompt="x", schedule="every 5m", name="c")
     jid = job["id"]

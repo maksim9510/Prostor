@@ -9,10 +9,10 @@ import logging
 
 from run_agent import AIAgent
 
-
 # ---------------------------------------------------------------------------
 # Layer 1 — _sanitize_api_messages role-allowlist guard
 # ---------------------------------------------------------------------------
+
 
 class TestSanitizeApiMessagesRoleFilter:
 

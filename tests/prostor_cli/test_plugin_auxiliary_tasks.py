@@ -20,7 +20,6 @@ from prostor_cli.plugins import (
     get_plugin_auxiliary_tasks,
 )
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
@@ -249,6 +248,7 @@ def test_all_aux_tasks_swallows_plugin_discovery_failure(monkeypatch):
 def test_reset_aux_to_auto_resets_plugin_tasks(tmp_path, monkeypatch, patched_manager):
     """Plugin task with non-auto config gets reset alongside built-ins."""
     from pathlib import Path
+
     from prostor_cli.config import load_config, save_config
     from prostor_cli.main import _reset_aux_to_auto
 
@@ -286,6 +286,7 @@ def test_get_auxiliary_task_config_layers_plugin_defaults(
 ):
     """Plugin-declared defaults appear when user has no config entry."""
     from pathlib import Path
+
     from agent.auxiliary_client import _get_auxiliary_task_config
 
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / ".prostor"))
@@ -313,8 +314,9 @@ def test_get_auxiliary_task_config_user_config_wins_over_plugin_defaults(
 ):
     """User's config.yaml entry overrides plugin-declared defaults."""
     from pathlib import Path
-    from prostor_cli.config import load_config, save_config
+
     from agent.auxiliary_client import _get_auxiliary_task_config
+    from prostor_cli.config import load_config, save_config
 
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / ".prostor"))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -344,6 +346,7 @@ def test_get_auxiliary_task_config_unknown_task_returns_empty(
     tmp_path, monkeypatch, patched_manager
 ):
     from pathlib import Path
+
     from agent.auxiliary_client import _get_auxiliary_task_config
 
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / ".prostor"))

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # Model catalog
 # ---------------------------------------------------------------------------
 
-_MODELS: Dict[str, Dict[str, Any]] = {
+_MODELS: dict[str, dict[str, Any]] = {
     "grok-imagine-image": {
         "display": "Grok Imagine Image",
         "speed": "~5-10s",
@@ -78,7 +78,7 @@ DEFAULT_RESOLUTION = "1k"
 # ---------------------------------------------------------------------------
 
 
-def _load_xai_config() -> Dict[str, Any]:
+def _load_xai_config() -> dict[str, Any]:
     """Read ``image_gen.xai`` from config.yaml."""
     try:
         from prostor_cli.config import load_config
@@ -92,7 +92,7 @@ def _load_xai_config() -> Dict[str, Any]:
         return {}
 
 
-def _resolve_model() -> Tuple[str, Dict[str, Any]]:
+def _resolve_model() -> tuple[str, dict[str, Any]]:
     """Decide which model to use and return ``(model_id, meta)``."""
     env_override = os.environ.get("XAI_IMAGE_MODEL")
     if env_override and env_override in _MODELS:
@@ -115,7 +115,7 @@ def _resolve_resolution() -> str:
     return DEFAULT_RESOLUTION
 
 
-def _xai_image_field(source: str) -> Dict[str, str]:
+def _xai_image_field(source: str) -> dict[str, str]:
     """Build the xAI ``image`` field for an edit request.
 
     xAI's ``/v1/images/edits`` accepts ``{"url": <ref>, "type": "image_url"}``
@@ -160,7 +160,7 @@ class XAIImageGenProvider(ImageGenProvider):
         creds = resolve_xai_http_credentials()
         return bool(creds.get("api_key"))
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         return [
             {
                 "id": model_id,
@@ -171,7 +171,7 @@ class XAIImageGenProvider(ImageGenProvider):
             for model_id, meta in _MODELS.items()
         ]
 
-    def get_setup_schema(self) -> Dict[str, Any]:
+    def get_setup_schema(self) -> dict[str, Any]:
         # Auth resolution is delegated to the shared ``xai_grok`` post_setup
         # hook (``prostor_cli/tools_config.py``); identical to the TTS / video
         # gen entries so users see the same OAuth-or-API-key choice for every
@@ -184,7 +184,7 @@ class XAIImageGenProvider(ImageGenProvider):
             "post_setup": "xai_grok",
         }
 
-    def capabilities(self) -> Dict[str, Any]:
+    def capabilities(self) -> dict[str, Any]:
         # xAI's /v1/images/edits supports image editing via grok-imagine-image
         # -quality. Single primary source image (multi-image editing exists as
         # a separate capability but we keep the primary edit surface here).
@@ -195,10 +195,10 @@ class XAIImageGenProvider(ImageGenProvider):
         prompt: str,
         aspect_ratio: str = DEFAULT_ASPECT_RATIO,
         *,
-        image_url: Optional[str] = None,
-        reference_image_urls: Optional[List[str]] = None,
+        image_url: str | None = None,
+        reference_image_urls: list[str] | None = None,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate an image (text-to-image) or edit a source image (image-to-image).
 
         Routing: when ``image_url`` is provided, POST to ``/v1/images/edits``
@@ -260,7 +260,7 @@ class XAIImageGenProvider(ImageGenProvider):
                     prompt=prompt,
                     aspect_ratio=aspect,
                 )
-            payload: Dict[str, Any] = {
+            payload: dict[str, Any] = {
                 "model": edit_model,
                 "prompt": prompt,
                 "image": image_field,
@@ -389,7 +389,7 @@ class XAIImageGenProvider(ImageGenProvider):
                 aspect_ratio=aspect,
             )
 
-        extra: Dict[str, Any] = {}
+        extra: dict[str, Any] = {}
         if not is_edit:
             extra["resolution"] = xai_res
 

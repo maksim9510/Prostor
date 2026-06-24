@@ -1,7 +1,6 @@
 """Tests for _is_write_denied() — verifies deny list blocks sensitive paths on all platforms."""
 
 import os
-
 from pathlib import Path
 from unittest.mock import patch
 
@@ -57,7 +56,7 @@ class TestWriteDenyExactPaths:
         monkeypatch.setenv("PROSTOR_HOME", str(profile_home))
 
         # Sanity check: PROSTOR_HOME does point to the profile dir, not the root.
-        from prostor_constants import get_prostor_home, get_default_prostor_root
+        from prostor_constants import get_default_prostor_root, get_prostor_home
         assert get_prostor_home() == profile_home
         assert get_default_prostor_root() == root
 

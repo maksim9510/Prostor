@@ -40,7 +40,6 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import Tuple
 
 # Dedicated logger name so the documented grep recipe survives a
 # ``logging.getLogger(__name__)`` rename of any internal module.
@@ -79,7 +78,7 @@ def _emit(server_id: str, level: int, message: str) -> None:
     event_log.log(level, "lsp[%s] %s", server_id, message)
 
 
-def _announce_once(bucket: set, key: Tuple) -> bool:
+def _announce_once(bucket: set, key: tuple) -> bool:
     """Return True if *key* has not been announced for *bucket* yet.
 
     Atomically marks the key as announced so concurrent callers

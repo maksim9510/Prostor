@@ -24,7 +24,6 @@ import time
 
 from tests.docker.conftest import docker_exec
 
-
 _REGISTER_SCRIPT = """
 import sys
 sys.path.insert(0, "/opt/prostor")

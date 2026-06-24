@@ -1,12 +1,12 @@
 """Tests for gateway/mirror.py — session mirroring."""
 
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import gateway.mirror as mirror_mod
 from gateway.mirror import (
-    mirror_to_session,
     _find_session_id,
+    mirror_to_session,
 )
 
 

@@ -32,7 +32,7 @@ def _write(path, body):
 
 
 def test_managed_beats_user(homes):
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     home, managed = homes
     _write(home / "config.yaml", "model:\n  default: user/model\n")
@@ -42,7 +42,7 @@ def test_managed_beats_user(homes):
 
 def test_managed_leaf_does_not_freeze_siblings(homes):
     """D3/Q4: pinning model.default leaves model.fallback user-controlled."""
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     home, managed = homes
     _write(home / "config.yaml", "model:\n  default: user/model\n  fallback: user/fb\n")
@@ -53,7 +53,7 @@ def test_managed_leaf_does_not_freeze_siblings(homes):
 
 
 def test_no_managed_config_is_unchanged(homes):
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     home, _ = homes
     _write(home / "config.yaml", "model:\n  default: user/model\n")
@@ -62,7 +62,7 @@ def test_no_managed_config_is_unchanged(homes):
 
 def test_managed_list_wins_wholesale(homes):
     """D3: a managed list value replaces the user's wholesale."""
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     home, managed = homes
     _write(home / "config.yaml", "toolsets:\n  enabled: [a, b, c]\n")
@@ -71,7 +71,7 @@ def test_managed_list_wins_wholesale(homes):
 
 
 def test_editing_managed_file_invalidates_cache(homes):
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     home, managed = homes
     _write(home / "config.yaml", "model:\n  default: user/model\n")
@@ -88,7 +88,7 @@ def test_user_cannot_shadow_managed_literal_via_envref(homes, monkeypatch):
     user-defined env var has nothing to substitute. This asserts the managed
     literal survives verbatim regardless of user env, and that managed wins.
     """
-    from prostor_cli.config import load_config, cfg_get
+    from prostor_cli.config import cfg_get, load_config
 
     home, managed = homes
     monkeypatch.setenv("EVIL", "user/override")

@@ -3,8 +3,7 @@ so that _resolve_auto() can route custom: providers in Step 1.
 
 Fixes https://github.com/maksim9510/Prostor/issues/34777
 """
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def _get_globals(mod):

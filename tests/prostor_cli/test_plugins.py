@@ -9,6 +9,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from prostor_cli.middleware import (
+    VALID_MIDDLEWARE,
+    apply_llm_request_middleware,
+    apply_tool_request_middleware,
+    run_tool_execution_middleware,
+)
 from prostor_cli.plugins import (
     ENTRY_POINTS_GROUP,
     VALID_HOOKS,
@@ -21,13 +27,6 @@ from prostor_cli.plugins import (
     has_middleware,
     resolve_plugin_command_result,
 )
-from prostor_cli.middleware import (
-    VALID_MIDDLEWARE,
-    apply_llm_request_middleware,
-    apply_tool_request_middleware,
-    run_tool_execution_middleware,
-)
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -814,6 +813,7 @@ class TestPluginHooks:
 
         assert any("on_banana" in record.message for record in caplog.records)
 
+
 class TestPreToolCallBlocking:
     """Tests for the pre_tool_call block directive helper."""
 
@@ -863,8 +863,8 @@ class TestThreadToolWhitelist:
 
     def test_allowed_tool_passes_through_to_hooks(self, monkeypatch):
         from prostor_cli.plugins import (
-            set_thread_tool_whitelist,
             clear_thread_tool_whitelist,
+            set_thread_tool_whitelist,
         )
 
         monkeypatch.setattr(
@@ -879,8 +879,8 @@ class TestThreadToolWhitelist:
 
     def test_disallowed_tool_blocked_with_message(self, monkeypatch):
         from prostor_cli.plugins import (
-            set_thread_tool_whitelist,
             clear_thread_tool_whitelist,
+            set_thread_tool_whitelist,
         )
 
         monkeypatch.setattr(
@@ -898,8 +898,8 @@ class TestThreadToolWhitelist:
 
     def test_clear_restores_unrestricted_behavior(self, monkeypatch):
         from prostor_cli.plugins import (
-            set_thread_tool_whitelist,
             clear_thread_tool_whitelist,
+            set_thread_tool_whitelist,
         )
 
         monkeypatch.setattr(
@@ -917,8 +917,8 @@ class TestThreadToolWhitelist:
         import threading
 
         from prostor_cli.plugins import (
-            set_thread_tool_whitelist,
             clear_thread_tool_whitelist,
+            set_thread_tool_whitelist,
         )
 
         monkeypatch.setattr(
@@ -1371,7 +1371,8 @@ class TestPluginCommands:
         manifest = PluginManifest(name="test-plugin", source="user")
         ctx = PluginContext(manifest, mgr)
 
-        handler = lambda args: f"echo {args}"
+        def handler(args):
+            return f"echo {args}"
         ctx.register_command("mycmd", handler, description="My custom command")
 
         assert "mycmd" in mgr._plugin_commands
@@ -1454,7 +1455,8 @@ class TestPluginCommands:
         manifest = PluginManifest(name="test-plugin", source="user")
         ctx = PluginContext(manifest, mgr)
 
-        handler = lambda args: f"result: {args}"
+        def handler(args):
+            return f"result: {args}"
         ctx.register_command("mycmd", handler, description="test")
 
         with patch("prostor_cli.plugins._plugin_manager", mgr):

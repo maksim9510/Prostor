@@ -16,24 +16,24 @@ Requirements:
 """
 
 import pytest
+
 pytestmark = pytest.mark.integration
 
-import json
-import asyncio
-import sys
-import os
 import argparse
+import asyncio
+import json
+import os
+import sys
 from datetime import datetime
-from typing import List
 
 # Import the web tools to test (updated path after moving tools/)
 from tools.web_tools import (
-    web_search_tool,
-    web_extract_tool,
+    _get_backend,
+    check_auxiliary_model,
     check_firecrawl_api_key,
     check_web_api_key,
-    check_auxiliary_model,
-    _get_backend,
+    web_extract_tool,
+    web_search_tool,
 )
 
 
@@ -138,7 +138,7 @@ class WebToolsTester:
 
         return True
 
-    def test_web_search(self) -> List[str]:
+    def test_web_search(self) -> list[str]:
         """Test web search functionality"""
         print_section("Test 1: Web Search")
 
@@ -214,14 +214,14 @@ class WebToolsTester:
                 # Log results
                 if valid_results == len(web_results):
                     self.log_result(
-                        f"Search: {query[:30]}...", 
-                        "passed", 
+                        f"Search: {query[:30]}...",
+                        "passed",
                         f"All {valid_results} results valid"
                     )
                 else:
                     self.log_result(
-                        f"Search: {query[:30]}...", 
-                        "failed", 
+                        f"Search: {query[:30]}...",
+                        "failed",
                         f"Only {valid_results}/{len(web_results)} valid. Issues: {'; '.join(missing_fields[:3])}"
                     )
 
@@ -238,7 +238,7 @@ class WebToolsTester:
 
         return extracted_urls
 
-    async def test_web_extract(self, urls: List[str] = None):
+    async def test_web_extract(self, urls: list[str] = None):
         """Test web content extraction"""
         print_section("Test 2: Web Extract (without LLM)")
 
@@ -322,14 +322,14 @@ class WebToolsTester:
                 # Log results
                 if valid_results > 0:
                     self.log_result(
-                        "Extract (no LLM)", 
-                        "passed", 
+                        "Extract (no LLM)",
+                        "passed",
                         f"{valid_results}/{len(results)} pages extracted, {total_content_length} total chars"
                     )
                 else:
                     self.log_result(
-                        "Extract (no LLM)", 
-                        "failed", 
+                        "Extract (no LLM)",
+                        "failed",
                         f"No valid content. {failed_results} errors, {len(results) - failed_results} empty"
                     )
                     if self.verbose:
@@ -343,7 +343,7 @@ class WebToolsTester:
                     import traceback
                     print(f"    Traceback: {traceback.format_exc()}")
 
-    async def test_web_extract_with_llm(self, urls: List[str] = None):
+    async def test_web_extract_with_llm(self, urls: list[str] = None):
         """Test web extraction with LLM processing"""
         print_section("Test 3: Web Extract (with Gemini LLM)")
 
@@ -385,8 +385,8 @@ class WebToolsTester:
                 # Check if content was actually processed (should be shorter than typical raw content)
                 if content_len > 0:
                     self.log_result(
-                        "Extract (with LLM)", 
-                        "passed", 
+                        "Extract (with LLM)",
+                        "passed",
                         f"Content processed: {content_len} chars"
                     )
 

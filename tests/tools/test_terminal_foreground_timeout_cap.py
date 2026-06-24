@@ -4,7 +4,7 @@ Ensures that foreground commands with timeout > FOREGROUND_MAX_TIMEOUT
 are rejected with an error suggesting background=true.
 """
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ class TestForegroundTimeoutCap:
 
     def test_foreground_timeout_rejected_above_max(self):
         """When model requests timeout > FOREGROUND_MAX_TIMEOUT, return error."""
-        from tools.terminal_tool import terminal_tool, FOREGROUND_MAX_TIMEOUT
+        from tools.terminal_tool import FOREGROUND_MAX_TIMEOUT, terminal_tool
 
         with patch("tools.terminal_tool._get_env_config", return_value=_make_env_config()), \
              patch("tools.terminal_tool._start_cleanup_thread"):
@@ -174,7 +174,7 @@ class TestForegroundTimeoutCap:
 
     def test_default_timeout_not_rejected(self):
         """Default timeout (180s) should not trigger rejection."""
-        from tools.terminal_tool import terminal_tool, FOREGROUND_MAX_TIMEOUT
+        from tools.terminal_tool import FOREGROUND_MAX_TIMEOUT, terminal_tool
 
         # 180 < 600, so no rejection
         assert 180 < FOREGROUND_MAX_TIMEOUT
@@ -196,7 +196,7 @@ class TestForegroundTimeoutCap:
 
     def test_exactly_at_max_not_rejected(self):
         """Timeout exactly at FOREGROUND_MAX_TIMEOUT should execute normally."""
-        from tools.terminal_tool import terminal_tool, FOREGROUND_MAX_TIMEOUT
+        from tools.terminal_tool import FOREGROUND_MAX_TIMEOUT, terminal_tool
 
         with patch("tools.terminal_tool._get_env_config", return_value=_make_env_config()), \
              patch("tools.terminal_tool._start_cleanup_thread"):
@@ -227,7 +227,7 @@ class TestForegroundMaxTimeoutConstant:
 
     def test_schema_mentions_max(self):
         """Tool schema description should mention the max timeout."""
-        from tools.terminal_tool import TERMINAL_SCHEMA, FOREGROUND_MAX_TIMEOUT
+        from tools.terminal_tool import FOREGROUND_MAX_TIMEOUT, TERMINAL_SCHEMA
         timeout_desc = TERMINAL_SCHEMA["parameters"]["properties"]["timeout"]["description"]
         assert str(FOREGROUND_MAX_TIMEOUT) in timeout_desc
         assert "background=true" in timeout_desc

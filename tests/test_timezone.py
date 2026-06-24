@@ -9,13 +9,14 @@ Covers:
   - Backward compatibility with naive timestamps
 """
 
-import os
 import logging
+import os
 import sys
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
+
+import pytest
 
 import prostor_time
 
@@ -245,7 +246,7 @@ class TestCronTimezone:
         _reset_prostor_time_cache()
 
         # Create a job with a NAIVE past timestamp (simulating pre-tz data)
-        from cron.jobs import create_job, load_jobs, save_jobs, get_due_jobs
+        from cron.jobs import create_job, get_due_jobs, load_jobs, save_jobs
         job = create_job(prompt="Test job", schedule="every 1h")
         jobs = load_jobs()
         # Force a naive (no timezone) past timestamp
@@ -280,8 +281,8 @@ class TestCronTimezone:
         # The UTC equivalent must match what we'd get by correctly interpreting
         # the naive dt as system-local time first, then converting
         system_tz = datetime.now().astimezone().tzinfo
-        expected_utc = naive_dt.replace(tzinfo=system_tz).astimezone(timezone.utc)
-        actual_utc = result.astimezone(timezone.utc)
+        expected_utc = naive_dt.replace(tzinfo=system_tz).astimezone(UTC)
+        actual_utc = result.astimezone(UTC)
         assert actual_utc == expected_utc, (
             f"Absolute time shifted: expected {expected_utc}, got {actual_utc}"
         )
@@ -294,7 +295,7 @@ class TestCronTimezone:
         _reset_prostor_time_cache()
 
         # Create an aware datetime in UTC
-        utc_dt = datetime(2026, 3, 11, 15, 0, 0, tzinfo=timezone.utc)
+        utc_dt = datetime(2026, 3, 11, 15, 0, 0, tzinfo=UTC)
         result = _ensure_aware(utc_dt)
 
         # Must be in Prostor tz (Kolkata) but same absolute instant
@@ -319,7 +320,7 @@ class TestCronTimezone:
         os.environ["PROSTOR_TIMEZONE"] = "UTC"
         _reset_prostor_time_cache()
 
-        from cron.jobs import create_job, load_jobs, save_jobs, get_due_jobs
+        from cron.jobs import create_job, get_due_jobs, load_jobs, save_jobs
 
         job = create_job(prompt="Bug repro", schedule="every 1h")
         jobs = load_jobs()
@@ -350,7 +351,7 @@ class TestCronTimezone:
         os.environ["PROSTOR_TIMEZONE"] = "Pacific/Midway"  # UTC-11
         _reset_prostor_time_cache()
 
-        from cron.jobs import create_job, load_jobs, save_jobs, get_due_jobs
+        from cron.jobs import create_job, get_due_jobs, load_jobs, save_jobs
         create_job(prompt="Cross-tz job", schedule="every 1h")
         jobs = load_jobs()
 

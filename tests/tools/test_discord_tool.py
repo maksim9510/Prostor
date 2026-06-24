@@ -8,10 +8,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tools.discord_tool import (
-    DiscordAPIError,
     _ACTIONS,
     _ADMIN_ACTIONS,
     _CORE_ACTIONS,
+    DiscordAPIError,
     _available_actions,
     _channel_type_name,
     _detect_capabilities,
@@ -28,10 +28,10 @@ from tools.discord_tool import (
     get_dynamic_schema_core,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _mock_urlopen(response_data, status=200):
     """Create a mock for urllib.request.urlopen."""

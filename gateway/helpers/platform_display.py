@@ -2,11 +2,15 @@
 Extracted from gateway/run.py (#23).
 """
 from __future__ import annotations
-import logging, re
-from typing import Any, Dict, Optional
+
+import logging
+import re
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
-def _resolve_progress_thread_id(platform: Any, source_thread_id: Any, event_message_id: Any) -> Optional[str]:
+
+def _resolve_progress_thread_id(platform: Any, source_thread_id: Any, event_message_id: Any) -> str | None:
     """Return thread/root ID that progress/status bubbles should target."""
     platform_value = getattr(platform, "value", platform)
     platform_key = str(platform_value or "").lower()
@@ -109,7 +113,7 @@ def _telegramize_command_mentions(text: str, platform: Any) -> str:
 _AUTO_CONTINUE_FRESHNESS_SECS_DEFAULT = 60 * 60
 
 
-def _coerce_gateway_timestamp(value: Any) -> Optional[float]:
+def _coerce_gateway_timestamp(value: Any) -> float | None:
     """Best-effort conversion of stored gateway timestamps to epoch seconds.
 
     Missing/unparseable timestamps return None so legacy transcripts keep the
@@ -180,8 +184,8 @@ def _float_env(name: str, default: float) -> float:
 def _is_fresh_gateway_interruption(
     value: Any,
     *,
-    now: Optional[float] = None,
-    window_secs: Optional[float] = None,
+    now: float | None = None,
+    window_secs: float | None = None,
 ) -> bool:
     """Return True when an interruption marker is fresh enough to auto-continue.
 

@@ -4,19 +4,18 @@ import json
 import sys
 import time
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent.prompt_caching import apply_anthropic_cache_control
 from agent.anthropic_adapter import (
     _is_azure_anthropic_endpoint,
     _is_oauth_token,
     _refresh_oauth_token,
     _to_plain_data,
     _write_claude_code_credentials,
-    build_anthropic_client,
     build_anthropic_bedrock_client,
+    build_anthropic_client,
     build_anthropic_kwargs,
     convert_messages_to_anthropic,
     convert_tools_to_anthropic,
@@ -26,8 +25,8 @@ from agent.anthropic_adapter import (
     resolve_anthropic_token,
     run_oauth_setup_token,
 )
+from agent.prompt_caching import apply_anthropic_cache_control
 from agent.transports import get_transport
-
 
 # ---------------------------------------------------------------------------
 # Auth helpers
@@ -1230,10 +1229,10 @@ class TestBuildAnthropicKwargs:
         legacy list stays on the manual path.
         """
         from agent.anthropic_adapter import (
-            _supports_adaptive_thinking,
-            _supports_xhigh_effort,
             _forbids_sampling_params,
             _get_anthropic_max_output,
+            _supports_adaptive_thinking,
+            _supports_xhigh_effort,
         )
         # New / unknown Claude models → modern contract by default.
         for m in (
@@ -1251,8 +1250,8 @@ class TestBuildAnthropicKwargs:
     def test_legacy_claude_stays_on_manual_thinking(self):
         """Older Claude families keep the legacy manual-thinking contract."""
         from agent.anthropic_adapter import (
-            _supports_adaptive_thinking,
             _forbids_sampling_params,
+            _supports_adaptive_thinking,
         )
         for m in (
             "claude-3-5-sonnet",
@@ -1267,9 +1266,9 @@ class TestBuildAnthropicKwargs:
     def test_claude_46_is_adaptive_but_not_xhigh_or_no_sampling(self):
         """4.6 is adaptive, but predates xhigh and still accepts sampling."""
         from agent.anthropic_adapter import (
+            _forbids_sampling_params,
             _supports_adaptive_thinking,
             _supports_xhigh_effort,
-            _forbids_sampling_params,
         )
         for m in ("claude-opus-4.6", "claude-sonnet-4-6"):
             assert _supports_adaptive_thinking(m) is True, m
@@ -1280,9 +1279,9 @@ class TestBuildAnthropicKwargs:
         """Non-Claude Anthropic-Messages models (minimax, qwen3, kimi) must not
         be misclassified as adaptive by the default-to-modern rule."""
         from agent.anthropic_adapter import (
+            _forbids_sampling_params,
             _supports_adaptive_thinking,
             _supports_xhigh_effort,
-            _forbids_sampling_params,
         )
         for m in ("minimax-m2", "qwen3-max", "moonshotai/kimi-k2.5", "glm-4.6"):
             assert _supports_adaptive_thinking(m) is False, m
@@ -2033,8 +2032,8 @@ class TestToolChoice:
 # ---------------------------------------------------------------------------
 
 from agent.anthropic_adapter import (
-    _resolve_positive_anthropic_max_tokens,
     _resolve_anthropic_messages_max_tokens,
+    _resolve_positive_anthropic_max_tokens,
 )
 
 

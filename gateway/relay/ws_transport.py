@@ -33,12 +33,12 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 from gateway.platforms.base import MessageEvent, MessageType
-from gateway.session import SessionSource
 from gateway.relay.descriptor import CapabilityDescriptor
 from gateway.relay.transport import InboundHandler
+from gateway.session import SessionSource
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def _ws_dial_url(url: str) -> str:
     return raw
 
 
-def _event_from_wire(raw: Dict[str, Any]) -> MessageEvent:
+def _event_from_wire(raw: dict[str, Any]) -> MessageEvent:
     """Rebuild a MessageEvent from the connector's normalized inbound payload.
 
     The connector emits SessionSource as the snake_case wire form (§3); map it
@@ -139,8 +139,8 @@ class WebSocketRelayTransport:
         *,
         connect_timeout_s: float = _HANDSHAKE_TIMEOUT_S,
         outbound_timeout_s: float = _OUTBOUND_TIMEOUT_S,
-        gateway_id: Optional[str] = None,
-        upgrade_secret: Optional[str] = None,
+        gateway_id: str | None = None,
+        upgrade_secret: str | None = None,
     ) -> None:
         if not WEBSOCKETS_AVAILABLE:
             raise RuntimeError(
@@ -162,12 +162,12 @@ class WebSocketRelayTransport:
         self._upgrade_secret = upgrade_secret
 
         self._ws: Any = None
-        self._reader: Optional[asyncio.Task[None]] = None
-        self._inbound: Optional[InboundHandler] = None
-        self._descriptor: Optional[CapabilityDescriptor] = None
+        self._reader: asyncio.Task[None] | None = None
+        self._inbound: InboundHandler | None = None
+        self._descriptor: CapabilityDescriptor | None = None
         self._descriptor_ready: asyncio.Future[CapabilityDescriptor] | None = None
         # requestId -> future awaiting the matching outbound_result.
-        self._pending: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
+        self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._closing = False
 
     # ── lifecycle ────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ class WebSocketRelayTransport:
         await self._send({"type": "hello", "platform": self._platform, "botId": self._bot_id})
         return True
 
-    def _upgrade_headers(self) -> Dict[str, str]:
+    def _upgrade_headers(self) -> dict[str, str]:
         """Auth headers for the WS upgrade, or {} when no secret is configured.
 
         Presents ``Authorization: Bearer *** where the token is a signed
@@ -233,16 +233,16 @@ class WebSocketRelayTransport:
         self._inbound = handler
 
     # ── outbound ─────────────────────────────────────────────────────────
-    async def send_outbound(self, action: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_outbound(self, action: dict[str, Any]) -> dict[str, Any]:
         return await self._request_response(action)
 
-    async def send_follow_up(self, action: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_follow_up(self, action: dict[str, Any]) -> dict[str, Any]:
         # follow_up rides the same outbound frame; the connector dispatches by
         # action.op. Kept as a distinct method to satisfy the transport Protocol
         # and to make the A2 call site explicit.
         return await self._request_response(action)
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         result = await self._request_response(
             {"op": "get_chat_info", "chat_id": chat_id}, frame_type="outbound"
         )
@@ -250,28 +250,28 @@ class WebSocketRelayTransport:
         info = result.get("chat_info") or result
         return {"name": info.get("name", chat_id), "type": info.get("type", "dm")}
 
-    async def send_interrupt(self, session_key: str, reason: Optional[str] = None) -> None:
+    async def send_interrupt(self, session_key: str, reason: str | None = None) -> None:
         await self._send({"type": "interrupt", "session_key": session_key, "reason": reason})
 
     async def _request_response(
-        self, action: Dict[str, Any], frame_type: str = "outbound"
-    ) -> Dict[str, Any]:
+        self, action: dict[str, Any], frame_type: str = "outbound"
+    ) -> dict[str, Any]:
         if self._ws is None:
             return {"success": False, "error": "relay transport not connected"}
         request_id = uuid.uuid4().hex
         loop = asyncio.get_running_loop()
-        fut: asyncio.Future[Dict[str, Any]] = loop.create_future()
+        fut: asyncio.Future[dict[str, Any]] = loop.create_future()
         self._pending[request_id] = fut
         try:
             await self._send({"type": frame_type, "requestId": request_id, "action": action})
             return await asyncio.wait_for(fut, timeout=self._outbound_timeout_s)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {"success": False, "error": "relay outbound timed out"}
         finally:
             self._pending.pop(request_id, None)
 
     # ── wire I/O ─────────────────────────────────────────────────────────
-    async def _send(self, frame: Dict[str, Any]) -> None:
+    async def _send(self, frame: dict[str, Any]) -> None:
         if self._ws is None:
             raise RuntimeError("relay transport not connected")
         await self._ws.send(json.dumps(frame) + "\n")

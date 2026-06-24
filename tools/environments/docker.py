@@ -14,7 +14,6 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from tools.environments.base import BaseEnvironment, _popen_bash
 from tools.environments.local import _PROSTOR_PROVIDER_ENV_BLOCKLIST
@@ -31,7 +30,7 @@ _DOCKER_SEARCH_PATHS = [
     "/Applications/Docker.app/Contents/Resources/bin/docker",
 ]
 
-_docker_executable: Optional[str] = None  # resolved once, cached
+_docker_executable: str | None = None  # resolved once, cached
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -197,7 +196,7 @@ def reap_orphan_containers(
     # long enough ago.  Doing this per-container (rather than bulk inspect)
     # keeps the failure blast radius to one container at a time.
     import datetime
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     removed = 0
     for cid in candidate_ids:
         finished_at = _container_finished_at(docker, cid)
@@ -264,7 +263,7 @@ def _container_finished_at(docker_exe: str, container_id: str):
         return None
 
 
-def find_docker() -> Optional[str]:
+def find_docker() -> str | None:
     """Locate the docker (or podman) CLI binary.
 
     Resolution order:
@@ -412,7 +411,7 @@ def _image_uses_init_entrypoint(docker_exe: str, image: str) -> bool:
     return first in ("/init", "/package/admin/s6-overlay/command/init")
 
 
-def _resolve_host_user_spec() -> Optional[str]:
+def _resolve_host_user_spec() -> str | None:
     """Return ``<uid>:<gid>`` for the current host user, or ``None`` on platforms
     where this is not meaningful (e.g. Windows without posix ids).
 
@@ -430,7 +429,7 @@ def _resolve_host_user_spec() -> Optional[str]:
         return None
 
 
-_storage_opt_ok: Optional[bool] = None  # cached result across instances
+_storage_opt_ok: bool | None = None  # cached result across instances
 
 
 def _ensure_docker_available() -> None:
@@ -540,7 +539,7 @@ class DockerEnvironment(BaseEnvironment):
         self._task_id = task_id
         self._forward_env = _normalize_forward_env_names(forward_env)
         self._env = _normalize_env_dict(env)
-        self._container_id: Optional[str] = None
+        self._container_id: str | None = None
         self._labels: dict[str, str] = {}
         self._image: str = ""
         self._container_name: str = ""
@@ -604,8 +603,8 @@ class DockerEnvironment(BaseEnvironment):
         if auto_mount_cwd and host_cwd and not os.path.isdir(host_cwd_abs):
             logger.debug(f"Skipping docker cwd mount: host_cwd is not a valid directory: {host_cwd}")
 
-        self._workspace_dir: Optional[str] = None
-        self._home_dir: Optional[str] = None
+        self._workspace_dir: str | None = None
+        self._home_dir: str | None = None
         writable_args = []
         if self._persistent:
             sandbox = get_sandbox_dir() / "docker" / task_id
@@ -640,9 +639,9 @@ class DockerEnvironment(BaseEnvironment):
         # Read-only so the container can authenticate but not modify host creds.
         try:
             from tools.credential_files import (
+                get_cache_directory_mounts,
                 get_credential_file_mounts,
                 get_skills_directory_mount,
-                get_cache_directory_mounts,
             )
 
             for mount_entry in get_credential_file_mounts():
@@ -1079,7 +1078,7 @@ class DockerEnvironment(BaseEnvironment):
     @staticmethod
     def _storage_opt_supported() -> bool:
         """Check if Docker's storage driver supports --storage-opt size=.
-        
+
         Only overlay2 on XFS with pquota supports per-container disk quotas.
         Ubuntu (and most distros) default to ext4, where this flag errors out.
         """
@@ -1119,7 +1118,7 @@ class DockerEnvironment(BaseEnvironment):
         logger.debug("Docker --storage-opt support: %s", _storage_opt_ok)
         return _storage_opt_ok
 
-    def _find_reusable_container(self, task_label: str, profile_label: str) -> Optional[tuple[str, str]]:
+    def _find_reusable_container(self, task_label: str, profile_label: str) -> tuple[str, str] | None:
         """Look for an existing container labeled for this (task, profile).
 
         Returns ``(container_id, state)`` on hit, ``None`` on miss / on any

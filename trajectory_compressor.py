@@ -16,40 +16,49 @@ Compression Strategy:
 Usage:
     # Compress a directory of JSONL files
     python trajectory_compressor.py --input=data/my_run
-    
+
     # Compress a single JSONL file
     python trajectory_compressor.py --input=data/trajectories.jsonl
-    
+
     # Compress 15% sample of a file
     python trajectory_compressor.py --input=data/trajectories.jsonl --sample_percent=15
-    
+
     # Compress with custom output and token target
     python trajectory_compressor.py --input=data/trajectories.jsonl --output=compressed.jsonl --target_max_tokens=16000
-    
+
     # Compress 10% sample from a directory
     python trajectory_compressor.py --input=data/my_run --sample_percent=10
 """
 
+import asyncio
 import json
+import logging
 import os
 import time
-import yaml
-import logging
-import asyncio
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-from utils import base_url_host_matches, base_url_hostname
 import fire
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
+import yaml
 from rich.console import Console
-from prostor_constants import OPENROUTER_BASE_URL, get_prostor_home
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+
 from agent.retry_utils import jittered_backoff
 
 # Load .env from PROSTOR_HOME first, then project root as a dev fallback.
 from prostor_cli.env_loader import load_prostor_dotenv
+from prostor_constants import OPENROUTER_BASE_URL, get_prostor_home
+from utils import base_url_host_matches, base_url_hostname
 
 _prostor_home = get_prostor_home()
 _project_env = Path(__file__).parent / ".env"
@@ -59,15 +68,15 @@ load_prostor_dotenv(prostor_home=_prostor_home, project_env=_project_env)
 def _effective_temperature_for_model(
     model: str,
     requested_temperature: float,
-    base_url: Optional[str] = None,
-) -> Optional[float]:
+    base_url: str | None = None,
+) -> float | None:
     """Apply fixed model temperature contracts to direct client calls.
 
     Returns ``None`` when the model manages temperature server-side (Kimi);
     callers must omit the ``temperature`` kwarg entirely in that case.
     """
     try:
-        from agent.auxiliary_client import _fixed_temperature_for_model, OMIT_TEMPERATURE
+        from agent.auxiliary_client import OMIT_TEMPERATURE, _fixed_temperature_for_model
     except Exception:
         return requested_temperature
 
@@ -125,7 +134,7 @@ class CompressionConfig:
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "CompressionConfig":
         """Load configuration from YAML file."""
-        with open(yaml_path, 'r', encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         config = cls()
@@ -202,7 +211,7 @@ class TrajectoryMetrics:
     summarization_api_calls: int = 0
     summarization_errors: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "original_tokens": self.original_tokens,
             "compressed_tokens": self.compressed_tokens,
@@ -224,7 +233,7 @@ class TrajectoryMetrics:
         }
 
 
-@dataclass 
+@dataclass
 class AggregateMetrics:
     """Aggregate metrics across all trajectories."""
     total_trajectories: int = 0
@@ -245,9 +254,9 @@ class AggregateMetrics:
     total_summarization_errors: int = 0
 
     # Distribution stats
-    compression_ratios: List[float] = field(default_factory=list)
-    tokens_saved_list: List[int] = field(default_factory=list)
-    turns_removed_list: List[int] = field(default_factory=list)
+    compression_ratios: list[float] = field(default_factory=list)
+    tokens_saved_list: list[int] = field(default_factory=list)
+    turns_removed_list: list[int] = field(default_factory=list)
 
     processing_start_time: str = ""
     processing_end_time: str = ""
@@ -277,9 +286,9 @@ class AggregateMetrics:
         if metrics.still_over_limit:
             self.trajectories_still_over_limit += 1
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         avg_compression_ratio = (
-            sum(self.compression_ratios) / len(self.compression_ratios) 
+            sum(self.compression_ratios) / len(self.compression_ratios)
             if self.compression_ratios else 1.0
         )
         avg_tokens_saved = (
@@ -332,7 +341,7 @@ class AggregateMetrics:
 class TrajectoryCompressor:
     """
     Compresses agent trajectories to fit within a target token budget.
-    
+
     Compression strategy:
     1. Keep protected head turns (system, human, first gpt+tool)
     2. Keep protected tail turns (last N turns)
@@ -403,6 +412,7 @@ class TrajectoryCompressor:
                     f"Missing API key. Set {self.config.api_key_env} "
                     f"environment variable.")
             from openai import OpenAI
+
             from agent.auxiliary_client import _to_openai_base_url
             self.client = OpenAI(
                 api_key=api_key, base_url=_to_openai_base_url(self.config.base_url))
@@ -424,6 +434,7 @@ class TrajectoryCompressor:
         avoiding "Event loop is closed" errors on repeated calls.
         """
         from openai import AsyncOpenAI
+
         from agent.auxiliary_client import _to_openai_base_url
         # Always create a fresh client so it binds to the running loop.
         self.async_client = AsyncOpenAI(
@@ -471,18 +482,18 @@ class TrajectoryCompressor:
             # Fallback to character estimate
             return len(text) // 4
 
-    def count_trajectory_tokens(self, trajectory: List[Dict[str, str]]) -> int:
+    def count_trajectory_tokens(self, trajectory: list[dict[str, str]]) -> int:
         """Count total tokens in a trajectory."""
         return sum(self.count_tokens(turn.get("value", "")) for turn in trajectory)
 
-    def count_turn_tokens(self, trajectory: List[Dict[str, str]]) -> List[int]:
+    def count_turn_tokens(self, trajectory: list[dict[str, str]]) -> list[int]:
         """Count tokens for each turn in a trajectory."""
         return [self.count_tokens(turn.get("value", "")) for turn in trajectory]
 
-    def _find_protected_indices(self, trajectory: List[Dict[str, str]]) -> Tuple[set, int, int]:
+    def _find_protected_indices(self, trajectory: list[dict[str, str]]) -> tuple[set, int, int]:
         """
         Find indices of protected turns.
-        
+
         Returns:
             Tuple of (protected_set, compressible_start, compressible_end)
         """
@@ -528,7 +539,7 @@ class TrajectoryCompressor:
         return protected, compressible_start, compressible_end
 
     @staticmethod
-    def _is_boundary_clean(trajectory: List[Dict[str, str]], idx: int) -> bool:
+    def _is_boundary_clean(trajectory: list[dict[str, str]], idx: int) -> bool:
         """Return True if a region boundary at ``idx`` does not split a turn pair.
 
         In the from/value trajectory format a ``tool`` turn (carrying
@@ -543,7 +554,7 @@ class TrajectoryCompressor:
     @classmethod
     def _snap_boundary(
         cls,
-        trajectory: List[Dict[str, str]],
+        trajectory: list[dict[str, str]],
         idx: int,
         min_idx: int,
         max_idx: int,
@@ -566,15 +577,15 @@ class TrajectoryCompressor:
             backward -= 1
         return backward
 
-    def _extract_turn_content_for_summary(self, trajectory: List[Dict[str, str]], start: int, end: int) -> str:
+    def _extract_turn_content_for_summary(self, trajectory: list[dict[str, str]], start: int, end: int) -> str:
         """
         Extract content from turns to be summarized.
-        
+
         Args:
             trajectory: Full trajectory
             start: Start index (inclusive)
             end: End index (exclusive)
-            
+
         Returns:
             Formatted string of turn contents for summarization
         """
@@ -610,11 +621,11 @@ class TrajectoryCompressor:
     def _generate_summary(self, content: str, metrics: TrajectoryMetrics) -> str:
         """
         Generate a summary of the compressed turns using OpenRouter.
-        
+
         Args:
             content: The content to summarize
             metrics: Metrics object to update
-            
+
         Returns:
             Summary string
         """
@@ -679,11 +690,11 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
     async def _generate_summary_async(self, content: str, metrics: TrajectoryMetrics) -> str:
         """
         Generate a summary of the compressed turns using OpenRouter (async version).
-        
+
         Args:
             content: The content to summarize
             metrics: Metrics object to update
-            
+
         Returns:
             Summary string
         """
@@ -747,11 +758,11 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
 
     def compress_trajectory(
         self,
-        trajectory: List[Dict[str, str]]
-    ) -> Tuple[List[Dict[str, str]], TrajectoryMetrics]:
+        trajectory: list[dict[str, str]]
+    ) -> tuple[list[dict[str, str]], TrajectoryMetrics]:
         """
         Compress a single trajectory to fit within target token budget.
-        
+
         Algorithm:
         1. Count total tokens
         2. If under target, skip
@@ -760,10 +771,10 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         5. Accumulate turns from start of compressible region until savings met
         6. Replace accumulated turns with single human summary
         7. Keep remaining turns intact
-        
+
         Args:
             trajectory: List of conversation turns
-            
+
         Returns:
             Tuple of (compressed_trajectory, metrics)
         """
@@ -883,11 +894,11 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
 
     async def compress_trajectory_async(
         self,
-        trajectory: List[Dict[str, str]]
-    ) -> Tuple[List[Dict[str, str]], TrajectoryMetrics]:
+        trajectory: list[dict[str, str]]
+    ) -> tuple[list[dict[str, str]], TrajectoryMetrics]:
         """
         Compress a single trajectory to fit within target token budget (async version).
-        
+
         Same algorithm as compress_trajectory but uses async API calls for summarization.
         """
         metrics = TrajectoryMetrics()
@@ -995,7 +1006,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
 
         return compressed, metrics
 
-    async def process_entry_async(self, entry: Dict[str, Any]) -> Tuple[Dict[str, Any], TrajectoryMetrics]:
+    async def process_entry_async(self, entry: dict[str, Any]) -> tuple[dict[str, Any], TrajectoryMetrics]:
         """
         Process a single JSONL entry (async version).
         """
@@ -1016,13 +1027,13 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
 
         return result, metrics
 
-    def process_entry(self, entry: Dict[str, Any]) -> Tuple[Dict[str, Any], TrajectoryMetrics]:
+    def process_entry(self, entry: dict[str, Any]) -> tuple[dict[str, Any], TrajectoryMetrics]:
         """
         Process a single JSONL entry.
-        
+
         Args:
             entry: JSONL entry containing 'conversations' field
-            
+
         Returns:
             Tuple of (processed_entry, metrics)
         """
@@ -1046,7 +1057,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
     def process_directory(self, input_dir: Path, output_dir: Path):
         """
         Process all JSONL files in a directory using async parallel processing.
-        
+
         Args:
             input_dir: Input directory containing JSONL files
             output_dir: Output directory for compressed files
@@ -1076,7 +1087,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         all_entries = []  # List of (file_path, entry_idx, entry)
 
         for file_path in jsonl_files:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 for line_num, line in enumerate(f):
                     line = line.strip()
                     if line:
@@ -1114,7 +1125,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         # Track timeouts separately
         timeout_count = 0
 
-        async def process_single(file_path: Path, entry_idx: int, entry: Dict, 
+        async def process_single(file_path: Path, entry_idx: int, entry: dict,
                                   progress, main_task, status_task):
             """Process a single entry with semaphore rate limiting and timeout."""
             nonlocal compressed_count, skipped_count, api_calls, in_flight, timeout_count
@@ -1152,7 +1163,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
                             description=f"[dim]✅ {compressed_count} compressed | ⏭️ {skipped_count} skipped | ⏱️ {timeout_count} timeout | 🔄 {api_calls} API calls | ⚡ {in_flight} in-flight[/dim]"
                         )
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.logger.warning(f"Timeout processing entry from {file_path}:{entry_idx} (>{self.config.per_trajectory_timeout}s)")
 
                     async with progress_lock:
@@ -1226,8 +1237,8 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
 
             # Sort by original entry index to preserve order, skip None (timed out) entries
             sorted_entries = [
-                file_results[idx][0] 
-                for idx in sorted(file_results.keys()) 
+                file_results[idx][0]
+                for idx in sorted(file_results.keys())
                 if file_results[idx] is not None
             ]
 
@@ -1370,10 +1381,10 @@ def main(
 ):
     """
     Compress agent trajectories to fit within a target token budget.
-    
+
     Supports both single JSONL files and directories containing multiple JSONL files.
     Optionally sample a percentage of trajectories before compression.
-    
+
     Args:
         input: Path to JSONL file or directory containing JSONL files
         output: Output path (file for file input, directory for dir input)
@@ -1384,23 +1395,23 @@ def main(
         sample_percent: Sample this percentage of trajectories (1-100) before compression
         seed: Random seed for sampling reproducibility (default: 42)
         dry_run: Analyze without compressing (just show what would happen)
-    
+
     Examples:
         # Compress a directory (original behavior)
         python trajectory_compressor.py --input=data/my_run
-        
+
         # Compress a single file
         python trajectory_compressor.py --input=data/trajectories.jsonl
-        
+
         # Compress 15% sample of a file
         python trajectory_compressor.py --input=data/trajectories.jsonl --sample_percent=15
-        
+
         # Compress 10% sample with custom output
         python trajectory_compressor.py --input=data/trajectories.jsonl --sample_percent=10 --output=data/sampled_compressed.jsonl
     """
     import random
-    import tempfile
     import shutil
+    import tempfile
 
     print("🗜️  Trajectory Compressor")
     print("=" * 60)
@@ -1446,7 +1457,7 @@ def main(
 
         # Load entries from the single file
         entries = []
-        with open(input_path, 'r', encoding='utf-8') as f:
+        with open(input_path, encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if line:
@@ -1491,7 +1502,7 @@ def main(
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as out_f:
                 for jsonl_file in sorted(temp_output_dir.glob("*.jsonl")):
-                    with open(jsonl_file, 'r', encoding='utf-8') as in_f:
+                    with open(jsonl_file, encoding='utf-8') as in_f:
                         for line in in_f:
                             out_f.write(line)
 
@@ -1530,7 +1541,7 @@ def main(
                 # Sample from each JSONL file
                 for jsonl_file in sorted(input_path.glob("*.jsonl")):
                     entries = []
-                    with open(jsonl_file, 'r', encoding='utf-8') as f:
+                    with open(jsonl_file, encoding='utf-8') as f:
                         for line in f:
                             line = line.strip()
                             if line:

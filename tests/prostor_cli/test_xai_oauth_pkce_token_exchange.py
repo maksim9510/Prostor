@@ -25,18 +25,17 @@ These tests pin all three behaviors so the fix can't silently regress.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 from urllib.parse import parse_qs
 
 import httpx
 import pytest
 
 from prostor_cli.auth import (
-    AuthError,
     XAI_OAUTH_CLIENT_ID,
+    AuthError,
     _xai_oauth_exchange_code_for_tokens,
 )
-
 
 # ---------------------------------------------------------------------------
 # httpx.post recorder
@@ -48,7 +47,7 @@ class _PostRecorder:
 
     def __init__(self, response: httpx.Response) -> None:
         self.response = response
-        self.calls: List[Dict[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
 
     def __call__(self, url, *, headers=None, data=None, timeout=None, **kw):
         self.calls.append(
@@ -320,7 +319,7 @@ def test_wire_format_is_form_urlencoded_with_all_pkce_fields(monkeypatch):
     If anyone ever swaps ``data=`` for ``json=`` or refactors the dict,
     xAI will start rejecting again — this catches it locally."""
 
-    captured: Dict[str, Any] = {}
+    captured: dict[str, Any] = {}
 
     class _Transport(httpx.BaseTransport):
         def handle_request(self, request):

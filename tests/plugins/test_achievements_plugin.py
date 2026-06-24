@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 
@@ -65,20 +65,20 @@ class _FakeSessionDB:
     def __init__(self, session_count: int, scan_delay: float = 0):
         self.session_count = session_count
         self.scan_delay = scan_delay
-        self.last_limit: Optional[int] = None
-        self.last_include_children: Optional[bool] = None
+        self.last_limit: int | None = None
+        self.last_include_children: bool | None = None
         self.list_calls = 0
         self.messages_calls = 0
 
     def list_sessions_rich(
         self,
-        source: Optional[str] = None,
-        exclude_sources: Optional[List[str]] = None,
+        source: str | None = None,
+        exclude_sources: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
         include_children: bool = False,
         project_compression_tips: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if self.scan_delay:
             time.sleep(self.scan_delay)
         self.last_limit = limit
@@ -100,7 +100,7 @@ class _FakeSessionDB:
             for i in range(effective)
         ]
 
-    def get_messages(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         self.messages_calls += 1
         return [
             {"role": "user", "content": f"ask {session_id}"},
@@ -312,7 +312,7 @@ def test_background_scan_publishes_partial_snapshots(plugin_api):
     _install_fake_session_db(plugin_api, fake_db)
 
     # Record every partial snapshot the scanner publishes.
-    partial_snapshots: List[Dict[str, Any]] = []
+    partial_snapshots: list[dict[str, Any]] = []
     original_compute_from_scan = plugin_api._compute_from_scan
 
     def recording_compute(scan, *, is_partial=False):

@@ -2,10 +2,13 @@
 Extracted from gateway/run.py (#23).
 """
 from __future__ import annotations
-import asyncio, logging
-from pathlib import Path
-from typing import Any, Optional
+
+import asyncio
+import logging
+from typing import Any
+
 logger = logging.getLogger(__name__)
+
 
 def _build_media_placeholder(event) -> str:
     """Build a text placeholder for media-only events so they aren't dropped.
@@ -69,7 +72,7 @@ def _format_duration(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
-async def _probe_audio_duration(path: str) -> Optional[str]:
+async def _probe_audio_duration(path: str) -> str | None:
     """Best-effort duration probe. Returns formatted MM:SS / HH:MM:SS, or None on failure."""
     ext = os.path.splitext(path)[1].lower()
 
@@ -114,7 +117,7 @@ async def _probe_audio_duration(path: str) -> Optional[str]:
 def _collect_auto_append_media_tags(
     messages: List[Dict[str, Any]],
     history_offset: int = 0,
-    history_media_paths: Optional[set] = None,
+    history_media_paths: set | None = None,
 ) -> tuple[List[str], bool]:
     """Collect real media tags from current-turn producer-tool results only.
 

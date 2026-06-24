@@ -11,7 +11,6 @@ from tools.skill_manager_tool import (
     skill_manage,
 )
 
-
 SKILL_CONTENT = """\
 ---
 name: test-skill

@@ -12,14 +12,14 @@ import shlex
 import tarfile
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from prostor_constants import get_prostor_home
 from tools.environments.base import (
     BaseEnvironment,
-    _ThreadedProcessHandle,
     _load_json_store,
     _save_json_store,
+    _ThreadedProcessHandle,
 )
 from tools.environments.file_sync import (
     FileSyncManager,
@@ -128,8 +128,8 @@ class _AsyncWorker:
     """Background thread with its own event loop for async-safe Modal calls."""
 
     def __init__(self):
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
         self._started = threading.Event()
 
     def start(self):
@@ -176,7 +176,7 @@ class ModalEnvironment(BaseEnvironment):
         image: str,
         cwd: str = "/root",
         timeout: int = 60,
-        modal_sandbox_kwargs: Optional[dict[str, Any]] = None,
+        modal_sandbox_kwargs: dict[str, Any] | None = None,
         persistent_filesystem: bool = True,
         task_id: str = "default",
     ):
@@ -207,8 +207,8 @@ class ModalEnvironment(BaseEnvironment):
         try:
             from tools.credential_files import (
                 get_credential_file_mounts,
-                iter_skills_files,
                 iter_cache_files,
+                iter_skills_files,
             )
 
             for mount_entry in get_credential_file_mounts():

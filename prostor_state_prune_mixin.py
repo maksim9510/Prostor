@@ -5,7 +5,7 @@ Extracted from prostor_state.py (#26).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class SessionPruneMixin:
     """Session pruning and vacuum mixin for SessionDB."""
 
-    def prune_empty_ghost_sessions(self, sessions_dir: "Optional[Path]" = None) -> int:
+    def prune_empty_ghost_sessions(self, sessions_dir: Path | None = None) -> int:
         """Remove empty TUI ghost sessions (no messages, no title, >24hr old)."""
         cutoff = time.time() - 86400  # Only sessions older than 24 hours
 
@@ -47,7 +47,7 @@ class SessionPruneMixin:
         self,
         older_than_days: int = 90,
         source: str = None,
-        sessions_dir: Optional[Path] = None,
+        sessions_dir: Path | None = None,
     ) -> int:
         """Delete sessions older than N days. Returns count of deleted sessions.
 
@@ -141,8 +141,8 @@ class SessionPruneMixin:
         retention_days: int = 90,
         min_interval_hours: int = 24,
         vacuum: bool = True,
-        sessions_dir: Optional[Path] = None,
-    ) -> Dict[str, Any]:
+        sessions_dir: Path | None = None,
+    ) -> dict[str, Any]:
         """Idempotent auto-maintenance: prune old sessions + optional VACUUM.
 
         Records the last run timestamp in state_meta so subsequent calls
@@ -162,7 +162,7 @@ class SessionPruneMixin:
           - ``"vacuumed"`` (bool) — true if VACUUM ran
           - ``"error"`` (str, optional) — present only on failure
         """
-        result: Dict[str, Any] = {"skipped": False, "pruned": 0, "vacuumed": False}
+        result: dict[str, Any] = {"skipped": False, "pruned": 0, "vacuumed": False}
         try:
             # Skip if another process/call did maintenance recently.
             last_raw = self.get_meta("last_auto_prune")

@@ -7,8 +7,8 @@ from gateway.platforms.signal_rate_limit import (
     SIGNAL_RATE_LIMIT_BUCKET_CAPACITY,
     SIGNAL_RATE_LIMIT_DEFAULT_RETRY_AFTER,
     SignalAttachmentScheduler,
-    get_scheduler,
     _reset_scheduler,
+    get_scheduler,
 )
 
 
@@ -139,6 +139,7 @@ class TestAcquire:
 
         with pytest.raises(Exception):
             await s.acquire(int(s.capacity) + 1)
+
 
 class TestFeedback:
     def test_calibrates_refill_rate_from_retry_after(self):

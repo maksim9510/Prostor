@@ -19,7 +19,6 @@ from plugins.platforms.homeassistant.adapter import (
     check_ha_requirements,
 )
 
-
 # ---------------------------------------------------------------------------
 # check_ha_requirements
 # ---------------------------------------------------------------------------

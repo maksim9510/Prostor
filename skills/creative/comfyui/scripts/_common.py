@@ -21,9 +21,10 @@ import re
 import sys
 import time
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urlparse
 
 # Optional: prefer `requests` if installed (better redirects, streaming, header handling)

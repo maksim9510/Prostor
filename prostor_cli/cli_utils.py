@@ -17,6 +17,7 @@ from typing import Any
 # Number / duration / token formatting (used by status bar + display layer)
 # ---------------------------------------------------------------------------
 
+
 def format_duration_compact(seconds: float) -> str:
     """Format a duration in seconds as a compact human-readable string.
 

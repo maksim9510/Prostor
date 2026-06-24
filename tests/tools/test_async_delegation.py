@@ -12,7 +12,7 @@ import time
 import pytest
 
 from tools import async_delegation as ad
-from tools.process_registry import process_registry, format_process_notification
+from tools.process_registry import format_process_notification, process_registry
 
 
 @pytest.fixture(autouse=True)
@@ -229,7 +229,8 @@ def test_delegate_task_background_routes_async_and_does_not_block(monkeypatch):
     """delegate_task(background=True) returns a handle without running the
     child synchronously, and the child completes on the background thread.
     A single task is dispatched as a one-item background batch unit."""
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
+
     import tools.delegate_tool as dt
 
     parent = MagicMock()
@@ -295,7 +296,8 @@ def test_delegate_task_background_batch_runs_as_one_unit(monkeypatch):
     parallel and join; the consolidated results come back as a single
     completion event when ALL of them finish."""
     import json
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
+
     import tools.delegate_tool as dt
 
     parent = MagicMock()
@@ -369,8 +371,9 @@ def test_model_dispatch_forces_background():
     delegation (single task OR batch), and keeps it off for an orchestrator
     subagent (depth > 0). Direct delegate_task() callers are unaffected (they
     keep the synchronous default)."""
-    import tools.delegate_tool as dt
     from unittest.mock import MagicMock
+
+    import tools.delegate_tool as dt
 
     top = MagicMock()
     top._delegate_depth = 0
@@ -395,6 +398,7 @@ def test_run_agent_dispatch_forces_background():
     background on for any top-level delegation (single OR batch) and off for a
     subagent."""
     from unittest.mock import patch
+
     import run_agent
 
     class _FakeAgent:
@@ -427,6 +431,7 @@ def test_delegate_task_background_detaches_child_from_parent(monkeypatch):
     otherwise parent-turn interrupts / cache evicts / session close would
     kill the detached subagent mid-run."""
     from unittest.mock import MagicMock, patch
+
     import tools.delegate_tool as dt
 
     parent = MagicMock()

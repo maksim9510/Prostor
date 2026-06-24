@@ -21,7 +21,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ except ImportError:
     _compute_workers = None
 
 
-def _read_single_file(op: Dict[str, Any], task_id: str) -> Dict[str, Any]:
+def _read_single_file(op: dict[str, Any], task_id: str) -> dict[str, Any]:
     """Read a single file. Called from worker threads."""
     path = op.get("path", "")
     offset = op.get("offset", 1)
@@ -118,7 +118,7 @@ def _read_single_file(op: Dict[str, Any], task_id: str) -> Dict[str, Any]:
         }
 
 
-def batch_read_tool(files: List[Dict[str, Any]],
+def batch_read_tool(files: list[dict[str, Any]],
                     task_id: str = "default") -> str:
     """Read multiple files in parallel.
 
@@ -156,7 +156,7 @@ def batch_read_tool(files: List[Dict[str, Any]],
 
     logger.info("batch_read: %d files, %d workers", num_ops, workers)
 
-    results: List[Dict[str, Any]] = [None] * num_ops
+    results: list[dict[str, Any]] = [None] * num_ops
     t0 = time.perf_counter()
 
     if workers <= 1 or num_ops <= 1:

@@ -33,9 +33,9 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -149,25 +149,25 @@ class GoalState:
     max_turns: int = DEFAULT_MAX_TURNS
     created_at: float = 0.0
     last_turn_at: float = 0.0
-    last_verdict: Optional[str] = None        # "done" | "continue" | "skipped"
-    last_reason: Optional[str] = None
-    paused_reason: Optional[str] = None       # why we auto-paused (budget, etc.)
+    last_verdict: str | None = None        # "done" | "continue" | "skipped"
+    last_reason: str | None = None
+    paused_reason: str | None = None       # why we auto-paused (budget, etc.)
     consecutive_parse_failures: int = 0       # judge-output parse failures in a row
     # User-added criteria appended mid-loop via the /subgoal command.
     # When non-empty the judge prompt and continuation prompt both
     # include them so the agent works toward them and the judge factors
     # them into the verdict. Backwards-compatible: defaults to empty so
     # old state_meta rows load unchanged.
-    subgoals: List[str] = field(default_factory=list)
+    subgoals: list[str] = field(default_factory=list)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
 
     @classmethod
-    def from_json(cls, raw: str) -> "GoalState":
+    def from_json(cls, raw: str) -> GoalState:
         data = json.loads(raw)
         raw_subgoals = data.get("subgoals") or []
-        subgoals: List[str] = []
+        subgoals: list[str] = []
         if isinstance(raw_subgoals, list):
             subgoals = [str(s).strip() for s in raw_subgoals if str(s).strip()]
         return cls(
@@ -203,10 +203,10 @@ def _meta_key(session_id: str) -> str:
     return f"goal:{session_id}"
 
 
-_DB_CACHE: Dict[str, Any] = {}
+_DB_CACHE: dict[str, Any] = {}
 
 
-def _get_session_db() -> Optional[Any]:
+def _get_session_db() -> Any | None:
     """Return a SessionDB instance for the current PROSTOR_HOME.
 
     SessionDB has no built-in singleton, but opening a new connection per
@@ -236,7 +236,7 @@ def _get_session_db() -> Optional[Any]:
     return db
 
 
-def load_goal(session_id: str) -> Optional[GoalState]:
+def load_goal(session_id: str) -> GoalState | None:
     """Load the goal for a session, or None if none exists."""
     if not session_id:
         return None
@@ -319,7 +319,7 @@ def _goal_judge_max_tokens() -> int:
     return DEFAULT_JUDGE_MAX_TOKENS
 
 
-def _parse_judge_response(raw: str) -> Tuple[bool, str, bool]:
+def _parse_judge_response(raw: str) -> tuple[bool, str, bool]:
     """Parse the judge's reply. Fail-open to ``(False, "<reason>", parse_failed)``.
 
     Returns ``(done, reason, parse_failed)``. ``parse_failed`` is True when the
@@ -342,7 +342,7 @@ def _parse_judge_response(raw: str) -> Tuple[bool, str, bool]:
             text = text[nl + 1:]
 
     # First try: parse the whole blob.
-    data: Optional[Dict[str, Any]] = None
+    data: dict[str, Any] | None = None
     try:
         data = json.loads(text)
     except Exception:
@@ -373,8 +373,8 @@ def judge_goal(
     last_response: str,
     *,
     timeout: float = DEFAULT_JUDGE_TIMEOUT,
-    subgoals: Optional[List[str]] = None,
-) -> Tuple[str, str, bool]:
+    subgoals: list[str] | None = None,
+) -> tuple[str, str, bool]:
     """Ask the auxiliary model whether the goal is satisfied.
 
     Returns ``(verdict, reason, parse_failed)`` where verdict is ``"done"``,
@@ -418,7 +418,7 @@ def judge_goal(
 
     # Build the prompt — pick the with-subgoals variant when applicable.
     clean_subgoals = [s.strip() for s in (subgoals or []) if s and s.strip()]
-    current_time = datetime.now(tz=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    current_time = datetime.now(tz=UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     if clean_subgoals:
         subgoals_block = "\n".join(
             f"- {i}. {text}" for i, text in enumerate(clean_subgoals, start=1)
@@ -488,12 +488,12 @@ class GoalManager:
     def __init__(self, session_id: str, *, default_max_turns: int = DEFAULT_MAX_TURNS):
         self.session_id = session_id
         self.default_max_turns = int(default_max_turns or DEFAULT_MAX_TURNS)
-        self._state: Optional[GoalState] = load_goal(session_id)
+        self._state: GoalState | None = load_goal(session_id)
 
     # --- introspection ------------------------------------------------
 
     @property
-    def state(self) -> Optional[GoalState]:
+    def state(self) -> GoalState | None:
         return self._state
 
     def is_active(self) -> bool:
@@ -519,7 +519,7 @@ class GoalManager:
 
     # --- mutation -----------------------------------------------------
 
-    def set(self, goal: str, *, max_turns: Optional[int] = None) -> GoalState:
+    def set(self, goal: str, *, max_turns: int | None = None) -> GoalState:
         goal = (goal or "").strip()
         if not goal:
             raise ValueError("goal text is empty")
@@ -535,7 +535,7 @@ class GoalManager:
         save_goal(self.session_id, state)
         return state
 
-    def pause(self, reason: str = "user-paused") -> Optional[GoalState]:
+    def pause(self, reason: str = "user-paused") -> GoalState | None:
         if not self._state:
             return None
         self._state.status = "paused"
@@ -543,7 +543,7 @@ class GoalManager:
         save_goal(self.session_id, self._state)
         return self._state
 
-    def resume(self, *, reset_budget: bool = True) -> Optional[GoalState]:
+    def resume(self, *, reset_budget: bool = True) -> GoalState | None:
         if not self._state:
             return None
         self._state.status = "active"
@@ -622,7 +622,7 @@ class GoalManager:
         last_response: str,
         *,
         user_initiated: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run the judge and update state. Return a decision dict.
 
         ``user_initiated`` distinguishes a real user prompt (True) from a
@@ -736,7 +736,7 @@ class GoalManager:
             ),
         }
 
-    def next_continuation_prompt(self) -> Optional[str]:
+    def next_continuation_prompt(self) -> str | None:
         if not self._state or self._state.status != "active":
             return None
         if self._state.subgoals:
@@ -786,7 +786,7 @@ def run_kanban_goal_loop(
     max_turns: int = DEFAULT_MAX_TURNS,
     first_response: str = "",
     log=None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Drive a kanban worker through a Ralph-style goal loop.
 
     The dispatcher spawns a goal-mode worker exactly like a normal worker

@@ -7,7 +7,7 @@ tests run fully offline and the curator module doesn't need real credentials.
 from __future__ import annotations
 
 import importlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -111,7 +111,7 @@ def test_first_run_defers(curator_env):
 def test_recent_run_blocks(curator_env):
     c = curator_env["curator"]
     c.save_state({
-        "last_run_at": datetime.now(timezone.utc).isoformat(),
+        "last_run_at": datetime.now(UTC).isoformat(),
         "paused": False,
     })
     assert c.should_run_now() is False
@@ -122,7 +122,7 @@ def test_old_run_eligible(curator_env):
     2x-interval cushion so the test doesn't become coupled to the exact
     default — bumping DEFAULT_INTERVAL_HOURS shouldn't break it."""
     c = curator_env["curator"]
-    long_ago = datetime.now(timezone.utc) - timedelta(
+    long_ago = datetime.now(UTC) - timedelta(
         hours=c.get_interval_hours() * 2
     )
     c.save_state({"last_run_at": long_ago.isoformat(), "paused": False})
@@ -131,7 +131,7 @@ def test_old_run_eligible(curator_env):
 
 def test_paused_blocks_even_if_stale(curator_env):
     c = curator_env["curator"]
-    long_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    long_ago = datetime.now(UTC) - timedelta(days=30)
     c.save_state({"last_run_at": long_ago.isoformat(), "paused": True})
     assert c.should_run_now() is False
 
@@ -155,7 +155,7 @@ def test_unused_skill_transitions_to_stale(curator_env):
     _write_skill(skills_dir, "old-skill")
 
     # Record last-use well past stale_after_days (30 default)
-    long_ago = (datetime.now(timezone.utc) - timedelta(days=45)).isoformat()
+    long_ago = (datetime.now(UTC) - timedelta(days=45)).isoformat()
     data = u.load_usage()
     data["old-skill"] = u._empty_record()
     data["old-skill"]["created_by"] = "agent"
@@ -174,7 +174,7 @@ def test_very_old_skill_gets_archived(curator_env):
     skills_dir = curator_env["home"] / "skills"
     skill_dir = _write_skill(skills_dir, "ancient")
 
-    super_old = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+    super_old = (datetime.now(UTC) - timedelta(days=120)).isoformat()
     data = u.load_usage()
     data["ancient"] = u._empty_record()
     data["ancient"]["created_by"] = "agent"
@@ -195,7 +195,7 @@ def test_pinned_skill_is_never_touched(curator_env):
     skills_dir = curator_env["home"] / "skills"
     _write_skill(skills_dir, "precious")
 
-    super_old = (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
+    super_old = (datetime.now(UTC) - timedelta(days=365)).isoformat()
     data = u.load_usage()
     data["precious"] = u._empty_record()
     data["precious"]["created_by"] = "agent"
@@ -218,7 +218,7 @@ def test_stale_skill_reactivates_on_recent_use(curator_env):
     skills_dir = curator_env["home"] / "skills"
     _write_skill(skills_dir, "revived")
 
-    recent = datetime.now(timezone.utc).isoformat()
+    recent = datetime.now(UTC).isoformat()
     data = u.load_usage()
     data["revived"] = u._empty_record()
     data["revived"]["created_by"] = "agent"
@@ -256,7 +256,7 @@ def test_manual_skill_is_not_auto_archived(curator_env):
     skills_dir = curator_env["home"] / "skills"
     skill_dir = _write_skill(skills_dir, "manual")
 
-    super_old = (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
+    super_old = (datetime.now(UTC) - timedelta(days=365)).isoformat()
     data = u.load_usage()
     data["manual"] = u._empty_record()
     data["manual"]["last_used_at"] = super_old
@@ -278,7 +278,7 @@ def test_bundled_skill_not_touched_by_transitions(curator_env):
         "bundled:abc\n", encoding="utf-8",
     )
 
-    super_old = (datetime.now(timezone.utc) - timedelta(days=500)).isoformat()
+    super_old = (datetime.now(UTC) - timedelta(days=500)).isoformat()
     data = u.load_usage()
     data["bundled"] = u._empty_record()
     data["bundled"]["last_used_at"] = super_old
@@ -359,7 +359,7 @@ def test_prune_builtins_archives_stale_bundled_and_suppresses(curator_env, monke
     _enable_prune_builtins(curator_env, monkeypatch)
 
     # Seed a record whose last activity is far past the archive cutoff.
-    super_old = (datetime.now(timezone.utc) - timedelta(days=500)).isoformat()
+    super_old = (datetime.now(UTC) - timedelta(days=500)).isoformat()
     data = u.load_usage()
     data["bundled"] = u._empty_record()
     data["bundled"]["last_used_at"] = super_old
@@ -403,7 +403,7 @@ def test_protected_builtin_never_archived_even_when_stale(curator_env, monkeypat
     _enable_prune_builtins(curator_env, monkeypatch)
 
     # Force a record that is far past the archive cutoff.
-    super_old = (datetime.now(timezone.utc) - timedelta(days=500)).isoformat()
+    super_old = (datetime.now(UTC) - timedelta(days=500)).isoformat()
     data = u.load_usage()
     data[name] = u._empty_record()
     data[name]["last_used_at"] = super_old
@@ -688,7 +688,7 @@ def test_maybe_run_curator_runs_when_eligible(curator_env, monkeypatch):
     u.mark_agent_created("a")
     # Seed last_run_at far in the past so the interval gate opens — the
     # "no state" path intentionally defers the first run now (#18373).
-    long_ago = datetime.now(timezone.utc) - timedelta(hours=c.get_interval_hours() * 2)
+    long_ago = datetime.now(UTC) - timedelta(hours=c.get_interval_hours() * 2)
     c.save_state({"last_run_at": long_ago.isoformat(), "paused": False})
     # Force idle over threshold
     result = c.maybe_run_curator(idle_for_seconds=99999.0)

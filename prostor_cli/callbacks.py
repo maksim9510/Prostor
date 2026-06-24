@@ -9,7 +9,7 @@ with the TUI.
 import queue
 import time as _time
 
-from prostor_cli.banner import cprint, _DIM, _RST
+from prostor_cli.banner import _DIM, _RST, cprint
 from prostor_cli.config import save_env_value_secure
 from prostor_cli.secret_prompt import masked_secret_prompt
 from prostor_constants import display_prostor_home

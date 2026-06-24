@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta
 
-
 from prostor_cli.logs import (
     LOG_FILES,
     _extract_level,
@@ -15,10 +14,10 @@ from prostor_cli.logs import (
     _read_tail,
 )
 
-
 # ---------------------------------------------------------------------------
 # Timestamp parsing
 # ---------------------------------------------------------------------------
+
 
 class TestParseSince:
     def test_hours(self):

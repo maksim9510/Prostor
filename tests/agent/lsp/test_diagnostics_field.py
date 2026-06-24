@@ -8,14 +8,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-
 from tools.environments.local import LocalEnvironment
 from tools.file_operations import (
     PatchResult,
     ShellFileOperations,
     WriteResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # Dataclass shape

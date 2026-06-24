@@ -7,9 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
-
 import yaml
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_DIR = REPO_ROOT / "plugins" / "observability" / "langfuse"
@@ -439,7 +437,7 @@ class _FakeLangfuse:
     can fire.  Patching ``plugin.Langfuse`` with this class lets the
     placeholder validator exercise its full code path."""
 
-    instances: list["_FakeLangfuse"] = []
+    instances: list[_FakeLangfuse] = []
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs

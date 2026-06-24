@@ -7,10 +7,9 @@ between their laptop's browser and the remote host's loopback listener.
 
 from __future__ import annotations
 
-import io
 import contextlib
+import io
 import socket
-
 
 from prostor_cli import auth as auth_mod
 

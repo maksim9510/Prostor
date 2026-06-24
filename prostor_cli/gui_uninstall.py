@@ -40,9 +40,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from prostor_constants import get_prostor_home
-
 from prostor_cli.colors import Colors, color
+from prostor_constants import get_prostor_home
 
 
 def log_info(msg: str):

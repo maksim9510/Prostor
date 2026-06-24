@@ -1,7 +1,7 @@
 """Regression tests for gateway /model support of config.yaml custom_providers."""
 
-import yaml
 import pytest
+import yaml
 
 from gateway.config import Platform
 from gateway.platforms.base import MessageEvent, MessageType

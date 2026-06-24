@@ -19,7 +19,8 @@ hand-roll JWT verification.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger("cron.chronos.verify")
 
@@ -32,10 +33,10 @@ def verify_nas_fire_token(
     *,
     token: str,
     expected_audience: str,
-    jwks_or_key: Optional[str] = None,
-    issuer: Optional[str] = None,
+    jwks_or_key: str | None = None,
+    issuer: str | None = None,
     leeway_seconds: int = 30,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Verify a NAS-minted cron-fire JWT. Return decoded claims, or None.
 
     Checks (all must pass):
@@ -72,7 +73,7 @@ def verify_nas_fire_token(
             signing_key = jwks_or_key
 
         options = {"require": ["exp", "aud"]}
-        decode_kwargs: Dict[str, Any] = dict(
+        decode_kwargs: dict[str, Any] = dict(
             algorithms=["RS256", "RS384", "RS512", "ES256", "ES384"],
             audience=expected_audience,
             leeway=leeway_seconds,
@@ -93,7 +94,7 @@ def verify_nas_fire_token(
     return claims
 
 
-def get_fire_verifier() -> Callable[..., Optional[Dict[str, Any]]]:
+def get_fire_verifier() -> Callable[..., dict[str, Any] | None]:
     """Return the active inbound-fire verifier.
 
     Default = the NAS-JWT verifier. The DQ-4 escape hatch (direct per-job

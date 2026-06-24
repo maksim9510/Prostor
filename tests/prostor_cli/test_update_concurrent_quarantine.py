@@ -19,7 +19,6 @@ import pytest
 
 from prostor_cli import main as cli_main
 
-
 # Tests in this module either exercise the REAL _detect_concurrent_prostor_instances
 # helper (and need the autouse stub in tests/prostor_cli/conftest.py disabled),
 # or supply their own explicit return value via patch.object. Mark the whole

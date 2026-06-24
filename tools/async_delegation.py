@@ -41,9 +41,10 @@ import threading
 import time
 import uuid
 import weakref
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures.thread import _worker
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +89,14 @@ class _DaemonThreadPoolExecutor(ThreadPoolExecutor):
 # A persistent daemon executor (NOT a `with ThreadPoolExecutor()` block, which
 # would join on exit and defeat the whole point of async). Workers are daemon
 # threads so a hard process exit doesn't hang on an in-flight child.
-_executor: Optional[ThreadPoolExecutor] = None
+_executor: ThreadPoolExecutor | None = None
 _executor_lock = threading.Lock()
 _executor_max_workers: int = 0
 
 _records_lock = threading.Lock()
 # delegation_id -> record dict. Kept for the lifetime of the run plus a short
 # tail after completion so `list_async_delegations()` can show recent results.
-_records: Dict[str, Dict[str, Any]] = {}
+_records: dict[str, dict[str, Any]] = {}
 
 _DEFAULT_MAX_ASYNC_CHILDREN = 3
 # How many completed records to retain for status queries before pruning.
@@ -152,15 +153,15 @@ def _prune_completed_locked() -> None:
 def dispatch_async_delegation(
     *,
     goal: str,
-    context: Optional[str],
-    toolsets: Optional[List[str]],
+    context: str | None,
+    toolsets: list[str] | None,
     role: str,
-    model: Optional[str],
+    model: str | None,
     session_key: str,
-    runner: Callable[[], Dict[str, Any]],
-    interrupt_fn: Optional[Callable[[], None]] = None,
+    runner: Callable[[], dict[str, Any]],
+    interrupt_fn: Callable[[], None] | None = None,
     max_async_children: int = _DEFAULT_MAX_ASYNC_CHILDREN,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Spawn ``runner`` on the daemon executor and return a handle immediately.
 
     Parameters
@@ -192,7 +193,7 @@ def dispatch_async_delegation(
     """
     delegation_id = _new_delegation_id()
     dispatched_at = time.time()
-    record: Dict[str, Any] = {
+    record: dict[str, Any] = {
         "delegation_id": delegation_id,
         "goal": goal,
         "context": context,
@@ -228,7 +229,7 @@ def dispatch_async_delegation(
     executor = _get_executor(max_async_children)
 
     def _worker() -> None:
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
         status = "error"
         try:
             result = runner() or {}
@@ -263,7 +264,7 @@ def dispatch_async_delegation(
     return {"status": "dispatched", "delegation_id": delegation_id}
 
 
-def _finalize(delegation_id: str, result: Dict[str, Any], status: str) -> None:
+def _finalize(delegation_id: str, result: dict[str, Any], status: str) -> None:
     """Mark a record complete and push the completion event onto the queue."""
     with _records_lock:
         record = _records.get(delegation_id)
@@ -280,7 +281,7 @@ def _finalize(delegation_id: str, result: Dict[str, Any], status: str) -> None:
 
 
 def _push_completion_event(
-    record: Dict[str, Any], result: Dict[str, Any], status: str
+    record: dict[str, Any], result: dict[str, Any], status: str
 ) -> None:
     """Push a type='async_delegation' event onto the shared completion queue.
 
@@ -336,16 +337,16 @@ def _push_completion_event(
 
 def dispatch_async_delegation_batch(
     *,
-    goals: List[str],
-    context: Optional[str],
-    toolsets: Optional[List[str]],
+    goals: list[str],
+    context: str | None,
+    toolsets: list[str] | None,
     role: str,
-    model: Optional[str],
+    model: str | None,
     session_key: str,
-    runner: Callable[[], Dict[str, Any]],
-    interrupt_fn: Optional[Callable[[], None]] = None,
+    runner: Callable[[], dict[str, Any]],
+    interrupt_fn: Callable[[], None] | None = None,
     max_async_children: int = _DEFAULT_MAX_ASYNC_CHILDREN,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Dispatch a WHOLE fan-out batch as ONE background unit.
 
     Unlike ``dispatch_async_delegation`` (which backs a single subagent),
@@ -373,7 +374,7 @@ def dispatch_async_delegation_batch(
     combined_goal = (
         goals[0] if n == 1 else f"{n} parallel subagents: " + "; ".join(g[:40] for g in goals)
     )
-    record: Dict[str, Any] = {
+    record: dict[str, Any] = {
         "delegation_id": delegation_id,
         "goal": combined_goal,
         "goals": list(goals),
@@ -407,7 +408,7 @@ def dispatch_async_delegation_batch(
     executor = _get_executor(max_async_children)
 
     def _worker() -> None:
-        combined: Dict[str, Any] = {}
+        combined: dict[str, Any] = {}
         status = "error"
         try:
             combined = runner() or {}
@@ -449,7 +450,7 @@ def dispatch_async_delegation_batch(
 
 
 def _finalize_batch(
-    delegation_id: str, combined: Dict[str, Any], status: str
+    delegation_id: str, combined: dict[str, Any], status: str
 ) -> None:
     """Mark a batch record complete and push ONE combined completion event."""
     with _records_lock:
@@ -504,7 +505,7 @@ def _finalize_batch(
         )
 
 
-def list_async_delegations() -> List[Dict[str, Any]]:
+def list_async_delegations() -> list[dict[str, Any]]:
     """Snapshot of async delegations (running + recently completed).
 
     Safe to call from any thread. Excludes the non-serialisable interrupt_fn.

@@ -20,24 +20,22 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import List, Optional
 
-from prostor_cli.colors import Colors, color
 from prostor_cli.cli_output import prompt_yes_no
+from prostor_cli.colors import Colors, color
+from prostor_cli.config import load_config, save_config
 from prostor_cli.curses_ui import curses_single_select
 from prostor_cli.mcp_catalog import (
     CatalogEntry,
     CatalogError,
     catalog_diagnostics,
     install_entry,
+    installed_servers,
     is_enabled,
     is_installed,
     list_catalog,
-    installed_servers,
     uninstall_entry,
 )
-from prostor_cli.config import load_config, save_config
-
 
 # ─── Status badges ────────────────────────────────────────────────────────────
 
@@ -59,19 +57,19 @@ class _Row:
     name: str
     description: str
     status: str
-    entry: Optional[CatalogEntry] = None  # None for non-catalog (custom) rows
+    entry: CatalogEntry | None = None  # None for non-catalog (custom) rows
 
     @property
     def is_custom(self) -> bool:
         return self.entry is None
 
 
-def _build_rows() -> List[_Row]:
+def _build_rows() -> list[_Row]:
     """Return catalog rows + any custom (non-catalog) MCPs found in config."""
     catalog_entries = list_catalog()
     catalog_names = {e.name for e in catalog_entries}
 
-    rows: List[_Row] = []
+    rows: list[_Row] = []
     for entry in catalog_entries:
         if not is_installed(entry.name):
             status = _STATUS_NOT_INSTALLED
@@ -134,6 +132,7 @@ def _configure_tools(name: str) -> None:
     server, displays a checklist, and writes ``tools.include``.
     """
     import argparse
+
     from prostor_cli.mcp_config import cmd_mcp_configure
 
     cmd_mcp_configure(argparse.Namespace(name=name))
@@ -228,7 +227,7 @@ def _handle_row(row: _Row) -> None:
 # ─── Output / entry points ────────────────────────────────────────────────────
 
 
-def _print_rows_text(rows: List[_Row]) -> None:
+def _print_rows_text(rows: list[_Row]) -> None:
     """Plain-text catalog dump used as a fallback when curses can't run, and
     as the default output of `prostor mcp catalog`."""
     if not rows:
@@ -256,7 +255,7 @@ def _print_rows_text(rows: List[_Row]) -> None:
     future = [d for d in diags if d[1] == "future_manifest"]
     if future:
         print()
-        for name, _, msg in future:
+        for name, _, _msg in future:
             print(color(
                 f"  ⚠ '{name}' requires a newer Prostor — run `prostor update` "
                 "to install this entry.",

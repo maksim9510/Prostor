@@ -16,8 +16,8 @@ def _client():
     except ImportError:
         pytest.skip("fastapi/starlette not installed")
     import prostor_state
+    from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
     from prostor_constants import get_prostor_home
-    from prostor_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
     client = TestClient(app)
     client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
@@ -599,7 +599,7 @@ class TestSkillsHubScanEndpoint:
         assert r.status_code == 400
 
     def test_scan_returns_verdict_and_policy(self, monkeypatch):
-        from tools.skills_guard import ScanResult, Finding
+        from tools.skills_guard import Finding, ScanResult
 
         monkeypatch.setattr(
             "tools.skills_hub.create_source_router", lambda: []
@@ -700,6 +700,7 @@ class TestAdminEndpointsAuthGate:
     @pytest.fixture(autouse=True)
     def _setup(self, _isolate_prostor_home):
         from starlette.testclient import TestClient
+
         from prostor_cli.web_server import app
 
         # No session header → must be rejected.
@@ -770,8 +771,8 @@ class TestUpdateCheckEndpoint:
         assert body["can_apply"] is True
 
     def test_up_to_date(self, monkeypatch):
-        import prostor_cli.web_server as ws
         import prostor_cli.banner as banner
+        import prostor_cli.web_server as ws
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
         monkeypatch.setattr(banner, "check_for_updates", lambda: 0)
@@ -810,8 +811,8 @@ class TestUpdateCheckEndpoint:
         assert "managed outside this dashboard" in body["message"]
 
     def test_check_failure_is_soft(self, monkeypatch):
-        import prostor_cli.web_server as ws
         import prostor_cli.banner as banner
+        import prostor_cli.web_server as ws
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
 
@@ -828,8 +829,8 @@ class TestUpdateCheckEndpoint:
         assert body["message"]
 
     def test_git_behind_includes_commits(self, monkeypatch):
-        import prostor_cli.web_server as ws
         import prostor_cli.banner as banner
+        import prostor_cli.web_server as ws
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
         monkeypatch.setattr(banner, "check_for_updates", lambda: 3)
@@ -848,8 +849,8 @@ class TestUpdateCheckEndpoint:
         assert body["commits"][0]["summary"] == "feat: x"
 
     def test_up_to_date_omits_commits(self, monkeypatch):
-        import prostor_cli.web_server as ws
         import prostor_cli.banner as banner
+        import prostor_cli.web_server as ws
 
         monkeypatch.setattr(ws, "detect_install_method", lambda *a, **k: "git")
         monkeypatch.setattr(banner, "check_for_updates", lambda: 0)

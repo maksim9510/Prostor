@@ -14,8 +14,8 @@ import pytest
 
 from prostor_state import SessionDB
 from tools.session_search_tool import (
-    SESSION_SEARCH_SCHEMA,
     _HIDDEN_SESSION_SOURCES,
+    SESSION_SEARCH_SCHEMA,
     _format_timestamp,
     session_search,
 )
@@ -481,6 +481,7 @@ class TestCrossProfileRead:
         other._conn.commit()
 
         from collections import namedtuple
+
         from prostor_cli import profiles as profiles_mod
         Info = namedtuple("Info", "name path")
         monkeypatch.setattr(profiles_mod, "get_profile_dir", lambda n: tmp_path / "default_home")

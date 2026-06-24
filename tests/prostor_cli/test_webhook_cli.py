@@ -2,15 +2,16 @@
 
 import json
 import os
-import pytest
 import stat
 from argparse import Namespace
 
+import pytest
+
 from prostor_cli.webhook import (
-    webhook_command,
     _load_subscriptions,
     _save_subscriptions,
     _subscriptions_path,
+    webhook_command,
 )
 
 

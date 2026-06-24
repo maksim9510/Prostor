@@ -28,13 +28,12 @@ from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.api_server import (
     APIServerAdapter,
     ResponseStore,
-    _IdempotencyCache,
     _derive_chat_session_id,
+    _IdempotencyCache,
     check_api_server_requirements,
     cors_middleware,
     security_headers_middleware,
 )
-
 
 # ---------------------------------------------------------------------------
 # check_api_server_requirements
@@ -1027,6 +1026,7 @@ class TestChatCompletionsEndpoint:
     async def test_stream_sends_keepalive_during_quiet_tool_gap(self, adapter):
         """Idle SSE streams should send keepalive comments while tools run silently."""
         import asyncio
+
         import gateway.platforms.api_server as api_server_mod
 
         app = _create_app(adapter)
@@ -2306,8 +2306,9 @@ class TestResponsesStreaming:
                 written_payloads.append(payload)
 
         # Patch web.StreamResponse for the duration of the writer call.
-        import gateway.platforms.api_server as api_mod
         import queue as _q
+
+        import gateway.platforms.api_server as api_mod
 
         stream_q: _q.Queue = _q.Queue()
 
@@ -2377,8 +2378,9 @@ class TestResponsesStreaming:
                 if write_call_count["n"] >= 3:
                     raise ConnectionResetError("simulated client disconnect")
 
-        import gateway.platforms.api_server as api_mod
         import queue as _q
+
+        import gateway.platforms.api_server as api_mod
 
         stream_q: _q.Queue = _q.Queue()
         stream_q.put("some streamed text")

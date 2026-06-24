@@ -25,7 +25,6 @@ from __future__ import annotations
 import re
 import subprocess
 
-
 _VERSION_LINE = re.compile(r"^version:\s+(?P<rest>.+)$", re.MULTILINE)
 _SHA_BRACKET = re.compile(r"\[(?P<sha>[^\]]+)\]\s*$")
 

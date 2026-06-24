@@ -13,8 +13,9 @@ it without pulling in heavy modules.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ def openclaw_residue_hint_cli() -> str:
     )
 
 
-def detect_openclaw_residue(home: Optional[Path] = None) -> bool:
+def detect_openclaw_residue(home: Path | None = None) -> bool:
     """Return True if an OpenClaw workspace directory is present in ``$HOME``.
 
     Pure filesystem check — no side effects. ``home`` override exists for tests.
@@ -209,6 +210,7 @@ def mark_seen(config_path: Path, flag: str) -> bool:
     """
     try:
         import yaml
+
         from utils import atomic_yaml_write
     except Exception as e:  # pragma: no cover — dependency issue
         logger.debug("onboarding: failed to import yaml/utils: %s", e)

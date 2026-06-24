@@ -1,12 +1,13 @@
 """Tests for agent/context_compressor.py — compression logic, thresholds, truncation fallback."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from agent.context_compressor import (
-    ContextCompressor,
     HISTORICAL_TASK_HEADING,
     SUMMARY_PREFIX,
+    ContextCompressor,
 )
 
 

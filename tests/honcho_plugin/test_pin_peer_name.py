@@ -18,10 +18,8 @@ import hashlib
 import json
 from unittest.mock import MagicMock
 
-
 from plugins.memory.honcho.client import HonchoClientConfig
 from plugins.memory.honcho.session import HonchoSessionManager
-
 
 # ---------------------------------------------------------------------------
 # Config parsing
@@ -616,8 +614,9 @@ class TestPinUserPeerAlias:
     """
 
     def test_root_pinUserPeer_true_pins(self, tmp_path):
-        from plugins.memory.honcho.client import HonchoClientConfig
         import json
+
+        from plugins.memory.honcho.client import HonchoClientConfig
         config_file = tmp_path / "honcho.json"
         config_file.write_text(json.dumps({
             "apiKey": "***",
@@ -628,8 +627,9 @@ class TestPinUserPeerAlias:
         assert config.pin_peer_name is True
 
     def test_host_pinUserPeer_wins_over_root_pinPeerName(self, tmp_path):
-        from plugins.memory.honcho.client import HonchoClientConfig
         import json
+
+        from plugins.memory.honcho.client import HonchoClientConfig
         config_file = tmp_path / "honcho.json"
         config_file.write_text(json.dumps({
             "apiKey": "***",
@@ -641,8 +641,9 @@ class TestPinUserPeerAlias:
         assert config.pin_peer_name is True
 
     def test_host_pinUserPeer_false_disables_root_pinPeerName(self, tmp_path):
-        from plugins.memory.honcho.client import HonchoClientConfig
         import json
+
+        from plugins.memory.honcho.client import HonchoClientConfig
         config_file = tmp_path / "honcho.json"
         config_file.write_text(json.dumps({
             "apiKey": "***",
@@ -657,8 +658,9 @@ class TestPinUserPeerAlias:
         )
 
     def test_pinPeerName_still_works_unchanged(self, tmp_path):
-        from plugins.memory.honcho.client import HonchoClientConfig
         import json
+
+        from plugins.memory.honcho.client import HonchoClientConfig
         config_file = tmp_path / "honcho.json"
         config_file.write_text(json.dumps({
             "apiKey": "***",

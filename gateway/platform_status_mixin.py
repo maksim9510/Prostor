@@ -5,7 +5,6 @@ Extracted from gateway/run.py (#23 Phase 2).
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 class GatewayPlatformStatusMixin:
     """Platform status management mixin for GatewayRunner."""
 
-    def _update_runtime_status(self, gateway_state: Optional[str] = None, exit_reason: Optional[str] = None) -> None:
+    def _update_runtime_status(self, gateway_state: str | None = None, exit_reason: str | None = None) -> None:
         try:
             from gateway.status import write_runtime_status
             write_runtime_status(
@@ -29,9 +28,9 @@ class GatewayPlatformStatusMixin:
         self,
         platform: str,
         *,
-        platform_state: Optional[str] = None,
-        error_code: Optional[str] = None,
-        error_message: Optional[str] = None,
+        platform_state: str | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         try:
             from gateway.status import write_runtime_status

@@ -20,7 +20,7 @@ import logging
 import os
 import time
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -178,10 +178,10 @@ def run_codex_app_server_turn(
     *,
     user_message: str,
     original_user_message: Any,
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     effective_task_id: str,
     should_review_memory: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Codex app-server runtime path. Hands the entire turn to a `codex
     app-server` subprocess and projects its events back into Prostor'
     messages list so memory/skill review keep working.
@@ -421,8 +421,8 @@ def _consume_codex_event_stream(
       Used for watchdog activity, debug logging, anything wire-shape-agnostic.
     * ``interrupt_check()`` — returns True to break the loop early.
     """
-    collected_output_items: List[Any] = []
-    collected_text_deltas: List[str] = []
+    collected_output_items: list[Any] = []
+    collected_text_deltas: list[str] = []
     has_tool_calls = False
     first_delta_fired = False
     terminal_status: str = "completed"

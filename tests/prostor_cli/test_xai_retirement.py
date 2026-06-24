@@ -1,22 +1,21 @@
 """Unit tests for prostor_cli.xai_retirement (May 15, 2026 model retirement)."""
 from __future__ import annotations
 
-
 from prostor_cli.xai_retirement import (
+    _RETIRED_MODELS,
     MIGRATION_GUIDE_URL,
     RETIREMENT_DATE,
     RetirementIssue,
-    _RETIRED_MODELS,
     _looks_like_xai,
     _normalize,
     find_retired_xai_refs,
     format_issue,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _paths(issues):
     return [i.config_path for i in issues]

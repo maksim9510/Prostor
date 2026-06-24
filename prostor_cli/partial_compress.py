@@ -41,7 +41,7 @@ Design notes / invariants honored:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 #: Default number of recent exchanges to preserve verbatim when the user
 #: runs ``/compress here`` without an explicit count.
@@ -54,7 +54,7 @@ MAX_KEEP_LAST = 100
 
 def parse_partial_compress_args(
     raw_args: str,
-) -> Tuple[bool, int, Optional[str]]:
+) -> tuple[bool, int, str | None]:
     """Parse the argument string after ``/compress``.
 
     Recognizes the boundary-aware forms:
@@ -122,9 +122,9 @@ def _coerce_keep(value: str) -> int:
 
 
 def split_history_for_partial_compress(
-    history: List[Dict[str, Any]],
+    history: list[dict[str, Any]],
     keep_last: int,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split ``history`` into ``(head, tail)`` for partial compression.
 
     ``head`` is the earlier portion that will be summarized; ``tail`` is
@@ -151,7 +151,7 @@ def split_history_for_partial_compress(
 
     # Walk backwards collecting the indices of the most recent `keep_last`
     # user-message starts. The tail begins at the earliest such index.
-    user_starts: List[int] = []
+    user_starts: list[int] = []
     for idx in range(n - 1, -1, -1):
         if history[idx].get("role") == "user":
             user_starts.append(idx)
@@ -178,9 +178,9 @@ def split_history_for_partial_compress(
 
 
 def rejoin_compressed_head_and_tail(
-    compressed_head: List[Dict[str, Any]],
-    tail: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    compressed_head: list[dict[str, Any]],
+    tail: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Concatenate a compressed head with the verbatim tail, defending
     the seam against an illegal user→user / assistant→assistant adjacency.
 

@@ -31,8 +31,8 @@ class CLIAgentSetupMixin:
         """
         from cli import ChatConsole, _cprint, logger
         from prostor_cli.runtime_provider import (
-            resolve_runtime_provider,
             format_runtime_provider_error,
+            resolve_runtime_provider,
         )
 
         _primary_exc = None
@@ -219,11 +219,11 @@ class CLIAgentSetupMixin:
         """
         Initialize the agent on first use.
         When resuming a session, restores conversation history from SQLite.
-        
+
         Returns:
             bool: True if successful, False otherwise
         """
-        from cli import AIAgent, ChatConsole, _DIM, _RST, _accent_hex, _cprint, _prepare_deferred_agent_startup, logger
+        from cli import _DIM, _RST, AIAgent, ChatConsole, _accent_hex, _cprint, _prepare_deferred_agent_startup, logger
         if self.agent is not None:
             return True
 

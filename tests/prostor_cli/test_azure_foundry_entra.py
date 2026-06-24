@@ -149,8 +149,8 @@ class TestResolveAzureFoundryRuntimeEntra:
         Both shapes use the SAME scope per Microsoft's docs; the
         ``cognitiveservices.azure.com`` scope is the control-plane
         audience and is rejected for inference by newer resources."""
-        from prostor_cli.runtime_provider import _resolve_azure_foundry_runtime
         from agent.azure_identity_adapter import SCOPE_AI_AZURE_DEFAULT
+        from prostor_cli.runtime_provider import _resolve_azure_foundry_runtime
         _resolve_azure_foundry_runtime(
             requested_provider="azure-foundry",
             model_cfg={

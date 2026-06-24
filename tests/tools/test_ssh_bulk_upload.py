@@ -116,7 +116,7 @@ class TestSSHBulkUpload:
                 # File must exist (either as symlink or copy)
                 assert os.path.exists(expected), f"Expected staged file at {expected}"
                 # Content must match the source
-                with open(expected, "r") as fh:
+                with open(expected) as fh:
                     assert fh.read() == "content a"
 
             mock = MagicMock()

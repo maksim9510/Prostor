@@ -7,8 +7,7 @@ Also tests the vision_tools and browser_tool model override env vars.
 import os
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 

@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import threading
-from typing import Optional
 
 _mcp_discovery_lock = threading.Lock()
 _mcp_discovery_started = False
-_mcp_discovery_thread: Optional[threading.Thread] = None
+_mcp_discovery_thread: threading.Thread | None = None
 
 
 def _has_configured_mcp_servers() -> bool:
@@ -51,7 +50,7 @@ def start_background_mcp_discovery(*, logger, thread_name: str) -> None:
         thread.start()
 
 
-def _resolve_discovery_timeout(explicit: "float | None") -> float:
+def _resolve_discovery_timeout(explicit: float | None) -> float:
     """Resolve the MCP discovery wait bound: explicit arg > config > default.
 
     Reads ``mcp_discovery_timeout`` from config.yaml, defaulting to the value in
@@ -62,7 +61,7 @@ def _resolve_discovery_timeout(explicit: "float | None") -> float:
     if explicit is not None:
         return explicit
     try:
-        from prostor_cli.config import load_config, DEFAULT_CONFIG
+        from prostor_cli.config import DEFAULT_CONFIG, load_config
 
         default = float(DEFAULT_CONFIG.get("mcp_discovery_timeout", 1.5))
         raw = (load_config() or {}).get("mcp_discovery_timeout", default)
@@ -72,7 +71,7 @@ def _resolve_discovery_timeout(explicit: "float | None") -> float:
         return 1.5
 
 
-def wait_for_mcp_discovery(timeout: "float | None" = None) -> None:
+def wait_for_mcp_discovery(timeout: float | None = None) -> None:
     """Wait for background MCP discovery before the first tool snapshot.
 
     ``thread.join(timeout)`` returns the INSTANT discovery completes, so this

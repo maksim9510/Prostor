@@ -15,12 +15,13 @@ import asyncio
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import httpx
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers for building httpx exceptions
 # ---------------------------------------------------------------------------
+
 
 def _make_http_status_error(status_code: int) -> httpx.HTTPStatusError:
     request = httpx.Request("GET", "http://example.com/img.jpg")
@@ -533,10 +534,11 @@ def _ensure_slack_mock():
 _ensure_slack_mock()
 
 import plugins.platforms.slack.adapter as _slack_mod  # noqa: E402
+
 _slack_mod.SLACK_AVAILABLE = True
 
-from plugins.platforms.slack.adapter import SlackAdapter  # noqa: E402
 from gateway.config import PlatformConfig  # noqa: E402
+from plugins.platforms.slack.adapter import SlackAdapter  # noqa: E402
 
 
 def _make_slack_adapter():

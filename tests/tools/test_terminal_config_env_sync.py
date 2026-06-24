@@ -43,7 +43,7 @@ def _extract_dict_values(source: str, dict_name: str) -> set[str]:
         if not isinstance(node.value, ast.Dict):
             continue
         out: set[str] = set()
-        for k, v in zip(node.value.keys, node.value.values):
+        for k, v in zip(node.value.keys, node.value.values, strict=False):
             if isinstance(k, ast.Constant) and isinstance(v, ast.Constant):
                 if isinstance(v.value, str):
                     out.add(v.value)

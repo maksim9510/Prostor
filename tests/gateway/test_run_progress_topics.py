@@ -480,6 +480,7 @@ def _run_long_preview_helper(monkeypatch, tmp_path, preview_length=0):
     that _run_agent reads — so the gateway picks it up the same way production does.
     """
     import asyncio
+
     import yaml
 
     monkeypatch.setenv("PROSTOR_TOOL_PROGRESS_MODE", "all")
@@ -1496,6 +1497,7 @@ async def test_terminal_progress_no_bash_block_in_verbose_mode(monkeypatch, tmp_
     all_content = " ".join(call["content"] for call in adapter.sent)
     all_content += " ".join(call["content"] for call in adapter.edits)
     assert "```bash" not in all_content
+
 
 class MultiTerminalCommandAgent:
     """Emits several consecutive terminal tool.started events, then a

@@ -14,8 +14,8 @@ fallback calls, contaminating primary state with fallback-provider errors.
 import sys
 from unittest.mock import MagicMock
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_pool(provider, n_entries=1):
     """Create a mock credential pool with N entries."""

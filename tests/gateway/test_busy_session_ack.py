@@ -3,15 +3,15 @@
 Verifies that users get an immediate status response instead of total silence
 when the agent is working on a task. See PR fix for the @Lonely__MH report.
 """
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
 # ---------------------------------------------------------------------------
 # Minimal stubs so we can import gateway code without heavy deps
 # ---------------------------------------------------------------------------
-import sys, types
+import sys
+import time
+import types
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 _tg = types.ModuleType("telegram")
 _tg.constants = types.ModuleType("telegram.constants")
@@ -32,10 +32,10 @@ from gateway.platforms.base import (
     build_session_key,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_event(text="hello", chat_id="123", platform_val="telegram"):
     """Build a minimal MessageEvent."""
@@ -56,7 +56,7 @@ def _make_event(text="hello", chat_id="123", platform_val="telegram"):
 
 def _make_runner():
     """Build a minimal GatewayRunner-like object for testing."""
-    from gateway.run import GatewayRunner, _AGENT_PENDING_SENTINEL
+    from gateway.run import _AGENT_PENDING_SENTINEL, GatewayRunner
 
     runner = object.__new__(GatewayRunner)
     runner._running_agents = {}
@@ -602,8 +602,9 @@ class TestBusySessionOnboardingHint:
     @pytest.mark.asyncio
     async def test_second_busy_ack_omits_hint(self, tmp_path, monkeypatch):
         """Once the flag is marked, the hint never appears again."""
-        import gateway.run as _gr
         import yaml
+
+        import gateway.run as _gr
 
         monkeypatch.setattr(_gr, "_prostor_home", tmp_path)
         # Pre-populate the config so is_seen() returns True from the start.

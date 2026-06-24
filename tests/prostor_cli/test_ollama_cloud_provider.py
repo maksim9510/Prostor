@@ -1,16 +1,17 @@
 """Tests for Ollama Cloud provider integration."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
-from prostor_cli.auth import PROVIDER_REGISTRY, resolve_provider, resolve_api_key_provider_credentials
-from prostor_cli.models import _PROVIDER_MODELS, _PROVIDER_LABELS, _PROVIDER_ALIASES, normalize_provider
-from prostor_cli.model_normalize import normalize_model_for_provider
-from agent.model_metadata import _URL_TO_PROVIDER, _PROVIDER_PREFIXES
+from agent.model_metadata import _PROVIDER_PREFIXES, _URL_TO_PROVIDER
 from agent.models_dev import PROVIDER_TO_MODELS_DEV, list_agentic_models
-
+from prostor_cli.auth import PROVIDER_REGISTRY, resolve_api_key_provider_credentials, resolve_provider
+from prostor_cli.model_normalize import normalize_model_for_provider
+from prostor_cli.models import _PROVIDER_ALIASES, _PROVIDER_LABELS, _PROVIDER_MODELS, normalize_provider
 
 # ── Provider Registry ──
+
 
 class TestOllamaCloudProviderRegistry:
     def test_ollama_cloud_in_registry(self):
@@ -40,6 +41,7 @@ PROVIDER_ENV_VARS = (
     "GLM_API_KEY", "ZAI_API_KEY", "KIMI_API_KEY",
     "MINIMAX_API_KEY", "DEEPSEEK_API_KEY",
 )
+
 
 @pytest.fixture(autouse=True)
 def _clean_provider_env(monkeypatch):
@@ -255,7 +257,7 @@ class TestOllamaCloudMergedDiscovery:
 
     def test_stale_cache_used_on_total_failure(self, tmp_path, monkeypatch):
         """If both API and models.dev fail, stale cache is returned."""
-        from prostor_cli.models import fetch_ollama_cloud_models, _save_ollama_cloud_cache
+        from prostor_cli.models import _save_ollama_cloud_cache, fetch_ollama_cloud_models
 
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
@@ -350,6 +352,7 @@ class TestOllamaCloudAgentInit:
     def test_agent_imports_without_error(self):
         """Verify run_agent.py has no SyntaxError."""
         import importlib
+
         import run_agent
         importlib.reload(run_agent)
 

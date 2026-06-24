@@ -10,18 +10,18 @@ The skin engine isn't fully available in CI, so we test:
 import pytest
 
 from prostor_cli.cli_skin import (
-    hex_to_ansi,
-    luminance_from_hex,
-    detect_light_mode,
-    reset_light_mode_cache,
-    maybe_remap_for_light_mode,
-    install_skin_light_mode_hook,
-    SkinAwareAnsi,
-    b,
-    d,
-    accent_hex,
     _LIGHT_MODE_REMAP,
     _LIGHT_MODE_REMAP_UPPER,
+    SkinAwareAnsi,
+    accent_hex,
+    b,
+    d,
+    detect_light_mode,
+    hex_to_ansi,
+    install_skin_light_mode_hook,
+    luminance_from_hex,
+    maybe_remap_for_light_mode,
+    reset_light_mode_cache,
 )
 
 
@@ -174,7 +174,7 @@ class TestDetectLightMode:
         # Change env, but cache should still hold
         monkeypatch.setenv("PROSTOR_LIGHT", "false")
         second = detect_light_mode()
-        assert first == second == True
+        assert first == second is True
         # Now reset and re-detect
         reset_light_mode_cache()
         third = detect_light_mode()

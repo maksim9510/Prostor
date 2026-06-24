@@ -5,7 +5,7 @@ This transport owns format conversion and normalization — NOT client lifecycle
 streaming, or the _run_codex_stream() call path.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.transports.base import ProviderTransport
 from agent.transports.types import NormalizedResponse, ToolCall
@@ -22,13 +22,13 @@ class ResponsesApiTransport(ProviderTransport):
     # explicit ``issuer_kind`` kwarg, so reasoning items captured from a
     # response are stamped with the endpoint that minted them. Plain class
     # attribute default; mutated on the instance, not the class.
-    _last_issuer_kind: Optional[str] = None
+    _last_issuer_kind: str | None = None
 
     @property
     def api_mode(self) -> str:
         return "codex_responses"
 
-    def _resolve_issuer_kind(self, params: Dict[str, Any]) -> str:
+    def _resolve_issuer_kind(self, params: dict[str, Any]) -> str:
         """Classify the current Responses endpoint from transport params."""
         from agent.codex_responses_adapter import _classify_responses_issuer
         return _classify_responses_issuer(
@@ -38,7 +38,7 @@ class ResponsesApiTransport(ProviderTransport):
             base_url=params.get("base_url"),
         )
 
-    def convert_messages(self, messages: List[Dict[str, Any]], **kwargs) -> Any:
+    def convert_messages(self, messages: list[dict[str, Any]], **kwargs) -> Any:
         """Convert OpenAI chat messages to Responses API input items."""
         from agent.codex_responses_adapter import _chat_messages_to_responses_input
         issuer = self._resolve_issuer_kind(kwargs)
@@ -52,7 +52,7 @@ class ResponsesApiTransport(ProviderTransport):
             current_issuer_kind=issuer,
         )
 
-    def convert_tools(self, tools: List[Dict[str, Any]]) -> Any:
+    def convert_tools(self, tools: list[dict[str, Any]]) -> Any:
         """Convert OpenAI tool schemas to Responses API function definitions."""
         from agent.codex_responses_adapter import _responses_tools
         return _responses_tools(tools)
@@ -60,10 +60,10 @@ class ResponsesApiTransport(ProviderTransport):
     def build_kwargs(
         self,
         model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
         **params,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build Responses API kwargs.
 
         Calls convert_messages and convert_tools internally.
@@ -87,7 +87,6 @@ class ResponsesApiTransport(ProviderTransport):
             _chat_messages_to_responses_input,
             _responses_tools,
         )
-
         from run_agent import DEFAULT_AGENT_IDENTITY
 
         instructions = params.get("instructions", "")
@@ -287,7 +286,7 @@ class ResponsesApiTransport(ProviderTransport):
             cache_scope_id = str(session_id or "").strip()
             if cache_scope_id:
                 existing_extra_headers = kwargs.get("extra_headers")
-                merged_extra_headers: Dict[str, str] = {}
+                merged_extra_headers: dict[str, str] = {}
                 if isinstance(existing_extra_headers, dict):
                     merged_extra_headers.update(
                         {
@@ -306,7 +305,7 @@ class ResponsesApiTransport(ProviderTransport):
 
         if is_xai_responses and session_id:
             existing_extra_headers = kwargs.get("extra_headers")
-            merged_extra_headers: Dict[str, str] = {}
+            merged_extra_headers: dict[str, str] = {}
             if isinstance(existing_extra_headers, dict):
                 merged_extra_headers.update(
                     {
@@ -323,7 +322,7 @@ class ResponsesApiTransport(ProviderTransport):
             # Sent via extra_body (not the typed kwarg) so it survives openai
             # SDK builds whose Responses.stream() signature has dropped the field.
             existing_extra_body = kwargs.get("extra_body")
-            merged_extra_body: Dict[str, Any] = {}
+            merged_extra_body: dict[str, Any] = {}
             if isinstance(existing_extra_body, dict):
                 merged_extra_body.update(existing_extra_body)
             merged_extra_body.setdefault("prompt_cache_key", session_id)

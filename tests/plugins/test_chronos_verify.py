@@ -118,6 +118,7 @@ def test_tampered_signature_rejected(rsa_keys):
     """A token signed by a DIFFERENT key must fail signature verification."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
+
     from plugins.cron.chronos.verify import verify_nas_fire_token
 
     _, pub = rsa_keys

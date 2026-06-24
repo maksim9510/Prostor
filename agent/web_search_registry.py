@@ -34,14 +34,13 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Dict, List, Optional
 
 from agent.web_search_provider import WebSearchProvider
 
 logger = logging.getLogger(__name__)
 
 
-_providers: Dict[str, WebSearchProvider] = {}
+_providers: dict[str, WebSearchProvider] = {}
 _lock = threading.Lock()
 
 
@@ -75,14 +74,14 @@ def register_provider(provider: WebSearchProvider) -> None:
         )
 
 
-def list_providers() -> List[WebSearchProvider]:
+def list_providers() -> list[WebSearchProvider]:
     """Return all registered providers, sorted by name."""
     with _lock:
         items = list(_providers.values())
     return sorted(items, key=lambda p: p.name)
 
 
-def get_provider(name: str) -> Optional[WebSearchProvider]:
+def get_provider(name: str) -> WebSearchProvider | None:
     """Return the provider registered under *name*, or None."""
     if not isinstance(name, str):
         return None
@@ -95,7 +94,7 @@ def get_provider(name: str) -> Optional[WebSearchProvider]:
 # ---------------------------------------------------------------------------
 
 
-def _read_config_key(*path: str) -> Optional[str]:
+def _read_config_key(*path: str) -> str | None:
     """Resolve a dotted config key from ``config.yaml``. Returns None on miss."""
     try:
         from prostor_cli.config import load_config
@@ -130,7 +129,7 @@ _LEGACY_PREFERENCE = (
 )
 
 
-def _resolve(configured: Optional[str], *, capability: str) -> Optional[WebSearchProvider]:
+def _resolve(configured: str | None, *, capability: str) -> WebSearchProvider | None:
     """Resolve the active provider for a capability ("search" | "extract").
 
     Resolution rules (in order):
@@ -219,7 +218,7 @@ def _resolve(configured: Optional[str], *, capability: str) -> Optional[WebSearc
     return None
 
 
-def get_active_search_provider() -> Optional[WebSearchProvider]:
+def get_active_search_provider() -> WebSearchProvider | None:
     """Resolve the currently-active web search provider.
 
     Reads ``web.search_backend`` (preferred) or ``web.backend`` (shared
@@ -229,7 +228,7 @@ def get_active_search_provider() -> Optional[WebSearchProvider]:
     return _resolve(explicit, capability="search")
 
 
-def get_active_extract_provider() -> Optional[WebSearchProvider]:
+def get_active_extract_provider() -> WebSearchProvider | None:
     """Resolve the currently-active web extract provider.
 
     Reads ``web.extract_backend`` (preferred) or ``web.backend`` (shared

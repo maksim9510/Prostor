@@ -14,8 +14,8 @@ from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
-from utils import safe_json_loads
 from agent.tool_result_classification import file_mutation_result_landed
+from utils import safe_json_loads
 
 # ANSI escape codes for coloring tool failure indicators
 _RED = "\033[31m"
@@ -85,6 +85,8 @@ def _diff_file(): return _diff_ansi()["file"]
 def _diff_hunk(): return _diff_ansi()["hunk"]
 def _diff_minus(): return _diff_ansi()["minus"]
 def _diff_plus(): return _diff_ansi()["plus"]
+
+
 _MAX_INLINE_DIFF_FILES = 6
 _MAX_INLINE_DIFF_LINES = 80
 
@@ -94,6 +96,7 @@ class LocalEditSnapshot:
     """Pre-tool filesystem snapshot used to render diffs locally after writes."""
     paths: list[Path] = field(default_factory=list)
     before: dict[str, str | None] = field(default_factory=dict)
+
 
 # =========================================================================
 # Configurable tool preview length (0 = no limit)

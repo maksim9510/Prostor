@@ -10,7 +10,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from prostor_constants import get_config_path, get_skills_dir, is_termux
 
@@ -120,7 +120,7 @@ def yaml_load(content: str):
 # ── Frontmatter parsing ──────────────────────────────────────────────────
 
 
-def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
+def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     """Parse YAML frontmatter from a markdown string.
 
     Uses yaml with CSafeLoader for full YAML support (nested metadata, lists)
@@ -129,7 +129,7 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     Returns:
         (frontmatter_dict, remaining_body)
     """
-    frontmatter: Dict[str, Any] = {}
+    frontmatter: dict[str, Any] = {}
     body = content
 
     if not content.startswith("---"):
@@ -160,7 +160,7 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
 # ── Platform matching ─────────────────────────────────────────────────────
 
 
-def skill_matches_platform(frontmatter: Dict[str, Any]) -> bool:
+def skill_matches_platform(frontmatter: dict[str, Any]) -> bool:
     """Return True when the skill is compatible with the current OS.
 
     Skills declare platform requirements via a top-level ``platforms`` list
@@ -216,7 +216,7 @@ def skill_matches_platform(frontmatter: Dict[str, Any]) -> bool:
 # Detection is cached for the process lifetime via ``_ENV_DETECT_CACHE``.
 _KNOWN_ENVIRONMENTS = frozenset({"kanban", "docker", "s6"})
 
-_ENV_DETECT_CACHE: Dict[str, bool] = {}
+_ENV_DETECT_CACHE: dict[str, bool] = {}
 
 
 def _detect_environment(env: str) -> bool:
@@ -265,7 +265,7 @@ def _detect_environment(env: str) -> bool:
     return result
 
 
-def skill_matches_environment(frontmatter: Dict[str, Any]) -> bool:
+def skill_matches_environment(frontmatter: dict[str, Any]) -> bool:
     """Return True when the skill is relevant to the current runtime environment.
 
     Skills may declare an ``environments`` list in their YAML frontmatter::
@@ -307,7 +307,7 @@ def skill_matches_environment(frontmatter: Dict[str, Any]) -> bool:
 # ── Disabled skills ───────────────────────────────────────────────────────
 
 
-_RAW_CONFIG_CACHE: Dict[Tuple[str, int, int], Dict[str, Any]] = {}
+_RAW_CONFIG_CACHE: dict[tuple[str, int, int], dict[str, Any]] = {}
 
 
 def _raw_config_cache_clear() -> None:
@@ -315,7 +315,7 @@ def _raw_config_cache_clear() -> None:
     _RAW_CONFIG_CACHE.clear()
 
 
-def _load_raw_config() -> Dict[str, Any]:
+def _load_raw_config() -> dict[str, Any]:
     """Read config.yaml with a shared mtime+size keyed cache.
 
     This module intentionally avoids importing ``prostor_cli.config`` on the
@@ -350,7 +350,7 @@ def _load_raw_config() -> Dict[str, Any]:
     return parsed
 
 
-def get_disabled_skill_names(platform: str | None = None) -> Set[str]:
+def get_disabled_skill_names(platform: str | None = None) -> set[str]:
     """Read disabled skill names from config.yaml.
 
     Args:
@@ -388,7 +388,7 @@ def get_disabled_skill_names(platform: str | None = None) -> Set[str]:
     return global_disabled
 
 
-def _normalize_string_set(values) -> Set[str]:
+def _normalize_string_set(values) -> set[str]:
     if values is None:
         return set()
     if isinstance(values, str):
@@ -404,7 +404,7 @@ def _normalize_string_set(values) -> Set[str]:
 # which becomes the dominant cost of ``prostor`` startup when ~120 skills
 # each trigger a category lookup during banner construction (10+ seconds
 # of pure waste).
-_EXTERNAL_DIRS_CACHE: Dict[Tuple[str, int], List[Path]] = {}
+_EXTERNAL_DIRS_CACHE: dict[tuple[str, int], list[Path]] = {}
 
 
 def _external_dirs_cache_clear() -> None:
@@ -413,7 +413,7 @@ def _external_dirs_cache_clear() -> None:
     _raw_config_cache_clear()
 
 
-def get_external_skills_dirs() -> List[Path]:
+def get_external_skills_dirs() -> list[Path]:
     """Read ``skills.external_dirs`` from config.yaml and return validated paths.
 
     Each entry is expanded (``~`` and ``${VAR}``) and resolved to an absolute
@@ -433,7 +433,7 @@ def get_external_skills_dirs() -> List[Path]:
     # the full YAML parse, so the fast path is nearly free.
     try:
         stat = config_path.stat()
-        cache_key: Tuple[str, int] = (str(config_path), stat.st_mtime_ns)
+        cache_key: tuple[str, int] = (str(config_path), stat.st_mtime_ns)
     except OSError:
         cache_key = None  # type: ignore[assignment]
 
@@ -453,7 +453,7 @@ def get_external_skills_dirs() -> List[Path]:
 
     raw_dirs = skills_cfg.get("external_dirs")
     if not raw_dirs:
-        result: List[Path] = []
+        result: list[Path] = []
         if cache_key is not None:
             _EXTERNAL_DIRS_CACHE[cache_key] = list(result)
         return result
@@ -466,7 +466,7 @@ def get_external_skills_dirs() -> List[Path]:
 
     prostor_home = get_prostor_home()
     local_skills = get_skills_dir().resolve()
-    seen: Set[Path] = set()
+    seen: set[Path] = set()
     result = []
 
     for entry in raw_dirs:
@@ -496,7 +496,7 @@ def get_external_skills_dirs() -> List[Path]:
     return result
 
 
-def get_all_skills_dirs() -> List[Path]:
+def get_all_skills_dirs() -> list[Path]:
     """Return all skill directories: local ``~/.prostor/skills/`` first, then external.
 
     The local dir is always first (and always included even if it doesn't exist
@@ -510,7 +510,7 @@ def get_all_skills_dirs() -> List[Path]:
 # ── Condition extraction ──────────────────────────────────────────────────
 
 
-def extract_skill_conditions(frontmatter: Dict[str, Any]) -> Dict[str, List]:
+def extract_skill_conditions(frontmatter: dict[str, Any]) -> dict[str, list]:
     """Extract conditional activation fields from parsed frontmatter."""
     metadata = frontmatter.get("metadata")
     # Handle cases where metadata is not a dict (e.g., a string from malformed YAML)
@@ -530,7 +530,7 @@ def extract_skill_conditions(frontmatter: Dict[str, Any]) -> Dict[str, List]:
 # ── Skill config extraction ───────────────────────────────────────────────
 
 
-def extract_skill_config_vars(frontmatter: Dict[str, Any]) -> List[Dict[str, Any]]:
+def extract_skill_config_vars(frontmatter: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract config variable declarations from parsed frontmatter.
 
     Skills declare config.yaml settings they need via::
@@ -560,7 +560,7 @@ def extract_skill_config_vars(frontmatter: Dict[str, Any]) -> List[Dict[str, Any
     if not isinstance(raw, list):
         return []
 
-    result: List[Dict[str, Any]] = []
+    result: list[dict[str, Any]] = []
     seen: set = set()
     for item in raw:
         if not isinstance(item, dict):
@@ -572,7 +572,7 @@ def extract_skill_config_vars(frontmatter: Dict[str, Any]) -> List[Dict[str, Any
         desc = str(item.get("description", "")).strip()
         if not desc:
             continue
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "key": key,
             "description": desc,
         }
@@ -589,7 +589,7 @@ def extract_skill_config_vars(frontmatter: Dict[str, Any]) -> List[Dict[str, Any
     return result
 
 
-def discover_all_skill_config_vars() -> List[Dict[str, Any]]:
+def discover_all_skill_config_vars() -> list[dict[str, Any]]:
     """Scan all enabled skills and collect their config variable declarations.
 
     Walks every skills directory, parses each SKILL.md frontmatter, and returns
@@ -598,7 +598,7 @@ def discover_all_skill_config_vars() -> List[Dict[str, Any]]:
 
     Disabled and platform-incompatible skills are excluded.
     """
-    all_vars: List[Dict[str, Any]] = []
+    all_vars: list[dict[str, Any]] = []
     seen_keys: set = set()
 
     disabled = get_disabled_skill_names()
@@ -634,7 +634,7 @@ def discover_all_skill_config_vars() -> List[Dict[str, Any]]:
 SKILL_CONFIG_PREFIX = "skills.config"
 
 
-def _resolve_dotpath(config: Dict[str, Any], dotted_key: str):
+def _resolve_dotpath(config: dict[str, Any], dotted_key: str):
     """Walk a nested dict following a dotted key.  Returns None if any part is missing."""
     parts = dotted_key.split(".")
     current = config
@@ -647,8 +647,8 @@ def _resolve_dotpath(config: Dict[str, Any], dotted_key: str):
 
 
 def resolve_skill_config_values(
-    config_vars: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    config_vars: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Resolve current values for skill config vars from config.yaml.
 
     Skill config is stored under ``skills.config.<key>`` in config.yaml.
@@ -658,7 +658,7 @@ def resolve_skill_config_values(
     """
     config = _load_raw_config()
 
-    resolved: Dict[str, Any] = {}
+    resolved: dict[str, Any] = {}
     for var in config_vars:
         logical_key = var["key"]
         storage_key = f"{SKILL_CONFIG_PREFIX}.{logical_key}"
@@ -679,7 +679,7 @@ def resolve_skill_config_values(
 # ── Description extraction ────────────────────────────────────────────────
 
 
-def extract_skill_description(frontmatter: Dict[str, Any]) -> str:
+def extract_skill_description(frontmatter: dict[str, Any]) -> str:
     """Extract a truncated description from parsed frontmatter."""
     raw_desc = frontmatter.get("description", "")
     if not raw_desc:
@@ -722,7 +722,7 @@ def iter_skill_index_files(skills_dir: Path, filename: str):
 _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
-def parse_qualified_name(name: str) -> Tuple[Optional[str], str]:
+def parse_qualified_name(name: str) -> tuple[str | None, str]:
     """Split ``'namespace:skill-name'`` into ``(namespace, bare_name)``.
 
     Returns ``(None, name)`` when there is no ``':'``.
@@ -732,7 +732,7 @@ def parse_qualified_name(name: str) -> Tuple[Optional[str], str]:
     return tuple(name.split(":", 1))  # type: ignore[return-value]
 
 
-def is_valid_namespace(candidate: Optional[str]) -> bool:
+def is_valid_namespace(candidate: str | None) -> bool:
     """Check whether *candidate* is a valid namespace (``[a-zA-Z0-9_-]+``)."""
     if not candidate:
         return False

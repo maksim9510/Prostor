@@ -237,6 +237,7 @@ class TestArgparse:
 
     def test_reconfigure_flag_reaches_cmd_setup(self, monkeypatch):
         import sys
+
         from prostor_cli.main import main
 
         captured = {}
@@ -254,6 +255,7 @@ class TestArgparse:
 
     def test_quick_flag_reaches_cmd_setup(self, monkeypatch):
         import sys
+
         from prostor_cli.main import main
 
         captured = {}
@@ -271,6 +273,7 @@ class TestArgparse:
 
     def test_bare_setup_has_both_flags_false(self, monkeypatch):
         import sys
+
         from prostor_cli.main import main
 
         captured = {}

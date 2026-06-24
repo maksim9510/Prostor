@@ -13,7 +13,6 @@ import pytest
 
 from gateway.status import looks_like_gateway_command_line as matches
 
-
 ACCEPT = [
     "pythonw.exe -m prostor_cli.main gateway run",
     r"C:\Users\me\prostor\venv\Scripts\pythonw.exe -m prostor_cli.main gateway run",

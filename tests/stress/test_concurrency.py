@@ -26,7 +26,6 @@ import tempfile
 import time
 from pathlib import Path
 
-
 NUM_WORKERS = 5
 NUM_TASKS = 100
 WORKER_TIMEOUT_S = 60

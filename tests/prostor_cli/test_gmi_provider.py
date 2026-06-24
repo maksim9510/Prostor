@@ -16,17 +16,17 @@ if "dotenv" not in sys.modules:
     fake_dotenv.load_dotenv = lambda *args, **kwargs: None
     sys.modules["dotenv"] = fake_dotenv
 
+from agent.auxiliary_client import resolve_provider_client
+from agent.model_metadata import get_model_context_length
 from prostor_cli.auth import resolve_provider
 from prostor_cli.config import load_config
 from prostor_cli.models import (
-    CANONICAL_PROVIDERS,
     _PROVIDER_LABELS,
     _PROVIDER_MODELS,
+    CANONICAL_PROVIDERS,
     normalize_provider,
     provider_model_ids,
 )
-from agent.auxiliary_client import resolve_provider_client
-from agent.model_metadata import get_model_context_length
 
 
 @pytest.fixture(autouse=True)
@@ -355,6 +355,7 @@ class TestGmiMainFlow:
             _model_flow_api_key_provider(load_config(), "gmi", "old-model")
 
         import yaml
+
         from prostor_constants import get_prostor_home
 
         config = yaml.safe_load((get_prostor_home() / "config.yaml").read_text()) or {}

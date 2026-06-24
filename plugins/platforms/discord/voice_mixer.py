@@ -44,7 +44,7 @@ the mixer's output cannot echo back into transcription.
 
 import logging
 import threading
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # numpy is an optional ("voice" extra) dep — never import at runtime top-level
     import numpy as np
@@ -63,6 +63,7 @@ def _require_numpy():
     """
     import numpy as np  # noqa: PLC0415 — intentional lazy import
     return np
+
 
 # Discord-native frame geometry (matches discord.opus.Encoder).
 SAMPLE_RATE = 48000
@@ -116,7 +117,7 @@ class MixerChild:
     def finished(self) -> bool:
         return self._finished
 
-    def read_frame(self) -> "Optional[np.ndarray]":
+    def read_frame(self) -> np.ndarray | None:
         """Return the next 20 ms frame as an int16 ndarray, or None if done."""
         if self._finished:
             return None
@@ -167,8 +168,8 @@ class VoiceMixer:
         duck_release_ms: int = 400,
     ):
         self._lock = threading.Lock()
-        self._ambient: Optional[MixerChild] = None
-        self._speech: List[MixerChild] = []
+        self._ambient: MixerChild | None = None
+        self._speech: list[MixerChild] = []
         self._ambient_gain = float(ambient_gain)
         self._duck_gain = float(duck_gain)
         self._speech_gain = float(speech_gain)
@@ -185,7 +186,7 @@ class VoiceMixer:
     # Ambient (idle / "thinking") bed
     # ------------------------------------------------------------------
 
-    def set_ambient(self, pcm: Optional[bytes], *, gain: Optional[float] = None) -> None:
+    def set_ambient(self, pcm: bytes | None, *, gain: float | None = None) -> None:
         """Install (or clear, with ``pcm=None``) the looping ambient bed."""
         with self._lock:
             if gain is not None:
@@ -205,7 +206,7 @@ class VoiceMixer:
     # Speech (TTS replies, verbal acks) layered over the ambient bed
     # ------------------------------------------------------------------
 
-    def play_speech(self, pcm: bytes, *, gain: Optional[float] = None,
+    def play_speech(self, pcm: bytes, *, gain: float | None = None,
                     fade_in_ms: int = 40) -> None:
         """Layer a one-shot speech clip over the ambient bed (ducks ambient)."""
         if not pcm:
@@ -253,11 +254,11 @@ class VoiceMixer:
                 return SILENCE_FRAME
 
             np = _require_numpy()
-            acc: "Optional[np.ndarray]" = None
+            acc: np.ndarray | None = None
 
             # Speech children (drop exhausted ones; release duck when last ends)
             if self._speech:
-                still_live: List[MixerChild] = []
+                still_live: list[MixerChild] = []
                 for child in self._speech:
                     frame = child.read_frame()
                     if frame is None:
@@ -300,7 +301,7 @@ class VoiceMixer:
 # PCM helpers
 # ----------------------------------------------------------------------
 
-def decode_to_pcm(path: str, *, timeout: float = 30.0) -> Optional[bytes]:
+def decode_to_pcm(path: str, *, timeout: float = 30.0) -> bytes | None:
     """Decode any audio file to 48 kHz / stereo / s16le PCM via ffmpeg.
 
     Returns the raw PCM bytes, or None on failure.  ffmpeg is already a hard

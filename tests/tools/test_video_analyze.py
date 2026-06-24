@@ -4,16 +4,14 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 from tools.vision_tools import (
-    _detect_video_mime_type,
-    _video_to_base64_data_url,
-    _handle_video_analyze,
     _MAX_VIDEO_BASE64_BYTES,
-    video_analyze_tool,
     VIDEO_ANALYZE_SCHEMA,
+    _detect_video_mime_type,
+    _handle_video_analyze,
+    _video_to_base64_data_url,
+    video_analyze_tool,
 )
-
 
 # ---------------------------------------------------------------------------
 # _detect_video_mime_type

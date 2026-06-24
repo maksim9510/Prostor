@@ -11,10 +11,10 @@ Covers:
 
 import os
 
-
 # ---------------------------------------------------------------------------
 # OLLAMA_API_KEY credential resolution
 # ---------------------------------------------------------------------------
+
 
 class TestOllamaCloudCredentials:
     """runtime_provider should use OLLAMA_API_KEY for ollama.com endpoints."""
@@ -102,8 +102,8 @@ class TestDirectAliases:
 
     def test_direct_alias_resolved_before_catalog(self, monkeypatch):
         """Direct aliases take priority over models.dev catalog lookup."""
-        from prostor_cli.model_switch import DirectAlias, resolve_alias
         import prostor_cli.model_switch as ms
+        from prostor_cli.model_switch import DirectAlias, resolve_alias
 
         test_aliases = {
             "glm": DirectAlias("glm-4.7", "custom", "https://ollama.com/v1"),
@@ -119,8 +119,8 @@ class TestDirectAliases:
 
     def test_reverse_lookup_by_model_id(self, monkeypatch):
         """Full model names (e.g. 'kimi-k2.5') match via reverse lookup."""
-        from prostor_cli.model_switch import DirectAlias, resolve_alias
         import prostor_cli.model_switch as ms
+        from prostor_cli.model_switch import DirectAlias, resolve_alias
 
         test_aliases = {
             "kimi": DirectAlias("kimi-k2.5", "custom", "https://ollama.com/v1"),
@@ -137,8 +137,8 @@ class TestDirectAliases:
 
     def test_reverse_lookup_case_insensitive(self, monkeypatch):
         """Reverse lookup is case-insensitive."""
-        from prostor_cli.model_switch import DirectAlias, resolve_alias
         import prostor_cli.model_switch as ms
+        from prostor_cli.model_switch import DirectAlias, resolve_alias
 
         test_aliases = {
             "glm": DirectAlias("GLM-4.7", "custom", "https://ollama.com/v1"),
@@ -416,8 +416,8 @@ class TestResolveAliasEdgeCases:
 
     def test_whitespace_input_handled(self, monkeypatch):
         """Input with whitespace is stripped before lookup."""
-        from prostor_cli.model_switch import DirectAlias
         import prostor_cli.model_switch as ms
+        from prostor_cli.model_switch import DirectAlias
 
         test_aliases = {
             "myalias": DirectAlias("my-model", "custom", "https://example.com"),
@@ -438,8 +438,8 @@ class TestSwitchModelDirectAliasOverride:
 
     def test_switch_model_uses_alias_base_url(self, monkeypatch):
         """When resolved alias has base_url, switch_model should use it."""
-        from prostor_cli.model_switch import DirectAlias
         import prostor_cli.model_switch as ms
+        from prostor_cli.model_switch import DirectAlias
 
         test_aliases = {
             "qwen": DirectAlias("qwen3.5:397b", "custom", "https://ollama.com/v1"),
@@ -466,8 +466,8 @@ class TestSwitchModelDirectAliasOverride:
 
     def test_switch_model_alias_no_api_key_gets_default(self, monkeypatch):
         """When alias has base_url but no api_key, 'no-key-required' is set."""
-        from prostor_cli.model_switch import DirectAlias
         import prostor_cli.model_switch as ms
+        from prostor_cli.model_switch import DirectAlias
 
         test_aliases = {
             "local": DirectAlias("local-model", "custom", "http://localhost:11434/v1"),

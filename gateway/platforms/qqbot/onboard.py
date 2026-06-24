@@ -18,7 +18,6 @@ from __future__ import annotations
 import logging
 import time
 from enum import IntEnum
-from typing import Optional, Tuple
 from urllib.parse import quote
 
 from .constants import (
@@ -81,7 +80,7 @@ def _render_qr(url: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _create_bind_task(timeout: float = ONBOARD_API_TIMEOUT) -> Tuple[str, str]:
+def _create_bind_task(timeout: float = ONBOARD_API_TIMEOUT) -> tuple[str, str]:
     """Create a bind task and return *(task_id, aes_key_base64)*.
 
     Raises:
@@ -111,7 +110,7 @@ def _create_bind_task(timeout: float = ONBOARD_API_TIMEOUT) -> Tuple[str, str]:
 def _poll_bind_result(
     task_id: str,
     timeout: float = ONBOARD_API_TIMEOUT,
-) -> Tuple[BindStatus, str, str, str]:
+) -> tuple[BindStatus, str, str, str]:
     """Poll the bind result for *task_id*.
 
     Returns:
@@ -153,7 +152,7 @@ def build_connect_url(task_id: str) -> str:
 _MAX_REFRESHES = 3
 
 
-def qr_register(timeout_seconds: int = 600) -> Optional[dict]:
+def qr_register(timeout_seconds: int = 600) -> dict | None:
     """Run the QQBot scan-to-configure QR registration flow.
 
     Mirrors ``feishu.qr_register()``: handles create → display → poll →

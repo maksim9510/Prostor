@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from prostor_cli.main import cmd_update, PROJECT_ROOT
+from prostor_cli.main import PROJECT_ROOT, cmd_update
 
 
 def _make_run_side_effect(branch="main", verify_ok=True, commit_count="0"):

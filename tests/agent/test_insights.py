@@ -1,18 +1,21 @@
 """Tests for agent/insights.py — InsightsEngine analytics and reporting."""
 
 import time
+
 import pytest
 
-from prostor_state import SessionDB
 from agent.insights import (
     InsightsEngine,
-    _estimate_cost,
     _bar_chart,
+    _estimate_cost,
 )
 from agent.usage_pricing import (
     format_duration_compact as _format_duration,
+)
+from agent.usage_pricing import (
     has_known_pricing as _has_known_pricing,
 )
+from prostor_state import SessionDB
 
 
 @pytest.fixture()

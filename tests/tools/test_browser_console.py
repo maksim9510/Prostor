@@ -3,7 +3,7 @@
 import json
 import os
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -133,8 +133,8 @@ class TestBrowserConsoleToolsetWiring:
         assert "browser_console" in _LEGACY_TOOLSET_MAP["browser_tools"]
 
     def test_in_registry(self):
-        from tools.registry import registry
         from tools import browser_tool  # noqa: F401
+        from tools.registry import registry
         assert "browser_console" in registry._tools
 
 

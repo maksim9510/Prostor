@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILL_MD = REPO_ROOT / "skills" / "social-media" / "xurl" / "SKILL.md"
 DOC_MD = (

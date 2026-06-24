@@ -8,17 +8,17 @@ deadline timeouts. These tests pin all of that without spawning real codex.
 from __future__ import annotations
 
 import time
+from typing import Any
 from unittest.mock import patch
-from typing import Any, Optional
 
 import pytest
 
 import agent.transports.codex_app_server_session as session_mod
 from agent.transports.codex_app_server_session import (
     CodexAppServerSession,
-    _ServerRequestRouting,
     _approval_choice_to_codex_decision,
     _coerce_turn_input_text,
+    _ServerRequestRouting,
 )
 
 
@@ -45,7 +45,7 @@ class FakeClient:
         return {"userAgent": "fake/0.0.0", "codexHome": "/tmp",
                 "platformOs": "linux", "platformFamily": "unix"}
 
-    def request(self, method: str, params: Optional[dict] = None, timeout: float = 30.0):
+    def request(self, method: str, params: dict | None = None, timeout: float = 30.0):
         self.requests.append((method, params or {}))
         if self._request_handler is not None:
             return self._request_handler(method, params or {})

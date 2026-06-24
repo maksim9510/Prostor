@@ -1,15 +1,16 @@
 import asyncio
-import pytest
-
 from pathlib import Path
 from types import SimpleNamespace
-from prostor_cli import kanban_db as kb
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from prostor_cli import kanban_db as kb
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def kanban_home(tmp_path, monkeypatch):
@@ -32,8 +33,8 @@ async def test_notifier_unsubs_after_completed_event(kanban_home):
     Subscription should be remove after completed event
     """
     import prostor_cli.kanban_db as kb
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
 
     conn = kb.connect()
     try:
@@ -91,8 +92,8 @@ async def test_notifier_unsubs_after_abnormal_events(kind, kanban_home):
     TERMINAL_KINDS in gateway/run.py and PR #21398.
     """
     import prostor_cli.kanban_db as kb
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
 
     conn = kb.connect()
 
@@ -155,8 +156,8 @@ async def test_notifier_second_blocked_delivers(kanban_home):
     After the first blocked, should receive second blocked notification.
     """
     import prostor_cli.kanban_db as kb
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -246,8 +247,8 @@ async def test_notifier_second_blocked_delivers(kanban_home):
 async def test_notifier_does_not_call_init_db(kanban_home):
     """Notifier watcher path must not invoke `_kb.init_db` (issue #21378)."""
     import prostor_cli.kanban_db as kb
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -330,8 +331,8 @@ def test_dispatcher_tick_does_not_call_init_db(kanban_home, monkeypatch):
 async def test_notifier_skips_subscription_owned_by_other_profile(kanban_home):
     """Each gateway keeps its watcher on, but only the subscribing profile claims."""
     import prostor_cli.kanban_db as kb
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
 
     conn = kb.connect()
     try:
@@ -386,8 +387,8 @@ async def test_notifier_skips_subscription_owned_by_other_profile(kanban_home):
 async def test_notifier_delivers_subscription_owned_by_current_profile(kanban_home):
     """The gateway for the profile that created/subscribed the task reports it."""
     import prostor_cli.kanban_db as kb
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
 
     conn = kb.connect()
     try:
@@ -445,8 +446,8 @@ async def test_gateway_create_autosubscribes_on_explicit_board(kanban_home):
     flag appears before the subcommand, and the subscription must land in
     that board's DB rather than the ambient/default board.
     """
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
 
     kb.create_board("projx")
 
@@ -494,8 +495,8 @@ async def test_notifier_uploads_artifacts_on_completion(kanban_home, tmp_path, m
     gateway/run.py._deliver_kanban_artifacts.
     """
     import prostor_cli.kanban_db as kb
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
     from tools import kanban_tools as kt
 
     # ``_deliver_kanban_artifacts`` routes candidates through
@@ -588,8 +589,8 @@ async def test_notifier_artifact_delivery_skips_missing_files(kanban_home, tmp_p
     referenced by name only. The notifier must not crash and must still
     deliver any artifacts that do exist."""
     import prostor_cli.kanban_db as kb
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
     from tools import kanban_tools as kt
 
     # Allow ``tmp_path`` through the media-delivery safety filter. See the

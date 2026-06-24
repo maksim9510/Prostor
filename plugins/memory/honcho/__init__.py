@@ -20,7 +20,7 @@ import logging
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.memory_manager import sanitize_context
 from agent.memory_provider import MemoryProvider
@@ -197,14 +197,14 @@ class HonchoMemoryProvider(MemoryProvider):
         self._session_key = ""
         self._prefetch_result = ""
         self._prefetch_lock = threading.Lock()
-        self._prefetch_thread: Optional[threading.Thread] = None
-        self._sync_thread: Optional[threading.Thread] = None
+        self._prefetch_thread: threading.Thread | None = None
+        self._sync_thread: threading.Thread | None = None
 
         # B1: recall_mode — set during initialize from config
         self._recall_mode = "hybrid"  # "context", "tools", or "hybrid"
 
         # Base context cache — refreshed on context_cadence, not frozen
-        self._base_context_cache: Optional[str] = None
+        self._base_context_cache: str | None = None
         self._base_context_lock = threading.Lock()
 
         # B5: Cost-awareness turn counting and cadence
@@ -226,9 +226,9 @@ class HonchoMemoryProvider(MemoryProvider):
 
         # Port #1957: lazy session init for tools-only mode
         self._session_initialized = False
-        self._lazy_init_kwargs: Optional[dict] = None
-        self._lazy_init_session_id: Optional[str] = None
-        self._init_thread: Optional[threading.Thread] = None
+        self._lazy_init_kwargs: dict | None = None
+        self._lazy_init_session_id: str | None = None
+        self._init_thread: threading.Thread | None = None
         self._init_lock = threading.Lock()
         self._init_error = ""
 
@@ -252,7 +252,6 @@ class HonchoMemoryProvider(MemoryProvider):
     def save_config(self, values, prostor_home):
         """Write config to $PROSTOR_HOME/honcho.json (Honcho SDK native format)."""
         import json
-        import os
         from pathlib import Path
         config_path = Path(prostor_home) / "honcho.json"
         existing = {}
@@ -274,6 +273,7 @@ class HonchoMemoryProvider(MemoryProvider):
     def post_setup(self, prostor_home: str, config: dict) -> None:
         """Run the full Honcho setup wizard after provider selection."""
         import types
+
         from plugins.memory.honcho.cli import cmd_setup
         cmd_setup(types.SimpleNamespace())
 
@@ -1141,7 +1141,7 @@ class HonchoMemoryProvider(MemoryProvider):
 
         return chunks
 
-    def _empty_profile_hint(self, peer: str) -> Dict[str, Any]:
+    def _empty_profile_hint(self, peer: str) -> dict[str, Any]:
         """Build a diagnostic hint when honcho_profile returns an empty card.
 
         A literal "No profile facts available yet." tells the model nothing
@@ -1157,7 +1157,7 @@ class HonchoMemoryProvider(MemoryProvider):
              (honcho-ai server < 3.x)
         """
         cfg = self._config
-        reasons: List[str] = []
+        reasons: list[str] = []
 
         if cfg is not None:
             if peer == "user":
@@ -1239,7 +1239,7 @@ class HonchoMemoryProvider(MemoryProvider):
         action: str,
         target: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Mirror built-in user profile writes as Honcho conclusions.
 
@@ -1267,7 +1267,7 @@ class HonchoMemoryProvider(MemoryProvider):
         t = threading.Thread(target=_write, daemon=True, name="honcho-memwrite")
         t.start()
 
-    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+    def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         """Flush all pending messages to Honcho on session end."""
         if self._cron_skipped:
             return
@@ -1283,7 +1283,7 @@ class HonchoMemoryProvider(MemoryProvider):
         except Exception as e:
             logger.debug("Honcho session-end flush failed: %s", e)
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         """Return tool schemas, respecting recall_mode.
 
         B1: context-only mode hides all tools.

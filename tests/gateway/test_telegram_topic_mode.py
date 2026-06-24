@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from prostor_state import SessionDB
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent
 from gateway.session import SessionEntry, SessionSource, build_session_key
+from prostor_state import SessionDB
 
 
 def _make_source(*, thread_id: str | None = None) -> SessionSource:
@@ -1382,8 +1382,8 @@ def test_session_split_restores_source_thread_id_from_binding(tmp_path):
     must look up the binding by the new session_id and restore thread_id on
     source so that _thread_metadata_for_source returns the correct thread.
     """
-    from gateway.run import GatewayRunner
     from gateway.config import Platform
+    from gateway.run import GatewayRunner
 
     db = SessionDB(db_path=tmp_path / "state.db")
     db.enable_telegram_topic_mode(chat_id="208214988", user_id="208214988")

@@ -19,7 +19,6 @@ appear in ``/model`` without a Prostor release.
 
 from unittest.mock import patch
 
-
 from prostor_cli.models import (
     _MODELS_DEV_PREFERRED,
     _PROVIDER_MODELS,

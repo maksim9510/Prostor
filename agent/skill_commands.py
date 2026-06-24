@@ -9,19 +9,23 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-from prostor_constants import display_prostor_home
 from agent.skill_preprocessing import (
     expand_inline_shell as _expand_inline_shell,
+)
+from agent.skill_preprocessing import (
     load_skills_config as _load_skills_config,
+)
+from agent.skill_preprocessing import (
     substitute_template_vars as _substitute_template_vars,
 )
+from prostor_constants import display_prostor_home
 
 logger = logging.getLogger(__name__)
 
-_skill_commands: Dict[str, Dict[str, Any]] = {}
-_skill_commands_platform: Optional[str] = None
+_skill_commands: dict[str, dict[str, Any]] = {}
+_skill_commands_platform: str | None = None
 # Patterns for sanitizing skill names into clean hyphen-separated slugs.
 _SKILL_INVALID_CHARS = re.compile(r"[^a-z0-9-]")
 _SKILL_MULTI_HYPHEN = re.compile(r"-{2,}")
@@ -55,7 +59,7 @@ _BUNDLE_USER_INSTRUCTION = "\nUser instruction: "
 _BUNDLE_FIRST_SKILL_BLOCK = "\n\n[Loaded as part of the "
 
 
-def extract_user_instruction_from_skill_message(content: Any) -> Optional[str]:
+def extract_user_instruction_from_skill_message(content: Any) -> str | None:
     """Recover the user's instruction from a slash-skill-expanded turn.
 
     Returns:
@@ -82,7 +86,7 @@ def extract_user_instruction_from_skill_message(content: Any) -> Optional[str]:
     return None
 
 
-def _extract_single_skill_user_instruction(message: str) -> Optional[str]:
+def _extract_single_skill_user_instruction(message: str) -> str | None:
     # Single-skill format appends the user instruction after the skill body, so
     # the last occurrence is the user-provided one; the body may quote this text.
     marker_idx = message.rfind(_SINGLE_SKILL_INSTRUCTION)
@@ -97,7 +101,7 @@ def _extract_single_skill_user_instruction(message: str) -> Optional[str]:
     return instruction or None
 
 
-def _extract_bundle_user_instruction(message: str) -> Optional[str]:
+def _extract_bundle_user_instruction(message: str) -> str | None:
     # Bundle format puts the user instruction before the loaded skills, so the
     # first occurrence is the user-provided one.
     marker_idx = message.find(_BUNDLE_USER_INSTRUCTION)
@@ -112,7 +116,7 @@ def _extract_bundle_user_instruction(message: str) -> Optional[str]:
     return instruction or None
 
 
-def _resolve_skill_commands_platform() -> Optional[str]:
+def _resolve_skill_commands_platform() -> str | None:
     """Return the current platform scope used for disabled-skill filtering.
 
     Used to detect when the active platform has shifted so
@@ -135,6 +139,7 @@ def _resolve_skill_commands_platform() -> Optional[str]:
         resolved_platform = os.getenv("PROSTOR_PLATFORM")
     return resolved_platform or None
 
+
 def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tuple[dict[str, Any], Path | None, str] | None:
     """Load a skill by name/path and return (loaded_payload, skill_dir, display_name)."""
     raw_identifier = (skill_identifier or "").strip()
@@ -142,8 +147,8 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
         return None
 
     try:
-        from tools.skills_tool import SKILLS_DIR, skill_view
         from agent.skill_utils import get_external_skills_dirs
+        from tools.skills_tool import SKILLS_DIR, skill_view
 
         identifier_path = Path(raw_identifier).expanduser()
         if identifier_path.is_absolute():
@@ -345,7 +350,7 @@ def _build_skill_message(
     return "\n".join(parts)
 
 
-def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
+def scan_skill_commands() -> dict[str, dict[str, Any]]:
     """Scan ~/.prostor/skills/ and return a mapping of /command -> skill info.
 
     Returns:
@@ -355,8 +360,14 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
     _skill_commands_platform = _resolve_skill_commands_platform()
     _skill_commands = {}
     try:
-        from tools.skills_tool import SKILLS_DIR, _parse_frontmatter, skill_matches_platform, skill_matches_environment, _get_disabled_skill_names
         from agent.skill_utils import get_external_skills_dirs, iter_skill_index_files
+        from tools.skills_tool import (
+            SKILLS_DIR,
+            _get_disabled_skill_names,
+            _parse_frontmatter,
+            skill_matches_environment,
+            skill_matches_platform,
+        )
         disabled = _get_disabled_skill_names()
         seen_names: set = set()
 
@@ -415,7 +426,7 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
     return _skill_commands
 
 
-def get_skill_commands() -> Dict[str, Dict[str, Any]]:
+def get_skill_commands() -> dict[str, dict[str, Any]]:
     """Return the current skill commands mapping (scan first if empty).
 
     Rescans when the active platform scope changes (e.g. a gateway
@@ -430,7 +441,7 @@ def get_skill_commands() -> Dict[str, Dict[str, Any]]:
     return _skill_commands
 
 
-def reload_skills() -> Dict[str, Any]:
+def reload_skills() -> dict[str, Any]:
     """Re-scan the skills directory and return a diff of what changed.
 
     Rescans ``~/.prostor/skills/`` and any ``skills.external_dirs`` so the
@@ -462,8 +473,8 @@ def reload_skills() -> Dict[str, Any]:
     # slash-command cache. Using dicts lets the post-rescan diff carry
     # descriptions for newly-visible or just-removed skills without a
     # second disk walk.
-    def _snapshot(cmds: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
-        out: Dict[str, str] = {}
+    def _snapshot(cmds: dict[str, dict[str, Any]]) -> dict[str, str]:
+        out: dict[str, str] = {}
         for slash_key, info in cmds.items():
             bare = slash_key.lstrip("/")
             out[bare] = (info or {}).get("description") or ""
@@ -495,7 +506,7 @@ def reload_skills() -> Dict[str, Any]:
     }
 
 
-def resolve_skill_command_key(command: str) -> Optional[str]:
+def resolve_skill_command_key(command: str) -> str | None:
     """Resolve a user-typed /command to its canonical skill_cmds key.
 
     Skills are always stored with hyphens — ``scan_skill_commands`` normalizes
@@ -519,7 +530,7 @@ def build_skill_invocation_message(
     user_instruction: str = "",
     task_id: str | None = None,
     runtime_note: str = "",
-) -> Optional[str]:
+) -> str | None:
     """Build the user message content for a skill slash command invocation.
 
     Args:

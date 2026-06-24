@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # _resolve_client_cert helper
 # ---------------------------------------------------------------------------
@@ -419,7 +418,7 @@ class TestSSEClientCert:
                         }),
                         timeout=2.0,
                     )
-                except (asyncio.TimeoutError, StopAsyncIteration, Exception):
+                except (TimeoutError, StopAsyncIteration, Exception):
                     pass
 
         asyncio.run(drive())
@@ -450,7 +449,7 @@ class TestSSEClientCert:
                         }),
                         timeout=2.0,
                     )
-                except (asyncio.TimeoutError, StopAsyncIteration, Exception):
+                except (TimeoutError, StopAsyncIteration, Exception):
                     pass
 
         asyncio.run(drive())
@@ -499,7 +498,7 @@ class TestSSEClientCert:
                         }),
                         timeout=2.0,
                     )
-                except (asyncio.TimeoutError, StopAsyncIteration, Exception):
+                except (TimeoutError, StopAsyncIteration, Exception):
                     pass
 
         asyncio.run(drive())

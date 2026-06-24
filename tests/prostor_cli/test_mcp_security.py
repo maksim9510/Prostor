@@ -187,6 +187,7 @@ def test_migration_disables_existing_dangerous_entry(tmp_path):
 
 def test_dashboard_mcp_add_rejects_dangerous_entry():
     from fastapi.testclient import TestClient
+
     from prostor_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN, app
 
     client = TestClient(app)

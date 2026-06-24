@@ -13,10 +13,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from prostor_cli.config import get_prostor_home, get_env_path, get_project_root, load_config
+from agent.skill_utils import is_excluded_skill_path
+from prostor_cli.config import get_env_path, get_project_root, get_prostor_home, load_config
 from prostor_cli.env_loader import load_prostor_dotenv
 from prostor_constants import display_prostor_home
-from agent.skill_utils import is_excluded_skill_path
 
 
 def _get_git_commit(project_root: Path) -> str:
@@ -191,7 +191,7 @@ def _get_model_and_provider(config: dict) -> tuple[str, str]:
 
 def _config_overrides(config: dict) -> dict[str, str]:
     """Find non-default config values worth reporting.
-    
+
     Returns a flat dict of dotpath -> value for interesting overrides.
     """
     from prostor_cli.config import DEFAULT_CONFIG

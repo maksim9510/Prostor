@@ -119,6 +119,7 @@ class TestSourceStillHasBillingExclusionRemoved:
 
     def test_conversation_loop_omits_billing_from_client_error_exclusion(self):
         import inspect
+
         from agent import conversation_loop
 
         src = inspect.getsource(conversation_loop)

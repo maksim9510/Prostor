@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -61,15 +61,15 @@ class BlueprintSpec:
     skill_name: str
     schedule: str
     deliver: str = "origin"
-    prompt: Optional[str] = None
+    prompt: str | None = None
     no_agent: bool = False
-    model: Optional[str] = None
-    provider: Optional[str] = None
-    enabled_toolsets: Optional[List[str]] = None
-    raw: Dict[str, Any] = field(default_factory=dict)
+    model: str | None = None
+    provider: str | None = None
+    enabled_toolsets: list[str] | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
-def _split_frontmatter(text: str) -> Optional[Dict[str, Any]]:
+def _split_frontmatter(text: str) -> dict[str, Any] | None:
     """Return the parsed YAML frontmatter mapping, or None if absent/invalid."""
     if not isinstance(text, str):
         return None
@@ -92,7 +92,7 @@ def _split_frontmatter(text: str) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
-def parse_blueprint(skill_md_text: str) -> Optional[BlueprintSpec]:
+def parse_blueprint(skill_md_text: str) -> BlueprintSpec | None:
     """Extract a BlueprintSpec from a SKILL.md string, or None if not a blueprint.
 
     A skill is a blueprint iff ``metadata.prostor.blueprint`` is a mapping containing
@@ -141,7 +141,7 @@ def parse_blueprint(skill_md_text: str) -> Optional[BlueprintSpec]:
     )
 
 
-def blueprint_spec_for_installed(skill_name: str) -> Optional[BlueprintSpec]:
+def blueprint_spec_for_installed(skill_name: str) -> BlueprintSpec | None:
     """Locate an installed skill's SKILL.md and parse its blueprint block.
 
     Searches the standard skills tree for ``<skill_name>/SKILL.md``. Returns
@@ -172,8 +172,8 @@ def blueprint_spec_for_installed(skill_name: str) -> Optional[BlueprintSpec]:
 def blueprint_to_job_spec(
     spec: BlueprintSpec,
     *,
-    name: Optional[str] = None,
-) -> Dict[str, Any]:
+    name: str | None = None,
+) -> dict[str, Any]:
     """Build the ``cron.jobs.create_job`` kwargs dict for a BlueprintSpec.
 
     This is the single source of truth for translating a blueprint into a job.
@@ -197,9 +197,9 @@ def blueprint_to_job_spec(
 def create_blueprint_job(
     spec: BlueprintSpec,
     *,
-    origin: Optional[Dict[str, Any]] = None,
-    name: Optional[str] = None,
-) -> Dict[str, Any]:
+    origin: dict[str, Any] | None = None,
+    name: str | None = None,
+) -> dict[str, Any]:
     """Create the cron job described by a BlueprintSpec via the existing cron API.
 
     The blueprint's skill is loaded before the run (cron ``skills=[name]``); the
@@ -214,7 +214,7 @@ def create_blueprint_job(
     return create_job(**job_spec)
 
 
-def register_blueprint_suggestion(spec: BlueprintSpec) -> Optional[Dict[str, Any]]:
+def register_blueprint_suggestion(spec: BlueprintSpec) -> dict[str, Any] | None:
     """Turn an installed blueprint into a pending Suggested Cron Job.
 
     Blueprints are source ``blueprint`` of the unified suggestion surface: installing
@@ -243,7 +243,7 @@ def register_blueprint_suggestion(spec: BlueprintSpec) -> Optional[Dict[str, Any
     )
 
 
-def export_blueprint(job: Dict[str, Any], body: str, *, blueprint_name: Optional[str] = None) -> str:
+def export_blueprint(job: dict[str, Any], body: str, *, blueprint_name: str | None = None) -> str:
     """Render a shareable blueprint SKILL.md from an existing cron job dict.
 
     The inverse of ``create_blueprint_job``: take a cron job a user already built
@@ -261,7 +261,7 @@ def export_blueprint(job: Dict[str, Any], body: str, *, blueprint_name: Optional
     schedule = job.get("schedule_display") or _schedule_to_string(job.get("schedule"))
     skills = job.get("skills") or ([job["skill"]] if job.get("skill") else [])
 
-    blueprint_block: Dict[str, Any] = {"schedule": schedule}
+    blueprint_block: dict[str, Any] = {"schedule": schedule}
     deliver = job.get("deliver")
     if deliver and deliver != "origin":
         blueprint_block["deliver"] = deliver

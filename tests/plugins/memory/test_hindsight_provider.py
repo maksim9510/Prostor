@@ -15,20 +15,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from prostor_cli.memory_setup import _CANCELLED
 from plugins.memory.hindsight import (
-    HindsightMemoryProvider,
     RECALL_SCHEMA,
     REFLECT_SCHEMA,
     RETAIN_SCHEMA,
-    _load_config,
+    HindsightMemoryProvider,
     _build_embedded_profile_env,
+    _load_config,
     _normalize_observation_scopes,
     _normalize_retain_tags,
     _resolve_bank_id_template,
     _sanitize_bank_segment,
 )
-
+from prostor_cli.memory_setup import _CANCELLED
 
 # ---------------------------------------------------------------------------
 # Fixtures

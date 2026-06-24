@@ -22,8 +22,8 @@ try:
     import fcntl
 except ImportError:
     fcntl = None  # Windows — file locking skipped
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from prostor_constants import get_prostor_home
 from tools.environments.base import _file_mtime_key
@@ -292,7 +292,7 @@ class FileSyncManager:
         finally:
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            except (OSError, IOError):
+            except OSError:
                 pass
             lock_fd.close()
 

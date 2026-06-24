@@ -22,8 +22,9 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any
 
 import httpx
 
@@ -160,10 +161,10 @@ class GeminiAPIError(Exception):
         message: str,
         *,
         code: str = "gemini_api_error",
-        status_code: Optional[int] = None,
-        response: Optional[httpx.Response] = None,
-        retry_after: Optional[float] = None,
-        details: Optional[Dict[str, Any]] = None,
+        status_code: int | None = None,
+        response: httpx.Response | None = None,
+        retry_after: float | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -179,7 +180,7 @@ def _coerce_content_to_text(content: Any) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        pieces: List[str] = []
+        pieces: list[str] = []
         for part in content:
             if isinstance(part, str):
                 pieces.append(part)
@@ -191,12 +192,12 @@ def _coerce_content_to_text(content: Any) -> str:
     return str(content)
 
 
-def _extract_multimodal_parts(content: Any) -> List[Dict[str, Any]]:
+def _extract_multimodal_parts(content: Any) -> list[dict[str, Any]]:
     if not isinstance(content, list):
         text = _coerce_content_to_text(content)
         return [{"text": text}] if text else []
 
-    parts: List[Dict[str, Any]] = []
+    parts: list[dict[str, Any]] = []
     for item in content:
         if isinstance(item, str):
             parts.append({"text": item})
@@ -229,7 +230,7 @@ def _extract_multimodal_parts(content: Any) -> List[Dict[str, Any]]:
     return parts
 
 
-def _tool_call_extra_signature(tool_call: Dict[str, Any]) -> Optional[str]:
+def _tool_call_extra_signature(tool_call: dict[str, Any]) -> str | None:
     extra = tool_call.get("extra_content") or {}
     if not isinstance(extra, dict):
         return None
@@ -242,7 +243,7 @@ def _tool_call_extra_signature(tool_call: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _translate_tool_call_to_gemini(tool_call: Dict[str, Any]) -> Dict[str, Any]:
+def _translate_tool_call_to_gemini(tool_call: dict[str, Any]) -> dict[str, Any]:
     fn = tool_call.get("function") or {}
     args_raw = fn.get("arguments", "")
     try:
@@ -252,7 +253,7 @@ def _translate_tool_call_to_gemini(tool_call: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(args, dict):
         args = {"_value": args}
 
-    part: Dict[str, Any] = {
+    part: dict[str, Any] = {
         "functionCall": {
             "name": str(fn.get("name") or ""),
             "args": args,
@@ -265,9 +266,9 @@ def _translate_tool_call_to_gemini(tool_call: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _translate_tool_result_to_gemini(
-    message: Dict[str, Any],
-    tool_name_by_call_id: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
+    message: dict[str, Any],
+    tool_name_by_call_id: dict[str, str] | None = None,
+) -> dict[str, Any]:
     tool_name_by_call_id = tool_name_by_call_id or {}
     tool_call_id = str(message.get("tool_call_id") or "")
     name = str(
@@ -290,10 +291,10 @@ def _translate_tool_result_to_gemini(
     }
 
 
-def _build_gemini_contents(messages: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    system_text_parts: List[str] = []
-    contents: List[Dict[str, Any]] = []
-    tool_name_by_call_id: Dict[str, str] = {}
+def _build_gemini_contents(messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    system_text_parts: list[str] = []
+    contents: list[dict[str, Any]] = []
+    tool_name_by_call_id: dict[str, str] = {}
 
     for msg in messages:
         if not isinstance(msg, dict):
@@ -319,7 +320,7 @@ def _build_gemini_contents(messages: List[Dict[str, Any]]) -> tuple[List[Dict[st
             continue
 
         gemini_role = "model" if role == "assistant" else "user"
-        parts: List[Dict[str, Any]] = []
+        parts: list[dict[str, Any]] = []
 
         content_parts = _extract_multimodal_parts(msg.get("content"))
         parts.extend(content_parts)
@@ -329,7 +330,7 @@ def _build_gemini_contents(messages: List[Dict[str, Any]]) -> tuple[List[Dict[st
             for tool_call in tool_calls:
                 if isinstance(tool_call, dict):
                     tool_call_id = str(tool_call.get("id") or tool_call.get("call_id") or "")
-                    tool_name = str(((tool_call.get("function") or {}).get("name") or ""))
+                    tool_name = str((tool_call.get("function") or {}).get("name") or "")
                     if tool_call_id and tool_name:
                         tool_name_by_call_id[tool_call_id] = tool_name
                     parts.append(_translate_tool_call_to_gemini(tool_call))
@@ -344,10 +345,10 @@ def _build_gemini_contents(messages: List[Dict[str, Any]]) -> tuple[List[Dict[st
     return contents, system_instruction
 
 
-def _translate_tools_to_gemini(tools: Any) -> List[Dict[str, Any]]:
+def _translate_tools_to_gemini(tools: Any) -> list[dict[str, Any]]:
     if not isinstance(tools, list):
         return []
-    declarations: List[Dict[str, Any]] = []
+    declarations: list[dict[str, Any]] = []
     for tool in tools:
         if not isinstance(tool, dict):
             continue
@@ -357,7 +358,7 @@ def _translate_tools_to_gemini(tools: Any) -> List[Dict[str, Any]]:
         name = fn.get("name")
         if not isinstance(name, str) or not name:
             continue
-        decl: Dict[str, Any] = {"name": name}
+        decl: dict[str, Any] = {"name": name}
         description = fn.get("description")
         if isinstance(description, str) and description:
             decl["description"] = description
@@ -368,7 +369,7 @@ def _translate_tools_to_gemini(tools: Any) -> List[Dict[str, Any]]:
     return [{"functionDeclarations": declarations}] if declarations else []
 
 
-def _translate_tool_choice_to_gemini(tool_choice: Any) -> Optional[Dict[str, Any]]:
+def _translate_tool_choice_to_gemini(tool_choice: Any) -> dict[str, Any] | None:
     if tool_choice is None:
         return None
     if isinstance(tool_choice, str):
@@ -386,13 +387,13 @@ def _translate_tool_choice_to_gemini(tool_choice: Any) -> Optional[Dict[str, Any
     return None
 
 
-def _normalize_thinking_config(config: Any) -> Optional[Dict[str, Any]]:
+def _normalize_thinking_config(config: Any) -> dict[str, Any] | None:
     if not isinstance(config, dict) or not config:
         return None
     budget = config.get("thinkingBudget", config.get("thinking_budget"))
     include = config.get("includeThoughts", config.get("include_thoughts"))
     level = config.get("thinkingLevel", config.get("thinking_level"))
-    normalized: Dict[str, Any] = {}
+    normalized: dict[str, Any] = {}
     if isinstance(budget, (int, float)):
         normalized["thinkingBudget"] = int(budget)
     if isinstance(include, bool):
@@ -404,17 +405,17 @@ def _normalize_thinking_config(config: Any) -> Optional[Dict[str, Any]]:
 
 def build_gemini_request(
     *,
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     tools: Any = None,
     tool_choice: Any = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    top_p: Optional[float] = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    top_p: float | None = None,
     stop: Any = None,
     thinking_config: Any = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     contents, system_instruction = _build_gemini_contents(messages)
-    request: Dict[str, Any] = {"contents": contents}
+    request: dict[str, Any] = {"contents": contents}
     if system_instruction:
         request["systemInstruction"] = system_instruction
 
@@ -426,7 +427,7 @@ def build_gemini_request(
     if tool_config:
         request["toolConfig"] = tool_config
 
-    generation_config: Dict[str, Any] = {}
+    generation_config: dict[str, Any] = {}
     if temperature is not None:
         generation_config["temperature"] = temperature
     if max_tokens is not None:
@@ -467,7 +468,7 @@ def _map_gemini_finish_reason(reason: str) -> str:
     return mapping.get(str(reason or "").upper(), "stop")
 
 
-def _tool_call_extra_from_part(part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _tool_call_extra_from_part(part: dict[str, Any]) -> dict[str, Any] | None:
     sig = part.get("thoughtSignature")
     if isinstance(sig, str) and sig:
         return {"google": {"thought_signature": sig}}
@@ -500,7 +501,7 @@ def _empty_response(model: str) -> SimpleNamespace:
     )
 
 
-def translate_gemini_response(resp: Dict[str, Any], model: str) -> SimpleNamespace:
+def translate_gemini_response(resp: dict[str, Any], model: str) -> SimpleNamespace:
     candidates = resp.get("candidates") or []
     if not isinstance(candidates, list) or not candidates:
         return _empty_response(model)
@@ -509,9 +510,9 @@ def translate_gemini_response(resp: Dict[str, Any], model: str) -> SimpleNamespa
     content_obj = cand.get("content") if isinstance(cand, dict) else {}
     parts = content_obj.get("parts") if isinstance(content_obj, dict) else []
 
-    text_pieces: List[str] = []
-    reasoning_pieces: List[str] = []
-    tool_calls: List[SimpleNamespace] = []
+    text_pieces: list[str] = []
+    reasoning_pieces: list[str] = []
+    tool_calls: list[SimpleNamespace] = []
 
     for index, part in enumerate(parts or []):
         if not isinstance(part, dict):
@@ -577,11 +578,11 @@ def _make_stream_chunk(
     *,
     model: str,
     content: str = "",
-    tool_call_delta: Optional[Dict[str, Any]] = None,
-    finish_reason: Optional[str] = None,
+    tool_call_delta: dict[str, Any] | None = None,
+    finish_reason: str | None = None,
     reasoning: str = "",
 ) -> _GeminiStreamChunk:
-    delta_kwargs: Dict[str, Any] = {
+    delta_kwargs: dict[str, Any] = {
         "role": "assistant",
         "content": None,
         "tool_calls": None,
@@ -619,7 +620,7 @@ def _make_stream_chunk(
     )
 
 
-def _iter_sse_events(response: httpx.Response) -> Iterator[Dict[str, Any]]:
+def _iter_sse_events(response: httpx.Response) -> Iterator[dict[str, Any]]:
     buffer = ""
     for chunk in response.iter_text():
         if not chunk:
@@ -644,13 +645,13 @@ def _iter_sse_events(response: httpx.Response) -> Iterator[Dict[str, Any]]:
                 yield payload
 
 
-def translate_stream_event(event: Dict[str, Any], model: str, tool_call_indices: Dict[str, Dict[str, Any]]) -> List[_GeminiStreamChunk]:
+def translate_stream_event(event: dict[str, Any], model: str, tool_call_indices: dict[str, dict[str, Any]]) -> list[_GeminiStreamChunk]:
     candidates = event.get("candidates") or []
     if not candidates:
         return []
     cand = candidates[0] if isinstance(candidates[0], dict) else {}
     parts = ((cand.get("content") or {}).get("parts") or []) if isinstance(cand, dict) else []
-    chunks: List[_GeminiStreamChunk] = []
+    chunks: list[_GeminiStreamChunk] = []
 
     for part_index, part in enumerate(parts):
         if not isinstance(part, dict):
@@ -729,7 +730,7 @@ def translate_stream_event(event: Dict[str, Any], model: str, tool_call_indices:
 def gemini_http_error(response: httpx.Response) -> GeminiAPIError:
     status = response.status_code
     body_text = ""
-    body_json: Dict[str, Any] = {}
+    body_json: dict[str, Any] = {}
     try:
         body_text = response.text
     except Exception:
@@ -751,8 +752,8 @@ def gemini_http_error(response: httpx.Response) -> GeminiAPIError:
     details_list = _raw_details if isinstance(_raw_details, list) else []
 
     reason = ""
-    retry_after: Optional[float] = None
-    metadata: Dict[str, Any] = {}
+    retry_after: float | None = None
+    metadata: dict[str, Any] = {}
     for detail in details_list:
         if not isinstance(detail, dict):
             continue
@@ -806,7 +807,7 @@ def gemini_http_error(response: httpx.Response) -> GeminiAPIError:
 
 
 class _GeminiChatCompletions:
-    def __init__(self, client: "GeminiNativeClient"):
+    def __init__(self, client: GeminiNativeClient):
         self._client = client
 
     def create(self, **kwargs: Any) -> Any:
@@ -814,7 +815,7 @@ class _GeminiChatCompletions:
 
 
 class _AsyncGeminiChatCompletions:
-    def __init__(self, client: "AsyncGeminiNativeClient"):
+    def __init__(self, client: AsyncGeminiNativeClient):
         self._client = client
 
     async def create(self, **kwargs: Any) -> Any:
@@ -822,12 +823,12 @@ class _AsyncGeminiChatCompletions:
 
 
 class _GeminiChatNamespace:
-    def __init__(self, client: "GeminiNativeClient"):
+    def __init__(self, client: GeminiNativeClient):
         self.completions = _GeminiChatCompletions(client)
 
 
 class _AsyncGeminiChatNamespace:
-    def __init__(self, client: "AsyncGeminiNativeClient"):
+    def __init__(self, client: AsyncGeminiNativeClient):
         self.completions = _AsyncGeminiChatCompletions(client)
 
 
@@ -838,10 +839,10 @@ class GeminiNativeClient:
         self,
         *,
         api_key: str,
-        base_url: Optional[str] = None,
-        default_headers: Optional[Dict[str, str]] = None,
+        base_url: str | None = None,
+        default_headers: dict[str, str] | None = None,
         timeout: Any = None,
-        http_client: Optional[httpx.Client] = None,
+        http_client: httpx.Client | None = None,
         **_: Any,
     ) -> None:
         if not (api_key or "").strip():
@@ -876,7 +877,7 @@ class GeminiNativeClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -887,7 +888,7 @@ class GeminiNativeClient:
         return headers
 
     @staticmethod
-    def _advance_stream_iterator(iterator: Iterator[_GeminiStreamChunk]) -> tuple[bool, Optional[_GeminiStreamChunk]]:
+    def _advance_stream_iterator(iterator: Iterator[_GeminiStreamChunk]) -> tuple[bool, _GeminiStreamChunk | None]:
         try:
             return False, next(iterator)
         except StopIteration:
@@ -897,15 +898,15 @@ class GeminiNativeClient:
         self,
         *,
         model: str = "gemini-2.5-flash",
-        messages: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]] | None = None,
         stream: bool = False,
         tools: Any = None,
         tool_choice: Any = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
         stop: Any = None,
-        extra_body: Optional[Dict[str, Any]] = None,
+        extra_body: dict[str, Any] | None = None,
         timeout: Any = None,
         **_: Any,
     ) -> Any:
@@ -943,7 +944,7 @@ class GeminiNativeClient:
             ) from exc
         return translate_gemini_response(payload, model=model)
 
-    def _stream_completion(self, *, model: str, request: Dict[str, Any], timeout: Any = None) -> Iterator[_GeminiStreamChunk]:
+    def _stream_completion(self, *, model: str, request: dict[str, Any], timeout: Any = None) -> Iterator[_GeminiStreamChunk]:
         url = f"{self.base_url}/models/{model}:streamGenerateContent?alt=sse"
         stream_headers = dict(self._headers())
         stream_headers["Accept"] = "text/event-stream"
@@ -954,7 +955,7 @@ class GeminiNativeClient:
                     if response.status_code != 200:
                         response.read()
                         raise gemini_http_error(response)
-                    tool_call_indices: Dict[str, Dict[str, Any]] = {}
+                    tool_call_indices: dict[str, dict[str, Any]] = {}
                     for event in _iter_sse_events(response):
                         for chunk in translate_stream_event(event, model, tool_call_indices):
                             yield chunk

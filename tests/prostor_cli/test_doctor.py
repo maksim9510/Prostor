@@ -1,10 +1,10 @@
 """Tests for prostor_cli.doctor."""
 
+import contextlib
+import io
 import os
 import sys
 import types
-import io
-import contextlib
 from argparse import Namespace
 from types import SimpleNamespace
 
@@ -292,7 +292,8 @@ class TestDoctorMemoryProviderSection:
         except Exception:
             pass
 
-        import io, contextlib
+        import contextlib
+        import io
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             doctor_mod.run_doctor(Namespace(fix=False))
@@ -659,7 +660,8 @@ def test_run_doctor_termux_does_not_mark_browser_available_without_agent_browser
     except Exception:
         pass
 
-    import io, contextlib
+    import contextlib
+    import io
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         doctor_mod.run_doctor(Namespace(fix=False))
@@ -708,7 +710,8 @@ def test_run_doctor_kimi_cn_env_is_detected_and_probe_is_null_safe(monkeypatch, 
     import httpx
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    import io, contextlib
+    import contextlib
+    import io
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         doctor_mod.run_doctor(Namespace(fix=False))
@@ -816,7 +819,8 @@ def test_run_doctor_opencode_go_skips_invalid_models_probe(monkeypatch, tmp_path
     import httpx
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    import io, contextlib
+    import contextlib
+    import io
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         doctor_mod.run_doctor(Namespace(fix=False))
@@ -839,8 +843,10 @@ class TestGitHubTokenCheck:
         monkeypatch.setenv("PROSTOR_HOME", str(home))
         monkeypatch.setenv("PATH", "/nonexistent")  # gh not found
 
+        import contextlib
+        import io
+
         from prostor_cli.doctor import run_doctor
-        import io, contextlib
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -857,8 +863,10 @@ class TestGitHubTokenCheck:
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_test123")
         monkeypatch.setenv("PATH", "/nonexistent")  # gh not found
 
+        import contextlib
+        import io
+
         from prostor_cli.doctor import run_doctor
-        import io, contextlib
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -896,8 +904,10 @@ class TestGitHubTokenCheck:
         import subprocess
         monkeypatch.setattr(subprocess, "run", mock_run)
 
+        import contextlib
+        import io
+
         from prostor_cli.doctor import run_doctor
-        import io, contextlib
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -1064,6 +1074,7 @@ class TestHasHealthyOauthFallbackForXai:
 
     def test_xai_import_failure_does_not_affect_gemini(self, monkeypatch):
         import sys
+
         from prostor_cli import auth as _auth_mod
         # xAI function missing, but Gemini is healthy
         monkeypatch.delattr(_auth_mod, "get_xai_oauth_auth_status", raising=False)
@@ -1338,7 +1349,6 @@ class TestDoctorStaleMaxIterationsDrift:
 
     def _run_config_section(self, monkeypatch, tmp_path, *, fix, ghost, cfg_turns,
                             os_environ_value=None):
-        import pathlib
         import contextlib
         import io
         from argparse import Namespace

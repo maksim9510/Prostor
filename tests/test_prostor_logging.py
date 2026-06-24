@@ -1,5 +1,4 @@
 """Tests for prostor_logging — centralized logging setup."""
-import io
 import logging
 import os
 import stat
@@ -11,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 import prostor_logging
+
 # Use whatever RotatingFileHandler class prostor_logging actually resolved so
 # the autouse fixture's isinstance checks (which strip rotating handlers
 # between tests) match the real handlers on every platform. prostor_logging

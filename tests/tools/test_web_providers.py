@@ -9,12 +9,11 @@ Covers:
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
 from tests.tools.conftest import register_all_web_providers
-
 
 # ---------------------------------------------------------------------------
 # ABC enforcement
@@ -56,7 +55,7 @@ class TestWebProviderABCs:
             def supports_search(self) -> bool:
                 return True
 
-            def search(self, query: str, limit: int = 5) -> Dict[str, Any]:
+            def search(self, query: str, limit: int = 5) -> dict[str, Any]:
                 return {"success": True, "data": {"web": []}}
 
         d = Dummy()
@@ -88,10 +87,10 @@ class TestWebProviderABCs:
             def supports_extract(self) -> bool:
                 return True
 
-            def search(self, query: str, limit: int = 5) -> Dict[str, Any]:
+            def search(self, query: str, limit: int = 5) -> dict[str, Any]:
                 return {"success": True, "data": {"web": []}}
 
-            def extract(self, urls: List[str], **kwargs: Any) -> List[Dict[str, Any]]:
+            def extract(self, urls: list[str], **kwargs: Any) -> list[dict[str, Any]]:
                 return [{"url": urls[0], "content": "x"}]
 
         d = Dummy()
@@ -118,7 +117,7 @@ class TestWebProviderABCs:
             def supports_search(self) -> bool:
                 return True
 
-            def search(self, query: str, limit: int = 5) -> Dict[str, Any]:
+            def search(self, query: str, limit: int = 5) -> dict[str, Any]:
                 return {"success": True, "data": {"web": []}}
 
         # Should instantiate fine — extract has default supports_*()
@@ -361,8 +360,9 @@ class TestDispatchersTriggerPluginDiscovery:
         import asyncio
         import json
         from unittest.mock import MagicMock
-        from agent.web_search_provider import WebSearchProvider
+
         from agent import web_search_registry
+        from agent.web_search_provider import WebSearchProvider
         from tools import web_tools
 
         restore = self._clear_registry()
@@ -442,8 +442,9 @@ class TestDispatchersTriggerPluginDiscovery:
         """
         import json
         from unittest.mock import MagicMock
-        from agent.web_search_provider import WebSearchProvider
+
         from agent import web_search_registry
+        from agent.web_search_provider import WebSearchProvider
         from tools import web_tools
 
         restore = self._clear_registry()

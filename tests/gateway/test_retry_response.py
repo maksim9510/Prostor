@@ -4,10 +4,12 @@ Before the fix in PR #441, _handle_retry_command() called
 _handle_message(retry_event) but discarded its return value with `return None`,
 so users never received the final response.
 """
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from gateway.run import GatewayRunner
+
+import pytest
+
 from gateway.platforms.base import MessageEvent, MessageType
+from gateway.run import GatewayRunner
 
 
 @pytest.fixture

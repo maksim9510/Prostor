@@ -21,7 +21,7 @@ the unified index existed).
 import json
 import os
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import yaml
 
@@ -655,7 +655,7 @@ def main():
     # without changing the shape of skills.json.
     by_source = Counter(s["source"] for s in all_skills)
     meta = {
-        "extractedAt": datetime.now(timezone.utc).isoformat(),
+        "extractedAt": datetime.now(UTC).isoformat(),
         "totalSkills": len(all_skills),
         "localSkills": len(local),
         "externalSkills": len(external),

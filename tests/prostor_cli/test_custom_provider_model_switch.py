@@ -60,6 +60,7 @@ class TestCustomProviderModelSwitch:
     def test_can_switch_to_different_model(self, config_home):
         """User selects a different model than the saved one."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         provider_info = {
@@ -83,6 +84,7 @@ class TestCustomProviderModelSwitch:
     def test_probe_failure_falls_back_to_saved(self, config_home):
         """When endpoint probe fails and user presses Enter, saved model is used."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         provider_info = {
@@ -106,6 +108,7 @@ class TestCustomProviderModelSwitch:
     def test_no_saved_model_still_works(self, config_home):
         """First-time flow (no saved model) still works as before."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         provider_info = {
@@ -129,6 +132,7 @@ class TestCustomProviderModelSwitch:
     def test_api_mode_set_from_provider_info(self, config_home):
         """When custom_providers entry has api_mode, it should be applied."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         provider_info = {
@@ -159,6 +163,7 @@ class TestCustomProviderModelSwitch:
     def test_api_mode_cleared_when_not_specified(self, config_home):
         """When custom_providers entry has no api_mode, stale api_mode is removed."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         # Pre-seed a stale api_mode in config
@@ -186,6 +191,7 @@ class TestCustomProviderModelSwitch:
     def test_env_template_api_key_is_preserved_in_model_config(self, config_home, monkeypatch):
         """Selecting an env-backed custom provider must not inline the secret."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         config_path = config_home / "config.yaml"
@@ -228,6 +234,7 @@ class TestCustomProviderModelSwitch:
     def test_key_env_custom_provider_persists_reference_not_secret(self, config_home, monkeypatch):
         """key_env custom providers should also avoid writing plaintext keys."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         config_path = config_home / "config.yaml"
@@ -275,6 +282,7 @@ class TestCustomProviderModelSwitch:
         ``config.yaml``. This test drives the real picker-callsite code path.
         """
         import yaml
+
         from prostor_cli.main import select_provider_and_model
 
         config_path = config_home / "config.yaml"
@@ -393,6 +401,7 @@ class TestCustomProviderModelSwitch:
         """Selecting an env-backed custom provider should not expand its
         ``base_url`` template into ``model.base_url`` on disk."""
         import yaml
+
         from prostor_cli.main import select_provider_and_model
 
         config_path = config_home / "config.yaml"
@@ -453,6 +462,7 @@ class TestCustomProviderModelSwitch:
         ``api_key`` belongs on disk.
         """
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         config_path = config_home / "config.yaml"
@@ -519,6 +529,7 @@ class TestCustomProviderModelSwitch:
         template must keep it untouched. Only entries that never declared
         an ``api_key`` should skip the write."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         config_path = config_home / "config.yaml"
@@ -596,6 +607,7 @@ class TestCustomProviderDiscoverModels:
     def test_discover_false_saves_choice_from_configured_list(self, config_home):
         """User picks the 2nd configured model; it persists, list-driven."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         provider_info = {
@@ -652,6 +664,7 @@ class TestCustomProviderDiscoverModels:
         """When discovery is on but the probe returns nothing, fall back to the
         configured models: list instead of forcing manual entry."""
         import yaml
+
         from prostor_cli.main import _model_flow_named_custom
 
         provider_info = {

@@ -5,35 +5,36 @@ import logging
 import os
 import subprocess
 import time
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from tools.checkpoint_manager import (
     CheckpointManager,
-    _shadow_repo_path,
+    _dir_file_count,
+    _git_env,
     _init_shadow_repo,
     _init_store,
-    _run_git,
-    _git_env,
-    _dir_file_count,
     _project_hash,
-    _store_path,
-    _ref_name,
     _project_meta_path,
+    _ref_name,
+    _run_git,
+    _shadow_repo_path,
+    _store_path,
     _touch_project,
-    format_checkpoint_list,
-    prune_checkpoints,
-    maybe_auto_prune_checkpoints,
-    store_status,
     clear_all,
     clear_legacy,
+    format_checkpoint_list,
+    maybe_auto_prune_checkpoints,
+    prune_checkpoints,
+    store_status,
 )
-
 
 # =========================================================================
 # Fixtures
 # =========================================================================
+
 
 @pytest.fixture()
 def work_dir(tmp_path):

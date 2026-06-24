@@ -15,7 +15,6 @@ import pytest
 
 from agent import shell_hooks
 
-
 # ── helpers ───────────────────────────────────────────────────────────────
 
 

@@ -35,7 +35,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from . import patterns as _patterns
 
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # Maps tool name -> (path_arg_name, content_arg_names).  For tools with multiple
 # possible content fields (patch's old/new_string vs raw patch text), we scan
 # every populated string field.
-_TARGET_TOOLS: Dict[str, Tuple[str, Tuple[str, ...]]] = {
+_TARGET_TOOLS: dict[str, tuple[str, tuple[str, ...]]] = {
     "write_file": ("path", ("content",)),
     "patch": ("path", ("new_string", "patch")),
     # skill_manage write_file / patch sub-actions land here. file_path holds
@@ -78,9 +78,9 @@ def _plugin_disabled() -> bool:
 
 # Pre-compile the regex patterns once.  Substring patterns stay as plain
 # strings — ``str.__contains__`` is faster than a regex of literal chars.
-_COMPILED: List[Dict[str, Any]] = []
+_COMPILED: list[dict[str, Any]] = []
 for _rule in _patterns.SECURITY_PATTERNS:
-    _entry: Dict[str, Any] = {
+    _entry: dict[str, Any] = {
         "ruleName": _rule["ruleName"],
         "reminder": _rule["reminder"],
         "path_filter": _rule.get("path_filter"),
@@ -101,7 +101,7 @@ for _rule in _patterns.SECURITY_PATTERNS:
     _COMPILED.append(_entry)
 
 
-def _scan_content(path: str, content: str) -> List[Tuple[str, str]]:
+def _scan_content(path: str, content: str) -> list[tuple[str, str]]:
     """Return [(ruleName, reminder), ...] for every pattern that matches.
 
     ``path`` is used by per-rule path filters (path_filter / path_check).
@@ -110,7 +110,7 @@ def _scan_content(path: str, content: str) -> List[Tuple[str, str]]:
     """
     if not content or len(content.encode("utf-8", errors="ignore")) > _MAX_SCAN_BYTES:
         return []
-    hits: List[Tuple[str, str]] = []
+    hits: list[tuple[str, str]] = []
     for entry in _COMPILED:
         # path_check: rule fires PURELY on path match (no content regex). Used
         # for blanket "you're editing a sensitive file, here are reminders"
@@ -146,7 +146,7 @@ def _scan_content(path: str, content: str) -> List[Tuple[str, str]]:
     return hits
 
 
-def _extract_path_and_content(tool_name: str, args: Any) -> List[Tuple[str, str]]:
+def _extract_path_and_content(tool_name: str, args: Any) -> list[tuple[str, str]]:
     """Return [(path, content), ...] for a tool call.  Empty if nothing to scan."""
     spec = _TARGET_TOOLS.get(tool_name)
     if spec is None or not isinstance(args, dict):
@@ -155,7 +155,7 @@ def _extract_path_and_content(tool_name: str, args: Any) -> List[Tuple[str, str]
     path = args.get(path_key) or ""
     if not isinstance(path, str):
         path = ""
-    out: List[Tuple[str, str]] = []
+    out: list[tuple[str, str]] = []
     for ck in content_keys:
         val = args.get(ck)
         if isinstance(val, str) and val:
@@ -163,7 +163,7 @@ def _extract_path_and_content(tool_name: str, args: Any) -> List[Tuple[str, str]
     return out
 
 
-def _format_warning_block(findings: List[Tuple[str, str]]) -> str:
+def _format_warning_block(findings: list[tuple[str, str]]) -> str:
     """Render findings into a Markdown block appended to the tool result."""
     names = ", ".join(name for name, _ in findings)
     lines = [
@@ -188,12 +188,12 @@ def _format_warning_block(findings: List[Tuple[str, str]]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _scan_args(tool_name: str, args: Any) -> List[Tuple[str, str]]:
+def _scan_args(tool_name: str, args: Any) -> list[tuple[str, str]]:
     """Common scan path used by both pre_tool_call (block mode) and
     transform_tool_result (warn mode)."""
     if _plugin_disabled():
         return []
-    findings: List[Tuple[str, str]] = []
+    findings: list[tuple[str, str]] = []
     for path, content in _extract_path_and_content(tool_name, args):
         findings.extend(_scan_content(path, content))
     return findings
@@ -203,7 +203,7 @@ def _on_pre_tool_call(
     tool_name: str = "",
     args: Any = None,
     **_: Any,
-) -> Optional[Dict[str, str]]:
+) -> dict[str, str] | None:
     """In block mode, refuse the write if any pattern matches.
 
     Default mode is non-blocking — we return None here and let
@@ -229,7 +229,7 @@ def _on_transform_tool_result(
     args: Any = None,
     result: Any = None,
     **_: Any,
-) -> Optional[str]:
+) -> str | None:
     """Warn-mode hook: append a security-warning block to the tool result.
 
     Returning a string replaces the result that the model sees in the next

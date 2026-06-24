@@ -1,7 +1,7 @@
-from types import ModuleType, SimpleNamespace
-from unittest.mock import MagicMock, patch
 import json
 import sys
+from types import ModuleType, SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from run_agent import AIAgent
 

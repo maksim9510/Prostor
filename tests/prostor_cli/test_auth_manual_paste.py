@@ -24,13 +24,12 @@ locks in four things:
 from __future__ import annotations
 
 import builtins
-import io
 import contextlib
+import io
 
 import pytest
 
 from prostor_cli import auth as auth_mod
-
 
 # ---------------------------------------------------------------------------
 # _is_remote_session — broadened detection (#26923)

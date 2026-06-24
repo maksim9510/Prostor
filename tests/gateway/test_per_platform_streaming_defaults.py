@@ -21,8 +21,8 @@ def test_default_per_platform_streaming_flags():
 def test_resolver_telegram_on_discord_off_when_global_enabled():
     """With global streaming on, the per-platform defaults make Telegram stream
     and Discord not — matching the platforms' actual streaming quality."""
-    from prostor_cli.config import DEFAULT_CONFIG
     from gateway.display_config import resolve_display_setting
+    from prostor_cli.config import DEFAULT_CONFIG
 
     cfg = dict(DEFAULT_CONFIG)
     cfg["streaming"] = {"enabled": True, "transport": "auto"}

@@ -38,14 +38,13 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Dict, List, Optional
 
 from agent.browser_provider import BrowserProvider
 
 logger = logging.getLogger(__name__)
 
 
-_providers: Dict[str, BrowserProvider] = {}
+_providers: dict[str, BrowserProvider] = {}
 _lock = threading.Lock()
 
 
@@ -79,14 +78,14 @@ def register_provider(provider: BrowserProvider) -> None:
         )
 
 
-def list_providers() -> List[BrowserProvider]:
+def list_providers() -> list[BrowserProvider]:
     """Return all registered providers, sorted by name."""
     with _lock:
         items = list(_providers.values())
     return sorted(items, key=lambda p: p.name)
 
 
-def get_provider(name: str) -> Optional[BrowserProvider]:
+def get_provider(name: str) -> BrowserProvider | None:
     """Return the provider registered under *name*, or None."""
     if not isinstance(name, str):
         return None
@@ -110,7 +109,7 @@ _LEGACY_PREFERENCE = (
 )
 
 
-def _resolve(configured: Optional[str]) -> Optional[BrowserProvider]:
+def _resolve(configured: str | None) -> BrowserProvider | None:
     """Resolve the active browser provider.
 
     Resolution rules (in order):

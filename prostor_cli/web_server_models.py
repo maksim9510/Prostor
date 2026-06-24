@@ -4,7 +4,8 @@ Extracted from web_server.py (#24).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 __all__ = ['ConfigUpdate', 'EnvVarUpdate', 'EnvVarDelete', 'EnvVarReveal', 'MemoryProviderConfigUpdate', 'MessagingPlatformUpdate', 'TelegramOnboardingStart', 'TelegramOnboardingApply', 'AudioTranscriptionRequest', 'ManagedFileUpload', 'ManagedDirectoryCreate', 'ManagedFileDelete', 'ModelAssignment', 'CuratorPause', 'DebugShareRequest', 'TTSSpeakRequest', 'OAuthSubmitBody', 'BulkDeleteSessions', 'SessionRename', 'SessionPrune', 'CronJobCreate', 'CronJobUpdate', 'AutomationBlueprintInstantiate', 'MCPServerCreate', 'MCPEnabledToggle', 'MCPCatalogInstall', 'PairingApprove', 'PairingRevoke', 'WebhookCreate', 'WebhookEnabledToggle', 'CredentialPoolAdd', 'MemoryProviderSelect', 'MemoryReset', 'BackupRequest', 'ImportRequest', 'HookCreate', 'HookDelete', 'SkillInstallRequest', 'SkillUninstallRequest', 'SkillsUpdateRequest', 'ProfileCreate', 'ProfileRename', 'ProfileSoulUpdate', 'ProfileActiveUpdate', 'ProfileDescriptionUpdate', 'ProfileModelUpdate', 'ProfileDescribeAuto', 'SkillToggle', 'SkillCreate', 'SkillContentUpdate', 'ToolsetToggle', 'ToolsetProviderSelect', 'ToolsetEnvUpdate', 'ToolsetPostSetup', 'RawConfigUpdate', 'ThemeSetBody', 'FontSetBody', '_AgentPluginInstallBody', '_PluginProvidersPutBody', '_PluginVisibilityBody']
@@ -12,13 +13,13 @@ __all__ = ['ConfigUpdate', 'EnvVarUpdate', 'EnvVarDelete', 'EnvVarReveal', 'Memo
 
 class ConfigUpdate(BaseModel):
     config: dict
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class EnvVarUpdate(BaseModel):
     key: str
     value: str
-    profile: Optional[str] = None
+    profile: str | None = None
     # Optional bearer key for the connectivity probe of a custom/local endpoint
     # (``key == "OPENAI_BASE_URL"``). Self-hosted endpoints that gate
     # ``/v1/models`` behind auth otherwise look "reachable but empty"; sending
@@ -29,39 +30,39 @@ class EnvVarUpdate(BaseModel):
 
 class EnvVarDelete(BaseModel):
     key: str
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class EnvVarReveal(BaseModel):
     key: str
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class MemoryProviderConfigUpdate(BaseModel):
-    values: Dict[str, str] = {}
+    values: dict[str, str] = {}
 
 
 class MessagingPlatformUpdate(BaseModel):
-    enabled: Optional[bool] = None
-    env: Dict[str, str] = {}
-    clear_env: List[str] = []
+    enabled: bool | None = None
+    env: dict[str, str] = {}
+    clear_env: list[str] = []
     # Explicit body profile beats the query param injected by the global
     # dashboard profile switcher (same precedence as other scoped writes).
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class TelegramOnboardingStart(BaseModel):
-    bot_name: Optional[str] = None
+    bot_name: str | None = None
 
 
 class TelegramOnboardingApply(BaseModel):
-    allowed_user_ids: List[str]
-    profile: Optional[str] = None
+    allowed_user_ids: list[str]
+    profile: str | None = None
 
 
 class AudioTranscriptionRequest(BaseModel):
     data_url: str
-    mime_type: Optional[str] = None
+    mime_type: str | None = None
 
 
 class ManagedFileUpload(BaseModel):
@@ -104,7 +105,7 @@ class ModelAssignment(BaseModel):
     # custom/local providers.
     api_key: str = ""
     confirm_expensive_model: bool = False
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class CuratorPause(BaseModel):
@@ -130,22 +131,22 @@ class OAuthSubmitBody(BaseModel):
 
 
 class BulkDeleteSessions(BaseModel):
-    ids: List[str]
-    profile: Optional[str] = None
+    ids: list[str]
+    profile: str | None = None
 
 
 class SessionRename(BaseModel):
-    title: Optional[str] = None
-    archived: Optional[bool] = None
+    title: str | None = None
+    archived: bool | None = None
     # Mutate a session belonging to another profile (opens its state.db). Omit
     # for the current/default profile.
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class SessionPrune(BaseModel):
     older_than_days: int = 90
-    source: Optional[str] = None
-    profile: Optional[str] = None
+    source: str | None = None
+    profile: str | None = None
 
 
 class CronJobCreate(BaseModel):
@@ -153,7 +154,7 @@ class CronJobCreate(BaseModel):
     schedule: str
     name: str = ""
     deliver: str = "local"
-    skills: Optional[List[str]] = None
+    skills: list[str] | None = None
 
 
 class CronJobUpdate(BaseModel):
@@ -162,32 +163,32 @@ class CronJobUpdate(BaseModel):
 
 class AutomationBlueprintInstantiate(BaseModel):
     blueprint: str                      # blueprint key, e.g. "morning-brief"
-    values: Dict[str, Any] = {}      # filled slot values from the form
+    values: dict[str, Any] = {}      # filled slot values from the form
 
 
 class MCPServerCreate(BaseModel):
     name: str
-    url: Optional[str] = None
-    command: Optional[str] = None
-    args: List[str] = []
+    url: str | None = None
+    command: str | None = None
+    args: list[str] = []
     # env: KEY=VALUE map for stdio servers (API keys, etc.)
-    env: Dict[str, str] = {}
+    env: dict[str, str] = {}
     # auth: "oauth" | "header" | None
-    auth: Optional[str] = None
-    profile: Optional[str] = None
+    auth: str | None = None
+    profile: str | None = None
 
 
 class MCPEnabledToggle(BaseModel):
     enabled: bool
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class MCPCatalogInstall(BaseModel):
     name: str
     # env: KEY=VALUE map for catalog entries that declare required env vars.
-    env: Dict[str, str] = {}
+    env: dict[str, str] = {}
     enable: bool = True
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class PairingApprove(BaseModel):
@@ -202,15 +203,15 @@ class PairingRevoke(BaseModel):
 
 class WebhookCreate(BaseModel):
     name: str
-    description: Optional[str] = None
-    events: List[str] = []
-    prompt: Optional[str] = None
-    skills: List[str] = []
+    description: str | None = None
+    events: list[str] = []
+    prompt: str | None = None
+    skills: list[str] = []
     deliver: str = "log"
     deliver_only: bool = False
-    deliver_chat_id: Optional[str] = None
+    deliver_chat_id: str | None = None
     # secret: omit to auto-generate
-    secret: Optional[str] = None
+    secret: str | None = None
 
 
 class WebhookEnabledToggle(BaseModel):
@@ -222,7 +223,7 @@ class CredentialPoolAdd(BaseModel):
     # api_key for API-key providers; OAuth pooling stays CLI-only (it needs
     # an interactive browser flow that doesn't belong in a single POST).
     api_key: str
-    label: Optional[str] = None
+    label: str | None = None
 
 
 class MemoryProviderSelect(BaseModel):
@@ -237,7 +238,7 @@ class MemoryReset(BaseModel):
 
 class BackupRequest(BaseModel):
     # Optional output path; defaults to a timestamped zip in the home dir.
-    output: Optional[str] = None
+    output: str | None = None
 
 
 class ImportRequest(BaseModel):
@@ -255,8 +256,8 @@ class ImportRequest(BaseModel):
 class HookCreate(BaseModel):
     event: str
     command: str
-    matcher: Optional[str] = None
-    timeout: Optional[int] = None
+    matcher: str | None = None
+    timeout: int | None = None
     # approve: write the consent allowlist entry too (the operator using the
     # authenticated dashboard is giving consent). Without it the hook is
     # configured but won't fire until approved.
@@ -270,44 +271,44 @@ class HookDelete(BaseModel):
 
 class SkillInstallRequest(BaseModel):
     identifier: str
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class SkillUninstallRequest(BaseModel):
     name: str
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class SkillsUpdateRequest(BaseModel):
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class ProfileCreate(BaseModel):
     name: str
-    clone_from: Optional[str] = None
+    clone_from: str | None = None
     # Backward compatibility for older dashboard/desktop clients. New clients
     # send clone_from="default" (or another profile name) explicitly.
     clone_from_default: bool = False
     clone_all: bool = False
     no_skills: bool = False
-    description: Optional[str] = None
-    provider: Optional[str] = None
-    model: Optional[str] = None
+    description: str | None = None
+    provider: str | None = None
+    model: str | None = None
     # Profile-builder additions — all optional, all applied best-effort AFTER
     # the profile directory exists, so a hiccup in any of them never 500s the
     # create (the user can fix it from the relevant dashboard page afterward).
     # MCP servers to write into the new profile's config.yaml.
-    mcp_servers: List["MCPServerCreate"] = []
+    mcp_servers: list[MCPServerCreate] = []
     # Built-in / optional skills to KEEP active. When this list is non-empty,
     # the builder uses "replace" semantics: the bundle is seeded, then every
     # seeded skill NOT in this list is added to the profile's disabled list.
     # Empty list = leave the seeded bundle untouched (legacy behaviour).
-    keep_skills: List[str] = []
+    keep_skills: list[str] = []
     # Skills-hub identifiers to install into the new profile. Installed async
     # via a subprocess scoped to the profile (`prostor -p <name> skills install`)
     # because skills_hub.SKILLS_DIR is import-time-bound and the PROSTOR_HOME
     # override can't redirect it. Returns spawned PIDs for the UI to poll.
-    hub_skills: List[str] = []
+    hub_skills: list[str] = []
 
 
 class ProfileRename(BaseModel):
@@ -338,45 +339,45 @@ class ProfileDescribeAuto(BaseModel):
 class SkillToggle(BaseModel):
     name: str
     enabled: bool
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class SkillCreate(BaseModel):
     name: str
     content: str
-    category: Optional[str] = None
-    profile: Optional[str] = None
+    category: str | None = None
+    profile: str | None = None
 
 
 class SkillContentUpdate(BaseModel):
     name: str
     content: str
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class ToolsetToggle(BaseModel):
     enabled: bool
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class ToolsetProviderSelect(BaseModel):
     provider: str
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class ToolsetEnvUpdate(BaseModel):
-    env: Dict[str, str]
-    profile: Optional[str] = None
+    env: dict[str, str]
+    profile: str | None = None
 
 
 class ToolsetPostSetup(BaseModel):
     key: str
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class RawConfigUpdate(BaseModel):
     yaml_text: str
-    profile: Optional[str] = None
+    profile: str | None = None
 
 
 class ThemeSetBody(BaseModel):
@@ -394,8 +395,8 @@ class _AgentPluginInstallBody(BaseModel):
 
 
 class _PluginProvidersPutBody(BaseModel):
-    memory_provider: Optional[str] = None
-    context_engine: Optional[str] = None
+    memory_provider: str | None = None
+    context_engine: str | None = None
 
 
 class _PluginVisibilityBody(BaseModel):

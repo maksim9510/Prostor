@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from gateway.config import PlatformConfig, Platform
+from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
     MessageEvent,
     MessageType,
@@ -23,7 +23,6 @@ from gateway.platforms.base import (
     _thread_metadata_for_source,
 )
 from gateway.session import build_session_key
-
 
 # ── Fake telegram.error hierarchy ──────────────────────────────────────
 # Mirrors the real python-telegram-bot hierarchy:

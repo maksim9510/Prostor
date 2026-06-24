@@ -23,12 +23,12 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent, SendResult
-from gateway.platforms.webhook import WebhookAdapter, _INSECURE_NO_AUTH
-
+from gateway.platforms.webhook import _INSECURE_NO_AUTH, WebhookAdapter
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_adapter(routes, **extra_kw) -> WebhookAdapter:
     extra = {"host": "127.0.0.1", "port": 0, "routes": routes}

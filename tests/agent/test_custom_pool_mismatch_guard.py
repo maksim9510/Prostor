@@ -15,11 +15,8 @@ never mutate the primary's pool while a fallback provider is active).
 """
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from agent.agent_runtime_helpers import recover_with_credential_pool
 from agent.error_classifier import FailoverReason
-
 
 FIREWORKS_URL = "https://api.fireworks.ai/inference/v1"
 

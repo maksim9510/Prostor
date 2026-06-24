@@ -10,7 +10,6 @@ Only Sonnet is affected — Opus 1M is general access.
 
 from types import SimpleNamespace
 
-
 # ---------------------------------------------------------------------------
 # Detection logic
 # ---------------------------------------------------------------------------

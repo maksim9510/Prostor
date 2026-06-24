@@ -22,7 +22,8 @@ validate it. See docs/relay-connector-contract.md.
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Dict, Optional, Protocol, runtime_checkable
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol, runtime_checkable
 
 from gateway.platforms.base import MessageEvent
 from gateway.relay.descriptor import CapabilityDescriptor
@@ -51,7 +52,7 @@ class RelayTransport(Protocol):
         """Register the callback invoked with each inbound MessageEvent."""
         ...
 
-    async def send_outbound(self, action: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_outbound(self, action: dict[str, Any]) -> dict[str, Any]:
         """Carry an outbound action (send/edit/typing) to the connector.
 
         Returns a result dict; for ``op == "send"`` it carries
@@ -59,11 +60,11 @@ class RelayTransport(Protocol):
         """
         ...
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Proxy a chat-info lookup to the connector."""
         ...
 
-    async def send_interrupt(self, session_key: str, reason: Optional[str] = None) -> None:
+    async def send_interrupt(self, session_key: str, reason: str | None = None) -> None:
         """Route a mid-turn /stop to the connector for ``session_key``.
 
         The connector forwards it down the socket owned by the gateway
@@ -74,7 +75,7 @@ class RelayTransport(Protocol):
         """
         ...
 
-    async def send_follow_up(self, action: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_follow_up(self, action: dict[str, Any]) -> dict[str, Any]:
         """Act on a shared-identity capability bound to a session (A2 outbound).
 
         Some platforms hand the connector a credential that acts on the SHARED

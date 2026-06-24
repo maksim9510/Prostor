@@ -9,14 +9,14 @@ import threading
 from pathlib import Path
 
 from agent.file_safety import get_read_block_error
+from agent.redact import redact_sensitive_text
+from tools import file_state
 from tools.binary_extensions import has_binary_extension
 from tools.file_operations import (
     ShellFileOperations,
     normalize_read_pagination,
     normalize_search_pagination,
 )
-from tools import file_state
-from agent.redact import redact_sensitive_text
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ def _get_max_read_chars() -> int:
         pass
     _max_read_chars_cached = _DEFAULT_MAX_READ_CHARS
     return _max_read_chars_cached
+
 
 # If the total file size exceeds this AND the caller didn't specify a narrow
 # range (limit <= 200), we include a hint encouraging targeted reads.
@@ -541,6 +542,7 @@ def _reset_patch_failures(task_id: str, resolved_paths: list) -> None:
         for rp in resolved_paths:
             task_failures.pop(rp, None)
 
+
 # Per-task bounds for the containers inside each _read_tracker[task_id].
 # A CLI session uses one stable task_id for its lifetime; without these
 # caps, a 10k-read session would accumulate ~1.5MB of dict/set state that
@@ -654,14 +656,19 @@ def _get_file_ops(task_id: str = "default") -> ShellFileOperations:
     parent's container and its cached file_ops. RL/benchmark task_ids with
     a registered env override keep their isolation.
     """
+    import time
+
     from tools.terminal_tool import (
-        _active_environments, _env_lock, _create_environment,
-        _get_env_config, _last_activity, _start_cleanup_thread,
+        _active_environments,
+        _create_environment,
         _creation_locks,
         _creation_locks_lock,
+        _env_lock,
+        _get_env_config,
+        _last_activity,
         _resolve_container_task_id,
+        _start_cleanup_thread,
     )
-    import time
 
     raw_task_id = task_id or "default"
     task_id = _resolve_container_task_id(raw_task_id)
@@ -1269,6 +1276,7 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
         _paths_to_check.append(path)
     if mode == "patch" and patch:
         import re as _re
+
         from tools.path_security import has_traversal_component
         for _m in _re.finditer(r'^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s*(.+)$', patch, _re.MULTILINE):
             v4a_path = _m.group(1).strip()
@@ -1505,6 +1513,7 @@ def _check_file_reqs():
     """Lazy wrapper to avoid circular import with tools/__init__.py."""
     from tools import check_file_requirements
     return check_file_requirements()
+
 
 READ_FILE_SCHEMA = {
     "name": "read_file",

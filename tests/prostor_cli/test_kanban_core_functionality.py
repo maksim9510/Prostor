@@ -24,10 +24,10 @@ import pytest
 from prostor_cli import kanban_db as kb
 from prostor_cli.kanban import run_slash
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def kanban_home(tmp_path, monkeypatch):
@@ -1372,8 +1372,9 @@ def test_parse_duration_accepts_formats():
 
 
 def test_parse_duration_rejects_garbage():
-    from prostor_cli.kanban import _parse_duration
     import pytest as _p
+
+    from prostor_cli.kanban import _parse_duration
     with _p.raises(ValueError):
         _parse_duration("tenminutes")
     with _p.raises(ValueError):
@@ -1975,8 +1976,9 @@ def test_cli_bulk_complete_with_summary_rejects(kanban_home):
     # Note: prostor_cli.main doesn't propagate sub-command exit codes
     # (args.func(args) discards the return value), so we check the side
     # effects instead.
+    import os
+    import sys
     from subprocess import run as _run
-    import os, sys
     env = os.environ.copy()
     r = _run(
         [sys.executable, "-m", "prostor_cli.main", "kanban",
@@ -2376,7 +2378,7 @@ def test_build_worker_context_includes_role_history(kanban_home):
     conn = kb.connect()
     try:
         # Three completed tasks for 'reviewer'
-        for i, (title, summary) in enumerate([
+        for _i, (title, summary) in enumerate([
             ("Review security PR #1", "approved, focus on CSRF"),
             ("Review security PR #2", "requested changes: SQL injection vector"),
             ("Review security PR #3", "approved, rate-limit added"),
@@ -3521,6 +3523,7 @@ def test_cli_daemon_help_marks_deprecated():
     """The argparse help string on `daemon` mentions deprecation so users
     scanning `--help` see the migration before running the stub."""
     import argparse as _ap
+
     from prostor_cli import kanban as kb_cli
     root = _ap.ArgumentParser()
     subs = root.add_subparsers()
@@ -3558,8 +3561,9 @@ def test_cli_daemon_help_marks_deprecated():
 def test_gateway_dispatcher_watcher_respects_config_flag_off(monkeypatch):
     """dispatch_in_gateway=false -> watcher exits fast, no loop."""
     import asyncio
-    from gateway.run import GatewayRunner
+
     import prostor_cli.config as _cfg_mod
+    from gateway.run import GatewayRunner
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -3579,6 +3583,7 @@ def test_gateway_dispatcher_watcher_respects_config_flag_off(monkeypatch):
 def test_gateway_dispatcher_watcher_respects_env_override(monkeypatch):
     """PROSTOR_KANBAN_DISPATCH_IN_GATEWAY=0 disables without touching config."""
     import asyncio
+
     from gateway.run import GatewayRunner
     monkeypatch.setenv("PROSTOR_KANBAN_DISPATCH_IN_GATEWAY", "0")
 
@@ -3597,8 +3602,9 @@ def test_gateway_dispatcher_watcher_env_truthy_uses_config(monkeypatch):
     (We only treat explicit falses as an override; unset or truthy
     defers to config.)"""
     import asyncio
-    from gateway.run import GatewayRunner
+
     import prostor_cli.config as _cfg_mod
+    from gateway.run import GatewayRunner
 
     monkeypatch.setenv("PROSTOR_KANBAN_DISPATCH_IN_GATEWAY", "yes")
     monkeypatch.setattr(
@@ -3627,9 +3633,9 @@ def test_gateway_dispatcher_disables_corrupt_board_without_traceback(
     import logging
     import sqlite3
 
-    from gateway.run import GatewayRunner
     import prostor_cli.config as _cfg_mod
     import prostor_cli.kanban_db as _kb
+    from gateway.run import GatewayRunner
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -3721,9 +3727,9 @@ def test_gateway_dispatcher_retries_corrupt_board_after_quarantine(
     import logging
     import sqlite3
 
-    from gateway.run import GatewayRunner
     import prostor_cli.config as _cfg_mod
     import prostor_cli.kanban_db as _kb
+    from gateway.run import GatewayRunner
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -4058,9 +4064,10 @@ def test_complete_prose_scan_ignores_existing_ids(kanban_home):
 def test_reclaim_task_resets_running_to_ready(kanban_home, monkeypatch):
     """Manual reclaim releases the claim, resets status, and emits a
     ``reclaimed`` event even when claim_expires has not passed."""
+    import secrets
     import signal
     import time
-    import secrets
+
     import prostor_cli.kanban_db as _kb
     conn = kb.connect()
     try:
@@ -4158,8 +4165,8 @@ def test_reassign_task_refuses_running_without_reclaim_first(kanban_home):
 def test_reassign_task_with_reclaim_first_switches_profile(kanban_home):
     """With ``reclaim_first=True``, a running task is reclaimed and
     reassigned in one operation."""
-    import time
     import secrets
+    import time
     conn = kb.connect()
     try:
         t = kb.create_task(conn, title="switch me", assignee="orig")

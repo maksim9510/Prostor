@@ -109,7 +109,7 @@ class TestValidateAudioFile:
     def test_too_large(self, tmp_path):
         f = tmp_path / "big.ogg"
         f.write_bytes(b"x")
-        from tools.transcription_tools import _validate_audio_file, MAX_FILE_SIZE
+        from tools.transcription_tools import MAX_FILE_SIZE, _validate_audio_file
         real_stat = f.stat()
         with patch.object(type(f), "stat", return_value=os.stat_result((
             real_stat.st_mode, real_stat.st_ino, real_stat.st_dev,
@@ -264,11 +264,11 @@ class TestNormalizeLocalModel:
     """_normalize_local_model() maps cloud-only names to the local default."""
 
     def test_openai_model_name_maps_to_default(self):
-        from tools.transcription_tools import _normalize_local_model, DEFAULT_LOCAL_MODEL
+        from tools.transcription_tools import DEFAULT_LOCAL_MODEL, _normalize_local_model
         assert _normalize_local_model("whisper-1") == DEFAULT_LOCAL_MODEL
 
     def test_groq_model_name_maps_to_default(self):
-        from tools.transcription_tools import _normalize_local_model, DEFAULT_LOCAL_MODEL
+        from tools.transcription_tools import DEFAULT_LOCAL_MODEL, _normalize_local_model
         assert _normalize_local_model("whisper-large-v3-turbo") == DEFAULT_LOCAL_MODEL
 
     def test_valid_local_model_preserved(self):
@@ -277,11 +277,12 @@ class TestNormalizeLocalModel:
             assert _normalize_local_model(size) == size
 
     def test_none_maps_to_default(self):
-        from tools.transcription_tools import _normalize_local_model, DEFAULT_LOCAL_MODEL
+        from tools.transcription_tools import DEFAULT_LOCAL_MODEL, _normalize_local_model
         assert _normalize_local_model(None) == DEFAULT_LOCAL_MODEL
 
     def test_warning_emitted_for_cloud_model(self, caplog):
         import logging
+
         from tools.transcription_tools import _normalize_local_model
         with caplog.at_level(logging.WARNING, logger="tools.transcription_tools"):
             _normalize_local_model("whisper-1")

@@ -8,21 +8,21 @@ import pytest
 from prostor_cli.nous_account import NousPortalAccountInfo
 from prostor_cli.tools_config import (
     _DEFAULT_OFF_TOOLSETS,
+    CONFIGURABLE_TOOLSETS,
+    TOOL_CATEGORIES,
     _apply_toolset_change,
     _checklist_toolset_keys,
     _configure_provider,
-    _reconfigure_provider,
     _get_platform_tools,
     _platform_toolset_summary,
+    _reconfigure_provider,
     _reconfigure_tool,
     _run_post_setup,
     _save_platform_tools,
     _toolset_has_keys,
     _toolset_needs_configuration_prompt,
-    CONFIGURABLE_TOOLSETS,
-    TOOL_CATEGORIES,
-    gui_toolset_label,
     _visible_providers,
+    gui_toolset_label,
     tools_command,
 )
 
@@ -916,8 +916,8 @@ class TestPlatformToolsetConsistency:
 
     def test_skills_config_covers_tools_config_platforms(self):
         """skills_config.PLATFORMS should have entries for all gateway platforms."""
-        from prostor_cli.tools_config import PLATFORMS as TOOLS_PLATFORMS
         from prostor_cli.skills_config import PLATFORMS as SKILLS_PLATFORMS
+        from prostor_cli.tools_config import PLATFORMS as TOOLS_PLATFORMS
 
         non_messaging = {"api_server"}
         for platform in TOOLS_PLATFORMS:
@@ -1088,8 +1088,8 @@ class TestImagegenModelPicker:
         """GPT-Image quality is pinned to medium in the tool's defaults —
         no follow-up prompt, no config write for quality_setting."""
         from prostor_cli.tools_config import (
-            _configure_imagegen_model,
             IMAGEGEN_BACKENDS,
+            _configure_imagegen_model,
         )
         catalog, default_model = IMAGEGEN_BACKENDS["fal"]["catalog_fn"]()
         model_ids = list(catalog.keys())
@@ -1188,9 +1188,10 @@ def test_get_platform_tools_recovers_non_configurable_toolsets_from_composite():
     """Non-configurable toolsets whose tools are in the composite but not in
     CONFIGURABLE_TOOLSETS should still appear in the result.
     """
-    from toolsets import TOOLSETS
-    from prostor_cli.tools_config import PLATFORMS
     from unittest.mock import patch as mock_patch
+
+    from prostor_cli.tools_config import PLATFORMS
+    from toolsets import TOOLSETS
 
     fake_toolsets = dict(TOOLSETS)
     fake_toolsets["_test_platform_tool"] = {

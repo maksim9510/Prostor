@@ -8,13 +8,12 @@ import warnings
 from concurrent.futures import Future
 from unittest.mock import patch
 
-
 from agent.async_utils import safe_schedule_threadsafe
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _no_unawaited_warnings(caught, *, coro_name: str = "") -> bool:
     """Return True if no "X was never awaited" warning slipped through.

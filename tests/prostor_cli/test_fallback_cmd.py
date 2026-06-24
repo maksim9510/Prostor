@@ -8,10 +8,10 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # Shared fixture — isolate PROSTOR_HOME so save_config writes to tmp_path
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def isolated_home(tmp_path, monkeypatch):

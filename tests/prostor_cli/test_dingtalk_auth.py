@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # API layer — _api_post + error mapping
 # ---------------------------------------------------------------------------
@@ -16,7 +15,8 @@ class TestApiPost:
 
     def test_raises_on_network_error(self):
         import requests
-        from prostor_cli.dingtalk_auth import _api_post, RegistrationError
+
+        from prostor_cli.dingtalk_auth import RegistrationError, _api_post
 
         with patch("prostor_cli.dingtalk_auth.requests.post",
                    side_effect=requests.ConnectionError("nope")):
@@ -24,7 +24,7 @@ class TestApiPost:
                 _api_post("/app/registration/init", {"source": "prostor"})
 
     def test_raises_on_nonzero_errcode(self):
-        from prostor_cli.dingtalk_auth import _api_post, RegistrationError
+        from prostor_cli.dingtalk_auth import RegistrationError, _api_post
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
@@ -75,7 +75,7 @@ class TestBeginRegistration:
         assert result["expires_in"] == 7200
 
     def test_missing_nonce_raises(self):
-        from prostor_cli.dingtalk_auth import begin_registration, RegistrationError
+        from prostor_cli.dingtalk_auth import RegistrationError, begin_registration
 
         with patch("prostor_cli.dingtalk_auth._api_post",
                    return_value={"errcode": 0, "nonce": ""}):
@@ -83,7 +83,7 @@ class TestBeginRegistration:
                 begin_registration()
 
     def test_missing_device_code_raises(self):
-        from prostor_cli.dingtalk_auth import begin_registration, RegistrationError
+        from prostor_cli.dingtalk_auth import RegistrationError, begin_registration
 
         responses = [
             {"errcode": 0, "nonce": "n1"},
@@ -94,7 +94,7 @@ class TestBeginRegistration:
                 begin_registration()
 
     def test_missing_verification_uri_raises(self):
-        from prostor_cli.dingtalk_auth import begin_registration, RegistrationError
+        from prostor_cli.dingtalk_auth import RegistrationError, begin_registration
 
         responses = [
             {"errcode": 0, "nonce": "n1"},
@@ -130,7 +130,7 @@ class TestWaitForSuccess:
             assert secret == "sec-1"
 
     def test_success_without_credentials_raises(self):
-        from prostor_cli.dingtalk_auth import wait_for_registration_success, RegistrationError
+        from prostor_cli.dingtalk_auth import RegistrationError, wait_for_registration_success
 
         with patch("prostor_cli.dingtalk_auth.poll_registration",
                    return_value={"status": "SUCCESS", "client_id": "", "client_secret": ""}), \
@@ -196,6 +196,7 @@ class TestConfigOverrides:
         monkeypatch.delenv("DINGTALK_REGISTRATION_BASE_URL", raising=False)
         # Force module reload to pick up current env
         import importlib
+
         import prostor_cli.dingtalk_auth as mod
         importlib.reload(mod)
         assert mod.REGISTRATION_BASE_URL == "https://oapi.dingtalk.com"
@@ -204,6 +205,7 @@ class TestConfigOverrides:
         monkeypatch.setenv("DINGTALK_REGISTRATION_BASE_URL",
                            "https://test.example.com/")
         import importlib
+
         import prostor_cli.dingtalk_auth as mod
         importlib.reload(mod)
         # Trailing slash stripped
@@ -212,6 +214,7 @@ class TestConfigOverrides:
     def test_source_default(self, monkeypatch):
         monkeypatch.delenv("DINGTALK_REGISTRATION_SOURCE", raising=False)
         import importlib
+
         import prostor_cli.dingtalk_auth as mod
         importlib.reload(mod)
         assert mod.REGISTRATION_SOURCE == "openClaw"

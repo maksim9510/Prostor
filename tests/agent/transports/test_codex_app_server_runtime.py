@@ -161,6 +161,7 @@ class TestSpawnEnvIsolation:
         """The spawn env must contain the parent process's HOME unchanged.
         Verifies via a subprocess-monkey-patch."""
         import subprocess
+
         from agent.transports import codex_app_server as cas
 
         captured = {}
@@ -205,6 +206,7 @@ class TestSpawnEnvIsolation:
         """CODEX_HOME isolation must still work — that's the whole point
         of the codex_home arg."""
         import subprocess
+
         from agent.transports import codex_app_server as cas
 
         captured = {}
@@ -249,6 +251,7 @@ class TestSpawnEnvIsolation:
         for the Kanban root only.
         """
         import subprocess
+
         from agent.transports import codex_app_server as cas
 
         captured = {}

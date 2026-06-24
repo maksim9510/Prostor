@@ -9,8 +9,7 @@ and reusable from both `prostor doctor` and a future `prostor migrate xai`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 MIGRATION_GUIDE_URL = "https://docs.x.ai/developers/migration/may-15-retirement"
 RETIREMENT_DATE = "May 15, 2026"
@@ -20,7 +19,7 @@ RETIREMENT_DATE = "May 15, 2026"
 # Some entries set ``reasoning_effort`` because non-reasoning variants don't
 # have a one-to-one replacement: ``grok-4.3`` reasons by default, so emulating
 # ``*-non-reasoning`` behavior on it requires ``reasoning_effort="none"``.
-_RETIRED_MODELS: Dict[str, Dict[str, Optional[str]]] = {
+_RETIRED_MODELS: dict[str, dict[str, str | None]] = {
     "grok-4-0709":                  {"replacement": "grok-4.3", "reasoning_effort": None, "note": None},
     "grok-4-fast-reasoning":        {"replacement": "grok-4.3", "reasoning_effort": None, "note": None},
     "grok-4-fast-non-reasoning":    {"replacement": "grok-4.3", "reasoning_effort": "none", "note": None},
@@ -39,8 +38,8 @@ class RetirementIssue:
     config_path: str            # e.g. "principal.model" or "auxiliary.vision.model"
     current_model: str          # exact value found in config (preserves casing/prefix)
     replacement: str            # recommended xAI replacement
-    reasoning_effort: Optional[str] = None  # set if non-reasoning variant migration
-    note: Optional[str] = None  # disambiguation note when applicable
+    reasoning_effort: str | None = None  # set if non-reasoning variant migration
+    note: str | None = None  # disambiguation note when applicable
 
 
 def _normalize(model_id: str) -> str:
@@ -53,13 +52,13 @@ def _normalize(model_id: str) -> str:
     return m
 
 
-def _looks_like_xai(model_id: Optional[str]) -> bool:
+def _looks_like_xai(model_id: str | None) -> bool:
     if not isinstance(model_id, str) or not model_id.strip():
         return False
     return _normalize(model_id).startswith("grok-")
 
 
-def find_retired_xai_refs(config: Dict[str, Any]) -> List[RetirementIssue]:
+def find_retired_xai_refs(config: dict[str, Any]) -> list[RetirementIssue]:
     """Walk all model slots in a Prostor config and return retirement issues.
 
     Slots scanned:
@@ -69,7 +68,7 @@ def find_retired_xai_refs(config: Dict[str, Any]) -> List[RetirementIssue]:
       - ``tts.xai.model``
       - ``plugins.image_gen.xai.model``
     """
-    issues: List[RetirementIssue] = []
+    issues: list[RetirementIssue] = []
 
     def _check(path: str, model: Any) -> None:
         if not _looks_like_xai(model):
@@ -137,8 +136,8 @@ def format_issue(issue: RetirementIssue) -> str:
 # ---------------------------------------------------------------------------
 
 import datetime as _dt
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -146,12 +145,12 @@ class ApplyResult:
     """Outcome of an apply_migration call."""
 
     file_path: Path
-    backup_path: Optional[Path]
-    issues_resolved: List[RetirementIssue]
+    backup_path: Path | None
+    issues_resolved: list[RetirementIssue]
     config_changed: bool
 
 
-def _walk_to_parent(yaml_doc: Any, dotted_path: str) -> "tuple[Any, str]":
+def _walk_to_parent(yaml_doc: Any, dotted_path: str) -> tuple[Any, str]:
     """Resolve a dotted slot path to (parent_mapping, leaf_key).
 
     Example: "auxiliary.vision.model" -> (yaml_doc["auxiliary"]["vision"], "model").
@@ -170,7 +169,7 @@ def _walk_to_parent(yaml_doc: Any, dotted_path: str) -> "tuple[Any, str]":
 
 def apply_migration(
     config_path: Path,
-    issues: List[RetirementIssue],
+    issues: list[RetirementIssue],
     backup: bool = True,
 ) -> ApplyResult:
     """Rewrite ``config_path`` in-place so each issue is resolved.
@@ -214,7 +213,7 @@ def apply_migration(
             config_changed=False,
         )
 
-    resolved: List[RetirementIssue] = []
+    resolved: list[RetirementIssue] = []
     for issue in issues:
         try:
             parent, leaf = _walk_to_parent(doc, issue.config_path)
@@ -234,7 +233,7 @@ def apply_migration(
             config_changed=False,
         )
 
-    backup_path: Optional[Path] = None
+    backup_path: Path | None = None
     if backup:
         ts = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
         backup_path = config_path.with_name(

@@ -9,14 +9,14 @@ import os
 import shutil
 import tempfile
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 import httpx
 
 from agent.auxiliary_client import async_call_llm, extract_content_or_reasoning
-from prostor_constants import get_prostor_home
 from plugins.teams_pipeline.meetings import (
     download_recording_artifact,
     enrich_meeting_with_call_record,
@@ -31,6 +31,7 @@ from plugins.teams_pipeline.models import (
     TeamsMeetingSummaryPayload,
 )
 from plugins.teams_pipeline.store import TeamsPipelineStore
+from prostor_constants import get_prostor_home
 from tools.transcription_tools import transcribe_audio
 
 logger = logging.getLogger(__name__)
@@ -65,10 +66,10 @@ class TeamsPipelineArtifactNotFoundError(TeamsPipelineRetryableError):
     """Raised when meeting artifacts are not yet available."""
 
 
-TranscribeFn = Callable[[str, Optional[str]], dict[str, Any]]
+TranscribeFn = Callable[[str, str | None], dict[str, Any]]
 SummarizeFn = Callable[..., Awaitable[dict[str, Any] | TeamsMeetingSummaryPayload]]
 SinkFn = Callable[
-    [TeamsMeetingSummaryPayload, dict[str, Any], Optional[dict[str, Any]]],
+    [TeamsMeetingSummaryPayload, dict[str, Any], dict[str, Any] | None],
     Awaitable[dict[str, Any]],
 ]
 
@@ -87,7 +88,7 @@ class TeamsPipelineConfig:
     teams_delivery: dict[str, Any] | None = None
 
     @classmethod
-    def from_dict(cls, payload: Optional[dict[str, Any]]) -> "TeamsPipelineConfig":
+    def from_dict(cls, payload: dict[str, Any] | None) -> TeamsPipelineConfig:
         data = dict(payload or {})
         tmp_dir = data.get("tmp_dir") or data.get("tmpDir")
         return cls(
@@ -116,7 +117,7 @@ class NotionWriter:
         self,
         payload: TeamsMeetingSummaryPayload,
         config: dict[str, Any],
-        existing_record: Optional[dict[str, Any]] = None,
+        existing_record: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.api_key:
             raise TeamsPipelineSinkError("NOTION_API_KEY is not configured.")
@@ -212,7 +213,7 @@ class LinearWriter:
         self,
         payload: TeamsMeetingSummaryPayload,
         config: dict[str, Any],
-        existing_record: Optional[dict[str, Any]] = None,
+        existing_record: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.api_key:
             raise TeamsPipelineSinkError("LINEAR_API_KEY is not configured.")
@@ -276,10 +277,10 @@ class TeamsMeetingPipeline:
         store: TeamsPipelineStore,
         config: TeamsPipelineConfig | dict[str, Any] | None = None,
         transcribe_fn: TranscribeFn = transcribe_audio,
-        summarize_fn: Optional[SummarizeFn] = None,
-        notion_writer: Optional[NotionWriter] = None,
-        linear_writer: Optional[LinearWriter] = None,
-        teams_sender: Optional[SinkFn] = None,
+        summarize_fn: SummarizeFn | None = None,
+        notion_writer: NotionWriter | None = None,
+        linear_writer: LinearWriter | None = None,
+        teams_sender: SinkFn | None = None,
     ) -> None:
         self.graph_client = graph_client
         self.store = store

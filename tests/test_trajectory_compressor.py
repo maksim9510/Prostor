@@ -4,15 +4,15 @@ import importlib
 import os
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from trajectory_compressor import (
-    CompressionConfig,
-    TrajectoryMetrics,
     AggregateMetrics,
+    CompressionConfig,
     TrajectoryCompressor,
+    TrajectoryMetrics,
 )
 
 
@@ -268,7 +268,7 @@ class TestAggregateMetrics:
 
     def test_multiple_trajectories_aggregation(self):
         agg = AggregateMetrics()
-        for i in range(3):
+        for _i in range(3):
             m = TrajectoryMetrics()
             m.original_tokens = 10000
             m.compressed_tokens = 5000

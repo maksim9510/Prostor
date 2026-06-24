@@ -21,6 +21,7 @@ def isolated_home(tmp_path, monkeypatch):
 
     # Force a fresh catalog module state for each test.
     import importlib
+
     from prostor_cli import model_catalog
     importlib.reload(model_catalog)
     yield home
@@ -350,7 +351,7 @@ class TestIntegrationWithModelsModule:
         self, isolated_home
     ):
         from prostor_cli import model_catalog
-        from prostor_cli.models import get_curated_nous_model_ids, _PROVIDER_MODELS
+        from prostor_cli.models import _PROVIDER_MODELS, get_curated_nous_model_ids
 
         with patch.object(model_catalog, "_fetch_manifest", return_value=None):
             result = get_curated_nous_model_ids()
@@ -382,6 +383,7 @@ class TestIntegrationWithModelsModule:
         # seat-belt thinks is the "real" user store. Use the autouse
         # ``_hermetic_environment`` PROSTOR_HOME directly instead.
         import importlib
+
         from prostor_cli import model_catalog
         from prostor_cli.models import get_curated_nous_model_ids
         importlib.reload(model_catalog)
@@ -431,6 +433,7 @@ class TestIntegrationWithModelsModule:
         a ``if max_models`` (falsy) check would conflate ``0`` with unlimited.
         """
         import importlib
+
         from prostor_cli import model_catalog
         from prostor_cli.models import get_curated_nous_model_ids
         importlib.reload(model_catalog)

@@ -16,7 +16,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -30,7 +29,6 @@ from prostor_cli.config import (
     save_env_value,
 )
 from prostor_cli.secret_prompt import masked_secret_prompt
-
 
 # ---------------------------------------------------------------------------
 # Argparse wiring — called from prostor_cli.main
@@ -464,7 +462,7 @@ def _bws_version(binary: Path) -> str:
 
 def _list_projects(
     binary: Path, token: str, console: Console, *, server_url: str = ""
-) -> Optional[List[dict]]:
+) -> list[dict] | None:
     """Call ``bws project list`` and return the parsed list, or None on failure."""
     env = os.environ.copy()
     env["BWS_ACCESS_TOKEN"] = token
@@ -525,7 +523,7 @@ def _resolve_server_url(
     args: argparse.Namespace,
     secrets_cfg: dict,
     console: Console,
-) -> Optional[str]:
+) -> str | None:
     """Pick a Bitwarden server URL for setup.
 
     Resolution order:

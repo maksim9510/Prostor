@@ -14,7 +14,6 @@ import pytest
 
 from prostor_cli import send_cmd
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -379,6 +378,7 @@ def test_load_prostor_env_does_not_override_existing(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_HOME_CHANNEL", "env_value")
 
     from importlib import reload
+
     import prostor_cli.config as _hc_config
     reload(_hc_config)
 
@@ -394,6 +394,7 @@ def test_load_prostor_env_handles_missing_files(tmp_path, monkeypatch):
     monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
 
     from importlib import reload
+
     import prostor_cli.config as _hc_config
     reload(_hc_config)
 

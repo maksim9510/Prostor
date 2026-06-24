@@ -3,8 +3,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
-
 from tools.browser_camofox import (
+    _rewrite_loopback_url_for_camofox,
     camofox_back,
     camofox_click,
     camofox_close,
@@ -18,9 +18,7 @@ from tools.browser_camofox import (
     camofox_vision,
     check_camofox_available,
     is_camofox_mode,
-    _rewrite_loopback_url_for_camofox,
 )
-
 
 # ---------------------------------------------------------------------------
 # Configuration detection

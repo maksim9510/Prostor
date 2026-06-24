@@ -5,7 +5,6 @@ Extracted from prostor_state.py (#26).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +108,7 @@ class SessionFtsMixin:
             "FROM messages"
         )
 
-    def _fts_table_probe(self, cursor: sqlite3.Cursor, table_name: str) -> Optional[bool]:
+    def _fts_table_probe(self, cursor: sqlite3.Cursor, table_name: str) -> bool | None:
         try:
             cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
             return True

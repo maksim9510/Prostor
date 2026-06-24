@@ -26,11 +26,11 @@ import shutil
 
 import pytest
 
+from tools.environments.local import LocalEnvironment
 from tools.file_operations import (
     ShellFileOperations,
     _split_tool_diagnostics,
 )
-from tools.environments.local import LocalEnvironment
 
 
 def _ops(root):

@@ -10,9 +10,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-
 from prostor_cli import security_audit as sa
-
 
 # ─── Parsers ──────────────────────────────────────────────────────────────────
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 
@@ -21,7 +21,7 @@ def _write_plugin(
     root: Path,
     name: str,
     *,
-    manifest_extra: Dict[str, Any] | None = None,
+    manifest_extra: dict[str, Any] | None = None,
     register_body: str = "pass",
 ) -> Path:
     plugin_dir = root / name
@@ -59,9 +59,8 @@ class TestRegisterTTSProvider:
     """End-to-end: a fake plugin registers via the hook, ends up in the registry."""
 
     def test_accepts_valid_provider(self):
-        from prostor_cli.plugins import PluginManager
-
         from agent import tts_registry
+        from prostor_cli.plugins import PluginManager
         tts_registry._reset_for_tests()
 
         prostor_home = Path(os.environ["PROSTOR_HOME"])
@@ -92,9 +91,8 @@ class TestRegisterTTSProvider:
 
     def test_rejects_non_provider(self, caplog):
         """A plugin that passes a non-TTSProvider gets a warning, no exception."""
-        from prostor_cli.plugins import PluginManager
-
         from agent import tts_registry
+        from prostor_cli.plugins import PluginManager
         tts_registry._reset_for_tests()
 
         prostor_home = Path(os.environ["PROSTOR_HOME"])
@@ -122,9 +120,8 @@ class TestRegisterTTSProvider:
         rejected by the underlying registry — both with a registry-level warning
         AND with the registry remaining empty (plugin still loads OK).
         """
-        from prostor_cli.plugins import PluginManager
-
         from agent import tts_registry
+        from prostor_cli.plugins import PluginManager
         tts_registry._reset_for_tests()
 
         prostor_home = Path(os.environ["PROSTOR_HOME"])

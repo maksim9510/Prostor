@@ -18,15 +18,14 @@ Smart Read Cache — кэширование результатов read_file с 
 - Stats: hit/miss ratio, saved I/O operations, saved tokens
 """
 
-import hashlib
 import logging
 import os
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ class SmartReadCache:
         self.max_entries = max_entries
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._lock = threading.Lock()
-        self._dir_read_count: Dict[str, int] = {}  # dir → read count (for readahead)
+        self._dir_read_count: dict[str, int] = {}  # dir → read count (for readahead)
         self._stats = {
             "hits": 0,
             "misses": 0,
@@ -68,7 +67,7 @@ class SmartReadCache:
     def _cache_key(self, path: str, offset: int, limit: int) -> str:
         return f"{os.path.abspath(path)}:{offset}:{limit}"
 
-    def _file_signature(self, path: str) -> Optional[Tuple[float, int]]:
+    def _file_signature(self, path: str) -> tuple[float, int] | None:
         """Get (mtime, size) for file, or None if not accessible."""
         try:
             stat = os.stat(path)
@@ -84,7 +83,7 @@ class SmartReadCache:
         path: str,
         offset: int = 1,
         limit: int = 500,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Try to get file content from cache.
 
         Returns cached content if file hasn't changed, None if cache miss.
@@ -187,7 +186,7 @@ class SmartReadCache:
 
         return removed
 
-    def maybe_readahead(self, path: str) -> List[str]:
+    def maybe_readahead(self, path: str) -> list[str]:
         """Check if readahead should be triggered for this file's directory.
 
         If 3+ files from the same directory have been read, pre-fetch
@@ -227,7 +226,7 @@ class SmartReadCache:
 
             for fp in to_prefetch:
                 try:
-                    with open(fp, "r", encoding="utf-8", errors="replace") as f:
+                    with open(fp, encoding="utf-8", errors="replace") as f:
                         content = f.read()
                     # Store with default offset/limit
                     self.put(fp, content, offset=1, limit=500)
@@ -246,7 +245,7 @@ class SmartReadCache:
             logger.debug("Readahead failed: %s", e)
             return []
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         with self._lock:
             total = self._stats["hits"] + self._stats["misses"]
@@ -276,7 +275,7 @@ class SmartReadCache:
                 "saved_tokens": 0,
             }
 
-    def warm(self, paths: List[str]) -> int:
+    def warm(self, paths: list[str]) -> int:
         """Pre-warm cache with a list of files.
 
         Returns number of files successfully cached.
@@ -284,7 +283,7 @@ class SmartReadCache:
         count = 0
         for path in paths:
             try:
-                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                with open(path, encoding="utf-8", errors="replace") as f:
                     content = f.read()
                 self.put(path, content)
                 count += 1
@@ -297,7 +296,7 @@ class SmartReadCache:
 # Global singleton
 # ---------------------------------------------------------------------------
 
-_cache: Optional[SmartReadCache] = None
+_cache: SmartReadCache | None = None
 _cache_lock = threading.Lock()
 
 

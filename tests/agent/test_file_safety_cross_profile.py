@@ -16,7 +16,6 @@ from pathlib import Path
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers — set up a fake Prostor root with two profiles, monkeypatch the
 # resolver helpers so the classifier sees the test layout.

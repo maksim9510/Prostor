@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 from agent.context_compressor import ContextCompressor
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _tc(call_id: str) -> dict:
     """Create a minimal tool_call dict."""

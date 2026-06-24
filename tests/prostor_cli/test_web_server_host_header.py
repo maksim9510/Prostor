@@ -90,6 +90,7 @@ class TestHostHeaderMiddleware:
 
     def test_rebinding_request_rejected(self):
         from fastapi.testclient import TestClient
+
         from prostor_cli.web_server import app
 
         # Simulate start_server having set the bound_host
@@ -111,6 +112,7 @@ class TestHostHeaderMiddleware:
 
     def test_legit_loopback_request_accepted(self):
         from fastapi.testclient import TestClient
+
         from prostor_cli.web_server import app
 
         app.state.bound_host = "127.0.0.1"
@@ -136,6 +138,7 @@ class TestHostHeaderMiddleware:
         infra without calling start_server), middleware must pass through
         rather than crash."""
         from fastapi.testclient import TestClient
+
         from prostor_cli.web_server import app
 
         # Make sure bound_host isn't set

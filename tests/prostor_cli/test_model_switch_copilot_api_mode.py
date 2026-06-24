@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 from prostor_cli.model_switch import switch_model
 
-
 _MOCK_VALIDATION = {
     "accepted": True,
     "persist": True,

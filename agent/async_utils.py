@@ -24,21 +24,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Coroutine
 from concurrent.futures import Future
-from typing import Any, Coroutine, Optional
-
+from typing import Any
 
 _DEFAULT_LOGGER = logging.getLogger(__name__)
 
 
 def safe_schedule_threadsafe(
     coro: Coroutine[Any, Any, Any],
-    loop: Optional[asyncio.AbstractEventLoop],
+    loop: asyncio.AbstractEventLoop | None,
     *,
-    logger: Optional[logging.Logger] = None,
+    logger: logging.Logger | None = None,
     log_message: str = "Failed to schedule coroutine on loop",
     log_level: int = logging.DEBUG,
-) -> Optional[Future]:
+) -> Future | None:
     """Schedule ``coro`` on ``loop`` from a sync context, leak-safe.
 
     Returns the :class:`concurrent.futures.Future` on success, or ``None`` if

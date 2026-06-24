@@ -14,12 +14,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from gateway.config import PlatformConfig
-from gateway.platforms.base import SendResult
-from plugins.platforms.telegram.adapter import TelegramAdapter
 from telegram.error import BadRequest, NetworkError, TimedOut
 
+from gateway.config import PlatformConfig
+from plugins.platforms.telegram.adapter import TelegramAdapter
 
 # Content exercising rich-only constructs: a heading, a real Markdown table,
 # and a task list. Pipes / brackets must survive untouched into the payload.
@@ -795,8 +793,8 @@ def _reply_message(reply_to_id, *, reply_text=None, reply_caption=None, quote_te
 async def test_rich_reply_records_and_recovers_text(monkeypatch, tmp_path):
     """A reply to a rich-sent message resolves the original text via the index."""
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
-    from gateway.platforms.base import MessageType
     from gateway import rich_sent_store
+    from gateway.platforms.base import MessageType
 
     adapter = _make_adapter()
 
@@ -839,8 +837,8 @@ async def test_rich_reply_lookup_miss_leaves_text_none(monkeypatch, tmp_path):
 async def test_rich_reply_native_quote_wins_over_lookup(monkeypatch, tmp_path):
     """A native partial quote takes precedence over the send-time index."""
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
-    from gateway.platforms.base import MessageType
     from gateway import rich_sent_store
+    from gateway.platforms.base import MessageType
 
     rich_sent_store.record("12345", "678", "full recorded body")
     adapter = _make_adapter()
@@ -854,8 +852,8 @@ async def test_rich_reply_native_quote_wins_over_lookup(monkeypatch, tmp_path):
 async def test_rich_reply_caption_wins_over_lookup(monkeypatch, tmp_path):
     """When Telegram DOES echo a caption, it wins over the index fallback."""
     monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
-    from gateway.platforms.base import MessageType
     from gateway import rich_sent_store
+    from gateway.platforms.base import MessageType
 
     rich_sent_store.record("12345", "678", "recorded body")
     adapter = _make_adapter()

@@ -2,6 +2,7 @@
 
 import sqlite3
 import time
+
 import pytest
 
 from prostor_state import SCHEMA_SQL, SCHEMA_VERSION, SessionDB
@@ -3563,6 +3564,7 @@ class TestConcurrentWriteSafety:
         # Access the underlying connection timeout via sqlite3 introspection.
         # There is no public API, so we check the kwarg via the module default.
         import inspect
+
         from prostor_state import SessionDB as _SessionDB
         src = inspect.getsource(_SessionDB.__init__)
         assert "30" in src, (
@@ -4011,6 +4013,7 @@ class TestApplyWalProbe:
     def test_skips_set_pragma_when_already_wal(self, tmp_path):
         """Already-WAL connection must not trigger the set-pragma."""
         import sqlite3
+
         from prostor_state import apply_wal_with_fallback
 
         class _TracingConn(sqlite3.Connection):
@@ -4045,6 +4048,7 @@ class TestApplyWalProbe:
     def test_sets_wal_on_fresh_connection(self, tmp_path):
         """Probe sees 'delete', then set-pragma runs and returns 'wal'."""
         import sqlite3
+
         from prostor_state import apply_wal_with_fallback
 
         class _TracingConn(sqlite3.Connection):
@@ -4070,9 +4074,10 @@ class TestApplyWalProbe:
 
     def test_apply_wal_concurrent_connects_no_eio(self, tmp_path):
         """20 threads calling connect() on the same DB must not see disk I/O error."""
+        import sqlite3
         import sys
         import threading
-        import sqlite3
+
         from prostor_state import apply_wal_with_fallback
 
         db_path = tmp_path / "concurrent.db"
@@ -4116,6 +4121,7 @@ class TestApplyWalProbe:
     def test_fallback_to_delete_still_works(self, tmp_path):
         """When set-pragma raises a WAL-incompat error, falls back to DELETE."""
         import sqlite3
+
         from prostor_state import apply_wal_with_fallback
 
         class _IncompatConn(sqlite3.Connection):
@@ -4143,6 +4149,7 @@ class TestApplyWalProbe:
     def test_probe_failure_falls_through_to_set_pragma(self, tmp_path):
         """When the read probe raises OperationalError, fall through to set-pragma."""
         import sqlite3
+
         from prostor_state import apply_wal_with_fallback
 
         class _ProbeFails(sqlite3.Connection):
@@ -4169,7 +4176,9 @@ class TestApplyWalProbe:
     def test_no_downgrade_from_wal_to_delete_on_eio(self, tmp_path):
         """OperationalError NOT in _WAL_INCOMPAT_MARKERS must propagate, not downgrade."""
         import sqlite3
+
         import pytest
+
         from prostor_state import apply_wal_with_fallback
 
         class _EIOConn(sqlite3.Connection):
@@ -4196,6 +4205,7 @@ class TestApplyWalProbe:
     def test_returns_wal_not_delete_from_probe(self, tmp_path):
         """Early-return only on 'wal'; 'delete' or 'memory' must fall through to set-pragma."""
         import sqlite3
+
         from prostor_state import apply_wal_with_fallback
 
         class _TracingConn(sqlite3.Connection):

@@ -2,10 +2,13 @@
 Extracted from gateway/run.py (#23).
 """
 from __future__ import annotations
-import logging, os
+
+import logging
+import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+
 logger = logging.getLogger(__name__)
+
 
 def _home_target_env_var(platform_name: str) -> str:
     """Return the configured home-target env var for a platform.
@@ -74,7 +77,7 @@ def _reload_runtime_env_preserving_config_authority() -> None:
     _bridge_max_turns_from_config(_prostor_home)
 
 
-def _bridge_max_turns_from_config(home: "Path") -> None:
+def _bridge_max_turns_from_config(home: Path) -> None:
     """Bridge config.yaml agent.max_turns into PROSTOR_MAX_ITERATIONS (a global)."""
     config_path = home / 'config.yaml'
     if not config_path.exists():
@@ -113,7 +116,6 @@ def _current_max_iterations() -> int:
 
 from contextlib import contextmanager as _contextmanager
 
-
 # Platforms that bind a host TCP port (HTTP/webhook listeners). In a profile
 # multiplexer the default profile owns the single shared listener and serves
 # every profile through the /p/<profile>/ URL prefix, so a SECONDARY profile
@@ -142,7 +144,7 @@ class MultiplexConfigError(RuntimeError):
 
 
 @_contextmanager
-def _profile_runtime_scope(profile_home: "Path"):
+def _profile_runtime_scope(profile_home: Path):
     """Scope config/skills/memory AND credentials to a profile for one turn.
 
     Combines the two seams the multiplexer needs:
@@ -160,12 +162,12 @@ def _profile_runtime_scope(profile_home: "Path"):
     returns an isolated dict — which is what keeps subprocesses (MCP, kanban)
     from inheriting cross-profile secrets.
     """
-    from prostor_constants import set_prostor_home_override, reset_prostor_home_override
     from agent.secret_scope import (
         build_profile_secret_scope,
-        set_secret_scope,
         reset_secret_scope,
+        set_secret_scope,
     )
+    from prostor_constants import reset_prostor_home_override, set_prostor_home_override
 
     home_token = set_prostor_home_override(str(profile_home))
     secret_token = set_secret_scope(build_profile_secret_scope(Path(profile_home)))
@@ -176,7 +178,7 @@ def _profile_runtime_scope(profile_home: "Path"):
         reset_prostor_home_override(home_token)
 
 
-def _platform_config_key(platform: "Platform") -> str:
+def _platform_config_key(platform: Platform) -> str:
     """Map a Platform enum to its config.yaml key (LOCAL→"cli", rest→enum value)."""
     return "cli" if platform == Platform.LOCAL else platform.value
 
@@ -220,7 +222,7 @@ def _load_gateway_config() -> dict:
         try:
             if config_path.exists():
                 import yaml
-                with open(config_path, 'r', encoding='utf-8') as f:
+                with open(config_path, encoding='utf-8') as f:
                     raw = yaml.safe_load(f) or {}
         except Exception:
             logger.debug("Could not load gateway config from %s", config_path)
@@ -274,7 +276,7 @@ def _resolve_gateway_model(config: dict | None = None) -> str:
     return ""
 
 
-def _resolve_prostor_bin() -> Optional[list[str]]:
+def _resolve_prostor_bin() -> list[str] | None:
     """Resolve the Prostor update command as argv parts.
 
     Tries in order:
@@ -301,7 +303,7 @@ def _resolve_prostor_bin() -> Optional[list[str]]:
     return None
 
 
-def _parse_session_key(session_key: str) -> "dict | None":
+def _parse_session_key(session_key: str) -> dict | None:
     """Parse a session key into its component parts.
 
     Session keys follow the format
@@ -327,7 +329,7 @@ def _parse_session_key(session_key: str) -> "dict | None":
     return None
 
 
-def _format_gateway_process_notification(evt: dict) -> "str | None":
+def _format_gateway_process_notification(evt: dict) -> str | None:
     """Format a watch pattern event from completion_queue into a [IMPORTANT:] message."""
     evt_type = evt.get("type", "completion")
     _sid = evt.get("session_id", "unknown")
@@ -359,7 +361,7 @@ def _format_gateway_process_notification(evt: dict) -> "str | None":
     return None
 
 
-def _drain_gateway_watch_events(completion_queue) -> "list[dict]":
+def _drain_gateway_watch_events(completion_queue) -> list[dict]:
     """Drain gateway-owned watch events without spinning on requeued events.
 
     Watch events are handled by the post-turn gateway drain. Process

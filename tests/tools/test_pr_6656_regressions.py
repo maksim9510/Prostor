@@ -26,13 +26,12 @@ from unittest.mock import patch
 
 import pytest
 
+from tools.skills_guard import content_hash
 from tools.skills_hub import (
     SkillBundle,
     bundle_content_hash,
     uninstall_skill,
 )
-from tools.skills_guard import content_hash
-
 
 # =============================================================================
 # uninstall_skill: path traversal guard

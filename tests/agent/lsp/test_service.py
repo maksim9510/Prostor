@@ -20,7 +20,6 @@ from agent.lsp.servers import (
     SpawnSpec,
 )
 
-
 MOCK_SERVER = str(Path(__file__).parent / "_mock_lsp_server.py")
 
 

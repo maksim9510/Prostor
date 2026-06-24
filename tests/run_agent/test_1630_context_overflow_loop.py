@@ -10,7 +10,6 @@ Verifies that:
 
 from unittest.mock import MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # Test 1: Agent heuristic — generic 400 with large session → compression
 # ---------------------------------------------------------------------------

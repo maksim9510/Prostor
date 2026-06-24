@@ -10,10 +10,10 @@ from agent.transports.types import (
     map_finish_reason,
 )
 
-
 # ---------------------------------------------------------------------------
 # ToolCall
 # ---------------------------------------------------------------------------
+
 
 class TestToolCall:
     def test_basic_construction(self):

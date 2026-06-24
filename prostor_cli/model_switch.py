@@ -23,8 +23,18 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, NamedTuple, Optional
+from typing import NamedTuple
 
+from agent.models_dev import (
+    ModelCapabilities,
+    ModelInfo,
+    get_model_capabilities,
+    get_model_info,
+    list_provider_models,
+)
+from prostor_cli.model_normalize import (
+    normalize_model_for_provider,
+)
 from prostor_cli.providers import (
     ProviderDef,
     custom_provider_slug,
@@ -33,21 +43,11 @@ from prostor_cli.providers import (
     is_aggregator,
     resolve_provider_full,
 )
-from prostor_cli.model_normalize import (
-    normalize_model_for_provider,
-)
-from agent.models_dev import (
-    ModelCapabilities,
-    ModelInfo,
-    get_model_capabilities,
-    get_model_info,
-    list_provider_models,
-)
 
 logger = logging.getLogger(__name__)
 
 
-def _bare_custom_provider_def(current_base_url: str) -> Optional[ProviderDef]:
+def _bare_custom_provider_def(current_base_url: str) -> ProviderDef | None:
     """ProviderDef for a direct ``model.provider: custom`` endpoint."""
     base_url = str(current_base_url or "").strip()
     if not base_url:
@@ -292,12 +292,13 @@ class ModelSwitchResult:
     warning_message: str = ""
     provider_label: str = ""
     resolved_via_alias: str = ""
-    capabilities: Optional[ModelCapabilities] = None
-    model_info: Optional[ModelInfo] = None
+    capabilities: ModelCapabilities | None = None
+    model_info: ModelInfo | None = None
     is_global: bool = False
 # ---------------------------------------------------------------------------
 # Flag parsing
 # ---------------------------------------------------------------------------
+
 
 def parse_model_flags(raw_args: str) -> tuple[str, str, bool, bool, bool]:
     """Parse --provider, --global, --session, and --refresh flags from /model command args.
@@ -504,7 +505,7 @@ def _model_sort_key(model_id: str, prefix: str) -> tuple:
 def resolve_alias(
     raw_input: str,
     current_provider: str,
-) -> Optional[tuple[str, str, str]]:
+) -> tuple[str, str, str] | None:
     """Resolve a short alias against the current provider's catalog.
 
     Looks up *raw_input* in :data:`MODEL_ALIASES`, then searches the
@@ -603,7 +604,7 @@ def get_authenticated_provider_slugs(
 def _resolve_alias_fallback(
     raw_input: str,
     authenticated_providers: list[str] = (),
-) -> Optional[tuple[str, str, str]]:
+) -> tuple[str, str, str] | None:
     """Try to resolve an alias on the user's authenticated providers.
 
     Falls back to ``("openrouter", "nous")`` only when no authenticated
@@ -622,10 +623,10 @@ def resolve_display_context_length(
     provider: str,
     base_url: str = "",
     api_key: str = "",
-    model_info: Optional[ModelInfo] = None,
+    model_info: ModelInfo | None = None,
     custom_providers: list | None = None,
     config_context_length: int | None = None,
-) -> Optional[int]:
+) -> int | None:
     """Resolve the context length to show in /model output.
 
     models.dev reports per-vendor context (e.g. gpt-5.5 = 1.05M on openai)
@@ -717,8 +718,8 @@ def switch_model(
     from prostor_cli.models import (
         copilot_model_api_mode,
         detect_provider_for_model,
-        validate_requested_model,
         opencode_model_api_mode,
+        validate_requested_model,
     )
     from prostor_cli.runtime_provider import resolve_runtime_provider
 
@@ -1193,7 +1194,7 @@ import threading as _threading  # noqa: E402
 _picker_prewarm_done = _threading.Event()
 
 
-def prewarm_picker_cache_async() -> Optional["_threading.Thread"]:
+def prewarm_picker_cache_async() -> _threading.Thread | None:
     """Warm the provider-models disk cache in a background daemon thread.
 
     The no-args ``/model`` picker calls ``list_authenticated_providers()``,
@@ -1250,7 +1251,7 @@ def list_authenticated_providers(
     max_models: int | None = None,
     current_model: str = "",
     refresh: bool = False,
-) -> List[dict]:
+) -> list[dict]:
     """Detect which providers have credentials and list their curated models.
 
     Uses the curated model lists from prostor_cli/models.py (OPENROUTER_MODELS,
@@ -1278,16 +1279,23 @@ def list_authenticated_providers(
     opens so they stay snappy on the 1h cache.
     """
     import os
+
     from agent.models_dev import (
         PROVIDER_TO_MODELS_DEV,
         fetch_models_dev,
+    )
+    from agent.models_dev import (
         get_provider_info as _mdev_pinfo,
     )
     from prostor_cli.auth import PROVIDER_REGISTRY
     from prostor_cli.models import (
-        OPENROUTER_MODELS, _PROVIDER_MODELS,
-        _MODELS_DEV_PREFERRED, _merge_with_models_dev, cached_provider_model_ids,
-        clear_provider_models_cache, get_curated_nous_model_ids,
+        _MODELS_DEV_PREFERRED,
+        _PROVIDER_MODELS,
+        OPENROUTER_MODELS,
+        _merge_with_models_dev,
+        cached_provider_model_ids,
+        clear_provider_models_cache,
+        get_curated_nous_model_ids,
     )
 
     # Explicit refresh: drop every provider's cached model-id list so the
@@ -1301,7 +1309,7 @@ def list_authenticated_providers(
         except Exception:
             pass
 
-    results: List[dict] = []
+    results: list[dict] = []
     seen_slugs: set = set()  # lowercase-normalized to catch case variants (#9545)
     seen_mdev_ids: set = set()  # prevent duplicate entries for aliases (e.g. kimi-coding + kimi-coding-cn)
     # Effective base URLs of every built-in row we emit (normalized lower+rstrip).
@@ -1399,8 +1407,8 @@ def list_authenticated_providers(
     if "lmstudio" not in curated and (
         os.environ.get("LM_API_KEY") or os.environ.get("LM_BASE_URL") or current_provider.strip().lower() == "lmstudio"
     ):
-        from prostor_cli.models import fetch_lmstudio_models
         from prostor_cli.auth import AuthError
+        from prostor_cli.models import fetch_lmstudio_models
         is_current_lmstudio = current_provider.strip().lower() == "lmstudio"
         lm_base = (
             os.environ.get("LM_BASE_URL")
@@ -1505,8 +1513,8 @@ def list_authenticated_providers(
         _record_builtin_endpoint(slug)
 
     # --- 2. Check Prostor-only providers (nous, openai-codex, copilot, opencode-go) ---
-    from prostor_cli.providers import PROSTOR_OVERLAYS
     from prostor_cli.auth import PROVIDER_REGISTRY as _auth_registry
+    from prostor_cli.providers import PROSTOR_OVERLAYS
 
     # Build reverse mapping: models.dev ID → Prostor provider ID.
     # PROSTOR_OVERLAYS keys may be models.dev IDs (e.g. "github-copilot")
@@ -1614,13 +1622,19 @@ def list_authenticated_providers(
             # recommendations (e.g. stepfun/step-3.7-flash:free).
             model_ids = curated.get("nous", [])
             try:
+                from prostor_cli.auth import get_provider_auth_state as _nous_state
+                from prostor_cli.models import (
+                    check_nous_free_tier as _nous_free,
+                )
                 from prostor_cli.models import (
                     get_pricing_for_provider as _nous_pricing,
-                    check_nous_free_tier as _nous_free,
+                )
+                from prostor_cli.models import (
                     union_with_portal_free_recommendations as _union_free,
+                )
+                from prostor_cli.models import (
                     union_with_portal_paid_recommendations as _union_paid,
                 )
-                from prostor_cli.auth import get_provider_auth_state as _nous_state
 
                 _pricing = _nous_pricing("nous") or {}
                 _portal = ""
@@ -1896,7 +1910,7 @@ def list_authenticated_providers(
         # endpoint stays the same.  Keep same-host providers with distinct
         # env-backed credentials or API protocols separate so picker selection
         # cannot route through the wrong credential/mode pair.
-        groups: "OrderedDict[tuple, dict]" = OrderedDict()
+        groups: OrderedDict[tuple, dict] = OrderedDict()
         for entry in custom_providers:
             if not isinstance(entry, dict):
                 continue
@@ -2101,7 +2115,7 @@ def list_picker_providers(
     custom_providers: list | None = None,
     max_models: int | None = None,
     current_model: str = "",
-) -> List[dict]:
+) -> list[dict]:
     """Interactive-picker variant of :func:`list_authenticated_providers`.
 
     Post-processes the base list so the ``/model`` picker (Telegram/Discord
@@ -2132,7 +2146,7 @@ def list_picker_providers(
         current_model=current_model,
     )
 
-    filtered: List[dict] = []
+    filtered: list[dict] = []
     for p in providers:
         slug = str(p.get("slug", "")).lower()
         if slug == "openrouter":

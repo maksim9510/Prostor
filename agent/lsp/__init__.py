@@ -31,18 +31,17 @@ from __future__ import annotations
 import atexit
 import logging
 import threading
-from typing import Optional
 
 from agent.lsp.manager import LSPService
 
 logger = logging.getLogger("agent.lsp")
 
-_service: Optional[LSPService] = None
+_service: LSPService | None = None
 _atexit_registered = False
 _service_lock = threading.Lock()
 
 
-def get_service() -> Optional[LSPService]:
+def get_service() -> LSPService | None:
     """Return the process-wide LSP service singleton, or None when disabled.
 
     The service is created lazily on first call.  ``None`` is returned

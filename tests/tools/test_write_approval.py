@@ -9,8 +9,8 @@ subcommand dispatch.
 
 import json
 import os
-import tempfile
 import shutil
+import tempfile
 
 import pytest
 
@@ -69,8 +69,8 @@ def test_normalize_enabled_coerces_values():
 
 def test_memory_gate_off_allows_write(prostor_home):
     # Default (gate off) → write straight through, no staging.
-    from tools.memory_tool import memory_tool, MemoryStore
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore, memory_tool
     store = MemoryStore(); store.load_from_disk()
     r = json.loads(memory_tool("add", "user", "save me", store=store))
     assert r["success"] is True
@@ -80,8 +80,8 @@ def test_memory_gate_off_allows_write(prostor_home):
 
 def test_memory_gate_on_no_interactive_stages(prostor_home):
     # Gate on, no approval callback / not a gateway context → stage.
-    from tools.memory_tool import memory_tool, MemoryStore
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore, memory_tool
     _set_approval("memory", True)
     store = MemoryStore(); store.load_from_disk()
     r = json.loads(memory_tool("add", "memory", "stage me", store=store))
@@ -95,8 +95,8 @@ def test_memory_gate_on_no_interactive_stages(prostor_home):
 
 
 def test_memory_gate_on_then_apply(prostor_home):
-    from tools.memory_tool import memory_tool, MemoryStore, apply_memory_pending
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore, apply_memory_pending, memory_tool
     _set_approval("memory", True)
     store = MemoryStore(); store.load_from_disk()
     r = json.loads(memory_tool("add", "user", "approved entry", store=store))
@@ -120,6 +120,7 @@ _SKILL = (
 def test_skill_gate_off_allows_create(prostor_home):
     # Default (gate off) → skill is created normally, not staged.
     import importlib
+
     import tools.skill_manager_tool as smt
     importlib.reload(smt)
     from tools import write_approval as wa
@@ -130,8 +131,8 @@ def test_skill_gate_off_allows_create(prostor_home):
 
 def test_skill_gate_on_always_stages(prostor_home):
     # Skills stage even in the foreground (too big to review inline).
-    from tools.skill_manager_tool import skill_manage
     from tools import write_approval as wa
+    from tools.skill_manager_tool import skill_manage
     _set_approval("skills", True)
     r = json.loads(skill_manage("create", "staged-skill", content=_SKILL))
     assert r.get("staged") is True
@@ -143,6 +144,7 @@ def test_skill_gate_on_then_apply_writes_file(prostor_home):
     # SKILLS_DIR is resolved at import time, so reload the skill module under
     # this test's PROSTOR_HOME to exercise the real on-disk write path.
     import importlib
+
     import tools.skill_manager_tool as smt
     importlib.reload(smt)
     from tools import write_approval as wa
@@ -155,8 +157,8 @@ def test_skill_gate_on_then_apply_writes_file(prostor_home):
 
 
 def test_skill_create_diff_is_full_content(prostor_home):
-    from tools.skill_manager_tool import skill_manage
     from tools import write_approval as wa
+    from tools.skill_manager_tool import skill_manage
     _set_approval("skills", True)
     r = json.loads(skill_manage("create", "diff-skill", content=_SKILL))
     rec = wa.get_pending("skills", r["pending_id"])
@@ -193,8 +195,8 @@ def test_handle_pending_list_empty(prostor_home):
 
 def test_handle_approve_all(prostor_home):
     from prostor_cli.write_approval_commands import handle_pending_subcommand
-    from tools.memory_tool import MemoryStore
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore
     store = MemoryStore(); store.load_from_disk()
     wa.stage_write("memory", {"action": "add", "target": "user", "content": "a"},
                    summary="a", origin="foreground")
@@ -284,9 +286,9 @@ def approval_callback_cleanup():
 
 
 def test_memory_inline_approve_writes(prostor_home, approval_callback_cleanup):
-    from tools.memory_tool import memory_tool, MemoryStore
-    from tools.terminal_tool import set_approval_callback
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore, memory_tool
+    from tools.terminal_tool import set_approval_callback
     _set_approval("memory", True)
 
     calls = []
@@ -308,9 +310,9 @@ def test_memory_inline_approve_writes(prostor_home, approval_callback_cleanup):
 
 
 def test_memory_inline_deny_blocks(prostor_home, approval_callback_cleanup):
-    from tools.memory_tool import memory_tool, MemoryStore
-    from tools.terminal_tool import set_approval_callback
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore, memory_tool
+    from tools.terminal_tool import set_approval_callback
     _set_approval("memory", True)
     set_approval_callback(lambda command, description, **kw: "deny")
 
@@ -324,9 +326,9 @@ def test_memory_inline_deny_blocks(prostor_home, approval_callback_cleanup):
 
 def test_memory_inline_callback_error_stages(prostor_home, approval_callback_cleanup):
     # If the prompt machinery fails, fall back to staging — never drop silently.
-    from tools.memory_tool import memory_tool, MemoryStore
-    from tools.terminal_tool import set_approval_callback
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore, memory_tool
+    from tools.terminal_tool import set_approval_callback
     _set_approval("memory", True)
 
     def broken_cb(command, description, **kw):
@@ -344,8 +346,8 @@ def test_gateway_context_stages_not_prompts(prostor_home, monkeypatch):
     # /approve round-trip lives in the pending-queue machinery which the gate
     # does not use. The gate must stage, never attempt an inline prompt
     # (which would hit the input() fallback and silently deny).
-    from tools.memory_tool import memory_tool, MemoryStore
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore, memory_tool
     _set_approval("memory", True)
     monkeypatch.setenv("PROSTOR_GATEWAY_SESSION", "1")
 
@@ -358,9 +360,9 @@ def test_gateway_context_stages_not_prompts(prostor_home, monkeypatch):
 
 def test_skills_never_prompt_inline_even_with_callback(prostor_home, approval_callback_cleanup):
     # Skills always stage — even when an interactive callback is registered.
+    from tools import write_approval as wa
     from tools.skill_manager_tool import skill_manage
     from tools.terminal_tool import set_approval_callback
-    from tools import write_approval as wa
     _set_approval("skills", True)
 
     calls = []
@@ -377,8 +379,8 @@ def test_skills_never_prompt_inline_even_with_callback(prostor_home, approval_ca
 def test_memory_invalid_params_rejected_before_staging(prostor_home):
     # Param validation must run BEFORE the gate so a broken write is rejected
     # immediately instead of staged and failing at approve time.
-    from tools.memory_tool import memory_tool, MemoryStore
     from tools import write_approval as wa
+    from tools.memory_tool import MemoryStore, memory_tool
     _set_approval("memory", True)
     store = MemoryStore(); store.load_from_disk()
     r = json.loads(memory_tool("add", "memory", None, store=store))

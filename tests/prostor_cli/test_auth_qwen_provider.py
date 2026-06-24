@@ -14,22 +14,22 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from prostor_cli.auth import (
-    AuthError,
     DEFAULT_QWEN_BASE_URL,
     QWEN_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
+    AuthError,
+    _qwen_access_token_is_expiring,
     _qwen_cli_auth_path,
     _read_qwen_cli_tokens,
-    _save_qwen_cli_tokens,
-    _qwen_access_token_is_expiring,
     _refresh_qwen_cli_tokens,
-    resolve_qwen_runtime_credentials,
+    _save_qwen_cli_tokens,
     get_qwen_auth_status,
+    resolve_qwen_runtime_credentials,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_qwen_tokens(
     access_token="test-access-token",

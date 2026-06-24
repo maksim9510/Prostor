@@ -16,10 +16,11 @@ new service.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
 import sqlite3
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from typing import Any
 
 from prostor_cli import kanban_db as kb
 
@@ -35,7 +36,7 @@ class SwarmWorkerSpec:
     body: str
     skills: list[str] = field(default_factory=list)
     priority: int = 0
-    max_runtime_seconds: Optional[int] = None
+    max_runtime_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -81,15 +82,15 @@ def create_swarm(
     workers: Iterable[SwarmWorkerSpec],
     verifier_assignee: str,
     synthesizer_assignee: str,
-    root_title: Optional[str] = None,
+    root_title: str | None = None,
     verifier_title: str = "Verify swarm outputs",
     synthesizer_title: str = "Synthesize swarm outputs",
-    tenant: Optional[str] = None,
+    tenant: str | None = None,
     created_by: str = "swarm-orchestrator",
     workspace_kind: str = "scratch",
-    workspace_path: Optional[str] = None,
+    workspace_path: str | None = None,
     priority: int = 0,
-    idempotency_key: Optional[str] = None,
+    idempotency_key: str | None = None,
 ) -> SwarmCreated:
     """Create a durable Kanban swarm graph.
 

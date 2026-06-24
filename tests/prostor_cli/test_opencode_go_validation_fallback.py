@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 from prostor_cli.models import validate_requested_model
 
-
 _UNREACHABLE_PROBE = {
     "models": None,
     "probed_url": "https://opencode.ai/zen/go/v1/models",

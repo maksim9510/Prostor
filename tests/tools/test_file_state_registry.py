@@ -25,9 +25,9 @@ import unittest
 
 from tools import file_state
 from tools.file_tools import (
+    patch_tool,
     read_file_tool,
     write_file_tool,
-    patch_tool,
 )
 
 

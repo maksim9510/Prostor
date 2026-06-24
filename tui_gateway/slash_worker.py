@@ -13,10 +13,11 @@ import threading
 import time
 
 import psutil
+from rich.console import Console
 
 import cli as cli_mod
 from cli import ProstorCLI
-from rich.console import Console
+
 
 # Env-overridable so the integration test can drive sub-second timing.
 def _env_float(name: str, default: float) -> float:

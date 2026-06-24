@@ -7,7 +7,7 @@ that the setup wizard correctly syncs config from disk after the call.
 
 from __future__ import annotations
 
-from prostor_cli.config import load_config, save_config, save_env_value
+from prostor_cli.config import load_config, save_config
 from prostor_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
 from prostor_cli.setup import _print_setup_summary, setup_model_provider
 

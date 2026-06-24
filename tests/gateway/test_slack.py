@@ -12,18 +12,16 @@ import asyncio
 import contextlib
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from gateway.config import Platform, PlatformConfig
+from gateway.config import PlatformConfig
 from gateway.platforms.base import (
-    MessageEvent,
-    MessageType,
     SUPPORTED_VIDEO_TYPES,
+    MessageType,
     is_host_excluded_by_no_proxy,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock the slack-bolt package if it's not installed
@@ -2430,8 +2428,8 @@ class TestReactions:
         assert "1234567890.000001" in adapter._reacting_message_ids
 
         # Simulate the base class calling on_processing_start
-        from gateway.platforms.base import MessageEvent, MessageType, SessionSource
         from gateway.config import Platform
+        from gateway.platforms.base import MessageEvent, MessageType, SessionSource
 
         source = SessionSource(
             platform=Platform.SLACK,
@@ -2472,13 +2470,13 @@ class TestReactions:
         adapter._app.client.reactions_add = AsyncMock()
         adapter._app.client.reactions_remove = AsyncMock()
 
+        from gateway.config import Platform
         from gateway.platforms.base import (
             MessageEvent,
             MessageType,
-            SessionSource,
             ProcessingOutcome,
+            SessionSource,
         )
-        from gateway.config import Platform
 
         source = SessionSource(
             platform=Platform.SLACK,
@@ -2548,13 +2546,13 @@ class TestReactions:
         assert "1234567890.000004" not in adapter._reacting_message_ids
 
         # Hooks should also be no-ops when disabled
+        from gateway.config import Platform
         from gateway.platforms.base import (
             MessageEvent,
             MessageType,
-            SessionSource,
             ProcessingOutcome,
+            SessionSource,
         )
-        from gateway.config import Platform
 
         source = SessionSource(
             platform=Platform.SLACK,
@@ -3766,6 +3764,7 @@ class TestSlashEphemeralAck:
     async def test_concurrent_users_same_channel_isolates_contexts(self, adapter):
         """Two users slash on the same channel — each gets their own context."""
         import time
+
         from plugins.platforms.slack.adapter import _slash_user_id
 
         # Simulate two users stashing contexts on the same channel.
@@ -3806,6 +3805,7 @@ class TestSlashEphemeralAck:
     async def test_no_contextvar_does_not_match_any_context(self, adapter):
         """send() without ContextVar (non-slash path) must not steal contexts."""
         import time
+
         from plugins.platforms.slack.adapter import _slash_user_id
 
         adapter._slash_command_contexts[("C1", "U1")] = {

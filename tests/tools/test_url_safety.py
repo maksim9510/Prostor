@@ -1,20 +1,20 @@
 """Tests for SSRF protection in url_safety module."""
 
+import ipaddress
 import socket
 from unittest.mock import patch
 
+import pytest
+
 from tools.url_safety import (
-    is_safe_url,
+    _global_allow_private_urls,
+    _is_blocked_ip,
+    _reset_allow_private_cache,
     async_is_safe_url,
     is_always_blocked_url,
+    is_safe_url,
     normalize_url_for_request,
-    _is_blocked_ip,
-    _global_allow_private_urls,
-    _reset_allow_private_cache,
 )
-
-import ipaddress
-import pytest
 
 
 class TestNormalizeUrlForRequest:

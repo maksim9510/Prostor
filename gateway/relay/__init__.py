@@ -19,10 +19,9 @@ that don't set it are unaffected — exactly the same shape as ``gateway.proxy_u
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 
-def relay_url() -> Optional[str]:
+def relay_url() -> str | None:
     """The connector relay endpoint URL, or None when relay is not configured.
 
     Checks ``GATEWAY_RELAY_URL`` (convenient for Docker) first, then
@@ -55,7 +54,7 @@ def relay_platform_identity() -> tuple[str, str]:
     return platform, bot_id
 
 
-def relay_connection_auth() -> tuple[Optional[str], Optional[str]]:
+def relay_connection_auth() -> tuple[str | None, str | None]:
     """The (gateway_id, upgrade_secret) this gateway authenticates the WS upgrade with.
 
     Both come from enrollment (``prostor gateway enroll`` writes them to
@@ -79,7 +78,7 @@ def relay_connection_auth() -> tuple[Optional[str], Optional[str]]:
     return (gateway_id or None, secret or None)
 
 
-def relay_endpoint() -> Optional[str]:
+def relay_endpoint() -> str | None:
     """The gateway's own PUBLIC inbound URL, asserted to the connector at provision.
 
     The connector delivers signed inbound POSTs to this URL and stores it on the
@@ -150,7 +149,7 @@ def _post_provision(
     gateway_id: str,
     platform: str,
     bot_id: str,
-    gateway_endpoint: Optional[str],
+    gateway_endpoint: str | None,
     route_keys: list[str],
     timeout: float = 15.0,
 ) -> dict:
@@ -311,7 +310,7 @@ def self_provision_relay() -> bool:
     return True
 
 
-def register_relay_adapter(force: bool = False, url: Optional[str] = None) -> bool:
+def register_relay_adapter(force: bool = False, url: str | None = None) -> bool:
     """Register the generic ``relay`` platform via the platform registry.
 
     Registers when a relay URL is configured (or ``force=True`` for tests, which

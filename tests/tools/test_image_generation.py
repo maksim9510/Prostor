@@ -13,15 +13,16 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def image_tool():
     """Fresh import of tools.image_generation_tool per test."""
     import importlib
+
     import tools.image_generation_tool as mod
     return importlib.reload(mod)
 

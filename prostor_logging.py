@@ -32,8 +32,8 @@ import logging
 import os
 import sys
 import threading
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 # On Windows, stdlib ``RotatingFileHandler`` calls ``os.rename()`` in
 # ``doRollover()`` and fails with ``PermissionError [WinError 32]`` whenever
@@ -114,6 +114,7 @@ def _safe_stderr():  # type: ignore[return]
         pass
     # Best-effort: if wrapping fails, return the original stream.
     return stream
+
 
 # Third-party loggers that are noisy at DEBUG/INFO level.
 _NOISY_LOGGERS = (
@@ -234,11 +235,11 @@ COMPONENT_PREFIXES = {
 
 def setup_logging(
     *,
-    prostor_home: Optional[Path] = None,
-    log_level: Optional[str] = None,
-    max_size_mb: Optional[int] = None,
-    backup_count: Optional[int] = None,
-    mode: Optional[str] = None,
+    prostor_home: Path | None = None,
+    log_level: str | None = None,
+    max_size_mb: int | None = None,
+    backup_count: int | None = None,
+    mode: str | None = None,
     force: bool = False,
 ) -> Path:
     """Configure the Prostor logging subsystem.
@@ -419,8 +420,8 @@ class _ManagedRotatingFileHandler(RotatingFileHandler):
         super().__init__(*args, **kwargs)
         # Snapshot the inode of the currently open stream so emit() can
         # detect external rotation without an extra fstat per write.
-        self._stat_dev: Optional[int] = None
-        self._stat_ino: Optional[int] = None
+        self._stat_dev: int | None = None
+        self._stat_ino: int | None = None
         self._record_stream_stat()
 
     def _chmod_if_managed(self):
@@ -515,7 +516,7 @@ def _add_rotating_handler(
     max_bytes: int,
     backup_count: int,
     formatter: logging.Formatter,
-    log_filter: Optional[logging.Filter] = None,
+    log_filter: logging.Filter | None = None,
 ) -> None:
     """Add a ``RotatingFileHandler`` to *logger*, skipping if one already
     exists for the same resolved file path (idempotent).
@@ -555,7 +556,7 @@ def _read_logging_config():
         import yaml
         config_path = get_config_path()
         if config_path.exists():
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 cfg = yaml.safe_load(f) or {}
             # Managed scope: an administrator can pin logging.* too. Overlay via
             # the shared helper (fail-open) since this reads config.yaml directly.

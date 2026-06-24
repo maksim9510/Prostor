@@ -16,10 +16,10 @@ from pathlib import Path
 
 import prostor_constants
 
-
 # ---------------------------------------------------------------------------
 # get_subprocess_home()
 # ---------------------------------------------------------------------------
+
 
 class TestGetSubprocessHome:
     """Unit tests for prostor_constants.get_subprocess_home()."""
@@ -92,7 +92,7 @@ class TestGetSubprocessHome:
         monkeypatch.setenv("HOME", str(profile_home))
         monkeypatch.setenv("PROSTOR_REAL_HOME", str(real_home))
 
-        from prostor_constants import get_subprocess_home, get_real_home
+        from prostor_constants import get_real_home, get_subprocess_home
 
         assert get_real_home() == str(real_home)
         assert get_subprocess_home() == str(real_home)

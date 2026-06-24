@@ -31,19 +31,19 @@ Usage:
     result = terminal_tool("python server.py", background=True)
 """
 
+import atexit
 import importlib.util
 import json
 import logging
 import os
 import platform
 import re
-import time
-import threading
-import atexit
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 from utils import env_var_enabled
 
@@ -55,16 +55,13 @@ logger = logging.getLogger(__name__)
 # The terminal tool polls this during command execution so it can kill
 # long-running subprocesses immediately instead of blocking until timeout.
 # ---------------------------------------------------------------------------
-from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — re-exported
 # display_prostor_home imported lazily at call site (stale-module safety during prostor update)
-
-
 # =============================================================================
 # Custom Singularity Environment with more space
 # =============================================================================
-
 # Singularity helpers (scratch dir, SIF cache) now live in tools/environments/singularity.py
 from tools.environments.singularity import _get_scratch_dir
+from tools.interrupt import _interrupt_event, is_interrupted  # noqa: F401 — re-exported
 from tools.tool_backend_helpers import (
     coerce_modal_mode,
     has_direct_modal_credentials,
@@ -245,6 +242,7 @@ def _reset_cached_sudo_passwords() -> None:
     with _sudo_password_cache_lock:
         _sudo_password_cache.clear()
 
+
 # =============================================================================
 # Dangerous Command Approval System
 # =============================================================================
@@ -293,7 +291,7 @@ def _validate_workdir(workdir: str) -> str | None:
 def _handle_sudo_failure(output: str, env_type: str) -> str:
     """
     Check for sudo failure and add helpful message for messaging contexts.
-    
+
     Returns enhanced output if sudo failed in messaging context, else original.
     """
     is_gateway = env_var_enabled("PROSTOR_GATEWAY_SESSION")
@@ -319,12 +317,12 @@ def _handle_sudo_failure(output: str, env_type: str) -> str:
 def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
     """
     Prompt user for sudo password with timeout.
-    
+
     Returns the password if entered, or empty string if:
     - User presses Enter without input (skip)
     - Timeout expires (45s default)
     - Any error occurs
-    
+
     Only works in interactive mode (PROSTOR_INTERACTIVE=1).
     If a _sudo_password_callback is registered (by the CLI), delegates to it
     so the prompt integrates with prompt_toolkit's UI.  Otherwise reads
@@ -440,6 +438,7 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
         if "PROSTOR_SPINNER_PAUSE" in os.environ:
             del os.environ["PROSTOR_SPINNER_PAUSE"]
 
+
 def _safe_command_preview(command: Any, limit: int = 200) -> str:
     """Return a log-safe preview for possibly-invalid command values."""
     if command is None:
@@ -450,6 +449,7 @@ def _safe_command_preview(command: Any, limit: int = 200) -> str:
         return repr(command)[:limit]
     except Exception:
         return f"<{type(command).__name__}>"
+
 
 def _looks_like_env_assignment(token: str) -> bool:
     """Return True when *token* is a leading shell environment assignment."""
@@ -821,15 +821,15 @@ def _transform_sudo_command(command: str | None) -> tuple[str | None, str | None
 
 
 # Environment classes now live in tools/environments/
-from tools.environments.local import LocalEnvironment as _LocalEnvironment
-from tools.environments.singularity import SingularityEnvironment as _SingularityEnvironment
-from tools.environments.ssh import SSHEnvironment as _SSHEnvironment
-from tools.environments.docker import DockerEnvironment as _DockerEnvironment
-from tools.environments.modal import ModalEnvironment as _ModalEnvironment
-from tools.environments.managed_modal import ManagedModalEnvironment as _ManagedModalEnvironment
-from tools.managed_tool_gateway import is_managed_tool_gateway_ready
 import sys
 
+from tools.environments.docker import DockerEnvironment as _DockerEnvironment
+from tools.environments.local import LocalEnvironment as _LocalEnvironment
+from tools.environments.managed_modal import ManagedModalEnvironment as _ManagedModalEnvironment
+from tools.environments.modal import ModalEnvironment as _ModalEnvironment
+from tools.environments.singularity import SingularityEnvironment as _SingularityEnvironment
+from tools.environments.ssh import SSHEnvironment as _SSHEnvironment
+from tools.managed_tool_gateway import is_managed_tool_gateway_ready
 
 # Tool description for LLM
 TERMINAL_TOOL_DESCRIPTION = """Execute shell commands on a Linux environment. Filesystem, current working directory, and exported environment variables persist between calls.
@@ -856,10 +856,10 @@ Do NOT use vim/nano/interactive tools without pty=true — they hang without a p
 """
 
 # Global state for environment lifecycle management
-_active_environments: Dict[str, Any] = {}
-_last_activity: Dict[str, float] = {}
+_active_environments: dict[str, Any] = {}
+_last_activity: dict[str, float] = {}
 _env_lock = threading.Lock()
-_creation_locks: Dict[str, threading.Lock] = {}  # Per-task locks for sandbox creation
+_creation_locks: dict[str, threading.Lock] = {}  # Per-task locks for sandbox creation
 _creation_locks_lock = threading.Lock()  # Protects _creation_locks dict itself
 _cleanup_thread = None
 _cleanup_running = False
@@ -871,7 +871,7 @@ _docker_orphan_reaper_ran = False
 _docker_orphan_reaper_lock = threading.Lock()
 
 
-def _maybe_reap_docker_orphans(container_config: Dict[str, Any]) -> None:
+def _maybe_reap_docker_orphans(container_config: dict[str, Any]) -> None:
     """Run the docker orphan reaper once per process, if enabled.
 
     Sweeps long-Exited containers labeled ``prostor-agent=1`` for the current
@@ -917,7 +917,8 @@ def _maybe_reap_docker_orphans(container_config: Dict[str, Any]) -> None:
 
     try:
         from tools.environments.docker import (
-            reap_orphan_containers, _get_active_profile_name,
+            _get_active_profile_name,
+            reap_orphan_containers,
         )
     except ImportError:
         return
@@ -944,10 +945,10 @@ def _maybe_reap_docker_orphans(container_config: Dict[str, Any]) -> None:
 #
 # This is never exposed to the model -- only infrastructure code calls it.
 # Thread-safe because each task_id is unique per rollout.
-_task_env_overrides: Dict[str, Dict[str, Any]] = {}
+_task_env_overrides: dict[str, dict[str, Any]] = {}
 
 
-def register_task_env_overrides(task_id: str, overrides: Dict[str, Any]):
+def register_task_env_overrides(task_id: str, overrides: dict[str, Any]):
     """
     Register environment overrides for a specific task/rollout.
 
@@ -997,7 +998,7 @@ def clear_task_env_overrides(task_id: str):
     _task_env_overrides.pop(task_id, None)
 
 
-def _resolve_container_task_id(task_id: Optional[str]) -> str:
+def _resolve_container_task_id(task_id: str | None) -> str:
     """
     Map a tool-call ``task_id`` to the container/sandbox key used by
     ``_active_environments``.
@@ -1032,7 +1033,7 @@ def _resolve_container_task_id(task_id: Optional[str]) -> str:
     return "default"
 
 
-def resolve_task_overrides(task_id: Optional[str]) -> Dict[str, Any]:
+def resolve_task_overrides(task_id: str | None) -> dict[str, Any]:
     """Return the env overrides for *task_id*, raw key first then collapsed.
 
     ``register_task_env_overrides`` writes under the *raw* task/session id, but
@@ -1084,7 +1085,7 @@ def _safe_getcwd() -> str:
         return os.getenv("TERMINAL_CWD") or os.path.expanduser("~")
 
 
-def _get_env_config() -> Dict[str, Any]:
+def _get_env_config() -> dict[str, Any]:
     """Get terminal environment configuration from environment variables."""
     # Default image with Python and Node.js for maximum compatibility
     default_image = "nikolaik/python-nodejs:python3.11-nodejs20"
@@ -1211,7 +1212,7 @@ def _get_env_config() -> Dict[str, Any]:
     }
 
 
-def _get_modal_backend_state(modal_mode: object | None) -> Dict[str, Any]:
+def _get_modal_backend_state(modal_mode: object | None) -> dict[str, Any]:
     """Resolve direct vs managed Modal backend selection."""
     return resolve_modal_backend_state(
         modal_mode,
@@ -1227,7 +1228,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
                         host_cwd: str = None):
     """
     Create an execution environment for sandboxed command execution.
-    
+
     Args:
         env_type: One of "local", "docker", "singularity", "modal",
             "daytona", "ssh"
@@ -1238,7 +1239,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
         container_config: Resource config for container backends (cpu, memory, disk, persistent)
         task_id: Task identifier for environment reuse and snapshot keying
         host_cwd: Optional host working directory to bind into Docker when explicitly enabled
-        
+
     Returns:
         Environment instance with execute() method
     """
@@ -1292,7 +1293,9 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
             sandbox_kwargs["memory"] = memory
         if disk > 0:
             try:
-                import inspect, modal
+                import inspect
+
+                import modal
                 if "ephemeral_disk" in inspect.signature(modal.Sandbox.create).parameters:
                     sandbox_kwargs["ephemeral_disk"] = disk
             except Exception:
@@ -1612,6 +1615,7 @@ def _atexit_cleanup():
             except Exception as e:  # never block shutdown on a bad backend
                 logger.debug("wait_for_cleanup raised on exit: %s", e)
 
+
 atexit.register(_atexit_cleanup)
 
 
@@ -1814,7 +1818,7 @@ def _resolve_notification_flag_conflict(
 
 def _resolve_command_cwd(
     *,
-    workdir: Optional[str],
+    workdir: str | None,
     env: Any,
     default_cwd: str,
 ) -> str:
@@ -1839,13 +1843,13 @@ def _resolve_command_cwd(
 def terminal_tool(
     command: str,
     background: bool = False,
-    timeout: Optional[int] = None,
-    task_id: Optional[str] = None,
+    timeout: int | None = None,
+    task_id: str | None = None,
     force: bool = False,
-    workdir: Optional[str] = None,
+    workdir: str | None = None,
     pty: bool = False,
     notify_on_complete: bool = False,
-    watch_patterns: Optional[List[str]] = None,
+    watch_patterns: list[str] | None = None,
 ) -> str:
     """
     Execute a command in the configured terminal environment.
@@ -1873,7 +1877,7 @@ def terminal_tool(
 
         # With custom timeout
         >>> result = terminal_tool(command="long_task.sh", timeout=300)
-        
+
         # Force run after user confirmation
         # Note: force parameter is internal only, not exposed to model API
     """

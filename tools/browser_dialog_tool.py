@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from tools.browser_supervisor import SUPERVISOR_REGISTRY
 from tools.registry import registry
@@ -25,7 +25,7 @@ from tools.registry import registry
 logger = logging.getLogger(__name__)
 
 
-BROWSER_DIALOG_SCHEMA: Dict[str, Any] = {
+BROWSER_DIALOG_SCHEMA: dict[str, Any] = {
     "name": "browser_dialog",
     "description": (
         "Respond to a native JavaScript dialog (alert / confirm / prompt / "
@@ -81,9 +81,9 @@ BROWSER_DIALOG_SCHEMA: Dict[str, Any] = {
 
 def browser_dialog(
     action: str,
-    prompt_text: Optional[str] = None,
-    dialog_id: Optional[str] = None,
-    task_id: Optional[str] = None,
+    prompt_text: str | None = None,
+    dialog_id: str | None = None,
+    task_id: str | None = None,
 ) -> str:
     """Respond to a pending dialog on the active task's CDP supervisor."""
     effective_task_id = task_id or "default"

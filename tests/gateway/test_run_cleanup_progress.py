@@ -23,7 +23,6 @@ from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, SendResult
 from gateway.session import SessionSource
 
-
 # ---------------------------------------------------------------------------
 # Test fakes — mirror those in test_run_progress_topics.py but add a
 # delete_message implementation that records ids instead of hitting a bot.

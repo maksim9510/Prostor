@@ -35,8 +35,9 @@ import functools
 import logging
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def _require_azure_identity():
         return _ai
     except ImportError:
         try:
-            from tools.lazy_deps import ensure, FeatureUnavailable
+            from tools.lazy_deps import FeatureUnavailable, ensure
         except ImportError as exc:
             raise ImportError(
                 "The 'azure-identity' package is required for Azure AI "
@@ -153,15 +154,15 @@ class EntraIdentityConfig:
         scope = str(self.scope or "").strip() or SCOPE_AI_AZURE_DEFAULT
         object.__setattr__(self, "scope", scope)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "scope": self.scope,
             "exclude_interactive_browser": self.exclude_interactive_browser,
         }
 
     @classmethod
-    def from_dict(cls, data: Optional[Dict[str, Any]],
-                  *, default_scope: Optional[str] = None) -> "EntraIdentityConfig":
+    def from_dict(cls, data: dict[str, Any] | None,
+                  *, default_scope: str | None = None) -> EntraIdentityConfig:
         data = data or {}
         scope = str(data.get("scope") or "").strip() or default_scope or SCOPE_AI_AZURE_DEFAULT
         exclude_browser = bool(data.get("exclude_interactive_browser", True))
@@ -182,7 +183,7 @@ def _build_default_credential(config: EntraIdentityConfig) -> Any:
     ``~/.prostor/.env`` or the deployment environment.
     """
     ai = _require_azure_identity()
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     # SDK default is True (browser excluded); only pass when the user
     # explicitly opts in to interactive browser auth.
     if not config.exclude_interactive_browser:
@@ -212,10 +213,10 @@ def build_credential(config: EntraIdentityConfig) -> Any:
     return _build_default_credential(config)
 
 
-def build_token_provider(scope: Optional[str] = None,
+def build_token_provider(scope: str | None = None,
                          *,
-                         config: Optional[EntraIdentityConfig] = None,
-                         base_url: Optional[str] = None,
+                         config: EntraIdentityConfig | None = None,
+                         base_url: str | None = None,
                          exclude_interactive_browser: bool = True,
                          ) -> Callable[[], str]:
     """Return a zero-arg callable that mints a fresh Entra bearer JWT.
@@ -258,9 +259,9 @@ def build_token_provider(scope: Optional[str] = None,
 # ---------------------------------------------------------------------------
 
 
-def has_azure_identity_credentials(scope: Optional[str] = None,
+def has_azure_identity_credentials(scope: str | None = None,
                                    *,
-                                   config: Optional[EntraIdentityConfig] = None,
+                                   config: EntraIdentityConfig | None = None,
                                    timeout_seconds: float = 10.0,
                                    allow_install: bool = True,
                                    **overrides: Any) -> bool:
@@ -312,12 +313,12 @@ def has_azure_identity_credentials(scope: Optional[str] = None,
     return bool(result.get("ok"))
 
 
-def describe_active_credential(config: Optional[EntraIdentityConfig] = None,
+def describe_active_credential(config: EntraIdentityConfig | None = None,
                                *,
-                               scope: Optional[str] = None,
+                               scope: str | None = None,
                                timeout_seconds: float = 10.0,
                                allow_install: bool = True,
-                               **overrides: Any) -> Dict[str, Any]:
+                               **overrides: Any) -> dict[str, Any]:
     """Return diagnostic info about the active credential chain.
 
     Best-effort: runs ``get_token()`` and inspects what came back.
@@ -336,7 +337,7 @@ def describe_active_credential(config: Optional[EntraIdentityConfig] = None,
     class name. Users wanting the precise class can run with
     ``AZURE_LOG_LEVEL=DEBUG``.
     """
-    info: Dict[str, Any] = {"ok": False}
+    info: dict[str, Any] = {"ok": False}
     if not has_azure_identity_installed():
         if not allow_install:
             info["error"] = "azure-identity not installed"
@@ -379,7 +380,7 @@ def describe_active_credential(config: Optional[EntraIdentityConfig] = None,
     info["env_sources"] = env_sources
 
     # Now try minting.
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
 
     def _probe() -> None:
         try:
@@ -504,7 +505,7 @@ def build_bearer_http_client(token_provider: Callable[[], str], **httpx_kwargs: 
             "dependency of the openai/anthropic SDKs."
         ) from exc
 
-    def _inject_bearer(request: "httpx.Request") -> None:
+    def _inject_bearer(request: httpx.Request) -> None:
         try:
             token = materialize_bearer_for_http(token_provider)
         except ValueError as exc:

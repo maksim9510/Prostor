@@ -30,7 +30,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Both tests share the same handoff file: the leaker writes here, the
 # verifier reads here. We park it in $TMPDIR with a unique-per-run name
 # so concurrent invocations of the suite don't clobber each other.

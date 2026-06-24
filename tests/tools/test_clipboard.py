@@ -13,29 +13,29 @@ import queue
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
+from cli import _should_auto_attach_clipboard_image_on_paste
 from prostor_cli.clipboard import (
-    save_clipboard_image,
-    has_clipboard_image,
+    _convert_to_png,
     _is_wsl,
     _linux_save,
-    _macos_pngpaste,
-    _macos_osascript,
     _macos_has_image,
-    _xclip_save,
-    _xclip_has_image,
-    _wsl_save,
-    _wsl_has_image,
-    _wayland_save,
+    _macos_osascript,
+    _macos_pngpaste,
     _wayland_has_image,
-    _windows_save,
+    _wayland_save,
     _windows_has_image,
-    _convert_to_png,
+    _windows_save,
+    _wsl_has_image,
+    _wsl_save,
+    _xclip_has_image,
+    _xclip_save,
+    has_clipboard_image,
+    save_clipboard_image,
 )
-from cli import _should_auto_attach_clipboard_image_on_paste
 
 FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 FAKE_BMP = b"BM" + b"\x00" * 100

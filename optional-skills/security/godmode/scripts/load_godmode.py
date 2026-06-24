@@ -5,7 +5,7 @@ Usage in execute_code:
     exec(open(os.path.expanduser(
         os.path.join(os.environ.get("PROSTOR_HOME", os.path.expanduser("~/.prostor")), "skills/red-teaming/godmode/scripts/load_godmode.py")
     )).read())
-    
+
     # Now all functions are available:
     # - auto_jailbreak(), undo_jailbreak()
     # - race_models(), race_godmode_classic()
@@ -14,7 +14,8 @@ Usage in execute_code:
     # - escalate_encoding()
 """
 
-import os, sys
+import os
+import sys
 from pathlib import Path
 
 _gm_scripts_dir = Path(os.getenv("PROSTOR_HOME", Path.home() / ".prostor")) / "skills" / "red-teaming" / "godmode" / "scripts"
@@ -22,12 +23,14 @@ _gm_scripts_dir = Path(os.getenv("PROSTOR_HOME", Path.home() / ".prostor")) / "s
 _gm_old_argv = sys.argv
 sys.argv = ["_godmode_loader"]
 
+
 def _gm_load(path):
     ns = dict(globals())
     ns["__name__"] = "_godmode_module"
     ns["__file__"] = str(path)
     exec(compile(open(path).read(), str(path), 'exec'), ns)
     return ns
+
 
 for _gm_script in ["parseltongue.py", "godmode_race.py", "auto_jailbreak.py"]:
     _gm_path = _gm_scripts_dir / _gm_script

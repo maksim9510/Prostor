@@ -17,7 +17,6 @@ UpdatePromptView, ModelPickerView, ClarifyChoiceView.
 import importlib
 from unittest.mock import patch
 
-
 _VIEW_NAMES = [
     "ExecApprovalView",
     "SlashConfirmView",

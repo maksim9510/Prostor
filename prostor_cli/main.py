@@ -259,47 +259,44 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
-from typing import Optional
 
-
-from prostor_cli.subcommands._shared import add_accept_hooks_flag as _add_accept_hooks_flag
+from prostor_cli.subcommands.acp import build_acp_parser
+from prostor_cli.subcommands.auth import build_auth_parser
+from prostor_cli.subcommands.backup import build_backup_parser
+from prostor_cli.subcommands.claw import build_claw_parser
+from prostor_cli.subcommands.config import build_config_parser
 from prostor_cli.subcommands.cron import build_cron_parser
+from prostor_cli.subcommands.dashboard import build_dashboard_parser
+from prostor_cli.subcommands.debug import build_debug_parser
+from prostor_cli.subcommands.doctor import build_doctor_parser
+from prostor_cli.subcommands.dump import build_dump_parser
 from prostor_cli.subcommands.gateway import build_gateway_parser
-from prostor_cli.subcommands.profile import build_profile_parser
-from prostor_cli.subcommands.model import build_model_parser
-from prostor_cli.subcommands.setup import build_setup_parser
-from prostor_cli.subcommands.postinstall import build_postinstall_parser
-from prostor_cli.subcommands.whatsapp import build_whatsapp_parser
-from prostor_cli.subcommands.slack import build_slack_parser
+from prostor_cli.subcommands.gui import build_gui_parser
+from prostor_cli.subcommands.hooks import build_hooks_parser
+from prostor_cli.subcommands.import_cmd import build_import_cmd_parser
+from prostor_cli.subcommands.insights import build_insights_parser
 from prostor_cli.subcommands.login import build_login_parser
 from prostor_cli.subcommands.logout import build_logout_parser
-from prostor_cli.subcommands.auth import build_auth_parser
-from prostor_cli.subcommands.status import build_status_parser
-from prostor_cli.subcommands.webhook import build_webhook_parser
-from prostor_cli.subcommands.hooks import build_hooks_parser
-from prostor_cli.subcommands.doctor import build_doctor_parser
-from prostor_cli.subcommands.security import build_security_parser
-from prostor_cli.subcommands.dump import build_dump_parser
-from prostor_cli.subcommands.debug import build_debug_parser
-from prostor_cli.subcommands.backup import build_backup_parser
-from prostor_cli.subcommands.import_cmd import build_import_cmd_parser
-from prostor_cli.subcommands.config import build_config_parser
-from prostor_cli.subcommands.version import build_version_parser
-from prostor_cli.subcommands.update import build_update_parser
-from prostor_cli.subcommands.uninstall import build_uninstall_parser
-from prostor_cli.subcommands.dashboard import build_dashboard_parser
-from prostor_cli.subcommands.gui import build_gui_parser
 from prostor_cli.subcommands.logs import build_logs_parser
-from prostor_cli.subcommands.prompt_size import build_prompt_size_parser
+from prostor_cli.subcommands.mcp import build_mcp_parser
 from prostor_cli.subcommands.memory import build_memory_parser
-from prostor_cli.subcommands.acp import build_acp_parser
-from prostor_cli.subcommands.tools import build_tools_parser
-from prostor_cli.subcommands.insights import build_insights_parser
-from prostor_cli.subcommands.skills import build_skills_parser
+from prostor_cli.subcommands.model import build_model_parser
 from prostor_cli.subcommands.pairing import build_pairing_parser
 from prostor_cli.subcommands.plugins import build_plugins_parser
-from prostor_cli.subcommands.mcp import build_mcp_parser
-from prostor_cli.subcommands.claw import build_claw_parser
+from prostor_cli.subcommands.postinstall import build_postinstall_parser
+from prostor_cli.subcommands.profile import build_profile_parser
+from prostor_cli.subcommands.prompt_size import build_prompt_size_parser
+from prostor_cli.subcommands.security import build_security_parser
+from prostor_cli.subcommands.setup import build_setup_parser
+from prostor_cli.subcommands.skills import build_skills_parser
+from prostor_cli.subcommands.slack import build_slack_parser
+from prostor_cli.subcommands.status import build_status_parser
+from prostor_cli.subcommands.tools import build_tools_parser
+from prostor_cli.subcommands.uninstall import build_uninstall_parser
+from prostor_cli.subcommands.update import build_update_parser
+from prostor_cli.subcommands.version import build_version_parser
+from prostor_cli.subcommands.webhook import build_webhook_parser
+from prostor_cli.subcommands.whatsapp import build_whatsapp_parser
 
 
 def _require_tty(command_name: str) -> None:
@@ -587,34 +584,33 @@ if _FORCE_IPV4_EARLY:
 import logging
 import threading
 import time as _time
-from datetime import datetime
+from datetime import UTC, datetime
 
-from prostor_cli import __version__, __release_date__
+from prostor_cli import __release_date__, __version__
 
 # Provider model-selection wizard flows extracted to prostor_cli/model_setup_flows.py
 # (god-file decomposition Phase 2). Re-imported here so select_provider_and_model and
 # existing test monkeypatches (prostor_cli.main._model_flow_*) keep resolving unchanged.
 from prostor_cli.model_setup_flows import (
-    _prompt_auth_credentials_choice,
-    _model_flow_openrouter,
-    _model_flow_nous,
-    _model_flow_openai_codex,
-    _model_flow_xai_oauth,
-    _model_flow_qwen_oauth,
-    _model_flow_minimax_oauth,
-    _model_flow_google_gemini_cli,
-    _model_flow_custom,
+    _model_flow_anthropic,
+    _model_flow_api_key_provider,
     _model_flow_azure_foundry,
-    _model_flow_named_custom,
+    _model_flow_bedrock,
     _model_flow_copilot,
     _model_flow_copilot_acp,
+    _model_flow_custom,
+    _model_flow_google_gemini_cli,
     _model_flow_kimi,
+    _model_flow_minimax_oauth,
+    _model_flow_named_custom,
+    _model_flow_nous,
+    _model_flow_openai_codex,
+    _model_flow_openrouter,
+    _model_flow_qwen_oauth,
     _model_flow_stepfun,
-    _model_flow_bedrock_api_key,
-    _model_flow_bedrock,
-    _model_flow_api_key_provider,
-    _model_flow_anthropic,
+    _model_flow_xai_oauth,
 )
+
 logger = logging.getLogger(__name__)
 
 
@@ -776,14 +772,13 @@ def _relative_time(ts) -> str:
 
 def _has_any_provider_configured() -> bool:
     """Check if at least one inference provider is usable."""
-    from prostor_cli.config import get_env_path, get_prostor_home, load_config
     from prostor_cli.auth import get_auth_status
 
     # Determine whether Prostor itself has been explicitly configured (model
     # in config that isn't the hardcoded default). Used below to gate external
     # tool credentials (Claude Code, Codex CLI) that shouldn't silently skip
     # the setup wizard on a fresh install.
-    from prostor_cli.config import DEFAULT_CONFIG
+    from prostor_cli.config import DEFAULT_CONFIG, get_env_path, get_prostor_home, load_config
 
     _DEFAULT_MODEL = DEFAULT_CONFIG.get("model", "")
     cfg = load_config()
@@ -873,8 +868,8 @@ def _has_any_provider_configured() -> bool:
     if _has_prostor_config:
         try:
             from agent.anthropic_adapter import (
-                read_claude_code_credentials,
                 is_claude_code_token_valid,
+                read_claude_code_credentials,
             )
 
             creds = read_claude_code_credentials()
@@ -888,7 +883,7 @@ def _has_any_provider_configured() -> bool:
     return False
 
 
-def _session_browse_picker(sessions: list) -> Optional[str]:
+def _session_browse_picker(sessions: list) -> str | None:
     """Interactive curses-based session browser with live search filtering.
 
     Returns the selected session ID, or None if cancelled.
@@ -1129,7 +1124,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
             return None
 
 
-def _resolve_last_session(source: str = "cli") -> Optional[str]:
+def _resolve_last_session(source: str = "cli") -> str | None:
     """Look up the most recently-used session ID for a source."""
     db = None
     try:
@@ -1260,7 +1255,7 @@ def _exec_in_container(container_info: dict, cli_args: list):
     os.execvp(exec_cmd[0], exec_cmd)
 
 
-def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
+def _resolve_session_by_name_or_id(name_or_id: str) -> str | None:
     """Resolve a session name (title) or ID to a session ID.
 
     - If it looks like a session ID (contains underscore + hex), try direct lookup first.
@@ -1278,7 +1273,7 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
 
         # Try as exact session ID first
         session = db.get_session(name_or_id)
-        resolved_id: Optional[str] = None
+        resolved_id: str | None = None
         if session:
             resolved_id = session["id"]
         else:
@@ -1300,7 +1295,7 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
     return None
 
 
-def _read_tui_active_session_file(path: Optional[str]) -> Optional[str]:
+def _read_tui_active_session_file(path: str | None) -> str | None:
     if not path:
         return None
     try:
@@ -1312,7 +1307,7 @@ def _read_tui_active_session_file(path: Optional[str]) -> Optional[str]:
 
 
 def _print_tui_exit_summary(
-    session_id: Optional[str], active_session_file: Optional[str] = None
+    session_id: str | None, active_session_file: str | None = None
 ) -> None:
     """Print a shell-visible epilogue after TUI exits."""
     target = (
@@ -1840,7 +1835,7 @@ def _normalize_tui_toolsets(toolsets: object) -> list[str]:
         return [item for item in normalized if item]
 
 
-def _read_cgroup_memory_limit() -> Optional[int]:
+def _read_cgroup_memory_limit() -> int | None:
     """Return the container memory limit in bytes, or None if unconstrained.
 
     Node's V8 heap is NOT cgroup-aware: with a flat ``--max-old-space-size=8192``
@@ -1862,7 +1857,7 @@ def _read_cgroup_memory_limit() -> Optional[int]:
     )
     for path in candidates:
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 raw = f.read().strip()
         except (OSError, ValueError):
             continue
@@ -1912,20 +1907,20 @@ def _resolve_tui_heap_mb(default_mb: int = 8192) -> int:
 
 
 def _launch_tui(
-    resume_session_id: Optional[str] = None,
+    resume_session_id: str | None = None,
     tui_dev: bool = False,
-    model: Optional[str] = None,
-    provider: Optional[str] = None,
+    model: str | None = None,
+    provider: str | None = None,
     toolsets: object = None,
     skills: object = None,
-    verbose: Optional[bool] = None,
+    verbose: bool | None = None,
     quiet: bool = False,
-    query: Optional[str] = None,
-    image: Optional[str] = None,
+    query: str | None = None,
+    image: str | None = None,
     worktree: bool = False,
     checkpoints: bool = False,
     pass_session_id: bool = False,
-    max_turns: Optional[int] = None,
+    max_turns: int | None = None,
     accept_hooks: bool = False,
 ):
     """Replace current process with the TUI."""
@@ -2041,7 +2036,7 @@ def _launch_tui(
         env["PROSTOR_TUI_RESUME"] = resume_session_id
 
     argv, cwd = _make_tui_argv(tui_dir, tui_dev)
-    code: Optional[int] = None
+    code: int | None = None
     try:
         try:
             code = subprocess.call(argv, cwd=str(cwd), env=env)
@@ -2182,13 +2177,13 @@ def cmd_chat(args):
 
     # xAI retirement warning — one-shot, non-blocking, never fails startup
     try:
+        from prostor_cli.config import load_config as _load_config_for_xai_check
         from prostor_cli.xai_retirement import (
             MIGRATION_GUIDE_URL,
             RETIREMENT_DATE,
             find_retired_xai_refs,
             format_issue,
         )
-        from prostor_cli.config import load_config as _load_config_for_xai_check
 
         _retired_xai_refs = find_retired_xai_refs(_load_config_for_xai_check())
         if _retired_xai_refs:
@@ -2676,14 +2671,14 @@ def select_provider_and_model(args=None):
     persistence.
     """
     from prostor_cli.auth import (
-        resolve_provider,
         AuthError,
         format_auth_error,
+        resolve_provider,
     )
     from prostor_cli.config import (
         get_compatible_custom_providers,
-        load_config,
         get_env_value,
+        load_config,
     )
     from prostor_cli.providers import resolve_provider_full
 
@@ -2883,8 +2878,8 @@ def select_provider_and_model(args=None):
         active = "custom"
 
     from prostor_cli.models import (
-        CANONICAL_PROVIDERS,
         _PROVIDER_LABELS,
+        CANONICAL_PROVIDERS,
         group_providers,
         provider_group_for_slug,
     )
@@ -3088,7 +3083,7 @@ def _clear_stale_openai_base_url():
     requests to the old custom endpoint instead of the newly selected
     provider.  See issue #5161.
     """
-    from prostor_cli.config import get_env_value, save_env_value, load_config
+    from prostor_cli.config import get_env_value, load_config, save_env_value
 
     cfg = load_config()
     model_cfg = cfg.get("model", {})
@@ -3535,7 +3530,7 @@ _DEFAULT_QWEN_PORTAL_MODELS = [
 ]
 
 
-def _prompt_custom_api_mode_selection(base_url: str, current_api_mode: str = "") -> Optional[str]:
+def _prompt_custom_api_mode_selection(base_url: str, current_api_mode: str = "") -> str | None:
     """Prompt for a custom provider API mode.
 
     Returns an explicit mode string, or None to keep auto-detect behavior.
@@ -3994,9 +3989,9 @@ def _stepfun_base_url_for_region(region: str) -> str:
 def _run_anthropic_oauth_flow(save_env_value):
     """Run the Claude OAuth setup-token flow. Returns True if credentials were saved."""
     from agent.anthropic_adapter import (
-        run_oauth_setup_token,
-        read_claude_code_credentials,
         is_claude_code_token_valid,
+        read_claude_code_credentials,
+        run_oauth_setup_token,
     )
     from prostor_cli.config import (
         save_anthropic_oauth_token,
@@ -4244,7 +4239,8 @@ def _print_version_info(*, check_updates: bool = True) -> None:
     # ``import openai`` — the SDK drags in ~800ms of pydantic-backed type
     # modules just to expose ``__version__``.  Metadata lookup is ~2ms.
     try:
-        from importlib.metadata import version as _pkg_version, PackageNotFoundError
+        from importlib.metadata import PackageNotFoundError
+        from importlib.metadata import version as _pkg_version
 
         try:
             print(f"OpenAI SDK: {_pkg_version('openai')}")
@@ -4422,6 +4418,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     """
     import json as _json
     import uuid as _uuid
+
     from prostor_constants import get_prostor_home
 
     home = get_prostor_home()
@@ -4656,6 +4653,8 @@ def _nixos_build_env() -> dict[str, str] | None:
         pass  # nix-shell not available — caller will get None
 
     return None
+
+
 def _run_npm_install_deterministic(
     npm: str,
     cwd: Path,
@@ -4880,7 +4879,7 @@ def _compute_desktop_content_hash(project_root: Path) -> str:
             with open(path, "rb") as f:
                 for chunk in iter(lambda: f.read(65536), b""):
                     h.update(chunk)
-        except (OSError, IOError):
+        except OSError:
             pass
         h.update(b"\0")
 
@@ -4966,11 +4965,11 @@ def _write_desktop_build_stamp(project_root: Path, *, source_mode: bool) -> None
     try:
         stamp_file.parent.mkdir(parents=True, exist_ok=True)
         content_hash = _compute_desktop_content_hash(project_root)
-        from datetime import datetime, timezone
+        from datetime import datetime
         stamp_data = {
             "contentHash": content_hash,
             "sourceMode": source_mode,
-            "builtAt": datetime.now(timezone.utc).isoformat(),
+            "builtAt": datetime.now(UTC).isoformat(),
         }
         stamp_file.write_text(json.dumps(stamp_data, indent=2) + "\n", encoding="utf-8")
     except Exception as exc:
@@ -4978,7 +4977,7 @@ def _write_desktop_build_stamp(project_root: Path, *, source_mode: bool) -> None
         logger.debug("Failed to write desktop build stamp: %s", exc)
 
 
-def _desktop_packaged_executable(desktop_dir: Path) -> Optional[Path]:
+def _desktop_packaged_executable(desktop_dir: Path) -> Path | None:
     """Return the current platform's unpacked Electron app executable."""
     release_dir = desktop_dir / "release"
     if sys.platform == "darwin":
@@ -5166,7 +5165,7 @@ def _redownload_electron_dist(
     project_root: Path,
     env: dict,
     *,
-    mirror: Optional[str] = None,
+    mirror: str | None = None,
 ) -> bool:
     """Best-effort: run electron's install.js to populate dist/ (optional mirror)."""
     if _electron_dist_ok(project_root):
@@ -5761,11 +5760,11 @@ def _print_curator_recent_run_notice() -> None:
 def _format_time_ago(iso_ts: str) -> str:
     """Render an ISO timestamp as `Xh ago` / `Xd ago` / `Xm ago`. Best effort."""
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
         ts = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        delta = datetime.now(timezone.utc) - ts
+            ts = ts.replace(tzinfo=UTC)
+        delta = datetime.now(UTC) - ts
         secs = int(delta.total_seconds())
         if secs < 60:
             return "just now"
@@ -6101,7 +6100,7 @@ def _update_via_zip(args):
     _kill_stale_dashboard_processes()
 
 
-def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[str]:
+def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> str | None:
     status = subprocess.run(
         git_cmd + ["status", "--porcelain"],
         cwd=cwd,
@@ -6126,9 +6125,9 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
         print("→ Clearing unmerged index entries from a previous conflict...")
         subprocess.run(git_cmd + ["reset"], cwd=cwd, capture_output=True)
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    stash_name = datetime.now(timezone.utc).strftime(
+    stash_name = datetime.now(UTC).strftime(
         "prostor-update-autostash-%Y%m%d-%H%M%S"
     )
     print("→ Local changes detected — stashing before update...")
@@ -6149,7 +6148,7 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
 
 def _resolve_stash_selector(
     git_cmd: list[str], cwd: Path, stash_ref: str
-) -> Optional[str]:
+) -> str | None:
     stash_list = subprocess.run(
         git_cmd + ["stash", "list", "--format=%gd %H"],
         cwd=cwd,
@@ -6165,7 +6164,7 @@ def _resolve_stash_selector(
 
 
 def _print_stash_cleanup_guidance(
-    stash_ref: str, stash_selector: Optional[str] = None
+    stash_ref: str, stash_selector: str | None = None
 ) -> None:
     print(
         "  Check `git status` first so you don't accidentally reapply the same change twice."
@@ -6349,7 +6348,7 @@ OFFICIAL_REPO_URL = "https://github.com/maksim9510/Prostor.git"
 SKIP_UPSTREAM_PROMPT_FILE = ".skip_upstream_prompt"
 
 
-def _get_origin_url(git_cmd: list[str], cwd: Path) -> Optional[str]:
+def _get_origin_url(git_cmd: list[str], cwd: Path) -> str | None:
     """Get the URL of the origin remote, or None if not set."""
     try:
         result = subprocess.run(
@@ -6365,7 +6364,7 @@ def _get_origin_url(git_cmd: list[str], cwd: Path) -> Optional[str]:
     return None
 
 
-def _is_fork(origin_url: Optional[str]) -> bool:
+def _is_fork(origin_url: str | None) -> bool:
     """Check if the origin remote points to a fork (not the official repo)."""
     if not origin_url:
         return False
@@ -7380,7 +7379,7 @@ def _verify_core_dependencies_installed(
     # We use packaging.requirements when available (it ships with pip/uv envs),
     # falling back to a naive split that's good enough for the canonical
     # ``name==version[; marker]`` style this repo uses.
-    deps: list[tuple[str, "object | None"]] = []
+    deps: list[tuple[str, object | None]] = []
     try:
         from packaging.requirements import Requirement  # type: ignore
 
@@ -7582,6 +7581,7 @@ def _install_psutil_android_compat(
     """
     import tempfile
     import urllib.request
+
     from prostor_cli.psutil_android import PSUTIL_URL, prepare_patched_psutil_sdist
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -7887,8 +7887,8 @@ def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
         print(format_docker_update_message())
         sys.exit(1)
     if method == "pip":
-        from prostor_cli.config import recommended_update_command
         from prostor_cli.banner import check_via_pypi
+        from prostor_cli.config import recommended_update_command
         if branch_explicit and branch != "main":
             print(f"⚠ --branch is ignored for PyPI installs (would have checked '{branch}').")
         result = check_via_pypi()
@@ -8170,7 +8170,7 @@ def _run_pre_update_backup(args) -> None:
 
     # Render path using display_prostor_home so the user sees ~/.prostor/...
     try:
-        from prostor_constants import get_prostor_home, display_prostor_home
+        from prostor_constants import display_prostor_home, get_prostor_home
 
         home = get_prostor_home()
         try:
@@ -8190,7 +8190,6 @@ def _run_pre_update_backup(args) -> None:
 def _write_update_planned_stop_marker(profile_path: Path, pid: int) -> bool:
     """Write a planned-stop marker into a specific profile home."""
     try:
-        from datetime import timezone
 
         from gateway.status import _get_process_start_time
         from utils import atomic_json_write
@@ -8199,7 +8198,7 @@ def _write_update_planned_stop_marker(profile_path: Path, pid: int) -> bool:
             "target_pid": pid,
             "target_start_time": _get_process_start_time(pid),
             "stopper_pid": os.getpid(),
-            "written_at": datetime.now(timezone.utc).isoformat(),
+            "written_at": datetime.now(UTC).isoformat(),
         }
         atomic_json_write(
             Path(profile_path) / ".gateway-planned-stop.json",
@@ -9048,6 +9047,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # attributes like display_prostor_home() added since the last release.
         try:
             import importlib
+
             import prostor_constants as _hc
 
             importlib.reload(_hc)
@@ -9151,9 +9151,9 @@ def _cmd_update_impl(args, gateway_mode: bool):
         print("→ Checking configuration for new options...")
 
         from prostor_cli.config import (
-            get_missing_env_vars,
-            get_missing_config_fields,
             check_config_version,
+            get_missing_config_fields,
+            get_missing_env_vars,
             migrate_config,
         )
 
@@ -9359,18 +9359,19 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # The code update (git pull) is shared across all profiles, so every
         # running gateway needs restarting to pick up the new code.
         try:
+            import signal as _signal
+
             from prostor_cli.gateway import (
-                is_macos,
-                supports_systemd_services,
                 _ensure_user_systemd_env,
-                find_gateway_pids,
-                find_profile_gateway_processes,
-                launch_detached_profile_gateway_restart,
                 _get_service_pids,
                 _graceful_restart_via_sigusr1,
                 _wait_for_gateway_exit,
+                find_gateway_pids,
+                find_profile_gateway_processes,
+                is_macos,
+                launch_detached_profile_gateway_restart,
+                supports_systemd_services,
             )
-            import signal as _signal
 
             def _wait_for_service_active(
                 scope_cmd_: list,
@@ -9841,9 +9842,9 @@ def _cmd_update_impl(args, gateway_mode: bool):
             if is_macos():
                 try:
                     from prostor_cli.gateway import (
-                        launchd_restart,
                         get_launchd_label,
                         get_launchd_plist_path,
+                        launchd_restart,
                     )
 
                     plist_path = get_launchd_plist_path()
@@ -9995,15 +9996,15 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # every `prostor update` surfaces the issue until the user migrates.
         try:
             from prostor_cli.gateway import (
-                has_legacy_prostor_units,
                 _find_legacy_prostor_units,
+                has_legacy_prostor_units,
                 supports_systemd_services,
             )
 
             if supports_systemd_services() and has_legacy_prostor_units():
                 print()
                 print("⚠ Legacy Prostor gateway unit(s) detected:")
-                for name, path, is_sys in _find_legacy_prostor_units():
+                for _name, path, is_sys in _find_legacy_prostor_units():
                     scope = "system" if is_sys else "user"
                     print(f"    {path}  ({scope} scope)")
                 print()
@@ -10120,17 +10121,17 @@ def _coalesce_session_name_args(argv: list) -> list:
 def cmd_profile(args):
     """Profile management — create, delete, list, switch, alias."""
     from prostor_cli.profiles import (
-        list_profiles,
+        _get_wrapper_dir,
+        _is_wrapper_dir_in_path,
+        check_alias_collision,
         create_profile,
+        create_wrapper_script,
         delete_profile,
+        get_active_profile_name,
+        list_profiles,
+        remove_wrapper_script,
         seed_profile_skills,
         set_active_profile,
-        get_active_profile_name,
-        check_alias_collision,
-        create_wrapper_script,
-        remove_wrapper_script,
-        _is_wrapper_dir_in_path,
-        _get_wrapper_dir,
     )
     from prostor_constants import display_prostor_home
 
@@ -10273,9 +10274,7 @@ def cmd_profile(args):
                     print(f"{copied} bundled skills synced.")
                 else:
                     print(
-                        "⚠ Skills could not be seeded. Run `{} update` to retry.".format(
-                            name
-                        )
+                        f"⚠ Skills could not be seeded. Run `{name} update` to retry."
                     )
 
             # Create wrapper alias
@@ -10437,14 +10436,14 @@ def cmd_profile(args):
     elif action == "show":
         name = args.profile_name
         from prostor_cli.profiles import (
-            get_profile_dir,
-            profile_exists,
-            _read_config_model,
             _check_gateway_running,
             _count_skills,
-            _read_distribution_meta,
             _get_wrapper_dir,
+            _read_config_model,
+            _read_distribution_meta,
             find_alias_for_profile,
+            get_profile_dir,
+            profile_exists,
         )
 
         if not profile_exists(name):
@@ -10557,10 +10556,11 @@ def cmd_profile(args):
 
     elif action == "install":
         import tempfile
+
         from prostor_cli.profile_distribution import (
-            plan_install,
-            install_distribution,
             DistributionError,
+            install_distribution,
+            plan_install,
         )
 
         try:
@@ -10609,9 +10609,9 @@ def cmd_profile(args):
 
     elif action == "update":
         from prostor_cli.profile_distribution import (
-            update_distribution,
-            read_manifest,
             DistributionError,
+            read_manifest,
+            update_distribution,
         )
         from prostor_cli.profiles import get_profile_dir, normalize_profile_name
 
@@ -10655,7 +10655,7 @@ def cmd_profile(args):
             sys.exit(1)
 
     elif action == "info":
-        from prostor_cli.profile_distribution import describe_distribution, DistributionError
+        from prostor_cli.profile_distribution import DistributionError, describe_distribution
 
         try:
             data = describe_distribution(args.profile_name)
@@ -11029,7 +11029,7 @@ def cmd_gateway_enroll(args):
 
 def cmd_completion(args, parser=None):
     """Print shell completion script."""
-    from prostor_cli.completion import generate_bash, generate_zsh, generate_fish
+    from prostor_cli.completion import generate_bash, generate_fish, generate_zsh
 
     shell = getattr(args, "shell", "bash")
     if shell == "zsh":
@@ -11049,7 +11049,7 @@ def cmd_prompt_size(args):
 
 def cmd_logs(args):
     """View and filter Prostor log files."""
-    from prostor_cli.logs import tail_log, list_logs
+    from prostor_cli.logs import list_logs, tail_log
 
     log_name = getattr(args, "log_name", "agent") or "agent"
 
@@ -11066,6 +11066,8 @@ def cmd_logs(args):
         since=getattr(args, "since", None),
         component=getattr(args, "component", None),
     )
+
+
 # Top-level subcommands that argparse knows about WITHOUT running plugin
 # discovery.  Used to short-circuit eager plugin imports (which can take
 # 500ms+ pulling in google.cloud.pubsub_v1, aiohttp, grpc, etc.) when the
@@ -11260,8 +11262,8 @@ def _prepare_agent_startup(args) -> None:
                 exc_info=True,
             )
     try:
-        from prostor_cli.config import load_config
         from agent.shell_hooks import register_from_config
+        from prostor_cli.config import load_config
 
         register_from_config(load_config(), accept_hooks=_accept_hooks)
     except Exception:
@@ -11346,7 +11348,7 @@ def _try_termux_fast_cli_launch() -> bool:
         if interactive_prompt:
             # Bare Termux CLI should reach the prompt first and do agent-only
             # discovery on the first submitted turn instead of before input.
-            setattr(args, "compact", True)
+            args.compact = True
             os.environ["PROSTOR_DEFER_AGENT_STARTUP"] = "1"
             os.environ["PROSTOR_FAST_STARTUP_BANNER"] = "1"
             if getattr(args, "accept_hooks", False):
@@ -11413,7 +11415,7 @@ def cmd_memory(args):
         print("\n  ✓ Memory provider: built-in only")
         print("  Saved to config.yaml\n")
     elif sub == "reset":
-        from prostor_constants import get_prostor_home, display_prostor_home
+        from prostor_constants import display_prostor_home, get_prostor_home
 
         mem_dir = get_prostor_home() / "memories"
         target = getattr(args, "target", "all")
@@ -11505,8 +11507,8 @@ def cmd_tools(args):
 
 def cmd_insights(args):
     try:
-        from prostor_state import SessionDB
         from agent.insights import InsightsEngine
+        from prostor_state import SessionDB
 
         db = SessionDB()
         engine = InsightsEngine(db)
@@ -11899,7 +11901,8 @@ def main():
             "referenced skill at once."
         ),
     )
-    from prostor_cli.bundles import register_cli as _bundles_register, bundles_command
+    from prostor_cli.bundles import bundles_command
+    from prostor_cli.bundles import register_cli as _bundles_register
     _bundles_register(bundles_parser)
     bundles_parser.set_defaults(func=bundles_command)
 

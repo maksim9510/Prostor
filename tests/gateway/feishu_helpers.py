@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import threading
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any
 
 
 def make_sender(sender_type: str = "user", open_id: str = "ou_human",
-                user_id: Optional[str] = None, union_id: Optional[str] = None) -> Any:
+                user_id: str | None = None, union_id: str | None = None) -> Any:
     return SimpleNamespace(
         sender_type=sender_type,
         sender_id=SimpleNamespace(open_id=open_id, user_id=user_id, union_id=union_id),
@@ -16,7 +16,7 @@ def make_sender(sender_type: str = "user", open_id: str = "ou_human",
 
 
 def make_message(message_id: str = "om_xxx", chat_type: str = "p2p",
-                 chat_id: str = "oc_1", mentions: Optional[list] = None) -> Any:
+                 chat_id: str = "oc_1", mentions: list | None = None) -> Any:
     return SimpleNamespace(
         message_id=message_id,
         chat_type=chat_type,
@@ -52,7 +52,7 @@ def make_adapter_skeleton(
     return adapter
 
 
-def install_dedup_state(adapter: Any, seen: Optional[dict] = None) -> None:
+def install_dedup_state(adapter: Any, seen: dict | None = None) -> None:
     adapter._seen_message_ids = dict(seen) if seen else {}
     adapter._seen_message_order = list((seen or {}).keys())
     adapter._dedup_cache_size = 100

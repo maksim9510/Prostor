@@ -17,11 +17,9 @@ Two layers are tested:
 
 from __future__ import annotations
 
-
 import pytest
 
 from gateway.platforms.base import SendResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers

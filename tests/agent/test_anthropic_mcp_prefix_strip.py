@@ -18,10 +18,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_tool_use_block(name: str, block_id: str = "tc_1", input_data: dict | None = None):
     """Create a fake Anthropic tool_use content block."""

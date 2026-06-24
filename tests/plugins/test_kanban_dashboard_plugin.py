@@ -19,7 +19,6 @@ from fastapi.testclient import TestClient
 
 from prostor_cli import kanban_db as kb
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -748,8 +747,9 @@ def test_ws_events_rejects_when_token_required(tmp_path, monkeypatch):
 
     # Stub web_server with a loopback-mode _ws_auth_ok (auth_required False →
     # accept only the correct ?token=). Mirrors the real gate's loopback path.
-    import prostor_cli
     import types
+
+    import prostor_cli
 
     def _fake_ws_auth_ok(ws):
         return ws.query_params.get("token", "") == "secret-xyz"
@@ -797,8 +797,9 @@ def test_ws_events_accepts_gated_ticket(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
 
-    import prostor_cli
     import types
+
+    import prostor_cli
 
     def _fake_ws_auth_ok(ws):
         # Gated mode: only a known ticket is accepted; token path rejected.
@@ -859,8 +860,9 @@ def test_ws_events_board_query_param_default_overrides_current_board_pointer(tmp
 
     kb.set_current_board("other")
 
-    import prostor_cli
     import types
+
+    import prostor_cli
 
     stub = types.SimpleNamespace(
         _SESSION_TOKEN="secret-xyz",
@@ -2037,7 +2039,7 @@ def test_board_exposes_diagnostics_list_and_summary(client):
     try:
         t = kb.create_task(conn, title="crashy", assignee="worker")
         # Simulate 2 consecutive crashes -> repeated_crashes error diag
-        for i in range(2):
+        for _i in range(2):
             conn.execute(
                 "INSERT INTO task_runs (task_id, status, outcome, started_at, "
                 "ended_at, error) VALUES (?, 'crashed', 'crashed', ?, ?, ?)",

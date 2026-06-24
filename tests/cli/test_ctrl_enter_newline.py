@@ -76,8 +76,9 @@ def test_pure_local_linux_does_not_preserve():
 
 def test_proc_version_microsoft_marker_preserves_newline():
     """WSL detection via /proc when env vars are scrubbed (sudo etc.)."""
-    import cli as cli_mod
     from io import StringIO
+
+    import cli as cli_mod
     with patch.object(sys, "platform", "linux"):
         with patch.dict(os.environ, {}, clear=True):
             real_open = open
@@ -98,9 +99,10 @@ def test_proc_version_microsoft_marker_preserves_newline():
 def test_install_ctrl_enter_alias_maps_csi_u_sequences():
     """Kitty / xterm modifyOtherKeys / mintty Ctrl+Enter sequences alias to
     Alt+Enter (Escape, ControlM) so the existing newline handler fires."""
-    from prostor_cli.pt_input_extras import install_ctrl_enter_alias
     from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
     from prompt_toolkit.keys import Keys
+
+    from prostor_cli.pt_input_extras import install_ctrl_enter_alias
 
     install_ctrl_enter_alias()
     alt_enter = (Keys.Escape, Keys.ControlM)

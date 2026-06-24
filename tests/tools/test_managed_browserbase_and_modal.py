@@ -11,7 +11,6 @@ import pytest
 
 from prostor_cli.nous_account import NousPortalAccountInfo
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TOOLS_DIR = REPO_ROOT / "tools"
 PLUGINS_DIR = REPO_ROOT / "plugins"
@@ -239,8 +238,7 @@ def test_browser_use_availability_skips_refresh_for_expired_cached_gateway_token
     monkeypatch.delenv("TOOL_GATEWAY_USER_TOKEN", raising=False)
     expired_at = "2000-01-01T00:00:00+00:00"
     (tmp_path / "auth.json").write_text(
-        '{"providers":{"nous":{"access_token":"expired-token","refresh_token":"refresh-token","expires_at":"%s"}}}'
-        % expired_at,
+        f'{{"providers":{{"nous":{{"access_token":"expired-token","refresh_token":"refresh-token","expires_at":"{expired_at}"}}}}}}',
         encoding="utf-8",
     )
     refresh_calls = []

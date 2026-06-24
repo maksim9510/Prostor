@@ -20,10 +20,10 @@ import pytest
 
 from gateway.config import Platform
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _AsyncCM:
     """Minimal async context manager returning a fixed value."""

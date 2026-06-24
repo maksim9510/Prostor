@@ -21,7 +21,6 @@ import pytest
 
 from prostor_cli.model_switch import switch_model
 
-
 _MOCK_VALIDATION = {
     "accepted": True,
     "persist": True,
@@ -270,8 +269,9 @@ class TestStaleConfigDefaultDoesNotWedgeResolver:
     """
 
     def test_kimi_switch_keeps_v1_despite_claude_config_default(self, tmp_path, monkeypatch):
-        import yaml
         import importlib
+
+        import yaml
 
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-key")
@@ -306,8 +306,9 @@ class TestStaleConfigDefaultDoesNotWedgeResolver:
         assert result.api_mode == "chat_completions"
 
     def test_go_glm_switch_keeps_v1_despite_minimax_config_default(self, tmp_path, monkeypatch):
-        import yaml
         import importlib
+
+        import yaml
 
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         monkeypatch.setenv("OPENCODE_GO_API_KEY", "test-key")
@@ -343,8 +344,9 @@ class TestStaleConfigDefaultDoesNotWedgeResolver:
         Guards that the target_model plumbing does not break the original
         strip-for-anthropic behavior.
         """
-        import yaml
         import importlib
+
+        import yaml
 
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-key")

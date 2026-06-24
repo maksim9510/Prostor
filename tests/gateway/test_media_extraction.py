@@ -11,19 +11,20 @@ make_image tool several turns earlier must not leak onto a later
 text-only reply, even when the path-based dedup set fails to capture it.
 """
 
-import pytest
 import re
+
+import pytest
 
 
 def extract_media_tags_fixed(result_messages, history_len):
     """
     Extract MEDIA tags from tool results, but ONLY from new messages
     (those added after history_len). This is the fixed behavior.
-    
+
     Args:
         result_messages: Full list of messages including history + new
         history_len: Length of history before this turn
-        
+
     Returns:
         Tuple of (media_tags list, has_voice_directive bool)
     """

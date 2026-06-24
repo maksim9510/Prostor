@@ -262,7 +262,8 @@ class TestRewriteSkillRefsPersistence:
 
     def test_changes_persist_across_reload(self, cron_env):
         import json
-        from cron.jobs import create_job, rewrite_skill_refs, JOBS_FILE
+
+        from cron.jobs import JOBS_FILE, create_job, rewrite_skill_refs
 
         create_job(prompt="", schedule="every 1h", skills=["legacy"])
         rewrite_skill_refs(consolidated={"legacy": "umbrella"}, pruned=[])
@@ -273,7 +274,7 @@ class TestRewriteSkillRefsPersistence:
         assert data["jobs"][0]["skill"] == "umbrella"
 
     def test_noop_does_not_rewrite_file(self, cron_env):
-        from cron.jobs import create_job, rewrite_skill_refs, JOBS_FILE
+        from cron.jobs import JOBS_FILE, create_job, rewrite_skill_refs
 
         create_job(prompt="", schedule="every 1h", skills=["keep"])
         mtime_before = JOBS_FILE.stat().st_mtime_ns

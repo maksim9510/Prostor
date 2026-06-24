@@ -15,12 +15,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional
-
-from prostor_constants import get_prostor_home
 
 from plugins.google_meet import process_manager as pm
 from plugins.google_meet.meet_bot import _is_safe_meet_url
+from prostor_constants import get_prostor_home
 
 
 def _auth_state_path() -> Path:
@@ -372,10 +370,10 @@ def _cmd_join(
     url: str,
     *,
     guest_name: str,
-    duration: Optional[str],
+    duration: str | None,
     headed: bool,
     mode: str = "transcribe",
-    node: Optional[str] = None,
+    node: str | None = None,
 ) -> int:
     if not _is_safe_meet_url(url):
         print(f"refusing: not a meet.google.com URL: {url}")
@@ -383,8 +381,8 @@ def _cmd_join(
     if node:
         # Remote: go through NodeClient.
         try:
-            from plugins.google_meet.node.registry import NodeRegistry
             from plugins.google_meet.node.client import NodeClient
+            from plugins.google_meet.node.registry import NodeRegistry
         except ImportError as e:
             print(f"node module unavailable: {e}")
             return 1
@@ -418,14 +416,14 @@ def _cmd_join(
     return 0 if res.get("ok") else 1
 
 
-def _cmd_say(text: str, node: Optional[str] = None) -> int:
+def _cmd_say(text: str, node: str | None = None) -> int:
     if not (text or "").strip():
         print("refusing: empty text")
         return 2
     if node:
         try:
-            from plugins.google_meet.node.registry import NodeRegistry
             from plugins.google_meet.node.client import NodeClient
+            from plugins.google_meet.node.registry import NodeRegistry
         except ImportError as e:
             print(f"node module unavailable: {e}")
             return 1
@@ -454,7 +452,7 @@ def _cmd_status() -> int:
     return 0 if res.get("ok") else 1
 
 
-def _cmd_transcript(last: Optional[int]) -> int:
+def _cmd_transcript(last: int | None) -> int:
     res = pm.transcript(last=last)
     if not res.get("ok"):
         print(json.dumps(res, indent=2))

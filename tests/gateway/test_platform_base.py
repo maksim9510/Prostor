@@ -7,13 +7,13 @@ from unittest.mock import patch
 import pytest
 
 from gateway.platforms.base import (
-    BasePlatformAdapter,
     GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE,
+    BasePlatformAdapter,
     MessageEvent,
-    safe_url_for_log,
-    utf16_len,
     _log_safe_path,
     _prefix_within_utf16_limit,
+    safe_url_for_log,
+    utf16_len,
 )
 
 
@@ -1407,6 +1407,7 @@ class TestProxyKwargsForAiohttp:
     def test_http_proxy_uses_connector_when_aiohttp_socks_available(self):
         pytest.importorskip("aiohttp_socks")
         from unittest.mock import MagicMock
+
         from gateway.platforms.base import proxy_kwargs_for_aiohttp
 
         sentinel = MagicMock(name="ProxyConnector")
@@ -1421,6 +1422,7 @@ class TestProxyKwargsForAiohttp:
     def test_socks_proxy_uses_connector(self):
         pytest.importorskip("aiohttp_socks")
         from unittest.mock import MagicMock
+
         from gateway.platforms.base import proxy_kwargs_for_aiohttp
 
         sentinel = MagicMock(name="ProxyConnector")

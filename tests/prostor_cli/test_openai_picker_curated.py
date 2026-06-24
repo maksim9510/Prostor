@@ -18,16 +18,13 @@ Bug 2 — OpenRouter appeared authenticated whenever OPENAI_API_KEY was set
     in runtime_provider.py, independent of the overlay).
 """
 
-import os
 from unittest.mock import patch
-
-import pytest
 
 from prostor_cli import models as M
 from prostor_cli.providers import PROSTOR_OVERLAYS
 
-
 # --- Bug 2: overlay no longer lists OPENAI_API_KEY --------------------------
+
 
 def test_openrouter_overlay_does_not_list_openai_api_key():
     overlay = PROSTOR_OVERLAYS["openrouter"]

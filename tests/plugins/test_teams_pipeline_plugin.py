@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from prostor_cli.plugins import PluginContext, PluginManager, PluginManifest
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from plugins.teams_pipeline import register
+from plugins.teams_pipeline.models import MeetingArtifact
 from plugins.teams_pipeline.pipeline import TeamsMeetingPipeline
 from plugins.teams_pipeline.store import TeamsPipelineStore
-from plugins.teams_pipeline.models import MeetingArtifact
+from prostor_cli.plugins import PluginContext, PluginManager, PluginManifest
 
 
 class FakeGraphClient:

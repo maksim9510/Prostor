@@ -17,11 +17,11 @@ import sys
 import tempfile
 import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from prostor_constants import get_default_prostor_root, get_prostor_home, display_prostor_home
+from prostor_constants import display_prostor_home, get_default_prostor_root, get_prostor_home
 
 logger = logging.getLogger(__name__)
 
@@ -517,8 +517,10 @@ def run_import(args) -> None:
         if profiles_dir.is_dir():
             try:
                 from prostor_cli.profiles import (
-                    create_wrapper_script, check_alias_collision,
-                    _is_wrapper_dir_in_path, _get_wrapper_dir,
+                    _get_wrapper_dir,
+                    _is_wrapper_dir_in_path,
+                    check_alias_collision,
+                    create_wrapper_script,
                 )
                 for entry in sorted(profiles_dir.iterdir()):
                     if not entry.is_dir():
@@ -600,16 +602,16 @@ _QUICK_SNAPSHOTS_DIR = "state-snapshots"
 _QUICK_DEFAULT_KEEP = 20
 
 
-def _quick_snapshot_root(prostor_home: Optional[Path] = None) -> Path:
+def _quick_snapshot_root(prostor_home: Path | None = None) -> Path:
     home = prostor_home or get_prostor_home()
     return home / _QUICK_SNAPSHOTS_DIR
 
 
 def create_quick_snapshot(
-    label: Optional[str] = None,
-    prostor_home: Optional[Path] = None,
-    keep: Optional[int] = None,
-) -> Optional[str]:
+    label: str | None = None,
+    prostor_home: Path | None = None,
+    keep: int | None = None,
+) -> str | None:
     """Create a quick state snapshot of critical files.
 
     Copies STATE_FILES to a timestamped directory under state-snapshots/.
@@ -621,12 +623,12 @@ def create_quick_snapshot(
     home = prostor_home or get_prostor_home()
     root = _quick_snapshot_root(home)
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     snap_id = f"{ts}-{label}" if label else ts
     snap_dir = root / snap_id
     snap_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest: Dict[str, int] = {}  # rel_path -> file size
+    manifest: dict[str, int] = {}  # rel_path -> file size
 
     for rel in _QUICK_STATE_FILES:
         src = home / rel
@@ -693,8 +695,8 @@ def create_quick_snapshot(
 
 def list_quick_snapshots(
     limit: int = 20,
-    prostor_home: Optional[Path] = None,
-) -> List[Dict[str, Any]]:
+    prostor_home: Path | None = None,
+) -> list[dict[str, Any]]:
     """List existing quick state snapshots, most recent first."""
     root = _quick_snapshot_root(prostor_home)
     if not root.exists():
@@ -719,7 +721,7 @@ def list_quick_snapshots(
 
 def restore_quick_snapshot(
     snapshot_id: str,
-    prostor_home: Optional[Path] = None,
+    prostor_home: Path | None = None,
 ) -> bool:
     """Restore state from a quick snapshot.
 
@@ -771,7 +773,7 @@ def restore_quick_snapshot(
 _CRON_JOBS_REL = "cron/jobs.json"
 
 
-def _count_cron_jobs(path: Path) -> Optional[int]:
+def _count_cron_jobs(path: Path) -> int | None:
     """Return the number of cron jobs stored in ``path``.
 
     The canonical on-disk shape is ``{"jobs": [...]}`` (see ``cron/jobs.py``).
@@ -786,7 +788,7 @@ def _count_cron_jobs(path: Path) -> Optional[int]:
     if not path.is_file():
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return None
@@ -800,8 +802,8 @@ def _count_cron_jobs(path: Path) -> Optional[int]:
 
 def restore_cron_jobs_if_emptied(
     snapshot_id: str,
-    prostor_home: Optional[Path] = None,
-) -> Optional[Dict[str, Any]]:
+    prostor_home: Path | None = None,
+) -> dict[str, Any] | None:
     """Safety net for silent cron-job loss across ``prostor update``.
 
     Config-version migrations have been observed to leave ``cron/jobs.json``
@@ -889,7 +891,7 @@ def _prune_quick_snapshots(root: Path, keep: int = _QUICK_DEFAULT_KEEP) -> int:
 
 def prune_quick_snapshots(
     keep: int = _QUICK_DEFAULT_KEEP,
-    prostor_home: Optional[Path] = None,
+    prostor_home: Path | None = None,
 ) -> int:
     """Manually prune quick snapshots. Returns count deleted."""
     return _prune_quick_snapshots(_quick_snapshot_root(prostor_home), keep=keep)
@@ -912,7 +914,7 @@ def run_quick_backup(args) -> None:
 # Shared full-zip backup helper
 # ---------------------------------------------------------------------------
 
-def _write_full_zip_backup(out_path: Path, prostor_root: Path) -> Optional[Path]:
+def _write_full_zip_backup(out_path: Path, prostor_root: Path) -> Path | None:
     """Write a full zip snapshot of ``prostor_root`` to ``out_path``.
 
     Uses the same exclusion rules and SQLite safe-copy as :func:`run_backup`.
@@ -988,7 +990,7 @@ _PRE_UPDATE_PREFIX = "pre-update-"
 _PRE_UPDATE_DEFAULT_KEEP = 5
 
 
-def _pre_update_backup_dir(prostor_home: Optional[Path] = None) -> Path:
+def _pre_update_backup_dir(prostor_home: Path | None = None) -> Path:
     home = prostor_home or get_prostor_home()
     return home / _PRE_UPDATE_BACKUPS_DIR
 
@@ -1031,9 +1033,9 @@ def _prune_pre_update_backups(backup_dir: Path, keep: int) -> int:
 
 
 def create_pre_update_backup(
-    prostor_home: Optional[Path] = None,
+    prostor_home: Path | None = None,
     keep: int = _PRE_UPDATE_DEFAULT_KEEP,
-) -> Optional[Path]:
+) -> Path | None:
     """Create a full zip backup of PROSTOR_HOME under ``backups/``.
 
     Mirrors :func:`run_backup` (same exclusion rules, same SQLite safe-copy)
@@ -1103,9 +1105,9 @@ def _prune_pre_migration_backups(backup_dir: Path, keep: int) -> int:
 
 
 def create_pre_migration_backup(
-    prostor_home: Optional[Path] = None,
+    prostor_home: Path | None = None,
     keep: int = _PRE_MIGRATION_DEFAULT_KEEP,
-) -> Optional[Path]:
+) -> Path | None:
     """Create a full zip backup of PROSTOR_HOME under ``backups/`` before a
     ``prostor claw migrate`` apply.
 

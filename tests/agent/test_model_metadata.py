@@ -11,30 +11,30 @@ Coverage levels:
 """
 
 import time
+from unittest.mock import MagicMock, patch
 
 import yaml
-from unittest.mock import patch, MagicMock
 
 from agent.model_metadata import (
+    _MODEL_CACHE_TTL,
     CONTEXT_PROBE_TIERS,
     DEFAULT_CONTEXT_LENGTHS,
     DEFAULT_FALLBACK_CONTEXT,
     _strip_provider_prefix,
-    estimate_tokens_rough,
     estimate_messages_tokens_rough,
+    estimate_tokens_rough,
+    fetch_model_metadata,
+    get_cached_context_length,
     get_model_context_length,
     get_next_probe_tier,
-    get_cached_context_length,
     parse_context_limit_from_error,
     save_context_length,
-    fetch_model_metadata,
-    _MODEL_CACHE_TTL,
 )
-
 
 # =========================================================================
 # Token estimation
 # =========================================================================
+
 
 class TestEstimateTokensRough:
     def test_empty_string(self):
@@ -127,8 +127,9 @@ class TestDefaultContextLengths:
     def test_grok_substring_matching(self):
         # Longest-first substring matching must resolve the real xAI model
         # IDs to the correct fallback entries without 128k probe-down.
-        from agent.model_metadata import get_model_context_length
         from unittest.mock import patch as mock_patch
+
+        from agent.model_metadata import get_model_context_length
 
         # Fake the provider/API/cache layers so the lookup falls through
         # to DEFAULT_CONTEXT_LENGTHS.
@@ -185,8 +186,9 @@ class TestDefaultContextLengths:
             ) == 256000
 
     def test_deepseek_v4_models_1m_context(self):
-        from agent.model_metadata import get_model_context_length
         from unittest.mock import patch as mock_patch
+
+        from agent.model_metadata import get_model_context_length
 
         expected_keys = {
             "deepseek-v4-pro": 1_000_000,
@@ -228,8 +230,9 @@ class TestDefaultContextLengths:
         retrieval at 789K prompt tokens on api.z.ai/api/coding/paas/v4
         (2026-06-13).
         """
-        from agent.model_metadata import get_model_context_length
         from unittest.mock import patch as mock_patch
+
+        from agent.model_metadata import get_model_context_length
 
         assert DEFAULT_CONTEXT_LENGTHS["glm-5.2"] == 1_048_576
         assert DEFAULT_CONTEXT_LENGTHS["glm"] == 202752
@@ -258,8 +261,9 @@ class TestDefaultContextLengths:
         for any OpenRouter selection. The dedicated step-5 OR branch must read
         the live value instead.
         """
-        from agent.model_metadata import get_model_context_length
         from unittest.mock import patch as mock_patch
+
+        from agent.model_metadata import get_model_context_length
 
         or_url = "https://openrouter.ai/api/v1"
         live = {
@@ -285,8 +289,9 @@ class TestDefaultContextLengths:
         a bogus 32768 from OpenRouter for a Kimi slug must NOT win — it falls
         through to the hardcoded default instead.
         """
-        from agent.model_metadata import get_model_context_length
         from unittest.mock import patch as mock_patch
+
+        from agent.model_metadata import get_model_context_length
 
         or_url = "https://openrouter.ai/api/v1"
         live = {"moonshotai/kimi-k2.6": {"context_length": 32768}}
@@ -1490,6 +1495,7 @@ class TestGrok43StaleCacheGuard:
     def test_stale_grok_4_3_dropped_and_reresolves_to_1m(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         import importlib
+
         import agent.model_metadata as mm
         importlib.reload(mm)
         base = "https://api.x.ai/v1"
@@ -1502,6 +1508,7 @@ class TestGrok43StaleCacheGuard:
     def test_correct_grok_4_3_cache_preserved(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         import importlib
+
         import agent.model_metadata as mm
         importlib.reload(mm)
         base = "https://api.x.ai/v1"
@@ -1514,6 +1521,7 @@ class TestGrok43StaleCacheGuard:
     def test_grok_4_not_clobbered(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
         import importlib
+
         import agent.model_metadata as mm
         importlib.reload(mm)
         base = "https://api.x.ai/v1"

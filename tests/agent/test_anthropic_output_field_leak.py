@@ -10,14 +10,17 @@ Fix: whitelist input-permitted fields per block type at three points —
 normalize_response capture, _sanitize_replay_block (ordered-blocks replay), and
 _convert_content_part_to_anthropic (content-list replay).
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.expanduser("~/.prostor/prostor-agent"))
 
 import pytest
+
 from agent.anthropic_adapter import (
-    _sanitize_replay_block,
-    _convert_content_part_to_anthropic,
     _convert_assistant_message,
+    _convert_content_part_to_anthropic,
+    _sanitize_replay_block,
 )
 
 FORBIDDEN = {"parsed_output", "caller"}

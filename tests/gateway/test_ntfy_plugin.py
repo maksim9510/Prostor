@@ -15,6 +15,7 @@ the ``platform_registry``.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -601,7 +602,6 @@ class TestOnMessage:
         assert len(calls) == 1
 
     def test_timestamp_parsed_from_event(self):
-        from datetime import timezone
         adapter = self._make_adapter()
         captured = []
 
@@ -617,7 +617,7 @@ class TestOnMessage:
             "time": 1700000000,
         }))
         ts = captured[0].timestamp
-        assert ts.tzinfo == timezone.utc
+        assert ts.tzinfo == UTC
 
     def test_message_id_set_from_event(self):
         adapter = self._make_adapter()
@@ -1018,4 +1018,4 @@ class TestTruncateHelper:
 
     def test_unicode_message_encoded(self):
         result = _ntfy._truncate_body("héllo 🔔", context="test")
-        assert result == "héllo 🔔".encode("utf-8")
+        assert result == "héllo 🔔".encode()

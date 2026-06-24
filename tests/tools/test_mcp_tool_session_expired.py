@@ -16,7 +16,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # _is_session_expired_error — unit coverage
 # ---------------------------------------------------------------------------

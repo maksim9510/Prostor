@@ -32,10 +32,15 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import (  # noqa: E402
-    OUTPUT_NODES, PARAM_PATTERNS, PROMPT_FIELDS,
-    is_link, iter_embedding_refs, iter_model_deps, iter_nodes, unwrap_workflow,
+    OUTPUT_NODES,
+    PARAM_PATTERNS,
+    PROMPT_FIELDS,
+    is_link,
+    iter_embedding_refs,
+    iter_model_deps,
+    iter_nodes,
+    unwrap_workflow,
 )
-
 
 # Sampler nodes whose `positive` / `negative` connections we trace
 SAMPLER_NODE_FAMILY = {
@@ -95,7 +100,7 @@ def trace_to_node(workflow: dict, link: list, *, max_hops: int = 8) -> str | Non
 
 def find_negative_prompt_node(workflow: dict) -> str | None:
     """Trace `negative` input of a sampler back to the source text encoder."""
-    for nid, node in iter_nodes(workflow):
+    for _nid, node in iter_nodes(workflow):
         if node["class_type"] not in SAMPLER_NODE_FAMILY:
             continue
         inputs = node.get("inputs", {}) or {}
@@ -111,7 +116,7 @@ def find_negative_prompt_node(workflow: dict) -> str | None:
 
 
 def find_positive_prompt_node(workflow: dict) -> str | None:
-    for nid, node in iter_nodes(workflow):
+    for _nid, node in iter_nodes(workflow):
         if node["class_type"] not in SAMPLER_NODE_FAMILY:
             continue
         inputs = node.get("inputs", {}) or {}

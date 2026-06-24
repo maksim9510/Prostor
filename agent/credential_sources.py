@@ -46,8 +46,8 @@ No more per-source if/elif chain in ``auth_remove_command``.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
 
 
 @dataclass
@@ -70,8 +70,8 @@ class RemovalResult:
             seeded from anywhere external.
     """
 
-    cleaned: List[str] = field(default_factory=list)
-    hints: List[str] = field(default_factory=list)
+    cleaned: list[str] = field(default_factory=list)
+    hints: list[str] = field(default_factory=list)
     suppress: bool = True
 
 
@@ -98,7 +98,7 @@ class RemovalStep:
     provider: str
     source_id: str
     remove_fn: Callable[..., RemovalResult]
-    match_fn: Optional[Callable[[str], bool]] = None
+    match_fn: Callable[[str], bool] | None = None
     description: str = ""
 
     def matches(self, provider: str, source: str) -> bool:
@@ -109,7 +109,7 @@ class RemovalStep:
         return source == self.source_id
 
 
-_REGISTRY: List[RemovalStep] = []
+_REGISTRY: list[RemovalStep] = []
 
 
 def register(step: RemovalStep) -> RemovalStep:
@@ -117,7 +117,7 @@ def register(step: RemovalStep) -> RemovalStep:
     return step
 
 
-def find_removal_step(provider: str, source: str) -> Optional[RemovalStep]:
+def find_removal_step(provider: str, source: str) -> RemovalStep | None:
     """Return the first matching RemovalStep, or None if unregistered.
 
     Unregistered sources fall through to the default remove path in

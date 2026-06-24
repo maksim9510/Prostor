@@ -13,7 +13,6 @@ from types import SimpleNamespace
 from agent.chat_completion_helpers import rewrite_prompt_model_identity
 from agent.conversation_loop import _sync_failover_system_message
 
-
 _PROMPT = (
     "You are a helpful assistant.\n"
     "\n"

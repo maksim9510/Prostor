@@ -17,9 +17,7 @@ terminal path is taken, ``result['error']`` is a short, HTML-free summary.
 
 from unittest.mock import MagicMock, patch
 
-import run_agent
 from run_agent import AIAgent
-
 
 # A representative Cloudflare "managed challenge" body, matching the shape the
 # Codex backend returned in the field report (no <title>, large inline

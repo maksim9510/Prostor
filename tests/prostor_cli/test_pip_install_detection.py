@@ -175,7 +175,9 @@ def test_recommended_update_command_docker():
 def test_banner_warns_on_pip_install(tmp_path):
     """The welcome banner surfaces a warning when the install method is pip."""
     import io
+
     from rich.console import Console
+
     from prostor_cli import banner
 
     hh = tmp_path / ".prostor"
@@ -201,7 +203,9 @@ def test_banner_warns_on_pip_install(tmp_path):
 def test_banner_no_pip_warning_on_git_install(tmp_path):
     """Git installs must not show the pip-install warning."""
     import io
+
     from rich.console import Console
+
     from prostor_cli import banner
 
     hh = tmp_path / ".prostor"

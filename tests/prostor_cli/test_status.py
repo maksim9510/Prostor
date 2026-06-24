@@ -15,9 +15,9 @@ def test_show_status_includes_tavily_key(monkeypatch, capsys, tmp_path):
 
 
 def test_show_status_termux_gateway_section_skips_systemctl(monkeypatch, capsys, tmp_path):
-    from prostor_cli import status as status_mod
     import prostor_cli.auth as auth_mod
     import prostor_cli.gateway as gateway_mod
+    from prostor_cli import status as status_mod
 
     monkeypatch.setenv("TERMUX_VERSION", "0.118.3")
     monkeypatch.setenv("PREFIX", "/data/data/com.termux/files/usr")
@@ -46,9 +46,9 @@ def test_show_status_termux_gateway_section_skips_systemctl(monkeypatch, capsys,
 
 
 def test_show_status_reports_nous_auth_error(monkeypatch, capsys, tmp_path):
-    from prostor_cli import status as status_mod
     import prostor_cli.auth as auth_mod
     import prostor_cli.gateway as gateway_mod
+    from prostor_cli import status as status_mod
 
     monkeypatch.setattr(status_mod, "get_env_path", lambda: tmp_path / ".env", raising=False)
     monkeypatch.setattr(status_mod, "get_prostor_home", lambda: tmp_path, raising=False)
@@ -84,10 +84,10 @@ def test_show_status_reports_nous_auth_error(monkeypatch, capsys, tmp_path):
 
 
 def test_show_status_reports_nous_inference_key_without_portal_login(monkeypatch, capsys, tmp_path):
-    from prostor_cli import status as status_mod
-    from prostor_cli.nous_account import NousPortalAccountInfo
     import prostor_cli.auth as auth_mod
     import prostor_cli.gateway as gateway_mod
+    from prostor_cli import status as status_mod
+    from prostor_cli.nous_account import NousPortalAccountInfo
 
     monkeypatch.setattr(status_mod, "get_env_path", lambda: tmp_path / ".env", raising=False)
     monkeypatch.setattr(status_mod, "get_prostor_home", lambda: tmp_path, raising=False)
@@ -139,9 +139,9 @@ def test_show_status_reports_nous_inference_key_without_portal_login(monkeypatch
 
 def _base_xai_mocks(monkeypatch, tmp_path):
     """Set up the minimal environment for show_status, returning status_mod."""
-    from prostor_cli import status as status_mod
     import prostor_cli.auth as auth_mod
     import prostor_cli.gateway as gateway_mod
+    from prostor_cli import status as status_mod
 
     monkeypatch.setattr(status_mod, "get_env_path", lambda: tmp_path / ".env", raising=False)
     monkeypatch.setattr(status_mod, "get_prostor_home", lambda: tmp_path, raising=False)

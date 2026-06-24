@@ -41,7 +41,6 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from prostor_cli import kanban_db as kb
 from prostor_cli import profiles as profiles_mod
@@ -133,7 +132,7 @@ class DecomposeOutcome:
     reason: str = ""
     fanout: bool = False
     child_ids: list[str] | None = None
-    new_title: Optional[str] = None
+    new_title: str | None = None
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -142,7 +141,7 @@ def _truncate(text: str, limit: int) -> str:
     return text[: limit - 1] + "…"
 
 
-def _extract_json_blob(raw: str) -> Optional[dict]:
+def _extract_json_blob(raw: str) -> dict | None:
     if not raw:
         return None
     stripped = _FENCE_RE.sub("", raw.strip())
@@ -271,8 +270,8 @@ def _normalize_assignee_choice(
 def decompose_task(
     task_id: str,
     *,
-    author: Optional[str] = None,
-    timeout: Optional[int] = None,
+    author: str | None = None,
+    timeout: int | None = None,
 ) -> DecomposeOutcome:
     """Decompose a triage task into a graph of child tasks.
 
@@ -465,7 +464,7 @@ def decompose_task(
     )
 
 
-def list_triage_ids(*, tenant: Optional[str] = None) -> list[str]:
+def list_triage_ids(*, tenant: str | None = None) -> list[str]:
     """Return task ids currently in the triage column."""
     with kb.connect_closing() as conn:
         rows = kb.list_tasks(

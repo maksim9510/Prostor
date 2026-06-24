@@ -1,21 +1,21 @@
 """Tests for Codex auth — tokens stored in Prostor auth store (~/.prostor/auth.json)."""
 
+import base64
 import json
 import time
-import base64
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from prostor_cli.auth import (
-    AuthError,
     DEFAULT_CODEX_BASE_URL,
     PROVIDER_REGISTRY,
-    _read_codex_tokens,
-    _save_codex_tokens,
+    AuthError,
     _import_codex_cli_tokens,
     _login_openai_codex,
+    _read_codex_tokens,
+    _save_codex_tokens,
     refresh_codex_oauth_pure,
     resolve_codex_runtime_credentials,
     resolve_provider,

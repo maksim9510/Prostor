@@ -29,15 +29,15 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from prostor_cli.timeouts import get_provider_request_timeout
+from agent.credential_pool import STATUS_EXHAUSTED
+from agent.error_classifier import FailoverReason
 from agent.prompt_builder import format_steer_marker
 from agent.tool_dispatch_helpers import _trajectory_normalize_msg, make_tool_result_message
 from agent.trajectory import convert_scratchpad_to_think
-from agent.credential_pool import STATUS_EXHAUSTED
-from agent.error_classifier import FailoverReason
-from utils import base_url_host_matches, base_url_hostname, env_var_enabled, atomic_json_write
+from prostor_cli.timeouts import get_provider_request_timeout
+from utils import atomic_json_write, base_url_host_matches, base_url_hostname, env_var_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -63,15 +63,15 @@ def agent_runtime_owns_post_tool_hook(agent: Any, function_name: str) -> bool:
     return bool(memory_manager and memory_manager.has_tool(function_name))
 
 
-def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_query: str, completed: bool) -> List[Dict[str, Any]]:
+def convert_to_trajectory_format(agent, messages: list[dict[str, Any]], user_query: str, completed: bool) -> list[dict[str, Any]]:
     """
     Convert internal message format to trajectory format for saving.
-    
+
     Args:
         messages (List[Dict]): Internal message history
         user_query (str): Original user query
         completed (bool): Whether the conversation completed successfully
-        
+
     Returns:
         List[Dict]: Messages in trajectory format
     """
@@ -342,7 +342,7 @@ def sanitize_tool_call_arguments(
     return repaired
 
 
-def repair_message_sequence(agent, messages: List[Dict]) -> int:
+def repair_message_sequence(agent, messages: list[dict]) -> int:
     """Collapse malformed role-alternation left in the live history.
 
     Providers (OpenAI, OpenRouter, Anthropic) expect strict alternation:
@@ -381,7 +381,7 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
     # assistant tool_call_id. Uses a rolling set of known ids refreshed
     # on each assistant message.
     known_tool_ids: set = set()
-    filtered: List[Dict] = []
+    filtered: list[dict] = []
     for msg in messages:
         if not isinstance(msg, dict):
             filtered.append(msg)
@@ -410,7 +410,7 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
 
     # Pass 2: merge consecutive user messages. Preserves all user input
     # so nothing the user typed is lost.
-    merged: List[Dict] = []
+    merged: list[dict] = []
     for msg in filtered:
         if (
             merged
@@ -443,7 +443,7 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
     return repairs
 
 
-def repair_message_sequence_with_cursor(agent, messages: List[Dict]) -> int:
+def repair_message_sequence_with_cursor(agent, messages: list[dict]) -> int:
     """Run :func:`repair_message_sequence` and keep the SessionDB flush
     cursor consistent with the compacted list (#44837).
 
@@ -580,10 +580,10 @@ def strip_think_blocks(agent, content: str) -> str:
 def recover_with_credential_pool(
     agent,
     *,
-    status_code: Optional[int],
+    status_code: int | None,
     has_retried_429: bool,
-    classified_reason: Optional[FailoverReason] = None,
-    error_context: Optional[Dict[str, Any]] = None,
+    classified_reason: FailoverReason | None = None,
+    error_context: dict[str, Any] | None = None,
 ) -> tuple[bool, bool]:
     """Attempt credential recovery via pool rotation.
 
@@ -874,10 +874,10 @@ def try_recover_primary_transport(
 
 
 def drop_thinking_only_and_merge_users(
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     *,
     drop_codex_reasoning_items: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Drop thinking-only assistant turns; merge any adjacent user messages left behind.
 
     Runs on the per-call ``api_messages`` copy only. The stored
@@ -910,7 +910,7 @@ def drop_thinking_only_and_merge_users(
         return messages
 
     # Pass 2: merge any newly-adjacent user messages.
-    merged: List[Dict[str, Any]] = []
+    merged: list[dict[str, Any]] = []
     merges = 0
     for m in kept:
         prev = merged[-1] if merged else None
@@ -942,7 +942,7 @@ def drop_thinking_only_and_merge_users(
                 else:
                     prev_copy["content"] = list(prev_content)
             elif isinstance(prev_content, str) and isinstance(cur_content, list):
-                new_blocks: List[Dict[str, Any]] = []
+                new_blocks: list[dict[str, Any]] = []
                 if prev_content:
                     new_blocks.append({"type": "text", "text": prev_content})
                 new_blocks.extend(cur_content)
@@ -1057,6 +1057,7 @@ def restore_primary_runtime(agent) -> bool:
         logger.warning("Failed to restore primary runtime: %s", e)
         return False
 
+
 # Which error types indicate a transient transport failure worth
 # one more attempt with a rebuilt client / connection pool.
 _TRANSIENT_TRANSPORT_ERRORS = frozenset({
@@ -1066,18 +1067,18 @@ _TRANSIENT_TRANSPORT_ERRORS = frozenset({
 })
 
 
-def extract_reasoning(agent, assistant_message) -> Optional[str]:
+def extract_reasoning(agent, assistant_message) -> str | None:
     """
     Extract reasoning/thinking content from an assistant message.
-    
+
     OpenRouter and various providers can return reasoning in multiple formats:
     1. message.reasoning - Direct reasoning field (DeepSeek, Qwen, etc.)
     2. message.reasoning_content - Alternative field (Moonshot AI, Novita, etc.)
     3. message.reasoning_details - Array of {type, summary, ...} objects (OpenRouter unified)
-    
+
     Args:
         assistant_message: The assistant message object from the API response
-        
+
     Returns:
         Combined reasoning text, or None if no reasoning found
     """
@@ -1149,11 +1150,11 @@ def extract_reasoning(agent, assistant_message) -> Optional[str]:
 
 def dump_api_request_debug(
     agent,
-    api_kwargs: Dict[str, Any],
+    api_kwargs: dict[str, Any],
     *,
     reason: str,
-    error: Optional[Exception] = None,
-) -> Optional[Path]:
+    error: Exception | None = None,
+) -> Path | None:
     """
     Dump a debug-friendly HTTP request record for the active inference API.
 
@@ -1172,7 +1173,7 @@ def dump_api_request_debug(
         except Exception as e:
             _ra().logger.debug("Could not extract API key for debug dump: %s", e)
 
-        dump_payload: Dict[str, Any] = {
+        dump_payload: dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "session_id": agent.session_id,
             "reason": reason,
@@ -1188,7 +1189,7 @@ def dump_api_request_debug(
         }
 
         if error is not None:
-            error_info: Dict[str, Any] = {
+            error_info: dict[str, Any] = {
                 "type": type(error).__name__,
                 "message": str(error),
             }
@@ -1241,10 +1242,10 @@ def dump_api_request_debug(
 def anthropic_prompt_cache_policy(
     agent,
     *,
-    provider: Optional[str] = None,
-    base_url: Optional[str] = None,
-    api_mode: Optional[str] = None,
-    model: Optional[str] = None,
+    provider: str | None = None,
+    base_url: str | None = None,
+    api_mode: str | None = None,
+    model: str | None = None,
 ) -> tuple[bool, bool]:
     """Decide whether to apply Anthropic prompt caching and which layout to use.
 
@@ -1531,9 +1532,9 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
         # ── Build new client ──
         if api_mode == "anthropic_messages":
             from agent.anthropic_adapter import (
+                _is_oauth_token,
                 build_anthropic_client,
                 resolve_anthropic_token,
-                _is_oauth_token,
             )
             # Only fall back to ANTHROPIC_TOKEN when the provider is actually Anthropic.
             # Other anthropic_messages providers (MiniMax, Alibaba, etc.) must use their own
@@ -1618,7 +1619,7 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
         # custom provider mid-session (closes #15779).
         _sm_custom_providers = None
         try:
-            from prostor_cli.config import load_config, get_compatible_custom_providers
+            from prostor_cli.config import get_compatible_custom_providers, load_config
             _sm_cfg = load_config()
             _sm_custom_providers = get_compatible_custom_providers(_sm_cfg)
         except Exception:
@@ -1704,10 +1705,10 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
 
 
 def invoke_tool(agent, function_name: str, function_args: dict, effective_task_id: str,
-                 tool_call_id: Optional[str] = None, messages: list = None,
+                 tool_call_id: str | None = None, messages: list = None,
                  pre_tool_block_checked: bool = False,
                  skip_tool_request_middleware: bool = False,
-                 tool_request_middleware_trace: Optional[List[Dict[str, Any]]] = None) -> str:
+                 tool_request_middleware_trace: list[dict[str, Any]] | None = None) -> str:
     """Invoke a single tool and return the result string. No display logic.
 
     Handles both agent-level tools (todo, memory, etc.) and registry-dispatched
@@ -1737,7 +1738,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
         logger.debug("tool_request middleware error: %s", _mw_err)
 
     # Check plugin hooks for a block directive before executing anything.
-    block_message: Optional[str] = None
+    block_message: str | None = None
     if not pre_tool_block_checked:
         try:
             from prostor_cli.plugins import get_pre_tool_call_block_message
@@ -1777,7 +1778,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
 
     tool_start_time = time.monotonic()
 
-    def _finish_agent_tool(result: Any, observed_args: Optional[dict] = None) -> Any:
+    def _finish_agent_tool(result: Any, observed_args: dict | None = None) -> Any:
         hook_args = observed_args if isinstance(observed_args, dict) else function_args
         try:
             from model_tools import _emit_post_tool_call_hook
@@ -2022,7 +2023,7 @@ def repair_tool_call(agent, tool_name: str) -> str | None:
     return None
 
 
-def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def sanitize_api_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Fix orphaned tool_call / tool_result pairs before every LLM call.
 
     Runs unconditionally — not gated on whether the context compressor
@@ -2072,7 +2073,7 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
     # 2. Inject stub results for calls whose result was dropped
     missing_results = surviving_call_ids - result_call_ids
     if missing_results:
-        patched: List[Dict[str, Any]] = []
+        patched: list[dict[str, Any]] = []
         for msg in messages:
             patched.append(msg)
             if msg.get("role") == "assistant":
@@ -2097,7 +2098,7 @@ def looks_like_codex_intermediate_ack(
     agent,
     user_message: str,
     assistant_content: str,
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
 ) -> bool:
     """Detect a planning/ack message that should continue instead of ending the turn."""
     if any(isinstance(msg, dict) and msg.get("role") == "tool" for msg in messages):
@@ -2381,9 +2382,9 @@ def cleanup_dead_connections(agent) -> bool:
     return False
 
 
-def extract_api_error_context(error: Exception) -> Dict[str, Any]:
+def extract_api_error_context(error: Exception) -> dict[str, Any]:
     """Extract structured rate-limit details from provider errors."""
-    context: Dict[str, Any] = {}
+    context: dict[str, Any] = {}
 
     body = getattr(error, "body", None)
     payload = None

@@ -34,18 +34,19 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 from urllib.parse import urljoin
 
-from utils import is_truthy_value
 from tools.managed_tool_gateway import resolve_managed_tool_gateway
 from tools.tool_backend_helpers import (
     managed_nous_tools_enabled,
     nous_tool_gateway_unavailable_message,
     resolve_openai_audio_api_key,
 )
+from utils import is_truthy_value
 
 logger = logging.getLogger(__name__)
+
 
 def get_env_value(name, default=None):
     """Read env values through the live config module.
@@ -64,6 +65,7 @@ def get_env_value(name, default=None):
 # ---------------------------------------------------------------------------
 # Optional imports — graceful degradation
 # ---------------------------------------------------------------------------
+
 
 import importlib.util as _ilu
 
@@ -108,8 +110,8 @@ OPENAI_MODELS = {"whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"}
 GROQ_MODELS = {"whisper-large-v3", "whisper-large-v3-turbo", "distil-whisper-large-v3-en"}
 
 # Singleton for the local model — loaded once, reused across calls
-_local_model: Optional[object] = None
-_local_model_name: Optional[str] = None
+_local_model: object | None = None
+_local_model_name: str | None = None
 
 # ---------------------------------------------------------------------------
 # Config helpers
@@ -125,7 +127,7 @@ def _load_stt_config() -> dict:
         return {}
 
 
-def is_stt_enabled(stt_config: Optional[dict] = None) -> bool:
+def is_stt_enabled(stt_config: dict | None = None) -> bool:
     """Return whether STT is enabled in config."""
     if stt_config is None:
         stt_config = _load_stt_config()
@@ -142,7 +144,7 @@ def _has_openai_audio_backend() -> bool:
         return False
 
 
-def _find_binary(binary_name: str) -> Optional[str]:
+def _find_binary(binary_name: str) -> str | None:
     """Find a local binary, checking common Homebrew/local prefixes as well as PATH."""
     for directory in COMMON_LOCAL_BIN_DIRS:
         candidate = Path(directory) / binary_name
@@ -151,15 +153,15 @@ def _find_binary(binary_name: str) -> Optional[str]:
     return shutil.which(binary_name)
 
 
-def _find_ffmpeg_binary() -> Optional[str]:
+def _find_ffmpeg_binary() -> str | None:
     return _find_binary("ffmpeg")
 
 
-def _find_whisper_binary() -> Optional[str]:
+def _find_whisper_binary() -> str | None:
     return _find_binary("whisper")
 
 
-def _get_local_command_template() -> Optional[str]:
+def _get_local_command_template() -> str | None:
     configured = os.getenv(LOCAL_STT_COMMAND_ENV, "").strip()
     if configured:
         return configured
@@ -178,7 +180,7 @@ def _has_local_command() -> bool:
     return _get_local_command_template() is not None
 
 
-def _normalize_local_model(model_name: Optional[str]) -> str:
+def _normalize_local_model(model_name: str | None) -> str:
     """Return a valid faster-whisper model size, mapping cloud-only names to the default.
 
     Cloud providers like OpenAI use names such as ``whisper-1`` which are not
@@ -199,7 +201,7 @@ def _normalize_local_model(model_name: Optional[str]) -> str:
     return model_name
 
 
-def _normalize_local_command_model(model_name: Optional[str]) -> str:
+def _normalize_local_command_model(model_name: str | None) -> str:
     return _normalize_local_model(model_name)
 
 
@@ -269,7 +271,7 @@ DEFAULT_COMMAND_STT_OUTPUT_FORMAT = "txt"
 COMMAND_STT_OUTPUT_FORMATS = frozenset({"txt", "json", "srt", "vtt"})
 
 
-def _get_stt_section(stt_config: Dict[str, Any], name: str) -> Dict[str, Any]:
+def _get_stt_section(stt_config: dict[str, Any], name: str) -> dict[str, Any]:
     """Return an stt sub-section if it's a dict, else an empty dict."""
     if not isinstance(stt_config, dict):
         return {}
@@ -278,9 +280,9 @@ def _get_stt_section(stt_config: Dict[str, Any], name: str) -> Dict[str, Any]:
 
 
 def _get_named_stt_provider_config(
-    stt_config: Dict[str, Any],
+    stt_config: dict[str, Any],
     name: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return the config dict for a user-declared STT command provider.
 
     Looks up ``stt.providers.<name>`` first (the canonical location), and
@@ -307,7 +309,7 @@ def _get_named_stt_provider_config(
     return {}
 
 
-def _is_command_stt_provider_config(config: Dict[str, Any]) -> bool:
+def _is_command_stt_provider_config(config: dict[str, Any]) -> bool:
     """Return True when *config* declares a command-type STT provider."""
     if not isinstance(config, dict):
         return False
@@ -320,8 +322,8 @@ def _is_command_stt_provider_config(config: Dict[str, Any]) -> bool:
 
 def _resolve_command_stt_provider_config(
     provider: str,
-    stt_config: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+    stt_config: dict[str, Any],
+) -> dict[str, Any] | None:
     """Return the provider config if *provider* resolves to a command type.
 
     Built-in provider names are rejected (they have native handlers).
@@ -339,7 +341,7 @@ def _resolve_command_stt_provider_config(
     return None
 
 
-def _iter_command_stt_providers(stt_config: Dict[str, Any]):
+def _iter_command_stt_providers(stt_config: dict[str, Any]):
     """Yield (name, config) pairs for every declared command-type STT provider."""
     if not isinstance(stt_config, dict):
         return
@@ -350,7 +352,7 @@ def _iter_command_stt_providers(stt_config: Dict[str, Any]):
                 yield name, cfg
 
 
-def _has_any_command_stt_provider(stt_config: Optional[Dict[str, Any]] = None) -> bool:
+def _has_any_command_stt_provider(stt_config: dict[str, Any] | None = None) -> bool:
     """Return True when any command-type STT provider is configured."""
     if stt_config is None:
         stt_config = _load_stt_config()
@@ -359,7 +361,7 @@ def _has_any_command_stt_provider(stt_config: Optional[Dict[str, Any]] = None) -
     return False
 
 
-def _get_command_stt_timeout(config: Dict[str, Any]) -> float:
+def _get_command_stt_timeout(config: dict[str, Any]) -> float:
     """Return timeout in seconds, falling back when invalid."""
     raw = config.get("timeout", config.get("timeout_seconds", DEFAULT_COMMAND_STT_TIMEOUT_SECONDS))
     try:
@@ -371,7 +373,7 @@ def _get_command_stt_timeout(config: Dict[str, Any]) -> float:
     return value
 
 
-def _get_command_stt_output_format(config: Dict[str, Any]) -> str:
+def _get_command_stt_output_format(config: dict[str, Any]) -> str:
     """Return the validated output format (txt/json/srt/vtt)."""
     raw = (
         config.get("format")
@@ -382,14 +384,14 @@ def _get_command_stt_output_format(config: Dict[str, Any]) -> str:
     return fmt if fmt in COMMAND_STT_OUTPUT_FORMATS else DEFAULT_COMMAND_STT_OUTPUT_FORMAT
 
 
-def _shell_quote_context_stt(command_template: str, position: int) -> Optional[str]:
+def _shell_quote_context_stt(command_template: str, position: int) -> str | None:
     """Return the shell quote character active right before *position*.
 
     Mirrors ``tools.tts_tool._shell_quote_context`` — kept local to avoid
     cross-module import of a private helper. Returns ``"'"`` / ``'"'`` when
     inside a quoted region, ``None`` for bare context.
     """
-    quote: Optional[str] = None
+    quote: str | None = None
     escaped = False
     i = 0
     while i < position:
@@ -414,7 +416,7 @@ def _shell_quote_context_stt(command_template: str, position: int) -> Optional[s
     return quote
 
 
-def _quote_command_stt_placeholder(value: str, quote_context: Optional[str]) -> str:
+def _quote_command_stt_placeholder(value: str, quote_context: str | None) -> str:
     """Quote a placeholder value for its position in a shell command template.
 
     Mirrors ``tools.tts_tool._quote_command_tts_placeholder``.
@@ -436,7 +438,7 @@ def _quote_command_stt_placeholder(value: str, quote_context: Optional[str]) -> 
 
 def _render_command_stt_template(
     command_template: str,
-    placeholders: Dict[str, str],
+    placeholders: dict[str, str],
 ) -> str:
     """Replace supported placeholders while preserving ``{{`` / ``}}``.
 
@@ -544,7 +546,7 @@ def _run_command_stt(command: str, timeout: float) -> subprocess.CompletedProces
 
     Mirrors ``tools.tts_tool._run_command_tts``.
     """
-    popen_kwargs: Dict[str, Any] = {
+    popen_kwargs: dict[str, Any] = {
         "shell": True,
         "stdout": subprocess.PIPE,
         "stderr": subprocess.PIPE,
@@ -615,10 +617,10 @@ def _read_command_stt_output(output_path: Path, stdout: str, fmt: str) -> str:
 def _transcribe_command_stt(
     file_path: str,
     provider_name: str,
-    config: Dict[str, Any],
-    stt_config: Dict[str, Any],
-    model_override: Optional[str] = None,
-) -> Dict[str, Any]:
+    config: dict[str, Any],
+    stt_config: dict[str, Any],
+    model_override: str | None = None,
+) -> dict[str, Any]:
     """Transcribe via a user-declared ``stt.providers.<name>: type: command``.
 
     Placeholder grammar:
@@ -872,11 +874,11 @@ def _get_provider(stt_config: dict) -> str:
 def _dispatch_to_plugin_provider(
     file_path: str,
     provider: str,
-    stt_config: Optional[Dict[str, Any]] = None,
+    stt_config: dict[str, Any] | None = None,
     *,
-    model: Optional[str] = None,
-    language: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    model: str | None = None,
+    language: str | None = None,
+) -> dict[str, Any] | None:
     """Route the call to a plugin-registered transcription provider, or
     return None.
 
@@ -1017,7 +1019,7 @@ def _dispatch_to_plugin_provider(
 # ---------------------------------------------------------------------------
 
 
-def _validate_audio_file(file_path: str) -> Optional[Dict[str, Any]]:
+def _validate_audio_file(file_path: str) -> dict[str, Any] | None:
     """Validate the audio file.  Returns an error dict or None if OK."""
     audio_path = Path(file_path)
 
@@ -1111,7 +1113,7 @@ def _load_local_whisper_model(model_name: str):
         return WhisperModel(model_name, device="cpu", compute_type="int8")
 
 
-def _transcribe_local(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_local(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using faster-whisper (local, free)."""
     global _local_model, _local_model_name
 
@@ -1172,7 +1174,7 @@ def _transcribe_local(file_path: str, model_name: str) -> Dict[str, Any]:
         return {"success": False, "transcript": "", "error": f"Local transcription failed: {e}"}
 
 
-def _prepare_local_audio(file_path: str, work_dir: str) -> tuple[Optional[str], Optional[str]]:
+def _prepare_local_audio(file_path: str, work_dir: str) -> tuple[str | None, str | None]:
     """Normalize audio for local CLI STT when needed."""
     audio_path = Path(file_path)
     if audio_path.suffix.lower() in LOCAL_NATIVE_AUDIO_FORMATS:
@@ -1197,7 +1199,7 @@ def _prepare_local_audio(file_path: str, work_dir: str) -> tuple[Optional[str], 
         return None, f"Failed to convert audio for local STT: {details}"
 
 
-def _transcribe_local_command(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_local_command(file_path: str, model_name: str) -> dict[str, Any]:
     """Run the configured local STT command template and read back a .txt transcript."""
     command_template = _get_local_command_template()
     if not command_template:
@@ -1272,7 +1274,7 @@ def _transcribe_local_command(file_path: str, model_name: str) -> Dict[str, Any]
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_groq(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_groq(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using Groq Whisper API (free tier available)."""
     api_key = get_env_value("GROQ_API_KEY")
     if not api_key:
@@ -1287,7 +1289,7 @@ def _transcribe_groq(file_path: str, model_name: str) -> Dict[str, Any]:
         model_name = DEFAULT_GROQ_STT_MODEL
 
     try:
-        from openai import OpenAI, APIError, APIConnectionError, APITimeoutError
+        from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
         client = OpenAI(api_key=api_key, base_url=GROQ_BASE_URL, timeout=30, max_retries=0)
         try:
             with open(file_path, "rb") as audio_file:
@@ -1324,7 +1326,7 @@ def _transcribe_groq(file_path: str, model_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_openai(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_openai(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using OpenAI Whisper API (paid)."""
     try:
         api_key, base_url = _resolve_openai_audio_client_config()
@@ -1344,7 +1346,7 @@ def _transcribe_openai(file_path: str, model_name: str) -> Dict[str, Any]:
         model_name = DEFAULT_STT_MODEL
 
     try:
-        from openai import OpenAI, APIError, APIConnectionError, APITimeoutError
+        from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
         client = OpenAI(api_key=api_key, base_url=base_url, timeout=30, max_retries=0)
         try:
             with open(file_path, "rb") as audio_file:
@@ -1381,7 +1383,7 @@ def _transcribe_openai(file_path: str, model_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_mistral(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_mistral(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using Mistral Voxtral Transcribe API.
 
     Uses the ``mistralai`` Python SDK to call ``/v1/audio/transcriptions``.
@@ -1425,7 +1427,7 @@ def _transcribe_mistral(file_path: str, model_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_xai(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_xai(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using xAI Grok STT API.
 
     Uses the ``POST /v1/stt`` REST endpoint with multipart/form-data.
@@ -1463,9 +1465,10 @@ def _transcribe_xai(file_path: str, model_name: str) -> Dict[str, Any]:
 
     try:
         import requests
+
         from tools.xai_http import prostor_xai_user_agent
 
-        data: Dict[str, str] = {}
+        data: dict[str, str] = {}
         if language:
             data["language"] = language
         if use_format:
@@ -1532,7 +1535,7 @@ def _transcribe_xai(file_path: str, model_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_elevenlabs(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_elevenlabs(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using ElevenLabs Scribe STT API."""
     api_key = get_env_value("ELEVENLABS_API_KEY")
     if not api_key:
@@ -1552,7 +1555,7 @@ def _transcribe_elevenlabs(file_path: str, model_name: str) -> Dict[str, Any]:
     try:
         import requests
 
-        data: Dict[str, str] = {
+        data: dict[str, str] = {
             "model_id": model_name,
             "tag_audio_events": "true" if tag_audio_events else "false",
             "diarize": "true" if diarize else "false",
@@ -1618,7 +1621,7 @@ def _transcribe_elevenlabs(file_path: str, model_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def transcribe_audio(file_path: str, model: Optional[str] = None) -> Dict[str, Any]:
+def transcribe_audio(file_path: str, model: str | None = None) -> dict[str, Any]:
     """
     Transcribe an audio file using the configured STT provider.
 
@@ -1784,7 +1787,7 @@ def _extract_transcript_text(transcription: Any) -> str:
         return transcription.strip()
 
     if hasattr(transcription, "text"):
-        value = getattr(transcription, "text")
+        value = transcription.text
         if isinstance(value, str):
             return value.strip()
 

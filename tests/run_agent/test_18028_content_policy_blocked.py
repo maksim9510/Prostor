@@ -23,7 +23,7 @@ class TestContentPolicyBlockedClassification:
 
     def test_openai_codex_cybersecurity_no_status(self):
         """The reported #18028 case — SDK raises without a status code."""
-        from agent.error_classifier import classify_api_error, FailoverReason
+        from agent.error_classifier import FailoverReason, classify_api_error
 
         e = Exception(
             "This content was flagged for possible cybersecurity risk. "
@@ -106,7 +106,7 @@ class TestContentPolicyPatternsAreNarrow:
     """
 
     def test_generic_400_format_error_not_misclassified(self):
-        from agent.error_classifier import classify_api_error, FailoverReason
+        from agent.error_classifier import FailoverReason, classify_api_error
 
         class _Err(Exception):
             def __init__(self, msg, status_code):
@@ -118,7 +118,7 @@ class TestContentPolicyPatternsAreNarrow:
         assert result.reason != FailoverReason.content_policy_blocked
 
     def test_billing_402_not_misclassified(self):
-        from agent.error_classifier import classify_api_error, FailoverReason
+        from agent.error_classifier import FailoverReason, classify_api_error
 
         class _Err(Exception):
             def __init__(self, msg, status_code):
@@ -135,7 +135,7 @@ class TestContentPolicyPatternsAreNarrow:
         ``content_policy_blocked`` (upstream model safety filter) — they
         have different recovery strategies.
         """
-        from agent.error_classifier import classify_api_error, FailoverReason
+        from agent.error_classifier import FailoverReason, classify_api_error
 
         class _Err(Exception):
             def __init__(self, msg, status_code):

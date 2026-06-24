@@ -31,16 +31,15 @@ except ImportError:
     except ImportError:
         msvcrt = None
 from pathlib import Path
-from typing import List, Optional
 
 # Add parent directory to path for imports BEFORE repo-level imports.
 # Without this, standalone invocations (e.g. after `prostor update` reloads
 # the module) fail with ModuleNotFoundError for prostor_time et al.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from prostor_constants import get_prostor_home
 from prostor_cli._subprocess_compat import windows_hide_flags
-from prostor_cli.config import load_config, _expand_env_vars
+from prostor_cli.config import _expand_env_vars, load_config
+from prostor_constants import get_prostor_home
 from prostor_time import now as _prostor_now
 
 logger = logging.getLogger(__name__)
@@ -165,6 +164,7 @@ def _resolve_cron_enabled_toolsets(job: dict, cfg: dict) -> list[str] | None:
         )
         return None
 
+
 # Valid delivery platforms — used to validate user-supplied platform names
 # in cron delivery targets, preventing env var enumeration via crafted names.
 _KNOWN_DELIVERY_PLATFORMS = frozenset({
@@ -203,7 +203,7 @@ _LEGACY_HOME_TARGET_ENV_VARS = {
     "QQBOT_HOME_CHANNEL": "QQ_HOME_CHANNEL",
 }
 
-from cron.jobs import get_due_jobs, mark_job_run, save_job_output, advance_next_run
+from cron.jobs import advance_next_run, get_due_jobs, mark_job_run, save_job_output
 
 # Sentinel: when a cron agent has nothing new to report, it can start its
 # response with this marker to suppress delivery.  Output is still saved
@@ -215,8 +215,8 @@ SILENT_MARKER = "[SILENT]"
 # The tick function submits jobs here and returns immediately so the ticker
 # thread is never blocked by long-running jobs (e.g. the fixer running 15+ min).
 # ---------------------------------------------------------------------------
-_parallel_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None
-_parallel_pool_max_workers: Optional[int] = None
+_parallel_pool: concurrent.futures.ThreadPoolExecutor | None = None
+_parallel_pool_max_workers: int | None = None
 _running_job_ids: set = set()
 _running_lock = threading.Lock()
 
@@ -224,10 +224,10 @@ _running_lock = threading.Lock()
 # process-global runtime state — must run one at a time, but must NOT block the
 # ticker thread.  A persistent single-thread executor preserves ordering across
 # ticks while keeping dispatch fire-and-forget, the same as the parallel pool.
-_sequential_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_sequential_pool: concurrent.futures.ThreadPoolExecutor | None = None
 
 
-def _get_parallel_pool(max_workers: Optional[int]) -> concurrent.futures.ThreadPoolExecutor:
+def _get_parallel_pool(max_workers: int | None) -> concurrent.futures.ThreadPoolExecutor:
     """Return (or create) the persistent parallel pool."""
     global _parallel_pool, _parallel_pool_max_workers
     if _parallel_pool is None or _parallel_pool_max_workers != max_workers:
@@ -289,7 +289,7 @@ def _get_lock_paths() -> tuple[Path, Path]:
     return lock_dir, lock_dir / ".tick.lock"
 
 
-def _resolve_origin(job: dict) -> Optional[dict]:
+def _resolve_origin(job: dict) -> dict | None:
     """Extract origin info from a job, preserving any extra routing metadata.
 
     Treats non-dict origins (free-form provenance strings, ints, lists from
@@ -393,7 +393,7 @@ def _get_home_target_chat_id(platform_name: str) -> str:
     return value
 
 
-def _get_home_target_thread_id(platform_name: str) -> Optional[str]:
+def _get_home_target_thread_id(platform_name: str) -> str | None:
     """Return the optional thread/topic ID for a platform home target.
 
     Telegram-only override: ``TELEGRAM_CRON_THREAD_ID`` takes precedence over
@@ -478,7 +478,7 @@ def cron_delivery_targets() -> list[dict]:
     return targets
 
 
-def _resolve_single_delivery_target(job: dict, deliver_value: str) -> Optional[dict]:
+def _resolve_single_delivery_target(job: dict, deliver_value: str) -> dict | None:
     """Resolve one concrete auto-delivery target for a cron job."""
 
     origin = _resolve_origin(job)
@@ -591,7 +591,7 @@ def _normalize_deliver_value(deliver) -> str:
 _ROUTING_TOKENS = frozenset({"all"})
 
 
-def _expand_routing_tokens(part: str) -> List[str]:
+def _expand_routing_tokens(part: str) -> list[str]:
     """Expand a routing-intent token to concrete platform names.
 
     ``all`` expands to every platform in ``_iter_home_target_platforms()``
@@ -602,14 +602,14 @@ def _expand_routing_tokens(part: str) -> List[str]:
     token = part.lower()
     if token not in _ROUTING_TOKENS:
         return [part]
-    expanded: List[str] = []
+    expanded: list[str] = []
     for platform_name in _iter_home_target_platforms():
         if _get_home_target_chat_id(platform_name):
             expanded.append(platform_name)
     return expanded
 
 
-def _resolve_delivery_targets(job: dict) -> List[dict]:
+def _resolve_delivery_targets(job: dict) -> list[dict]:
     """Resolve all concrete auto-delivery targets for a cron job.
 
     Accepts the legacy comma-separated ``deliver`` string plus the
@@ -626,7 +626,7 @@ def _resolve_delivery_targets(job: dict) -> List[dict]:
     raw_parts = [p.strip() for p in deliver.split(",") if p.strip()]
 
     # Expand routing intents.
-    parts: List[str] = []
+    parts: list[str] = []
     for raw in raw_parts:
         parts.extend(_expand_routing_tokens(raw))
 
@@ -642,7 +642,7 @@ def _resolve_delivery_targets(job: dict) -> List[dict]:
     return targets
 
 
-def _resolve_delivery_target(job: dict) -> Optional[dict]:
+def _resolve_delivery_target(job: dict) -> dict | None:
     """Resolve the concrete auto-delivery target for a cron job, if any."""
     targets = _resolve_delivery_targets(job)
     return targets[0] if targets else None
@@ -710,7 +710,7 @@ def _send_media_via_adapter(
             logger.warning("Job '%s': failed to send media %s: %s", job.get("id", "?"), media_path, e)
 
 
-def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Optional[str]:
+def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> str | None:
     """
     Deliver job output to the configured target(s) (origin chat, specific platform, etc.).
 
@@ -729,8 +729,8 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
             return msg
         return None  # local-only jobs don't deliver — not a failure
 
+    from gateway.config import Platform, load_gateway_config
     from tools.send_message_tool import _send_to_platform
-    from gateway.config import load_gateway_config, Platform
 
     # Optionally wrap the content with a header/footer so the user knows this
     # is a cron delivery.  Wrapping is on by default; set cron.wrap_response: false
@@ -1105,7 +1105,7 @@ def _parse_wake_gate(script_output: str) -> bool:
     return gate.get("wakeAgent", True) is not False
 
 
-def _build_job_prompt(job: dict, prerun_script: Optional[tuple] = None) -> str:
+def _build_job_prompt(job: dict, prerun_script: tuple | None = None) -> str:
     """Build the effective prompt for a cron job, optionally loading one or more skills first.
 
     Args:
@@ -1233,9 +1233,9 @@ def _build_job_prompt(job: dict, prerun_script: Optional[tuple] = None) -> str:
             user_prompt=user_prompt,
         )
 
-    from tools.skills_tool import skill_view
-    from tools.skill_usage import bump_use
     from agent.skill_bundles import build_bundle_invocation_message, resolve_bundle_command_key
+    from tools.skill_usage import bump_use
+    from tools.skills_tool import skill_view
 
     parts = []
     skipped: list[str] = []
@@ -1314,7 +1314,7 @@ def _scan_assembled_cron_prompt(
     *,
     has_skills: bool = False,
     has_injected_data: bool = False,
-    user_prompt: Optional[str] = None,
+    user_prompt: str | None = None,
 ) -> str:
     """Scan the fully-assembled cron prompt for injection patterns. Raises
     ``CronPromptInjectionBlocked`` when a match fires so ``run_job`` can
@@ -1378,10 +1378,10 @@ def _scan_assembled_cron_prompt(
     return assembled
 
 
-def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
+def run_job(job: dict) -> tuple[bool, str, str, str | None]:
     """
     Execute a single cron job.
-    
+
     Returns:
         Tuple of (success, full_output_doc, final_response, error_message)
     """
@@ -1573,7 +1573,7 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
 
     # Use ContextVars for per-job session/delivery state so parallel jobs
     # don't clobber each other's targets (os.environ is process-global).
-    from gateway.session_context import set_session_vars, clear_session_vars, _VAR_MAP
+    from gateway.session_context import _VAR_MAP, clear_session_vars, set_session_vars
 
     # Cron execution is an internal scheduler context, not a live inbound
     # gateway message. Do not seed PROSTOR_SESSION_* contextvars from the
@@ -1711,7 +1711,7 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
                 pfpath = _get_prostor_home() / pfpath
             if pfpath.exists():
                 try:
-                    with open(pfpath, "r", encoding="utf-8") as _pf:
+                    with open(pfpath, encoding="utf-8") as _pf:
                         prefill_messages = json.load(_pf)
                     if not isinstance(prefill_messages, list):
                         prefill_messages = None
@@ -1725,11 +1725,11 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
         # Provider routing
         pr = _cfg.get("provider_routing", {})
 
-        from prostor_cli.runtime_provider import (
-            resolve_runtime_provider,
-            format_runtime_provider_error,
-        )
         from prostor_cli.auth import AuthError
+        from prostor_cli.runtime_provider import (
+            format_runtime_provider_error,
+            resolve_runtime_provider,
+        )
         try:
             # Do not inject PROSTOR_INFERENCE_PROVIDER here. resolve_runtime_provider()
             # already prefers persisted config over stale shell/env overrides when
@@ -2130,15 +2130,15 @@ def _notify_provider_jobs_changed() -> None:
 def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> int:
     """
     Check and run all due jobs.
-    
+
     Uses a file lock so only one tick runs at a time, even if the gateway's
     in-process ticker and a standalone daemon or manual tick overlap.
-    
+
     Args:
         verbose: Whether to print status messages
         adapters: Optional dict mapping Platform → live adapter (from gateway)
         loop: Optional asyncio event loop (from gateway) for live adapter sends
-    
+
     Returns:
         Number of jobs executed (0 if another tick is already running)
     """
@@ -2153,7 +2153,7 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         elif msvcrt:
             msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
-    except (OSError, IOError):
+    except OSError:
         logger.debug("Tick skipped — another instance holds the lock")
         if lock_fd is not None:
             lock_fd.close()
@@ -2179,7 +2179,7 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
 
         # Resolve max parallel workers: env var > config.yaml > unbounded.
         # Set PROSTOR_CRON_MAX_PARALLEL=1 to restore old serial behaviour.
-        _max_workers: Optional[int] = None
+        _max_workers: int | None = None
         try:
             _env_par = os.getenv("PROSTOR_CRON_MAX_PARALLEL", "").strip()
             if _env_par:
@@ -2322,12 +2322,12 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
         if fcntl:
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            except (OSError, IOError):
+            except OSError:
                 pass
         elif msvcrt:
             try:
                 msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
-            except (OSError, IOError):
+            except OSError:
                 pass
         lock_fd.close()
 

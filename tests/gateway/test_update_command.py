@@ -6,7 +6,7 @@ the _send_update_notification startup hook (sends results after restart).
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -173,6 +173,7 @@ class TestHandleUpdateCommand:
     async def test_resolve_prostor_bin_fallback(self):
         """_resolve_prostor_bin falls back to sys.executable argv when which fails."""
         import sys
+
         from gateway.run import _resolve_prostor_bin
 
         fake_spec = MagicMock()
@@ -925,7 +926,8 @@ class TestUpdateInHelp:
         """The /update command is in the help text (proxy for _known_commands)."""
         # _known_commands is local to _handle_message, so we verify by
         # checking the help output includes it.
-        from gateway.run import GatewayRunner
         import inspect
+
+        from gateway.run import GatewayRunner
         source = inspect.getsource(GatewayRunner._handle_message)
         assert '"update"' in source

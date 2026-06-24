@@ -51,8 +51,8 @@ def prostor_home(monkeypatch):
 
     # Import lazily (inside fixture) so the modules are already resident,
     # then redirect their captured paths at the new temp dir.
-    import tools.skills_tool as _st
     import agent.skill_commands as _sc
+    import tools.skills_tool as _st
 
     monkeypatch.setattr(_st, "PROSTOR_HOME", home, raising=False)
     monkeypatch.setattr(_st, "SKILLS_DIR", home / "skills", raising=False)
@@ -77,7 +77,7 @@ class TestReloadSkillsHelper:
         assert result["removed"] == []
 
     def test_detects_newly_added_skill_with_description(self, prostor_home):
-        from agent.skill_commands import reload_skills, get_skill_commands
+        from agent.skill_commands import get_skill_commands, reload_skills
 
         # Prime the cache so subsequent diff is meaningful
         get_skill_commands()
@@ -114,7 +114,7 @@ class TestReloadSkillsHelper:
         ``    - name: description`` without a length cap, and the reload
         note mirrors that format, so truncating here would make the diff
         render differently from the original catalog."""
-        from agent.skill_commands import reload_skills, get_skill_commands
+        from agent.skill_commands import get_skill_commands, reload_skills
 
         get_skill_commands()  # prime
         long_desc = "x" * 200
@@ -125,7 +125,7 @@ class TestReloadSkillsHelper:
         assert result["added"][0]["description"] == long_desc
 
     def test_unchanged_skills_appear_in_unchanged_list(self, prostor_home):
-        from agent.skill_commands import reload_skills, get_skill_commands
+        from agent.skill_commands import get_skill_commands, reload_skills
 
         _write_skill(prostor_home / "skills", "alpha")
         # Prime cache

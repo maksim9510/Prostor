@@ -17,17 +17,17 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from prostor_constants import get_prostor_home
 from prostor_cli.config import cfg_get
 from prostor_cli.secret_prompt import masked_secret_prompt
+from prostor_constants import get_prostor_home
 
 logger = logging.getLogger(__name__)
 
 
 @functools.lru_cache(maxsize=1)
-def _resolve_git_executable() -> Optional[str]:
+def _resolve_git_executable() -> str | None:
     """Resolve a git binary for subprocess use when ``PATH`` may be minimal.
 
     Matches other Prostor subprocess resolution: :func:`shutil.which` first,
@@ -149,7 +149,7 @@ _GITHUB_BROWSER_SEGMENTS = {
 }
 
 
-def _resolve_git_url(identifier: str) -> tuple[str, Optional[str]]:
+def _resolve_git_url(identifier: str) -> tuple[str, str | None]:
     """Turn an identifier into a cloneable Git URL and optional subdirectory.
 
     Returns ``(git_url, subdir)`` where ``subdir`` is the path within the
@@ -549,7 +549,7 @@ def _install_plugin_core(identifier: str, *, force: bool) -> tuple[Path, dict, s
 def cmd_install(
     identifier: str,
     force: bool = False,
-    enable: Optional[bool] = None,
+    enable: bool | None = None,
 ) -> None:
     """Install a plugin from a Git URL or owner/repo shorthand.
 
@@ -742,7 +742,7 @@ def _save_enabled_set(enabled: set) -> None:
     save_config(config)
 
 
-def _resolve_plugin_key(name: str) -> Optional[str]:
+def _resolve_plugin_key(name: str) -> str | None:
     """Resolve a user-supplied plugin identifier to its canonical registry key.
 
     Accepts either the bare manifest name (``nemo_relay``), the directory
@@ -1541,7 +1541,7 @@ def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
     # Provider categories
     if categories:
         print(color("\n  Provider Plugins", Colors.YELLOW))
-        for ci, (cat_name, cat_current, cat_fn) in enumerate(categories):
+        for ci, (cat_name, cat_current, _cat_fn) in enumerate(categories):
             print(f"  {ci + 1}. {cat_name} [{cat_current}]")
         print()
         try:
@@ -1605,7 +1605,7 @@ def dashboard_install_plugin(
     }
 
 
-def _get_plugin_toolset_key(name: str) -> Optional[str]:
+def _get_plugin_toolset_key(name: str) -> str | None:
     """Return the toolset key a plugin registers its tools under, or None.
 
     Queries the live tool registry — the plugin must already be loaded.
@@ -1669,7 +1669,7 @@ def _toggle_plugin_toolset(name: str, *, enable: bool) -> None:
         config["platform_toolsets"] = platform_toolsets
 
     changed = False
-    for platform, ts_list in platform_toolsets.items():
+    for _platform, ts_list in platform_toolsets.items():
         if not isinstance(ts_list, list):
             continue
         if enable:
@@ -1722,7 +1722,7 @@ def dashboard_set_agent_plugin_enabled(name: str, *, enabled: bool) -> dict[str,
     return {"ok": True, "name": name, "unchanged": False}
 
 
-def _user_installed_plugin_dir(name: str) -> Optional[Path]:
+def _user_installed_plugin_dir(name: str) -> Path | None:
     """Resolved path under ``~/.prostor/plugins/<name>`` if it exists."""
     plugins_dir = _plugins_dir()
     try:

@@ -29,7 +29,6 @@ from collections.abc import Iterator
 
 import pytest
 
-
 # How long to give a `docker run -d` container before declaring it not ready.
 _RUN_READY_TIMEOUT_S = 20
 

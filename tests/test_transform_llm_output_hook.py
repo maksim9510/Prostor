@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 
 import prostor_cli.plugins as plugins_mod
-from prostor_cli.plugins import PluginManager, VALID_HOOKS
+from prostor_cli.plugins import VALID_HOOKS, PluginManager
 
 
 def _make_enabled_plugin(prostor_home: Path, name: str, register_body: str) -> Path:

@@ -186,9 +186,10 @@ class TestPromptToolkitTerminalCompatibility:
         unbound here so it can be used as the Ctrl+Enter newline keystroke
         without conflicting with submit. See issue #22379.
         """
-        import sys as _sys
         import os as _os
+        import sys as _sys
         from unittest.mock import patch as _patch
+
         from prompt_toolkit.key_binding import KeyBindings
 
         from cli import _bind_prompt_submit_keys

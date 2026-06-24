@@ -44,12 +44,12 @@ import logging
 import re
 import shutil
 import tarfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from prostor_core import get_prostor_home
 from agent.skill_utils import is_excluded_skill_path
+from prostor_core import get_prostor_home
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def _cron_jobs_file() -> Path:
 CRON_JOBS_FILENAME = "cron-jobs.json"
 
 
-def _backup_cron_jobs_into(dest: Path) -> Dict[str, Any]:
+def _backup_cron_jobs_into(dest: Path) -> dict[str, Any]:
     """Copy the live cron jobs.json into ``dest`` as ``cron-jobs.json``.
 
     Returns a small dict describing what was captured so the caller can
@@ -93,7 +93,7 @@ def _backup_cron_jobs_into(dest: Path) -> Dict[str, Any]:
     useful for rolling back skills).
     """
     src = _cron_jobs_file()
-    info: Dict[str, Any] = {"backed_up": False, "jobs_count": 0}
+    info: dict[str, Any] = {"backed_up": False, "jobs_count": 0}
     if not src.exists():
         info["reason"] = "no cron/jobs.json present"
         return info
@@ -129,10 +129,10 @@ def _backup_cron_jobs_into(dest: Path) -> Dict[str, Any]:
     return info
 
 
-def _utc_id(now: Optional[datetime] = None) -> str:
+def _utc_id(now: datetime | None = None) -> str:
     """UTC ISO-ish filesystem-safe timestamp: ``2026-05-01T13-05-42Z``."""
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     # isoformat → "2026-05-01T13:05:42.123456+00:00"; strip subseconds and tz.
     s = now.replace(microsecond=0).isoformat()
     if s.endswith("+00:00"):
@@ -140,7 +140,7 @@ def _utc_id(now: Optional[datetime] = None) -> str:
     return s.replace(":", "-") + "Z"
 
 
-def _load_config() -> Dict[str, Any]:
+def _load_config() -> dict[str, Any]:
     try:
         from prostor_cli.config import load_config
         cfg = load_config()
@@ -185,11 +185,11 @@ def _count_skill_files(base: Path) -> int:
 
 def _write_manifest(dest: Path, reason: str, archive_path: Path,
                     skills_counted: int,
-                    cron_info: Optional[Dict[str, Any]] = None) -> None:
+                    cron_info: dict[str, Any] | None = None) -> None:
     manifest = {
         "id": dest.name,
         "reason": reason,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "archive": archive_path.name,
         "archive_bytes": archive_path.stat().st_size,
         "skill_files": skills_counted,
@@ -208,7 +208,7 @@ def _write_manifest(dest: Path, reason: str, archive_path: Path,
     )
 
 
-def snapshot_skills(reason: str = "manual", *, protect_ids: Optional[Set[str]] = None) -> Optional[Path]:
+def snapshot_skills(reason: str = "manual", *, protect_ids: set[str] | None = None) -> Path | None:
     """Create a tar.gz snapshot of ``~/.prostor/skills/`` and prune old ones.
 
     Returns the snapshot directory path, or ``None`` if the snapshot was
@@ -285,7 +285,7 @@ def snapshot_skills(reason: str = "manual", *, protect_ids: Optional[Set[str]] =
     return dest
 
 
-def _prune_old(keep: int, protect: Optional[Set[str]] = None) -> List[str]:
+def _prune_old(keep: int, protect: set[str] | None = None) -> list[str]:
     """Delete regular snapshots beyond the newest *keep*. Returns deleted
     ids. Snapshot ids in *protect* are never deleted even when they fall
     outside the keep window — rollback() uses this so the mandatory
@@ -296,8 +296,8 @@ def _prune_old(keep: int, protect: Optional[Set[str]] = None) -> List[str]:
     backups = _backups_dir()
     if not backups.exists():
         return []
-    entries: List[Tuple[str, Path]] = []
-    stale_staging: List[Path] = []
+    entries: list[tuple[str, Path]] = []
+    stale_staging: list[Path] = []
     for child in backups.iterdir():
         if not child.is_dir():
             continue
@@ -311,7 +311,7 @@ def _prune_old(keep: int, protect: Optional[Set[str]] = None) -> List[str]:
             entries.append((child.name, child))
     # Newest first (lexicographic works because the id is UTC ISO).
     entries.sort(key=lambda t: t[0], reverse=True)
-    deleted: List[str] = []
+    deleted: list[str] = []
     for _, path in entries[keep:]:
         if path.name in protect:
             continue
@@ -332,7 +332,7 @@ def _prune_old(keep: int, protect: Optional[Set[str]] = None) -> List[str]:
 # List + rollback
 # ---------------------------------------------------------------------------
 
-def _read_manifest(snap_dir: Path) -> Dict[str, Any]:
+def _read_manifest(snap_dir: Path) -> dict[str, Any]:
     mf = snap_dir / "manifest.json"
     if not mf.exists():
         return {}
@@ -342,7 +342,7 @@ def _read_manifest(snap_dir: Path) -> Dict[str, Any]:
         return {}
 
 
-def list_backups() -> List[Dict[str, Any]]:
+def list_backups() -> list[dict[str, Any]]:
     """Return all restorable snapshots, newest first. Only entries with a
     real ``skills.tar.gz`` tarball are listed — transient
     ``.rollback-staging-*`` directories created mid-rollback are
@@ -350,7 +350,7 @@ def list_backups() -> List[Dict[str, Any]]:
     backups = _backups_dir()
     if not backups.exists():
         return []
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for child in sorted(backups.iterdir(), reverse=True):
         if not child.is_dir():
             continue
@@ -371,7 +371,7 @@ def list_backups() -> List[Dict[str, Any]]:
     return out
 
 
-def _resolve_backup(backup_id: Optional[str]) -> Optional[Path]:
+def _resolve_backup(backup_id: str | None) -> Path | None:
     """Return the path of the requested backup, or the newest one if
     *backup_id* is None. Returns None if no match."""
     backups = _backups_dir()
@@ -393,7 +393,7 @@ def _resolve_backup(backup_id: Optional[str]) -> Optional[Path]:
     return candidates[0] if candidates else None
 
 
-def _restore_cron_skill_links(snapshot_dir: Path) -> Dict[str, Any]:
+def _restore_cron_skill_links(snapshot_dir: Path) -> dict[str, Any]:
     """Reconcile backed-up cron skill links into the live ``cron/jobs.json``.
 
     We do NOT overwrite the whole cron file. Only the ``skills`` and
@@ -415,7 +415,7 @@ def _restore_cron_skill_links(snapshot_dir: Path) -> Dict[str, Any]:
     ``cron.jobs`` to pick up the same lock + atomic-write path that tick()
     uses, so we don't race the scheduler.
     """
-    report: Dict[str, Any] = {
+    report: dict[str, Any] = {
         "attempted": False,
         "restored": [],
         "skipped_missing": [],
@@ -447,7 +447,7 @@ def _restore_cron_skill_links(snapshot_dir: Path) -> Dict[str, Any]:
 
     # Build a lookup of the backed-up skill state keyed by job id.
     # We only need the two skill-ish fields (legacy single and modern list).
-    backup_by_id: Dict[str, Dict[str, Any]] = {}
+    backup_by_id: dict[str, dict[str, Any]] = {}
     for job in backup_jobs:
         if not isinstance(job, dict):
             continue
@@ -466,7 +466,7 @@ def _restore_cron_skill_links(snapshot_dir: Path) -> Dict[str, Any]:
 
     # Load and rewrite the live jobs under the scheduler's cross-process lock.
     try:
-        from cron.jobs import load_jobs, save_jobs, _jobs_lock
+        from cron.jobs import _jobs_lock, load_jobs, save_jobs
     except ImportError as e:
         report["error"] = f"cron module unavailable: {e}"
         return report
@@ -535,7 +535,7 @@ def _restore_cron_skill_links(snapshot_dir: Path) -> Dict[str, Any]:
     return report
 
 
-def rollback(backup_id: Optional[str] = None) -> Tuple[bool, str, Optional[Path]]:
+def rollback(backup_id: str | None = None) -> tuple[bool, str, Path | None]:
     """Restore ``~/.prostor/skills/`` from a snapshot.
 
     Strategy:
@@ -593,7 +593,7 @@ def rollback(backup_id: Optional[str] = None) -> Tuple[bool, str, Optional[Path]
     except OSError as e:
         return (False, f"failed to create staging dir: {e}", None)
 
-    moved: List[Tuple[Path, Path]] = []
+    moved: list[tuple[Path, Path]] = []
     try:
         for entry in list(skills.iterdir()):
             if entry.name in _EXCLUDE_TOP_LEVEL:

@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
@@ -33,7 +33,7 @@ sys.path.insert(0, REPO_ROOT)
 # Ensure PROSTOR_HOME is set for imports that touch it at module level.
 os.environ.setdefault("PROSTOR_HOME", os.path.join(os.path.expanduser("~"), ".prostor"))
 
-from prostor_cli.models import OPENROUTER_MODELS, _PROVIDER_MODELS  # noqa: E402
+from prostor_cli.models import _PROVIDER_MODELS, OPENROUTER_MODELS  # noqa: E402
 
 OUTPUT_PATH = os.path.join(REPO_ROOT, "website", "static", "api", "model-catalog.json")
 CATALOG_VERSION = 1
@@ -42,7 +42,7 @@ CATALOG_VERSION = 1
 def build_catalog() -> dict:
     return {
         "version": CATALOG_VERSION,
-        "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "updated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "metadata": {
             "source": "prostor-agent repo",
             "docs": "https://github.com/maksim9510/Prostor/docs/reference/model-catalog",

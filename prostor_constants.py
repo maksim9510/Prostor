@@ -11,7 +11,6 @@ import sysconfig
 from contextvars import ContextVar, Token
 from pathlib import Path
 
-
 _profile_fallback_warned: bool = False
 _UNSET = object()
 _PROSTOR_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
@@ -520,7 +519,7 @@ def is_wsl() -> bool:
     if _wsl_detected is not None:
         return _wsl_detected
     try:
-        with open("/proc/version", "r", encoding="utf-8") as f:
+        with open("/proc/version", encoding="utf-8") as f:
             _wsl_detected = "microsoft" in f.read().lower()
     except Exception:
         _wsl_detected = False
@@ -562,7 +561,7 @@ def is_container() -> bool:
         return True
     _CGROUP_MARKERS = ("docker", "podman", "/lxc/", "kubepods", "containerd", "crio")
     try:
-        with open("/proc/1/cgroup", "r", encoding="utf-8") as f:
+        with open("/proc/1/cgroup", encoding="utf-8") as f:
             cgroup = f.read()
             if any(marker in cgroup for marker in _CGROUP_MARKERS):
                 _container_detected = True
@@ -573,7 +572,7 @@ def is_container() -> bool:
     # runtime still shows up in the mount table (overlay rootfs, runtime mount
     # paths), so scan mountinfo as a last resort.
     try:
-        with open("/proc/self/mountinfo", "r", encoding="utf-8") as f:
+        with open("/proc/self/mountinfo", encoding="utf-8") as f:
             mountinfo = f.read()
             if any(marker in mountinfo for marker in ("kubepods", "containerd", "crio")):
                 _container_detected = True

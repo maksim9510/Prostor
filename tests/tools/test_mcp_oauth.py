@@ -1,28 +1,27 @@
 """Tests for tools/mcp_oauth.py — OAuth 2.1 PKCE support for MCP servers."""
 
+import asyncio
 import json
 import os
 import stat
 import sys
 from io import BytesIO
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-import asyncio
-
 from tools.mcp_oauth import (
-    ProstorTokenStorage,
     OAuthNonInteractiveError,
+    ProstorTokenStorage,
+    _can_open_browser,
+    _find_free_port,
+    _is_interactive,
+    _make_callback_handler,
+    _paste_callback_reader,
+    _redirect_handler,
+    _wait_for_callback,
     build_oauth_auth,
     remove_oauth_tokens,
-    _find_free_port,
-    _can_open_browser,
-    _is_interactive,
-    _wait_for_callback,
-    _make_callback_handler,
-    _redirect_handler,
-    _paste_callback_reader,
 )
 
 
@@ -472,8 +471,9 @@ class TestWaitForCallbackNoBlocking:
 
     def test_raises_on_timeout_instead_of_input(self):
         """When no auth code arrives, raises OAuthNonInteractiveError."""
-        import tools.mcp_oauth as mod
         import asyncio
+
+        import tools.mcp_oauth as mod
 
         mod._oauth_port = _find_free_port()
 

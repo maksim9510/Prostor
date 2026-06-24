@@ -27,12 +27,13 @@ from rich import box as rich_box
 from rich.markup import escape as _escape
 from rich.panel import Panel
 
-from prostor_constants import display_prostor_home, is_termux as _is_termux_environment
 from prostor_cli.browser_connect import (
     DEFAULT_BROWSER_CDP_URL,
     is_browser_debug_ready,
     manual_chrome_debug_command,
 )
+from prostor_constants import display_prostor_home
+from prostor_constants import is_termux as _is_termux_environment
 
 
 class CLICommandsMixin:
@@ -147,8 +148,10 @@ class CLICommandsMixin:
             /snapshot prune [N]        — prune to N snapshots (default 20)
         """
         from prostor_cli.backup import (
-            create_quick_snapshot, list_quick_snapshots,
-            restore_quick_snapshot, prune_quick_snapshots,
+            create_quick_snapshot,
+            list_quick_snapshots,
+            prune_quick_snapshots,
+            restore_quick_snapshot,
         )
         from prostor_constants import display_prostor_home
 
@@ -361,7 +364,15 @@ class CLICommandsMixin:
 
     def _handle_image_command(self, cmd_original: str):
         """Handle /image <path> — attach a local image file for the next prompt."""
-        from cli import _DIM, _IMAGE_EXTENSIONS, _RST, _cprint, _resolve_attachment_path, _split_path_input, _termux_example_image_path
+        from cli import (
+            _DIM,
+            _IMAGE_EXTENSIONS,
+            _RST,
+            _cprint,
+            _resolve_attachment_path,
+            _split_path_input,
+            _termux_example_image_path,
+        )
         raw_args = (cmd_original.split(None, 1)[1].strip() if " " in cmd_original else "")
         if not raw_args:
             hint = _termux_example_image_path() if _is_termux_environment() else "/path/to/image.png"
@@ -393,11 +404,12 @@ class CLICommandsMixin:
         the session so the new tool set takes effect cleanly (no
         prompt-cache breakage mid-conversation).
         """
-        from cli import _ACCENT, _DIM, _RST, _cprint
         import shlex
         from argparse import Namespace
         from contextlib import redirect_stdout
         from io import StringIO
+
+        from cli import _ACCENT, _DIM, _RST, _cprint
         from prostor_cli.tools_config import tools_disable_enable_command
 
         def _run_capture(ns: Namespace) -> None:
@@ -458,16 +470,16 @@ class CLICommandsMixin:
         _run_capture(Namespace(tools_action=subcommand, names=names, platform="cli"))
 
         # Reset session so the new tool config is picked up from a clean state
-        from prostor_cli.tools_config import _get_platform_tools
         from prostor_cli.config import load_config
+        from prostor_cli.tools_config import _get_platform_tools
         self.enabled_toolsets = _get_platform_tools(load_config(), "cli")
         self.new_session()
         _cprint(f"{_DIM}Session reset. New tool configuration is active.{_RST}")
 
     def _handle_profile_command(self):
         """Display active profile name and home directory."""
-        from prostor_constants import display_prostor_home
         from prostor_cli.profiles import get_active_profile_name
+        from prostor_constants import display_prostor_home
 
         display = display_prostor_home()
         profile_name = get_active_profile_name()
@@ -508,7 +520,7 @@ class CLICommandsMixin:
 
         # Validate platform name + home channel via the live gateway config.
         try:
-            from gateway.config import load_gateway_config, Platform
+            from gateway.config import Platform, load_gateway_config
         except Exception as exc:  # pragma: no cover — gateway pkg always shipped
             _cprint(f"  Could not load gateway config: {exc}")
             return True
@@ -950,8 +962,8 @@ class CLICommandsMixin:
     def _handle_gquota_command(self, cmd_original: str) -> None:
         """Show Google Gemini Code Assist quota usage for the current OAuth account."""
         try:
-            from agent.google_oauth import get_valid_access_token, GoogleOAuthError, load_credentials
-            from agent.google_code_assist import retrieve_user_quota, CodeAssistError
+            from agent.google_code_assist import CodeAssistError, retrieve_user_quota
+            from agent.google_oauth import GoogleOAuthError, get_valid_access_token, load_credentials
         except ImportError as exc:
             self._console_print(f"  [red]Gemini modules unavailable: {exc}[/]")
             return
@@ -1041,8 +1053,9 @@ class CLICommandsMixin:
 
     def _handle_cron_command(self, cmd: str):
         """Handle the /cron command to manage scheduled tasks."""
-        from cli import get_job
         import shlex
+
+        from cli import get_job
         from tools.cronjob_tools import cronjob as cronjob_tool
 
         def _cron_api(**kwargs):
@@ -1429,7 +1442,17 @@ class CLICommandsMixin:
         When it completes, prints the result to the CLI without modifying
         the active session's conversation history.
         """
-        from cli import AIAgent, ChatConsole, _accent_hex, _cprint, _maybe_remap_for_light_mode, _render_final_assistant_content, set_approval_callback, set_secret_capture_callback, set_sudo_password_callback
+        from cli import (
+            AIAgent,
+            ChatConsole,
+            _accent_hex,
+            _cprint,
+            _maybe_remap_for_light_mode,
+            _render_final_assistant_content,
+            set_approval_callback,
+            set_secret_capture_callback,
+            set_sudo_password_callback,
+        )
         parts = cmd.strip().split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
             _cprint("  Usage: /background <prompt>")
@@ -1584,9 +1607,9 @@ class CLICommandsMixin:
         CLI so users can discover what's available without dropping out
         of their session. Bundles are loaded via ``/<bundle-name>``.
         """
-        from cli import ChatConsole, _BOLD, _DIM, _RST, _accent_hex, _cprint
+        from cli import _BOLD, _DIM, _RST, ChatConsole, _accent_hex, _cprint
         try:
-            from agent.skill_bundles import list_bundles, _bundles_dir
+            from agent.skill_bundles import _bundles_dir, list_bundles
         except Exception as exc:
             _cprint(f"\033[1;31mBundle subsystem unavailable: {exc}{_RST}")
             return
@@ -1742,7 +1765,7 @@ class CLICommandsMixin:
             if current:
                 os.environ.pop("BROWSER_CDP_URL", None)
                 try:
-                    from tools.browser_tool import cleanup_all_browsers, _stop_cdp_supervisor
+                    from tools.browser_tool import _stop_cdp_supervisor, cleanup_all_browsers
                     _stop_cdp_supervisor("default")
                     cleanup_all_browsers()
                 except Exception:
@@ -1967,7 +1990,7 @@ class CLICommandsMixin:
         """Handle /skin [name] — show or change the display skin."""
         from cli import _ACCENT, save_config_value
         try:
-            from prostor_cli.skin_engine import list_skins, set_active_skin, get_active_skin_name
+            from prostor_cli.skin_engine import get_active_skin_name, list_skins, set_active_skin
         except ImportError:
             print("Skin engine not available.")
             return
@@ -2015,8 +2038,8 @@ class CLICommandsMixin:
             /footer status    → show current state
         """
         from cli import _cprint, save_config_value
-        from prostor_cli.config import load_config
         from prostor_cli.colors import Colors as _Colors
+        from prostor_cli.config import load_config
 
         # Parse arg
         arg = ""
@@ -2210,8 +2233,9 @@ class CLICommandsMixin:
 
     def _handle_debug_command(self):
         """Handle /debug — upload debug report + logs and print paste URLs."""
-        from prostor_cli.debug import run_debug_share
         from types import SimpleNamespace
+
+        from prostor_cli.debug import run_debug_share
 
         args = SimpleNamespace(lines=200, expire=7, local=False)
         run_debug_share(args)
@@ -2228,7 +2252,7 @@ class CLICommandsMixin:
         prompt_toolkit cleans up terminal modes).  Returns ``False`` / falsy
         when cancelled.
         """
-        from prostor_cli.config import is_managed, format_managed_message
+        from prostor_cli.config import format_managed_message, is_managed
 
         if is_managed():
             print(f"  ✗ {format_managed_message('update Prostor Agent')}")

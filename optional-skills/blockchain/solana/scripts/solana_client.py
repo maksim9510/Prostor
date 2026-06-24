@@ -24,9 +24,9 @@ import json
 import os
 import sys
 import time
-import urllib.request
 import urllib.error
-from typing import Any, Dict, List, Optional
+import urllib.request
+from typing import Any
 
 RPC_URL = os.environ.get(
     "SOLANA_RPC_URL",
@@ -37,7 +37,7 @@ LAMPORTS_PER_SOL = 1_000_000_000
 
 # Well-known Solana token names — avoids API calls for common tokens.
 # Maps mint address → (symbol, name).
-KNOWN_TOKENS: Dict[str, tuple] = {
+KNOWN_TOKENS: dict[str, tuple] = {
     "So11111111111111111111111111111111111111112":  ("SOL", "Solana"),
     "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": ("USDC", "USD Coin"),
     "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB":  ("USDT", "Tether"),
@@ -172,14 +172,14 @@ def _short_mint(mint: str) -> str:
 # Price & token name helpers (CoinGecko — free, no API key)
 # ---------------------------------------------------------------------------
 
-def fetch_prices(mints: List[str], max_lookups: int = 20) -> Dict[str, float]:
+def fetch_prices(mints: list[str], max_lookups: int = 20) -> dict[str, float]:
     """Fetch USD prices for mint addresses via CoinGecko (one per request).
 
     CoinGecko free tier doesn't support batch Solana token lookups,
     so we do individual calls — capped at *max_lookups* to stay within
     rate limits. Returns {mint: usd_price}.
     """
-    prices: Dict[str, float] = {}
+    prices: dict[str, float] = {}
     for i, mint in enumerate(mints[:max_lookups]):
         url = (
             f"https://api.coingecko.com/api/v3/simple/token_price/solana"
@@ -187,7 +187,7 @@ def fetch_prices(mints: List[str], max_lookups: int = 20) -> Dict[str, float]:
         )
         data = _http_get_json(url, timeout=10)
         if data and isinstance(data, dict):
-            for addr, info in data.items():
+            for _addr, info in data.items():
                 if isinstance(info, dict) and "usd" in info:
                     prices[mint] = info["usd"]
                     break
@@ -197,7 +197,7 @@ def fetch_prices(mints: List[str], max_lookups: int = 20) -> Dict[str, float]:
     return prices
 
 
-def fetch_sol_price() -> Optional[float]:
+def fetch_sol_price() -> float | None:
     """Fetch current SOL price in USD via CoinGecko."""
     data = _http_get_json(
         "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
@@ -207,7 +207,7 @@ def fetch_sol_price() -> Optional[float]:
     return None
 
 
-def resolve_token_name(mint: str) -> Optional[Dict[str, str]]:
+def resolve_token_name(mint: str) -> dict[str, str] | None:
     """Look up token name and symbol from CoinGecko by mint address.
 
     Returns {"name": ..., "symbol": ...} or None.
@@ -317,7 +317,7 @@ def cmd_wallet(args):
 
     # Fetch prices for fungible tokens (cap lookups to avoid API abuse)
     sol_price = None
-    prices: Dict[str, float] = {}
+    prices: dict[str, float] = {}
     if not skip_prices and fungible:
         sol_price = fetch_sol_price()
         # Prioritize known tokens, then a small sample of unknowns.

@@ -10,7 +10,6 @@ import pytest
 
 import plugins.image_gen.openai as openai_plugin
 
-
 # 1×1 transparent PNG — valid bytes for save_b64_image()
 _PNG_HEX = (
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"

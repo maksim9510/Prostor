@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +28,15 @@ class CodexRuntimeStatus:
     suits their surface (CLI uses Rich panels, gateway sends a text message)."""
 
     success: bool
-    new_value: Optional[str] = None
-    old_value: Optional[str] = None
+    new_value: str | None = None
+    old_value: str | None = None
     message: str = ""
     requires_new_session: bool = False
     codex_binary_ok: bool = True
-    codex_version: Optional[str] = None
+    codex_version: str | None = None
 
 
-def parse_args(arg_string: str) -> tuple[Optional[str], list[str]]:
+def parse_args(arg_string: str) -> tuple[str | None, list[str]]:
     """Parse the slash-command argument string. Returns (value, errors).
 
     No args         → return current state (value=None)
@@ -87,7 +86,7 @@ def set_runtime(config: dict, new_value: str) -> str:
     return old
 
 
-def check_codex_binary_ok() -> tuple[bool, Optional[str]]:
+def check_codex_binary_ok() -> tuple[bool, str | None]:
     """Best-effort verification that codex CLI is installed at acceptable
     version. Returns (ok, version_or_message)."""
     try:
@@ -100,7 +99,7 @@ def check_codex_binary_ok() -> tuple[bool, Optional[str]]:
 
 def apply(
     config: dict,
-    new_value: Optional[str],
+    new_value: str | None,
     *,
     persist_callback=None,
 ) -> CodexRuntimeStatus:
@@ -120,9 +119,9 @@ def apply(
     # is cheap (~50ms for `codex --version`), but we'd otherwise call it up
     # to 3 times in the enable path (read-only/state, gate, success message).
     # None = not yet checked; (bool, str) = result.
-    _binary_check: Optional[tuple[bool, Optional[str]]] = None
+    _binary_check: tuple[bool, str | None] | None = None
 
-    def _check_binary_cached() -> tuple[bool, Optional[str]]:
+    def _check_binary_cached() -> tuple[bool, str | None]:
         nonlocal _binary_check
         if _binary_check is None:
             _binary_check = check_codex_binary_ok()

@@ -19,10 +19,9 @@ _needs_tiktoken = pytest.mark.skipif(not _has_tiktoken, reason="tiktoken not ins
 @_needs_tiktoken
 def test_estimate_tool_tokens_returns_positive_counts():
     """_estimate_tool_tokens should return a non-empty dict with positive values."""
-    from prostor_cli.tools_config import _estimate_tool_tokens
-
     # Clear cache to force fresh computation
     import prostor_cli.tools_config as tc
+    from prostor_cli.tools_config import _estimate_tool_tokens
     tc._tool_token_cache = None
 
     tokens = _estimate_tool_tokens()
@@ -263,10 +262,9 @@ def test_curses_checklist_numbered_fallback_without_status(monkeypatch, capsys):
 
 def test_registry_get_schema_returns_schema():
     """registry.get_schema() should return a tool's schema dict."""
-    from tools.registry import registry
-
     # Import to trigger discovery
     import model_tools  # noqa: F401
+    from tools.registry import registry
 
     schema = registry.get_schema("terminal")
     assert schema is not None

@@ -12,7 +12,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fast-path dispatch: tools.browser_tool._browser_eval
 # ---------------------------------------------------------------------------
@@ -349,6 +348,7 @@ class TestEvaluateRuntimeResponseShaping:
     def test_inactive_supervisor_returns_error_without_dispatch(self):
         """Inactive supervisor short-circuits before even touching the loop."""
         import threading
+
         from tools.browser_supervisor import CDPSupervisor
 
         sup = object.__new__(CDPSupervisor)
@@ -366,6 +366,7 @@ class TestEvaluateRuntimeResponseShaping:
     def test_no_session_attached_returns_error(self):
         import asyncio
         import threading
+
         from tools.browser_supervisor import CDPSupervisor
 
         sup = object.__new__(CDPSupervisor)

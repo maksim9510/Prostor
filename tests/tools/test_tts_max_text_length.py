@@ -7,7 +7,6 @@ MiniMax allows 10000, and ElevenLabs allows 5000-40000 depending on model.
 
 import json
 
-
 from tools.tts_tool import (
     FALLBACK_MAX_TEXT_LENGTH,
     PROVIDER_MAX_TEXT_LENGTH,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import FrozenSet, Optional
 
 from agent.credential_pool import CredentialPool, PooledCredential, load_pool
 from prostor_cli.auth import DEFAULT_XAI_OAUTH_BASE_URL
@@ -17,7 +16,7 @@ _POOL_PROVIDER = "xai-oauth"
 # xAI's public API is OpenAI-compatible for the endpoints Prostor commonly
 # uses. The Responses endpoint is included because Prostor' native xAI runtime
 # uses codex_responses mode.
-_ALLOWED_PATHS: FrozenSet[str] = frozenset(
+_ALLOWED_PATHS: frozenset[str] = frozenset(
     {
         "/responses",
         "/chat/completions",
@@ -35,7 +34,7 @@ class XAIGrokAdapter(UpstreamAdapter):
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._pool: Optional[CredentialPool] = None
+        self._pool: CredentialPool | None = None
 
     @property
     def name(self) -> str:
@@ -46,7 +45,7 @@ class XAIGrokAdapter(UpstreamAdapter):
         return "xAI Grok OAuth"
 
     @property
-    def allowed_paths(self) -> FrozenSet[str]:
+    def allowed_paths(self) -> frozenset[str]:
         return _ALLOWED_PATHS
 
     def is_authenticated(self) -> bool:
@@ -78,7 +77,7 @@ class XAIGrokAdapter(UpstreamAdapter):
         *,
         failed_credential: UpstreamCredential,
         status_code: int,
-    ) -> Optional[UpstreamCredential]:
+    ) -> UpstreamCredential | None:
         if status_code not in {401, 429}:
             return None
 
@@ -108,7 +107,7 @@ class XAIGrokAdapter(UpstreamAdapter):
             )
             return retry_cred
 
-    def _load_pool(self) -> Optional[CredentialPool]:
+    def _load_pool(self) -> CredentialPool | None:
         try:
             return load_pool(_POOL_PROVIDER)
         except Exception as exc:

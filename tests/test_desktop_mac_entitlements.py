@@ -25,7 +25,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ELECTRON_DIR = REPO_ROOT / "apps" / "desktop" / "electron"
 MAIN_PLIST = ELECTRON_DIR / "entitlements.mac.plist"

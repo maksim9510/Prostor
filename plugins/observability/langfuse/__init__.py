@@ -29,7 +29,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +45,15 @@ class TraceState:
     trace_id: str
     root_ctx: Any
     root_span: Any
-    generations: Dict[str, Any] = field(default_factory=dict)
-    tools: Dict[str, Any] = field(default_factory=dict)
-    pending_tools_by_name: Dict[str, list] = field(default_factory=dict)
+    generations: dict[str, Any] = field(default_factory=dict)
+    tools: dict[str, Any] = field(default_factory=dict)
+    pending_tools_by_name: dict[str, list] = field(default_factory=dict)
     turn_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     last_updated_at: float = field(default_factory=time.time)
 
 
 _STATE_LOCK = threading.Lock()
-_TRACE_STATE: Dict[str, TraceState] = {}
+_TRACE_STATE: dict[str, TraceState] = {}
 # Hard cap on live trace state. Each turn keys _TRACE_STATE by a unique
 # turn_id, and an entry is normally reclaimed by _finish_trace when a turn
 # ends cleanly (final response has content and no tool calls). A turn that
@@ -74,7 +74,7 @@ _READ_FILE_TAIL_LINES = 15
 # leftover template value and would cause the SDK to silently accept the
 # credentials at construction time but drop every trace at flush time.
 # See #23823 — the silent-failure bug this guard fixes.
-_LANGFUSE_KEY_PREFIXES: Dict[str, str] = {
+_LANGFUSE_KEY_PREFIXES: dict[str, str] = {
     "PROSTOR_LANGFUSE_PUBLIC_KEY": "pk-lf-",
     "PROSTOR_LANGFUSE_SECRET_KEY": "sk-lf-",
 }
@@ -126,7 +126,7 @@ def _redact_key_preview(value: str) -> str:
     return repr(value[:6] + "...")
 
 
-def _validate_langfuse_key(env_name: str, value: str) -> Optional[str]:
+def _validate_langfuse_key(env_name: str, value: str) -> str | None:
     """Return an error message if ``value`` is not a real Langfuse key.
 
     Returns ``None`` when the value matches the documented Langfuse
@@ -146,7 +146,7 @@ def _validate_langfuse_key(env_name: str, value: str) -> Optional[str]:
     )
 
 
-def _get_langfuse() -> Optional[Langfuse]:
+def _get_langfuse() -> Langfuse | None:
     """Return a cached Langfuse client, or ``None`` if unavailable.
 
     Activation of this plugin is controlled by the Prostor plugin system —
@@ -203,7 +203,7 @@ def _get_langfuse() -> Optional[Langfuse]:
     release = _env("PROSTOR_LANGFUSE_RELEASE") or _env("LANGFUSE_RELEASE")
     sample_rate = _env("PROSTOR_LANGFUSE_SAMPLE_RATE")
 
-    kwargs: Dict[str, Any] = {
+    kwargs: dict[str, Any] = {
         "public_key": public_key,
         "secret_key": secret_key,
         "base_url": base_url,
@@ -422,7 +422,7 @@ def _normalize_payload(value: Any, *, tool_name: str = "", args: Any = None) -> 
     return value
 
 
-def _safe_value(value: Any, *, max_chars: Optional[int] = None, depth: int = 0,
+def _safe_value(value: Any, *, max_chars: int | None = None, depth: int = 0,
                 parse_json_strings: bool = False) -> Any:
     max_chars = max_chars if max_chars is not None else int(_env("PROSTOR_LANGFUSE_MAX_CHARS", "12000") or "12000")
     if depth > 4:
@@ -539,8 +539,8 @@ def _serialize_assistant_message(message: Any) -> dict[str, Any]:
 
 
 def _usage_and_cost(response: Any, *, provider: str, api_mode: str, model: str, base_url: str) -> tuple[dict[str, int], dict[str, float]]:
-    usage_details: Dict[str, int] = {}
-    cost_details: Dict[str, float] = {}
+    usage_details: dict[str, int] = {}
+    cost_details: dict[str, float] = {}
     raw_usage = getattr(response, "usage", None)
     if not raw_usage:
         return usage_details, cost_details
@@ -577,8 +577,9 @@ def _usage_and_cost(response: Any, *, provider: str, api_mode: str, model: str, 
             # Langfuse cost_details keys must match usage_details keys.
             # Provide per-type breakdown so dashboard can show cost by type.
             try:
-                from agent.usage_pricing import get_pricing_entry
                 from decimal import Decimal
+
+                from agent.usage_pricing import get_pricing_entry
                 _ONE_M = Decimal("1000000")
                 entry = get_pricing_entry(model, provider=provider, base_url=base_url)
                 if entry:
@@ -617,7 +618,7 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
     }
 
     # session_id must be passed in trace_context for Langfuse session grouping.
-    trace_ctx: Dict[str, Any] = {"trace_id": trace_id}
+    trace_ctx: dict[str, Any] = {"trace_id": trace_id}
     if session_id:
         trace_ctx["session_id"] = session_id
 
@@ -668,8 +669,8 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
 
 
 def _start_child_observation(state: TraceState, *, client: Langfuse, name: str, as_type: str,
-                             input_value: Any, metadata: Optional[dict] = None,
-                             model: Optional[str] = None, model_parameters: Optional[dict] = None) -> Any:
+                             input_value: Any, metadata: dict | None = None,
+                             model: str | None = None, model_parameters: dict | None = None) -> Any:
     return state.root_span.start_observation(
         name=name,
         as_type=as_type,
@@ -680,12 +681,12 @@ def _start_child_observation(state: TraceState, *, client: Langfuse, name: str, 
     )
 
 
-def _end_observation(observation: Any, *, output: Any = None, metadata: Optional[dict] = None,
-                     usage_details: Optional[dict] = None, cost_details: Optional[dict] = None) -> None:
+def _end_observation(observation: Any, *, output: Any = None, metadata: dict | None = None,
+                     usage_details: dict | None = None, cost_details: dict | None = None) -> None:
     if observation is None:
         return
     try:
-        update_kwargs: Dict[str, Any] = {}
+        update_kwargs: dict[str, Any] = {}
         if output is not None:
             update_kwargs["output"] = output
         if metadata:
@@ -990,8 +991,9 @@ def on_post_llm_call(*, task_id: str = "", session_id: str = "", provider: str =
         cost_details = {}
         # Estimate per-type cost from the summary if possible
         try:
-            from agent.usage_pricing import CanonicalUsage, estimate_usage_cost, get_pricing_entry
             from decimal import Decimal
+
+            from agent.usage_pricing import CanonicalUsage, estimate_usage_cost, get_pricing_entry
             _ONE_M = Decimal("1000000")
             _cu = CanonicalUsage(
                 input_tokens=_input,
@@ -1020,7 +1022,7 @@ def on_post_llm_call(*, task_id: str = "", session_id: str = "", provider: str =
         usage_details, cost_details = {}, {}
 
     tool_count = len(output.get("tool_calls", [])) or assistant_tool_call_count
-    gen_metadata: Dict[str, Any] = {"tool_call_count": tool_count}
+    gen_metadata: dict[str, Any] = {"tool_call_count": tool_count}
     if api_duration and api_duration > 0:
         gen_metadata["api_duration_s"] = round(api_duration, 3)
     if finish_reason:

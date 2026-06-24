@@ -44,7 +44,6 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +68,8 @@ _BWS_RUN_TIMEOUT = 30
 
 # In-process cache so repeated load_prostor_dotenv() calls (CLI startup,
 # gateway hot-reload, test suites) don't re-fetch from BSM.
-_CacheKey = Tuple[str, str, str]  # (access_token_fingerprint, project_id, server_url)
-_CACHE: Dict[_CacheKey, "_CachedFetch"] = {}
+_CacheKey = tuple[str, str, str]  # (access_token_fingerprint, project_id, server_url)
+_CACHE: dict[_CacheKey, _CachedFetch] = {}
 
 # Disk-persisted cache so back-to-back CLI invocations (e.g. `prostor chat -q ...`
 # called from scripts, cron, the gateway forking new agents) don't each pay the
@@ -85,7 +84,7 @@ _CACHE: Dict[_CacheKey, "_CachedFetch"] = {}
 _DISK_CACHE_BASENAME = "bws_cache.json"
 
 
-def _disk_cache_path(home_path: Optional[Path] = None) -> Path:
+def _disk_cache_path(home_path: Path | None = None) -> Path:
     """Return the disk cache path under prostor_home/cache/.
 
     `home_path` is what `load_prostor_dotenv()` already resolved; falling back
@@ -103,7 +102,7 @@ def _cache_key_str(cache_key: _CacheKey) -> str:
 
 
 def _read_disk_cache(cache_key: _CacheKey, ttl_seconds: float,
-                     home_path: Optional[Path] = None) -> Optional["_CachedFetch"]:
+                     home_path: Path | None = None) -> _CachedFetch | None:
     """Return a cached entry from disk if fresh, else None.
 
     Best-effort: any I/O or parse error returns None and we re-fetch.
@@ -112,7 +111,7 @@ def _read_disk_cache(cache_key: _CacheKey, ttl_seconds: float,
         return None
     path = _disk_cache_path(home_path)
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             payload = json.load(f)
     except (OSError, json.JSONDecodeError):
         return None
@@ -125,7 +124,7 @@ def _read_disk_cache(cache_key: _CacheKey, ttl_seconds: float,
     if not isinstance(secrets, dict) or not isinstance(fetched_at, (int, float)):
         return None
     # Coerce all values to strings — JSON allows numbers but env vars need strings
-    typed_secrets: Dict[str, str] = {
+    typed_secrets: dict[str, str] = {
         k: v for k, v in secrets.items() if isinstance(k, str) and isinstance(v, str)
     }
     entry = _CachedFetch(secrets=typed_secrets, fetched_at=float(fetched_at))
@@ -134,8 +133,8 @@ def _read_disk_cache(cache_key: _CacheKey, ttl_seconds: float,
     return entry
 
 
-def _write_disk_cache(cache_key: _CacheKey, entry: "_CachedFetch",
-                      home_path: Optional[Path] = None) -> None:
+def _write_disk_cache(cache_key: _CacheKey, entry: _CachedFetch,
+                      home_path: Path | None = None) -> None:
     """Persist a cache entry to disk atomically with mode 0600.
 
     Best-effort: any I/O error is swallowed (the next invocation will just
@@ -171,7 +170,7 @@ def _write_disk_cache(cache_key: _CacheKey, entry: "_CachedFetch",
 
 @dataclass
 class _CachedFetch:
-    secrets: Dict[str, str]
+    secrets: dict[str, str]
     fetched_at: float
 
     def is_fresh(self, ttl_seconds: float) -> bool:
@@ -189,12 +188,12 @@ class _CachedFetch:
 class FetchResult:
     """Outcome of a single BSM pull."""
 
-    secrets: Dict[str, str] = field(default_factory=dict)
-    applied: List[str] = field(default_factory=list)   # set into os.environ
-    skipped: List[str] = field(default_factory=list)   # already set, not overridden
-    warnings: List[str] = field(default_factory=list)  # non-fatal issues
-    error: Optional[str] = None                        # fatal: nothing was fetched
-    binary_path: Optional[Path] = None
+    secrets: dict[str, str] = field(default_factory=dict)
+    applied: list[str] = field(default_factory=list)   # set into os.environ
+    skipped: list[str] = field(default_factory=list)   # already set, not overridden
+    warnings: list[str] = field(default_factory=list)  # non-fatal issues
+    error: str | None = None                        # fatal: nothing was fetched
+    binary_path: Path | None = None
 
     @property
     def ok(self) -> bool:
@@ -213,7 +212,7 @@ def _prostor_bin_dir() -> Path:
     return get_prostor_home() / "bin"
 
 
-def find_bws(*, install_if_missing: bool = False) -> Optional[Path]:
+def find_bws(*, install_if_missing: bool = False) -> Path | None:
     """Return a path to a usable ``bws`` binary, or None.
 
     Resolution order:
@@ -440,12 +439,12 @@ def fetch_bitwarden_secrets(
     *,
     access_token: str,
     project_id: str,
-    binary: Optional[Path] = None,
+    binary: Path | None = None,
     cache_ttl_seconds: float = 300,
     use_cache: bool = True,
     server_url: str = "",
-    home_path: Optional[Path] = None,
-) -> Tuple[Dict[str, str], List[str]]:
+    home_path: Path | None = None,
+) -> tuple[dict[str, str], list[str]]:
     """Pull the secrets for ``project_id`` from Bitwarden Secrets Manager.
 
     Returns ``(secrets_dict, warnings_list)``.
@@ -505,7 +504,7 @@ def fetch_bitwarden_secrets(
 
 def _run_bws_list(
     bws: Path, access_token: str, project_id: str, server_url: str = ""
-) -> Tuple[Dict[str, str], List[str]]:
+) -> tuple[dict[str, str], list[str]]:
     cmd = [str(bws), "secret", "list", project_id, "--output", "json"]
     env = os.environ.copy()
     env["BWS_ACCESS_TOKEN"] = access_token
@@ -557,8 +556,8 @@ def _run_bws_list(
             f"bws returned unexpected shape: {type(payload).__name__}"
         )
 
-    secrets: Dict[str, str] = {}
-    warnings: List[str] = []
+    secrets: dict[str, str] = {}
+    warnings: list[str] = []
     for item in payload:
         if not isinstance(item, dict):
             continue
@@ -597,7 +596,7 @@ def apply_bitwarden_secrets(
     cache_ttl_seconds: float = 300,
     auto_install: bool = True,
     server_url: str = "",
-    home_path: Optional[Path] = None,
+    home_path: Path | None = None,
 ) -> FetchResult:
     """Pull secrets from BSM and set them on ``os.environ``.
 
@@ -678,7 +677,7 @@ def apply_bitwarden_secrets(
 # ---------------------------------------------------------------------------
 
 
-def _reset_cache_for_tests(home_path: Optional[Path] = None) -> None:
+def _reset_cache_for_tests(home_path: Path | None = None) -> None:
     """Clear in-process AND disk caches.
 
     Tests can pass ``home_path`` to scope the disk cleanup to a tmpdir.

@@ -17,16 +17,17 @@ is passed verbatim to ``create_job`` on accept.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 __all__ = ["CatalogEntry", "CATALOG", "seed_catalog_suggestions", "classify_items_script_path"]
 
 
 def classify_items_script_path() -> str:
     """Absolute path to the urgency classifier script shipped with cron/."""
-    return str((Path(__file__).resolve().parent / "scripts" / "classify_items.py"))
+    return str(Path(__file__).resolve().parent / "scripts" / "classify_items.py")
 
 
 @dataclass(frozen=True)
@@ -36,11 +37,11 @@ class CatalogEntry:
     key: str                 # stable dedup key (never re-offered once dismissed)
     title: str
     description: str
-    job_spec: Dict[str, Any]  # kwargs for cron.jobs.create_job
+    job_spec: dict[str, Any]  # kwargs for cron.jobs.create_job
 
 
 # The curated set. Schedules use the cron/interval syntax create_job accepts.
-CATALOG: List[CatalogEntry] = [
+CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         key="catalog:daily-briefing",
         title="Daily briefing",
@@ -123,9 +124,9 @@ CATALOG: List[CatalogEntry] = [
 
 def seed_catalog_suggestions(
     *,
-    add_fn: Optional[Callable[..., Optional[Dict[str, Any]]]] = None,
-    keys: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
+    add_fn: Callable[..., dict[str, Any] | None] | None = None,
+    keys: list[str] | None = None,
+) -> list[dict[str, Any]]:
     """Register catalog entries as pending suggestions.
 
     ``add_fn`` defaults to ``cron.suggestions.add_suggestion`` (injectable for
@@ -138,7 +139,7 @@ def seed_catalog_suggestions(
         from cron.suggestions import add_suggestion as add_fn  # type: ignore[assignment]
 
     wanted = set(keys) if keys else None
-    created: List[Dict[str, Any]] = []
+    created: list[dict[str, Any]] = []
     for entry in CATALOG:
         if wanted is not None and entry.key not in wanted:
             continue

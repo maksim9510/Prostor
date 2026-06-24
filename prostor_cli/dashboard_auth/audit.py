@@ -72,7 +72,7 @@ def audit_log(event: AuditEvent, **fields: Any) -> None:
         if k not in _REDACTED_FIELDS
     }
     entry = {
-        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "ts": _dt.datetime.now(_dt.UTC).isoformat(),
         "event": event.value,
         **safe_fields,
     }

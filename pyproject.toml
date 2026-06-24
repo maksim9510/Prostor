@@ -344,7 +344,7 @@ plugins = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["agent", "agent.*", "tools", "tools.*", "prostor_cli", "prostor_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*", "scripts", "scripts.*"]
+include = ["agent", "agent.*", "tools", "tools.*", "prostor_cli", "prostor_cli.*", "gateway", "gateway.*", "prostor_core", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*", "scripts", "scripts.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "scripts/sync_upstream/tests"]

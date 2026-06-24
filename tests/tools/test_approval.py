@@ -1159,6 +1159,7 @@ class TestFailClosedUnderPromptToolkit:
 
     def test_denies_when_prompt_toolkit_active_and_no_callback(self):
         import threading
+
         import prompt_toolkit.application.current as ptc
 
         orig = ptc.get_app_or_none

@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -19,15 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass(frozen=True)
 class AccountUsageWindow:
     label: str
-    used_percent: Optional[float] = None
-    reset_at: Optional[datetime] = None
-    detail: Optional[str] = None
+    used_percent: float | None = None
+    reset_at: datetime | None = None
+    detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -36,28 +36,28 @@ class AccountUsageSnapshot:
     source: str
     fetched_at: datetime
     title: str = "Account limits"
-    plan: Optional[str] = None
+    plan: str | None = None
     windows: tuple[AccountUsageWindow, ...] = ()
     details: tuple[str, ...] = ()
-    unavailable_reason: Optional[str] = None
+    unavailable_reason: str | None = None
 
     @property
     def available(self) -> bool:
         return bool(self.windows or self.details) and not self.unavailable_reason
 
 
-def _title_case_slug(value: Optional[str]) -> Optional[str]:
+def _title_case_slug(value: str | None) -> str | None:
     cleaned = str(value or "").strip()
     if not cleaned:
         return None
     return cleaned.replace("_", " ").replace("-", " ").title()
 
 
-def _parse_dt(value: Any) -> Optional[datetime]:
+def _parse_dt(value: Any) -> datetime | None:
     if value in {None, ""}:
         return None
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        return datetime.fromtimestamp(float(value), tz=UTC)
     if isinstance(value, str):
         text = value.strip()
         if not text:
@@ -66,13 +66,13 @@ def _parse_dt(value: Any) -> Optional[datetime]:
             text = text[:-1] + "+00:00"
         try:
             dt = datetime.fromisoformat(text)
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
         except ValueError:
             return None
     return None
 
 
-def _format_reset(dt: Optional[datetime]) -> str:
+def _format_reset(dt: datetime | None) -> str:
     if not dt:
         return "unknown"
     local_dt = dt.astimezone()
@@ -92,7 +92,7 @@ def _format_reset(dt: Optional[datetime]) -> str:
     return f"{rel} ({local_dt.strftime('%Y-%m-%d %H:%M %Z')})"
 
 
-def render_account_usage_lines(snapshot: Optional[AccountUsageSnapshot], *, markdown: bool = False) -> list[str]:
+def render_account_usage_lines(snapshot: AccountUsageSnapshot | None, *, markdown: bool = False) -> list[str]:
     if not snapshot:
         return []
     header = f"📈 {'**' if markdown else ''}{snapshot.title}{'**' if markdown else ''}"
@@ -134,7 +134,7 @@ def _is_finite_num(v: Any) -> TypeGuard[float]:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
-def build_nous_credits_snapshot(account_info) -> Optional[AccountUsageSnapshot]:
+def build_nous_credits_snapshot(account_info) -> AccountUsageSnapshot | None:
     """Map a NousPortalAccountInfo into an AccountUsageSnapshot for /usage.
 
     Shows dollar magnitudes (subscription / top-up / total) + renewal date + a
@@ -280,7 +280,7 @@ def nous_credits_lines(*, markdown: bool = False, timeout: float = 10.0) -> list
         return []
 
 
-def _snapshot_from_credits_state(state) -> Optional[AccountUsageSnapshot]:
+def _snapshot_from_credits_state(state) -> AccountUsageSnapshot | None:
     """Map a header-shaped CreditsState (e.g. a dev fixture) to the /usage snapshot.
 
     Renders the same magnitudes + monthly-grant % window the portal path produces,
@@ -350,8 +350,8 @@ class CreditsView:
 
     logged_in: bool
     balance_lines: tuple[str, ...] = ()
-    identity_line: Optional[str] = None
-    topup_url: Optional[str] = None
+    identity_line: str | None = None
+    topup_url: str | None = None
     depleted: bool = False
 
 
@@ -436,7 +436,7 @@ def _resolve_codex_usage_url(base_url: str) -> str:
     return normalized + "/api/codex/usage"
 
 
-def _fetch_codex_account_usage() -> Optional[AccountUsageSnapshot]:
+def _fetch_codex_account_usage() -> AccountUsageSnapshot | None:
     creds = resolve_codex_runtime_credentials(refresh_if_expiring=True)
     token_data = _read_codex_tokens()
     tokens = token_data.get("tokens") or {}
@@ -484,7 +484,7 @@ def _fetch_codex_account_usage() -> Optional[AccountUsageSnapshot]:
     )
 
 
-def _fetch_anthropic_account_usage() -> Optional[AccountUsageSnapshot]:
+def _fetch_anthropic_account_usage() -> AccountUsageSnapshot | None:
     token = (resolve_anthropic_token() or "").strip()
     if not token:
         return None
@@ -545,7 +545,7 @@ def _fetch_anthropic_account_usage() -> Optional[AccountUsageSnapshot]:
     )
 
 
-def _fetch_openrouter_account_usage(base_url: Optional[str], api_key: Optional[str]) -> Optional[AccountUsageSnapshot]:
+def _fetch_openrouter_account_usage(base_url: str | None, api_key: str | None) -> AccountUsageSnapshot | None:
     runtime = resolve_runtime_provider(
         requested="openrouter",
         explicit_base_url=base_url,
@@ -618,11 +618,11 @@ def _fetch_openrouter_account_usage(base_url: Optional[str], api_key: Optional[s
 
 
 def fetch_account_usage(
-    provider: Optional[str],
+    provider: str | None,
     *,
-    base_url: Optional[str] = None,
-    api_key: Optional[str] = None,
-) -> Optional[AccountUsageSnapshot]:
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> AccountUsageSnapshot | None:
     normalized = str(provider or "").strip().lower()
     if normalized in {"", "auto", "custom"}:
         return None

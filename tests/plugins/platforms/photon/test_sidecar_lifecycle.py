@@ -9,7 +9,7 @@ spawning Node or binding ports.
 from __future__ import annotations
 
 import subprocess
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import pytest
 
@@ -33,7 +33,7 @@ class _ProbeClient:
     def __init__(self, *a: Any, **k: Any) -> None:
         pass
 
-    async def __aenter__(self) -> "_ProbeClient":
+    async def __aenter__(self) -> _ProbeClient:
         return self
 
     async def __aexit__(self, *a: Any) -> bool:
@@ -49,8 +49,8 @@ class _ProbeClient:
         return _Resp()
 
 
-def _capture_kills(monkeypatch: pytest.MonkeyPatch) -> List[Tuple[int, int]]:
-    kills: List[Tuple[int, int]] = []
+def _capture_kills(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
+    kills: list[tuple[int, int]] = []
 
     def _fake_kill(pid: int, sig: int) -> None:
         kills.append((pid, sig))
@@ -137,7 +137,7 @@ async def test_start_sidecar_spawns_with_stdin_pipe(
     (tmp_path / "node_modules").mkdir()
     monkeypatch.setattr(photon_adapter, "_SIDECAR_DIR", tmp_path)
 
-    spawned: Dict[str, Any] = {}
+    spawned: dict[str, Any] = {}
 
     class _FakeProc:
         pid = 999
@@ -148,7 +148,7 @@ async def test_start_sidecar_spawns_with_stdin_pipe(
         def poll() -> None:
             return None
 
-    def _fake_popen(cmd: List[str], **kwargs: Any) -> _FakeProc:
+    def _fake_popen(cmd: list[str], **kwargs: Any) -> _FakeProc:
         spawned["cmd"] = cmd
         spawned["kwargs"] = kwargs
         return _FakeProc()

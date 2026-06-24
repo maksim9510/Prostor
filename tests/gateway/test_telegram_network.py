@@ -20,10 +20,10 @@ import pytest
 
 import plugins.platforms.telegram.telegram_network as tnet
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class FakeTransport(httpx.AsyncBaseTransport):
     """Records calls and raises / returns based on a host→action mapping."""

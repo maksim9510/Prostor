@@ -13,17 +13,17 @@ Resolution order for host-specific settings:
 
 from __future__ import annotations
 
-import json
-import os
-import logging
 import hashlib
+import json
+import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-from prostor_constants import get_prostor_home
-from prostor_cli.profiles import _get_default_prostor_home
 from plugins.plugin_utils import SingletonSlot
-from typing import Any, TYPE_CHECKING
+from prostor_cli.profiles import _get_default_prostor_home
+from prostor_constants import get_prostor_home
 
 if TYPE_CHECKING:
     from honcho import Honcho
@@ -769,13 +769,14 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
     # slot's factory so it executes exactly once even when several threads
     # race the first call — the slot's double-checked lock serializes them and
     # the losers get the winner's client instead of building their own.
-    def _build() -> "Honcho":
+    def _build() -> Honcho:
         # Lazy-install the honcho SDK on demand. ensure() honors
         # security.allow_lazy_installs (default true). On failure we surface
         # the original ImportError-shape message so existing callers still get
         # the "go run prostor honcho setup" hint they used to.
         try:
-            from tools.lazy_deps import FeatureUnavailable, ensure as _lazy_ensure
+            from tools.lazy_deps import FeatureUnavailable
+            from tools.lazy_deps import ensure as _lazy_ensure
             _lazy_ensure("memory.honcho", prompt=False)
         except ImportError:
             # lazy_deps module missing — fall through to the raw import below.

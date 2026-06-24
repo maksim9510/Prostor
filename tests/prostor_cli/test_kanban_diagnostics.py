@@ -17,7 +17,6 @@ import pytest
 from prostor_cli import kanban_db as kb
 from prostor_cli import kanban_diagnostics as kd
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

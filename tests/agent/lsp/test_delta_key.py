@@ -67,7 +67,9 @@ def test_diag_key_matches_client_key_for_shifted_baseline():
     pre = _diag(line=200)
     # Edit deletes 14 lines above line 200, so the same error now
     # appears at line 186 post-edit.
-    shift = lambda L: L - 14 if L >= 14 else L
+
+    def shift(L):
+        return L - 14 if L >= 14 else L
     shifted = shift_diagnostic_range(pre, shift)
     assert shifted is not None
     post = _diag(line=186)

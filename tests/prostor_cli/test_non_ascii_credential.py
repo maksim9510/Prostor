@@ -7,7 +7,6 @@ httpx tries to encode the Authorization header as ASCII.
 
 import os
 
-
 from prostor_cli.config import _check_non_ascii_credential
 
 
@@ -51,7 +50,7 @@ class TestEnvLoaderSanitization:
     """Tests for _sanitize_loaded_credentials in env_loader."""
 
     def test_strips_non_ascii_from_api_key(self, monkeypatch):
-        from prostor_cli.env_loader import _sanitize_loaded_credentials, _WARNED_KEYS
+        from prostor_cli.env_loader import _WARNED_KEYS, _sanitize_loaded_credentials
 
         _WARNED_KEYS.discard("OPENROUTER_API_KEY")
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-proj-abcʋdef")
@@ -59,7 +58,7 @@ class TestEnvLoaderSanitization:
         assert os.environ["OPENROUTER_API_KEY"] == "sk-proj-abcdef"
 
     def test_strips_non_ascii_from_token(self, monkeypatch):
-        from prostor_cli.env_loader import _sanitize_loaded_credentials, _WARNED_KEYS
+        from prostor_cli.env_loader import _WARNED_KEYS, _sanitize_loaded_credentials
 
         _WARNED_KEYS.discard("DISCORD_BOT_TOKEN")
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "tokénvalue")
@@ -87,7 +86,7 @@ class TestEnvLoaderSanitization:
         Users must be told when a copy-paste artifact was removed so they
         can re-copy the key if authentication fails.
         """
-        from prostor_cli.env_loader import _sanitize_loaded_credentials, _WARNED_KEYS
+        from prostor_cli.env_loader import _WARNED_KEYS, _sanitize_loaded_credentials
 
         _WARNED_KEYS.discard("GOOGLE_API_KEY")
         monkeypatch.setenv("GOOGLE_API_KEY", "AIzaSy\u200babcdef")  # ZWSP mid-key
@@ -101,7 +100,7 @@ class TestEnvLoaderSanitization:
 
     def test_warning_fires_only_once_per_key(self, monkeypatch, capsys):
         """Repeated loads (user env + project env) must not double-warn."""
-        from prostor_cli.env_loader import _sanitize_loaded_credentials, _WARNED_KEYS
+        from prostor_cli.env_loader import _WARNED_KEYS, _sanitize_loaded_credentials
 
         _WARNED_KEYS.discard("GEMINI_API_KEY")
         monkeypatch.setenv("GEMINI_API_KEY", "AIza\u028bbad")
@@ -121,7 +120,7 @@ class TestEnvLoaderSanitization:
         This is intentional — they're valid ASCII for HTTP headers even if the
         provider rejects them. Documents the scope of the sanitizer.
         """
-        from prostor_cli.env_loader import _sanitize_loaded_credentials, _WARNED_KEYS
+        from prostor_cli.env_loader import _WARNED_KEYS, _sanitize_loaded_credentials
 
         _WARNED_KEYS.clear()
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant\x1bapi-key")

@@ -19,7 +19,7 @@ import logging
 import threading
 import time
 from collections import defaultdict, deque
-from typing import Any, Deque, Dict, Tuple
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -403,7 +403,7 @@ def _validate_post_login_target(raw: str) -> str:
 
 _PW_RATE_MAX_ATTEMPTS = 10
 _PW_RATE_WINDOW_SEC = 60.0
-_pw_attempts: Dict[str, Deque[float]] = defaultdict(deque)
+_pw_attempts: dict[str, deque[float]] = defaultdict(deque)
 _pw_attempts_lock = threading.Lock()
 
 

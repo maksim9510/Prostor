@@ -18,7 +18,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +46,12 @@ class TokenBudgetManager:
     def __init__(self, max_budget: int = 500_000):
         self.max_budget = max_budget
         self._used_tokens: int = 0
-        self._tool_stats: Dict[str, ToolCallStats] = defaultdict(ToolCallStats)
+        self._tool_stats: dict[str, ToolCallStats] = defaultdict(ToolCallStats)
         self._lock = threading.Lock()
         self._warnings_issued: set = set()
         self._session_start: float = time.time()
         self._compression_enabled: bool = True
-        self._history: List[Dict[str, Any]] = []
+        self._history: list[dict[str, Any]] = []
 
     def estimate_tokens(self, text: str) -> int:
         """Estimate token count from text length."""
@@ -85,7 +85,7 @@ class TokenBudgetManager:
 
         if self._compression_enabled:
             try:
-                from tools.result_compression import compress_result, compress_json_result
+                from tools.result_compression import compress_json_result, compress_result
 
                 if result_tokens > max_output_tokens:
                     max_chars = max_output_tokens * _CHARS_PER_TOKEN
@@ -146,7 +146,7 @@ class TokenBudgetManager:
             self._warnings_issued.add(95)
             logger.warning("Token budget CRITICAL at %d%% — truncating", pct_int)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         with self._lock:
             total_saved = sum(s.input_tokens - s.output_tokens for s in self._tool_stats.values())
             per_tool = []
@@ -191,7 +191,7 @@ class TokenBudgetManager:
         self._compression_enabled = enabled
 
 
-_token_tracker: Optional[TokenBudgetManager] = None
+_token_tracker: TokenBudgetManager | None = None
 _tracker_lock = threading.Lock()
 
 

@@ -66,7 +66,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 # Pin the legacy logger name so operator-side log filters keep matching
 # after the in-tree → plugin migration. See adapter.py for context.
@@ -132,7 +132,7 @@ def _user_pending_dir() -> Path:
     return _prostor_home() / "google_chat_user_oauth_pending"
 
 
-def _token_path(email: Optional[str] = None) -> Path:
+def _token_path(email: str | None = None) -> Path:
     """Return the on-disk token path for ``email`` or the legacy path."""
     if email:
         return _user_tokens_dir() / f"{_sanitize_email(email)}.json"
@@ -143,7 +143,7 @@ def _client_secret_path() -> Path:
     return _prostor_home() / "google_chat_user_client_secret.json"
 
 
-def _pending_auth_path(email: Optional[str] = None) -> Path:
+def _pending_auth_path(email: str | None = None) -> Path:
     if email:
         return _user_pending_dir() / f"{_sanitize_email(email)}.json"
     return _legacy_pending_path()
@@ -153,7 +153,7 @@ def _pending_auth_path(email: Optional[str] = None) -> Path:
 # `chat.messages.create` covers BOTH `media.upload` and the subsequent
 # `messages.create` that references the attachmentDataRef. We deliberately
 # do NOT request drive.file or other scopes — least privilege.
-SCOPES: List[str] = [
+SCOPES: list[str] = [
     "https://www.googleapis.com/auth/chat.messages.create",
 ]
 
@@ -176,7 +176,7 @@ _REDIRECT_URI = "http://localhost:1"
 # =============================================================================
 
 
-def load_user_credentials(email: Optional[str] = None) -> Optional[Any]:
+def load_user_credentials(email: str | None = None) -> Any | None:
     """Load + validate persisted user OAuth credentials.
 
     ``email`` selects the per-user token file; ``None`` falls back to the
@@ -194,8 +194,8 @@ def load_user_credentials(email: Optional[str] = None) -> Optional[Any]:
         return None
 
     try:
-        from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
     except ImportError:
         logger.warning(
             "[google_chat_user_oauth] google-auth not installed; user-OAuth "
@@ -236,7 +236,7 @@ def load_user_credentials(email: Optional[str] = None) -> Optional[Any]:
     return None
 
 
-def refresh_or_none(creds: Any, email: Optional[str] = None) -> Optional[Any]:
+def refresh_or_none(creds: Any, email: str | None = None) -> Any | None:
     """Refresh ``creds`` if expired. Returns the credentials or ``None``.
 
     Used by the adapter just before calling media.upload to ensure the
@@ -280,7 +280,7 @@ def build_user_chat_service(creds: Any) -> Any:
     return build_service("chat", "v1", credentials=creds, cache_discovery=False)
 
 
-def list_authorized_emails() -> List[str]:
+def list_authorized_emails() -> list[str]:
     """Return the set of user emails that have stored per-user tokens.
 
     Lists files in the per-user tokens dir; does NOT include the legacy
@@ -291,7 +291,7 @@ def list_authorized_emails() -> List[str]:
     d = _user_tokens_dir()
     if not d.exists():
         return []
-    out: List[str] = []
+    out: list[str] = []
     for f in d.iterdir():
         if f.is_file() and f.suffix == ".json":
             out.append(f.stem)
@@ -361,8 +361,8 @@ def _write_private_json(path: Path, data: Any) -> None:
 def _ensure_deps() -> None:
     """Check deps available; install if not; exit on failure."""
     try:
-        import googleapiclient  # noqa: F401
         import google_auth_oauthlib  # noqa: F401
+        import googleapiclient  # noqa: F401
     except ImportError:
         if not install_deps():
             sys.exit(1)
@@ -370,8 +370,8 @@ def _ensure_deps() -> None:
 
 def install_deps() -> bool:
     try:
-        import googleapiclient  # noqa: F401
         import google_auth_oauthlib  # noqa: F401
+        import googleapiclient  # noqa: F401
         print("Dependencies already installed.")
         return True
     except ImportError:
@@ -392,7 +392,7 @@ def install_deps() -> bool:
         return False
 
 
-def check_auth(email: Optional[str] = None) -> bool:
+def check_auth(email: str | None = None) -> bool:
     """Print status; return True if creds are usable.
 
     Per-user when ``email`` given, legacy single-user when omitted.
@@ -440,7 +440,7 @@ def store_client_secret(path: str) -> None:
 
 
 def _save_pending_auth(*, state: str, code_verifier: str,
-                      email: Optional[str] = None) -> None:
+                      email: str | None = None) -> None:
     pending = _pending_auth_path(email)
     _write_private_json(
         pending,
@@ -453,7 +453,7 @@ def _save_pending_auth(*, state: str, code_verifier: str,
     )
 
 
-def _load_pending_auth(email: Optional[str] = None) -> dict:
+def _load_pending_auth(email: str | None = None) -> dict:
     pending = _pending_auth_path(email)
     if not pending.exists():
         print("ERROR: No pending OAuth session found. Run --auth-url first.")
@@ -471,7 +471,7 @@ def _load_pending_auth(email: Optional[str] = None) -> dict:
     return data
 
 
-def _extract_code_and_state(code_or_url: str) -> Tuple[str, Optional[str]]:
+def _extract_code_and_state(code_or_url: str) -> tuple[str, str | None]:
     """Accept a raw auth code OR the full failed-redirect URL the user pastes."""
     if not code_or_url.startswith("http"):
         return code_or_url, None
@@ -487,7 +487,7 @@ def _extract_code_and_state(code_or_url: str) -> Tuple[str, Optional[str]]:
     return params["code"][0], state
 
 
-def get_auth_url(email: Optional[str] = None) -> None:
+def get_auth_url(email: str | None = None) -> None:
     """Print the OAuth URL for the user to visit. Persists PKCE state.
 
     ``email`` namespaces the pending state so two users can be mid-flow
@@ -514,7 +514,7 @@ def get_auth_url(email: Optional[str] = None) -> None:
     print(auth_url)
 
 
-def exchange_auth_code(code: str, email: Optional[str] = None) -> None:
+def exchange_auth_code(code: str, email: str | None = None) -> None:
     """Exchange an auth code (or pasted redirect URL) for a refresh token.
 
     ``email`` selects the destination token path. ``None`` writes to the
@@ -536,8 +536,9 @@ def exchange_auth_code(code: str, email: Optional[str] = None) -> None:
         sys.exit(1)
 
     _ensure_deps()
-    from google_auth_oauthlib.flow import Flow
     from urllib.parse import parse_qs, urlparse
+
+    from google_auth_oauthlib.flow import Flow
 
     granted_scopes = list(SCOPES)
     if isinstance(raw_callback, str) and raw_callback.startswith("http"):
@@ -589,7 +590,7 @@ def exchange_auth_code(code: str, email: Optional[str] = None) -> None:
     print(f"Profile path: {rel_label}")
 
 
-def revoke(email: Optional[str] = None) -> None:
+def revoke(email: str | None = None) -> None:
     """Revoke the stored token with Google and delete it locally.
 
     Per-user when ``email`` given, legacy single-user when omitted.
@@ -600,8 +601,8 @@ def revoke(email: Optional[str] = None) -> None:
         return
 
     _ensure_deps()
-    from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
 
     try:
         creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)

@@ -28,7 +28,8 @@ import json
 import logging
 import os
 import threading
-from typing import Any, Callable, Optional, Protocol, runtime_checkable
+from collections.abc import Callable
+from typing import Any, Protocol, runtime_checkable
 
 # Errno values that mean "the peer is gone" rather than "the host has a
 # real I/O problem".  Anything outside this set re-raises so it surfaces
@@ -74,7 +75,7 @@ class Transport(Protocol):
         """Release any resources owned by this transport."""
 
 
-_current_transport: contextvars.ContextVar[Optional[Transport]] = (
+_current_transport: contextvars.ContextVar[Transport | None] = (
     contextvars.ContextVar(
         "prostor_gateway_transport",
         default=None,
@@ -82,12 +83,12 @@ _current_transport: contextvars.ContextVar[Optional[Transport]] = (
 )
 
 
-def current_transport() -> Optional[Transport]:
+def current_transport() -> Transport | None:
     """Return the transport bound for the current request, if any."""
     return _current_transport.get()
 
 
-def bind_transport(transport: Optional[Transport]):
+def bind_transport(transport: Transport | None):
     """Bind *transport* for the current context. Returns a token for :func:`reset_transport`."""
     return _current_transport.set(transport)
 
@@ -194,7 +195,7 @@ class TeeTransport:
 
     __slots__ = ("_primary", "_secondaries")
 
-    def __init__(self, primary: "Transport", *secondaries: "Transport") -> None:
+    def __init__(self, primary: Transport, *secondaries: Transport) -> None:
         self._primary = primary
         self._secondaries = secondaries
 

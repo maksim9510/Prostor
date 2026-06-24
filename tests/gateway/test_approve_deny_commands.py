@@ -90,9 +90,12 @@ class TestBlockingGatewayApproval:
     def test_register_and_resolve_unblocks_entry(self):
         """resolve_gateway_approval signals the entry's event."""
         from tools.approval import (
-            register_gateway_notify, unregister_gateway_notify,
-            resolve_gateway_approval, has_blocking_approval,
-            _ApprovalEntry, _gateway_queues,
+            _ApprovalEntry,
+            _gateway_queues,
+            has_blocking_approval,
+            register_gateway_notify,
+            resolve_gateway_approval,
+            unregister_gateway_notify,
         )
         session_key = "test-session"
         register_gateway_notify(session_key, lambda d: None)
@@ -124,7 +127,9 @@ class TestBlockingGatewayApproval:
     def test_resolve_all_unblocks_multiple_entries(self):
         """resolve_gateway_approval with resolve_all=True signals all entries."""
         from tools.approval import (
-            resolve_gateway_approval, _ApprovalEntry, _gateway_queues,
+            _ApprovalEntry,
+            _gateway_queues,
+            resolve_gateway_approval,
         )
         session_key = "test-all"
         e1 = _ApprovalEntry({"command": "cmd1"})
@@ -140,8 +145,9 @@ class TestBlockingGatewayApproval:
     def test_resolve_single_pops_oldest_fifo(self):
         """resolve_gateway_approval without resolve_all resolves oldest first."""
         from tools.approval import (
+            _ApprovalEntry,
+            _gateway_queues,
             resolve_gateway_approval,
-            _ApprovalEntry, _gateway_queues,
         )
         session_key = "test-fifo"
         e1 = _ApprovalEntry({"command": "first"})
@@ -158,8 +164,10 @@ class TestBlockingGatewayApproval:
     def test_unregister_signals_all_entries(self):
         """unregister_gateway_notify signals all waiting entries to prevent hangs."""
         from tools.approval import (
-            register_gateway_notify, unregister_gateway_notify,
-            _ApprovalEntry, _gateway_queues,
+            _ApprovalEntry,
+            _gateway_queues,
+            register_gateway_notify,
+            unregister_gateway_notify,
         )
         session_key = "test-cleanup"
         register_gateway_notify(session_key, lambda d: None)
@@ -174,7 +182,7 @@ class TestBlockingGatewayApproval:
 
     def test_clear_session_denies_and_signals_all_entries(self):
         """clear_session must wake blocked entries during boundary cleanup."""
-        from tools.approval import clear_session, _ApprovalEntry, _gateway_queues
+        from tools.approval import _ApprovalEntry, _gateway_queues, clear_session
 
         session_key = "test-boundary-cleanup"
         e1 = _ApprovalEntry({"command": "cmd1"})
@@ -370,8 +378,10 @@ class TestBlockingApprovalE2E:
     def test_blocking_approval_approve_once(self):
         """check_all_command_guards blocks until resolve_gateway_approval is called."""
         from tools.approval import (
-            register_gateway_notify, unregister_gateway_notify,
-            resolve_gateway_approval, check_all_command_guards,
+            check_all_command_guards,
+            register_gateway_notify,
+            resolve_gateway_approval,
+            unregister_gateway_notify,
         )
 
         session_key = "e2e-test"
@@ -419,8 +429,10 @@ class TestBlockingApprovalE2E:
     def test_blocking_approval_deny(self):
         """check_all_command_guards returns BLOCKED when denied."""
         from tools.approval import (
-            register_gateway_notify, unregister_gateway_notify,
-            resolve_gateway_approval, check_all_command_guards,
+            check_all_command_guards,
+            register_gateway_notify,
+            resolve_gateway_approval,
+            unregister_gateway_notify,
         )
 
         session_key = "e2e-deny"
@@ -463,8 +475,9 @@ class TestBlockingApprovalE2E:
     def test_blocking_approval_timeout(self):
         """check_all_command_guards returns BLOCKED on timeout."""
         from tools.approval import (
-            register_gateway_notify, unregister_gateway_notify,
             check_all_command_guards,
+            register_gateway_notify,
+            unregister_gateway_notify,
         )
 
         session_key = "e2e-timeout"
@@ -502,9 +515,11 @@ class TestBlockingApprovalE2E:
     def test_parallel_subagent_approvals(self):
         """Multiple threads can block concurrently and be resolved independently."""
         from tools.approval import (
-            register_gateway_notify, unregister_gateway_notify,
-            resolve_gateway_approval, check_all_command_guards,
             _gateway_queues,
+            check_all_command_guards,
+            register_gateway_notify,
+            resolve_gateway_approval,
+            unregister_gateway_notify,
         )
 
         session_key = "e2e-parallel"
@@ -561,8 +576,10 @@ class TestBlockingApprovalE2E:
     def test_parallel_mixed_approve_deny(self):
         """Approve some, deny others in a parallel batch."""
         from tools.approval import (
-            register_gateway_notify, unregister_gateway_notify,
-            resolve_gateway_approval, check_all_command_guards,
+            check_all_command_guards,
+            register_gateway_notify,
+            resolve_gateway_approval,
+            unregister_gateway_notify,
         )
 
         session_key = "e2e-mixed"

@@ -13,13 +13,10 @@ runs after every directory creation in the home-init path).
 """
 from __future__ import annotations
 
-import os
 import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # _resolve_prostor_uid_gid

@@ -9,7 +9,6 @@ import json
 
 from run_agent import AIAgent
 
-
 _summarize = AIAgent._summarize_background_review_actions
 
 

@@ -18,12 +18,13 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
-from gateway.status import terminate_pid
 from gateway.restart import (
     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT,
     GATEWAY_SERVICE_RESTART_EXIT_CODE,
     parse_restart_drain_timeout,
 )
+from gateway.status import terminate_pid
+from prostor_cli.colors import Colors, color
 from prostor_cli.config import (
     get_env_value,
     get_prostor_home,
@@ -36,16 +37,15 @@ from prostor_cli.config import (
 # display_prostor_home is imported lazily at call sites to avoid ImportError
 # when prostor_constants is cached from a pre-update version during `prostor update`.
 from prostor_cli.setup import (
+    print_error,
     print_header,
     print_info,
     print_success,
     print_warning,
-    print_error,
     prompt,
     prompt_choice,
     prompt_yes_no,
 )
-from prostor_cli.colors import Colors, color
 
 logger = logging.getLogger(__name__)
 
@@ -1198,7 +1198,7 @@ def _gateway_list() -> None:
     check each profile individually.
     """
     try:
-        from prostor_cli.profiles import list_profiles, get_active_profile_name
+        from prostor_cli.profiles import get_active_profile_name, list_profiles
     except Exception:
         print("Unable to list profiles.")
         return
@@ -1295,6 +1295,7 @@ def stop_profile_gateway() -> bool:
     # Wait briefly for it to exit. On Windows, os.kill(pid, 0) is NOT
     # a no-op — route through the cross-platform existence check.
     import time as _time
+
     from gateway.status import _pid_exists
 
     for _ in range(20):
@@ -1310,6 +1311,8 @@ def stop_profile_gateway() -> bool:
 def is_linux() -> bool:
     return sys.platform.startswith("linux")
 
+
+from datetime import UTC
 
 from prostor_constants import is_container, is_termux, is_wsl
 
@@ -1417,6 +1420,7 @@ def _profile_suffix() -> str:
     """
     import hashlib
     import re
+
     from prostor_constants import get_default_prostor_root
 
     home = get_prostor_home().resolve()
@@ -1452,6 +1456,7 @@ def _profile_arg(prostor_home: str | None = None, default_root: str | Path | Non
             refer to root but the target profile lives under the service user.
     """
     import re
+
     from prostor_constants import get_default_prostor_root
 
     home = Path(prostor_home or str(get_prostor_home())).resolve()
@@ -1828,7 +1833,7 @@ def print_legacy_unit_warning() -> None:
     if not legacy:
         return
     print_warning("Legacy Prostor gateway unit(s) detected from an older install:")
-    for name, path, is_system in legacy:
+    for _name, path, is_system in legacy:
         scope = "system" if is_system else "user"
         print_info(f"    {path}  ({scope} scope)")
     print_info("  These run alongside the current prostor-gateway service and")
@@ -3388,10 +3393,10 @@ def generate_launchd_plist() -> str:
     <array>
         {prog_args_xml}
     </array>
-    
+
     <key>WorkingDirectory</key>
     <string>{working_dir}</string>
-    
+
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -3407,16 +3412,16 @@ def generate_launchd_plist() -> str:
         <string>Aqua</string>
         <string>Background</string>
     </array>
-    
+
     <key>RunAtLoad</key>
     <true/>
-    
+
     <key>KeepAlive</key>
     <true/>
-    
+
     <key>StandardOutPath</key>
     <string>{log_dir}/gateway.log</string>
-    
+
     <key>StandardErrorPath</key>
     <string>{log_dir}/gateway.error.log</string>
 </dict>
@@ -3684,6 +3689,7 @@ def _wait_for_gateway_exit(
         force_after: Seconds of graceful waiting before escalating to force-kill.
     """
     import time
+
     from gateway.status import get_running_pid
 
     deadline = time.monotonic() + timeout
@@ -3884,6 +3890,7 @@ def _guard_named_profile_under_multiplexer(force: bool = False) -> None:
 
     try:
         import yaml as _yaml
+
         from gateway.status import _read_pid_record  # type: ignore
 
         # (b) default gateway PID file present + alive
@@ -4128,7 +4135,7 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
     # chasing the Windows lifecycle bug).
     import atexit as _atexit
     import traceback as _traceback
-    from datetime import datetime as _dt, timezone as _tz
+    from datetime import datetime as _dt
 
     def _exit_diag(tag: str, **extra: object) -> None:
         if os.environ.get("PROSTOR_GATEWAY_EXIT_DIAG", "1") != "1":
@@ -4138,7 +4145,7 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
 
             log_dir = _ghh() / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
-            ts = _dt.now(_tz.utc).isoformat()
+            ts = _dt.now(UTC).isoformat()
             line = {
                 "ts": ts,
                 "tag": tag,

@@ -22,14 +22,12 @@ Usage:
         print(format_scan_report(result))
 """
 
-import re
 import fnmatch
 import hashlib
+import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Tuple
-
 
 # ---------------------------------------------------------------------------
 # Hardcoded trust configuration
@@ -82,7 +80,7 @@ class ScanResult:
     source: str
     trust_level: str    # "builtin" | "trusted" | "community"
     verdict: str        # "safe" | "caution" | "dangerous"
-    findings: List[Finding] = field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list)
     scanned_at: str = ""
     summary: str = ""
 
@@ -557,7 +555,7 @@ INVISIBLE_CHARS = {
 # Scanning functions
 # ---------------------------------------------------------------------------
 
-def scan_file(file_path: Path, rel_path: str = "") -> List[Finding]:
+def scan_file(file_path: Path, rel_path: str = "") -> list[Finding]:
     """
     Scan a single file for threat patterns and invisible unicode characters.
 
@@ -649,7 +647,7 @@ def scan_skill(skill_path: Path, source: str = "community") -> ScanResult:
     skill_name = skill_path.name
     trust_level = _resolve_trust_level(source)
 
-    all_findings: List[Finding] = []
+    all_findings: list[Finding] = []
 
     if skill_path.is_dir():
         ignore = _load_skill_ignore(skill_path)
@@ -676,12 +674,12 @@ def scan_skill(skill_path: Path, source: str = "community") -> ScanResult:
         trust_level=trust_level,
         verdict=verdict,
         findings=all_findings,
-        scanned_at=datetime.now(timezone.utc).isoformat(),
+        scanned_at=datetime.now(UTC).isoformat(),
         summary=summary,
     )
 
 
-def should_allow_install(result: ScanResult, force: bool = False) -> Tuple[bool, str]:
+def should_allow_install(result: ScanResult, force: bool = False) -> tuple[bool, str]:
     """
     Determine whether a skill should be installed based on scan result and trust.
 
@@ -792,7 +790,7 @@ def content_hash(skill_path: Path) -> str:
 # Structural checks
 # ---------------------------------------------------------------------------
 
-def _check_structure(skill_dir: Path, ignore=None) -> List[Finding]:
+def _check_structure(skill_dir: Path, ignore=None) -> list[Finding]:
     """
     Check the skill directory for structural anomalies:
     - Too many files
@@ -971,7 +969,7 @@ def _load_skill_ignore(skill_dir: Path):
     anchors a pattern to the skill root. The ignore files themselves are
     always excluded; ``SKILL.md`` can never be excluded.
     """
-    patterns: List[str] = []
+    patterns: list[str] = []
     for name in _SKILL_IGNORE_FILENAMES:
         ig = skill_dir / name
         try:
@@ -1058,7 +1056,7 @@ def _resolve_trust_level(source: str) -> str:
     return "community"
 
 
-def _determine_verdict(findings: List[Finding]) -> str:
+def _determine_verdict(findings: list[Finding]) -> str:
     """Determine the overall verdict from a list of findings."""
     if not findings:
         return "safe"
@@ -1074,7 +1072,7 @@ def _determine_verdict(findings: List[Finding]) -> str:
     return "safe"
 
 
-def _build_summary(name: str, source: str, trust: str, verdict: str, findings: List[Finding]) -> str:
+def _build_summary(name: str, source: str, trust: str, verdict: str, findings: list[Finding]) -> str:
     """Build a one-line summary of the scan result."""
     if not findings:
         return f"{name}: clean scan, no threats detected"

@@ -73,7 +73,7 @@ class TestCLISubagentInterrupt(unittest.TestCase):
             child = parent._active_children[-1] if parent._active_children else None
 
             # Simulate the agent loop: poll _interrupt_requested like run_conversation does
-            for i in range(100):  # Up to 10 seconds (100 * 0.1s)
+            for _i in range(100):  # Up to 10 seconds (100 * 0.1s)
                 if child and child._interrupt_requested:
                     interrupt_detected.set()
                     return {
@@ -95,8 +95,8 @@ class TestCLISubagentInterrupt(unittest.TestCase):
             }
 
         # Patch AIAgent to use our mock
-        from tools.delegate_tool import _run_single_child
         from run_agent import IterationBudget
+        from tools.delegate_tool import _run_single_child
 
         parent.iteration_budget = IterationBudget(max_total=100)
 

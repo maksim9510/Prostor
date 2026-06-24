@@ -12,18 +12,21 @@ import subprocess
 import sys
 from pathlib import Path
 
+from prostor_cli.colors import Colors, color
 from prostor_constants import get_prostor_home
 
-from prostor_cli.colors import Colors, color
 
 def log_info(msg: str):
     print(f"{color('→', Colors.CYAN)} {msg}")
 
+
 def log_success(msg: str):
     print(f"{color('✓', Colors.GREEN)} {msg}")
 
+
 def log_warn(msg: str):
     print(f"{color('⚠', Colors.YELLOW)} {msg}")
+
 
 def get_project_root() -> Path:
     """Get the project installation directory."""
@@ -192,7 +195,7 @@ def uninstall_gateway_service():
 
     # 1. Kill any standalone gateway processes (all platforms, including Termux)
     try:
-        from prostor_cli.gateway import kill_gateway_processes, find_gateway_pids
+        from prostor_cli.gateway import find_gateway_pids, kill_gateway_processes
         pids = find_gateway_pids()
         if pids:
             killed = kill_gateway_processes()
@@ -214,9 +217,9 @@ def uninstall_gateway_service():
     if system == "Linux":
         try:
             from prostor_cli.gateway import (
-                get_systemd_unit_path,
-                get_service_name,
                 _systemctl_cmd,
+                get_service_name,
+                get_systemd_unit_path,
             )
             svc_name = get_service_name()
 
@@ -567,7 +570,7 @@ def run_gui_uninstall(args):
 def run_uninstall(args):
     """
     Run the uninstall process.
-    
+
     Options:
     - Full uninstall: removes code + ~/.prostor/ (configs, data, logs)
     - Keep data: removes code but keeps ~/.prostor/ for future reinstall

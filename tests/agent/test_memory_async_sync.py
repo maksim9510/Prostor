@@ -17,10 +17,8 @@ executor with a bounded timeout so a wedged provider can't hang teardown.
 """
 import time
 
-import pytest
-
-from agent.memory_provider import MemoryProvider
 from agent.memory_manager import MemoryManager
+from agent.memory_provider import MemoryProvider
 
 
 class _SlowProvider(MemoryProvider):

@@ -25,10 +25,10 @@ from gateway.platforms.base import (
 )
 from gateway.session import SessionSource, build_session_key
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class StubAdapter(BasePlatformAdapter):
     """Minimal concrete adapter for testing."""
@@ -308,6 +308,7 @@ class TestEmptyResponseNotSuppressed:
         response = {"final_response": "(empty)", "failed": True}
         self._apply_suppression_logic(response, sc)
         assert "already_sent" not in response
+
 
 class TestQueuedMessageAlreadyStreamed:
     """The queued-message path should skip the first response only when the

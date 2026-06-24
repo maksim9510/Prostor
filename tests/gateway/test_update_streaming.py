@@ -7,11 +7,11 @@ Tests the new --gateway mode for prostor update, including:
 - _restore_stashed_changes() with input_fn parameter
 """
 
+import asyncio
 import json
 import os
 import time
-import asyncio
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 

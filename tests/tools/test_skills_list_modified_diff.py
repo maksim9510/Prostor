@@ -17,10 +17,10 @@ from contextlib import ExitStack
 from unittest.mock import patch
 
 from tools.skills_sync import (
-    sync_skills,
-    reset_bundled_skill,
-    list_user_modified_bundled_skills,
     diff_bundled_skill,
+    list_user_modified_bundled_skills,
+    reset_bundled_skill,
+    sync_skills,
 )
 
 

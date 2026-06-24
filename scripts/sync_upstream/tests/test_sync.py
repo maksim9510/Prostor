@@ -3,7 +3,6 @@
 Windows quirk: `git init` defaults to branch `master`, not `main`. Every
 fixture below explicitly passes `-b main` to `git init`/`git clone`.
 """
-import shutil
 import subprocess
 import sys
 from pathlib import Path

@@ -30,8 +30,6 @@ import random
 import sys
 import urllib.error
 import urllib.request
-from typing import Optional
-
 
 # Docker-style name generator. Same vibe as Docker's adjective_surname, but
 # adjective_noun with a space-free underscore join so it drops cleanly into a
@@ -62,7 +60,7 @@ def _generate_dashboard_name() -> str:
     return f"{random.choice(_NAME_ADJECTIVES)}_{random.choice(_NAME_NOUNS)}"
 
 
-def _resolve_portal_base_url(override: Optional[str] = None) -> str:
+def _resolve_portal_base_url(override: str | None = None) -> str:
     """Resolve the portal base URL for the registration request.
 
     Precedence:
@@ -94,9 +92,9 @@ def _register_self_hosted_client(
     *,
     access_token: str,
     portal_base_url: str,
-    name: Optional[str],
-    custom_redirect_uri: Optional[str],
-    existing_client_id: Optional[str] = None,
+    name: str | None,
+    custom_redirect_uri: str | None,
+    existing_client_id: str | None = None,
     timeout: float = 15.0,
 ) -> dict:
     """POST to the portal's self-hosted-client endpoint and return the JSON body.
@@ -180,7 +178,7 @@ def _print_post_register_hint(
     *,
     client_id: str,
     portal_base_url: str,
-    custom_redirect_uri: Optional[str],
+    custom_redirect_uri: str | None,
     wrote_portal_url: bool,
     public_url: str = "",
 ) -> None:

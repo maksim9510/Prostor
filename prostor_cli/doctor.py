@@ -5,12 +5,12 @@ Diagnoses issues with Prostor Agent setup.
 """
 
 import os
-import sys
-import subprocess
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
-from prostor_cli.config import get_project_root, get_prostor_home, get_env_path
+from prostor_cli.config import get_env_path, get_project_root, get_prostor_home
 from prostor_cli.env_loader import load_prostor_dotenv
 from prostor_constants import display_prostor_home
 
@@ -26,7 +26,6 @@ from prostor_cli.colors import Colors, color
 from prostor_cli.models import _PROSTOR_USER_AGENT
 from prostor_constants import OPENROUTER_MODELS_URL
 from utils import base_url_host_matches
-
 
 _PROVIDER_ENV_HINTS = (
     "OPENROUTER_API_KEY",
@@ -182,11 +181,14 @@ def _has_healthy_oauth_fallback_for_apikey_provider(provider_label: str) -> bool
 def check_ok(text: str, detail: str = ""):
     print(f"  {color('✓', Colors.GREEN)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
 
+
 def check_warn(text: str, detail: str = ""):
     print(f"  {color('⚠', Colors.YELLOW)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
 
+
 def check_fail(text: str, detail: str = ""):
     print(f"  {color('✗', Colors.RED)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
+
 
 def check_info(text: str):
     print(f"    {color('→', Colors.CYAN)} {text}")
@@ -313,8 +315,8 @@ def check_certificates() -> None:
     a wall of tracebacks on the first outbound HTTPS call.
     """
     try:
-        from agent.ssl_guard import verify_ca_bundle_with_fallback
         from agent.errors import SSLConfigurationError
+        from agent.ssl_guard import verify_ca_bundle_with_fallback
         verify_ca_bundle_with_fallback()
         check_ok("SSL CA certificate bundle is valid")
     except SSLConfigurationError as e:
@@ -726,6 +728,8 @@ def run_doctor(args):
             try:
                 from prostor_cli.auth import (
                     PROVIDER_REGISTRY,
+                )
+                from prostor_cli.auth import (
                     resolve_provider as _resolve_auth_provider,
                 )
                 known_providers = set(PROVIDER_REGISTRY.keys()) | {"openrouter", "custom", "auto"}
@@ -736,6 +740,8 @@ def run_doctor(args):
                 from prostor_cli.config import get_compatible_custom_providers as _compatible_custom_providers
                 from prostor_cli.providers import (
                     normalize_provider as _normalize_catalog_provider,
+                )
+                from prostor_cli.providers import (
                     resolve_provider_full as _resolve_provider_full,
                 )
             except Exception:
@@ -983,6 +989,7 @@ def run_doctor(args):
         # which the startup bridge may already have overridden.
         try:
             import yaml
+
             from prostor_cli.config import load_env, remove_env_value
             with open(config_path, encoding="utf-8") as f:
                 raw_config = yaml.safe_load(f) or {}
@@ -1075,10 +1082,10 @@ def run_doctor(args):
 
     try:
         from prostor_cli.auth import (
-            get_nous_auth_status,
             get_codex_auth_status,
             get_gemini_oauth_auth_status,
             get_minimax_oauth_auth_status,
+            get_nous_auth_status,
         )
 
         nous_status = get_nous_auth_status()
@@ -1531,9 +1538,9 @@ def run_doctor(args):
                 # to eagerly load in every `prostor doctor` invocation.
                 from tools.browser_tool import (
                     _chromium_installed,
-                    _is_camofox_mode,
-                    _get_cloud_provider,
                     _get_cdp_override,
+                    _get_cloud_provider,
+                    _is_camofox_mode,
                     _using_lightpanda_engine,
                 )
             except Exception:
@@ -1760,11 +1767,12 @@ def run_doctor(args):
             return _ConnectivityResult("Anthropic API", [], [])
         try:
             import httpx
+
             from agent.anthropic_adapter import (
-                _is_oauth_token,
                 _COMMON_BETAS,
-                _OAUTH_ONLY_BETAS,
                 _CONTEXT_1M_BETA,
+                _OAUTH_ONLY_BETAS,
+                _is_oauth_token,
             )
             headers = {"anthropic-version": "2023-06-01"}
             is_oauth = _is_oauth_token(key)
@@ -1985,8 +1993,8 @@ def run_doctor(args):
 
         try:
             from agent.azure_identity_adapter import (
-                EntraIdentityConfig,
                 SCOPE_AI_AZURE_DEFAULT,
+                EntraIdentityConfig,
                 describe_active_credential,
                 has_azure_identity_installed,
             )
@@ -2106,7 +2114,7 @@ def run_doctor(args):
     try:
         # Add project root to path for imports
         sys.path.insert(0, str(PROJECT_ROOT))
-        from model_tools import check_tool_availability, TOOLSET_REQUIREMENTS
+        from model_tools import TOOLSET_REQUIREMENTS, check_tool_availability
 
         available, unavailable = check_tool_availability()
         available, unavailable = _apply_doctor_tool_availability_overrides(available, unavailable)
@@ -2274,8 +2282,9 @@ def run_doctor(args):
             check_warn(f"{_active_memory_provider} check failed", str(_e))
 
     try:
-        from prostor_cli.profiles import list_profiles, _get_wrapper_dir, profile_exists
         import re as _re
+
+        from prostor_cli.profiles import _get_wrapper_dir, list_profiles, profile_exists
 
         named_profiles = [p for p in list_profiles() if not p.is_default]
         if named_profiles:

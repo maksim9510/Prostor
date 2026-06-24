@@ -25,16 +25,16 @@ if _repo not in sys.path:
 
 # Triggers the shared discord mock from tests/gateway/conftest.py before
 # importing the production module.
+from gateway.config import PlatformConfig  # noqa: E402
 from plugins.platforms.discord.adapter import (  # noqa: E402
     ClarifyChoiceView,
     DiscordAdapter,
 )
-from gateway.config import PlatformConfig  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_adapter(*, allowed_users=None, allowed_roles=None):
     config = PlatformConfig(enabled=True, token="test-token", extra={})

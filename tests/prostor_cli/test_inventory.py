@@ -21,13 +21,11 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-
 from prostor_cli.inventory import (
     ConfigContext,
     build_models_payload,
     load_picker_context,
 )
-
 
 # ─── load_picker_context ───────────────────────────────────────────────
 

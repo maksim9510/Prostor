@@ -21,7 +21,6 @@ import logging
 import time
 from unittest.mock import patch
 
-
 from run_agent import AIAgent
 
 

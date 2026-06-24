@@ -1,10 +1,10 @@
 """Tests for CLI browser CDP auto-launch helpers."""
 
+import os
+import subprocess
 from contextlib import redirect_stdout
 from io import StringIO
-import os
 from queue import Queue
-import subprocess
 from unittest.mock import patch
 
 from cli import ProstorCLI

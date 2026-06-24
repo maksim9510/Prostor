@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Dict, Optional
+from typing import Any
 
 from cron.scheduler_provider import CronScheduler
 
@@ -51,7 +51,7 @@ class ChronosCronScheduler(CronScheduler):
         # In-memory map of job_id → fire_at we've asked NAS to arm. Best-effort
         # cache; reconcile rebuilds desired state from jobs.json, so a cold
         # process simply re-arms (idempotent via dedup_key).
-        self._armed: Dict[str, str] = {}
+        self._armed: dict[str, str] = {}
         self._lock = threading.Lock()
         self._client = None  # lazily constructed (no network in is_available)
 
@@ -125,7 +125,7 @@ class ChronosCronScheduler(CronScheduler):
 
     # -- arming -----------------------------------------------------------
 
-    def _arm_one_shot(self, job: Dict[str, Any]) -> None:
+    def _arm_one_shot(self, job: dict[str, Any]) -> None:
         """Ask NAS to arm exactly one one-shot at the job's next_run_at.
 
         The agent computes the time; NAS+its scheduler are the dumb executor.
@@ -153,7 +153,7 @@ class ChronosCronScheduler(CronScheduler):
             with self._lock:
                 self._armed.pop(job_id, None)
 
-    def _list_armed(self) -> Dict[str, str]:
+    def _list_armed(self) -> dict[str, str]:
         """Observed armed one-shots: job_id → fire_at.
 
         Prefer the in-memory map (warm process); on a cold/empty map, ask NAS
@@ -183,7 +183,7 @@ class ChronosCronScheduler(CronScheduler):
         arm missing / re-arm changed-time, cancel orphaned."""
         from cron.jobs import load_jobs
 
-        desired: Dict[str, str] = {
+        desired: dict[str, str] = {
             j["id"]: j["next_run_at"]
             for j in load_jobs()
             if j.get("enabled") and j.get("next_run_at") and j.get("state") != "paused"

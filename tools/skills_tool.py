@@ -68,21 +68,22 @@ Usage:
 
 import json
 import logging
-
-from prostor_constants import get_prostor_home, display_prostor_home
 import os
 import re
 from enum import Enum
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Any
 
-from tools.registry import registry, tool_error
-from prostor_cli.config import cfg_get
-from utils import env_var_enabled
 from agent.skill_utils import (
     EXCLUDED_SKILL_DIRS as _EXCLUDED_SKILL_DIRS,
+)
+from agent.skill_utils import (
     is_skill_support_path as _is_skill_support_path,
 )
+from prostor_cli.config import cfg_get
+from prostor_constants import display_prostor_home, get_prostor_home
+from tools.registry import registry, tool_error
+from utils import env_var_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ _REMOTE_ENV_BACKENDS = frozenset(
 _secret_capture_callback = None
 
 
-def _skill_lookup_path_error(name: str) -> Optional[str]:
+def _skill_lookup_path_error(name: str) -> str | None:
     """Return an error if a local skill lookup *name* can escape search roots.
 
     The skill ``name`` is joined onto each trusted search dir to build the
@@ -138,10 +139,10 @@ def _skill_lookup_path_error(name: str) -> Optional[str]:
     return None
 
 
-def load_env() -> Dict[str, str]:
+def load_env() -> dict[str, str]:
     """Load profile-scoped environment variables from PROSTOR_HOME/.env."""
     env_path = get_prostor_home() / ".env"
-    env_vars: Dict[str, str] = {}
+    env_vars: dict[str, str] = {}
     if not env_path.exists():
         return env_vars
 
@@ -179,7 +180,7 @@ def set_secret_capture_callback(callback) -> None:
     _secret_capture_callback = callback
 
 
-def skill_matches_platform(frontmatter: Dict[str, Any]) -> bool:
+def skill_matches_platform(frontmatter: dict[str, Any]) -> bool:
     """Check if a skill is compatible with the current OS platform.
 
     Delegates to ``agent.skill_utils.skill_matches_platform`` — kept here
@@ -189,7 +190,7 @@ def skill_matches_platform(frontmatter: Dict[str, Any]) -> bool:
     return _impl(frontmatter)
 
 
-def skill_matches_environment(frontmatter: Dict[str, Any]) -> bool:
+def skill_matches_environment(frontmatter: dict[str, Any]) -> bool:
     """Check if a skill is relevant to the current runtime environment.
 
     Delegates to ``agent.skill_utils.skill_matches_environment`` — kept here
@@ -201,7 +202,7 @@ def skill_matches_environment(frontmatter: Dict[str, Any]) -> bool:
     return _impl(frontmatter)
 
 
-def _normalize_prerequisite_values(value: Any) -> List[str]:
+def _normalize_prerequisite_values(value: Any) -> list[str]:
     if not value:
         return []
     if isinstance(value, str):
@@ -210,8 +211,8 @@ def _normalize_prerequisite_values(value: Any) -> List[str]:
 
 
 def _collect_prerequisite_values(
-    frontmatter: Dict[str, Any],
-) -> Tuple[List[str], List[str]]:
+    frontmatter: dict[str, Any],
+) -> tuple[list[str], list[str]]:
     prereqs = frontmatter.get("prerequisites")
     if not prereqs or not isinstance(prereqs, dict):
         return [], []
@@ -221,7 +222,7 @@ def _collect_prerequisite_values(
     )
 
 
-def _normalize_setup_metadata(frontmatter: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_setup_metadata(frontmatter: dict[str, Any]) -> dict[str, Any]:
     setup = frontmatter.get("setup")
     if not isinstance(setup, dict):
         return {"help": None, "collect_secrets": []}
@@ -239,7 +240,7 @@ def _normalize_setup_metadata(frontmatter: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(collect_secrets_raw, list):
         collect_secrets_raw = []
 
-    collect_secrets: List[Dict[str, Any]] = []
+    collect_secrets: list[dict[str, Any]] = []
     for item in collect_secrets_raw:
         if not isinstance(item, dict):
             continue
@@ -251,7 +252,7 @@ def _normalize_setup_metadata(frontmatter: Dict[str, Any]) -> Dict[str, Any]:
         prompt = str(item.get("prompt") or f"Enter value for {env_var}").strip()
         provider_url = str(item.get("provider_url") or item.get("url") or "").strip()
 
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "env_var": env_var,
             "prompt": prompt,
             "secret": bool(item.get("secret", True)),
@@ -267,9 +268,9 @@ def _normalize_setup_metadata(frontmatter: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _get_required_environment_variables(
-    frontmatter: Dict[str, Any],
-    legacy_env_vars: List[str] | None = None,
-) -> List[Dict[str, Any]]:
+    frontmatter: dict[str, Any],
+    legacy_env_vars: list[str] | None = None,
+) -> list[dict[str, Any]]:
     setup = _normalize_setup_metadata(frontmatter)
     required_raw = frontmatter.get("required_environment_variables")
     if isinstance(required_raw, dict):
@@ -277,17 +278,17 @@ def _get_required_environment_variables(
     if not isinstance(required_raw, list):
         required_raw = []
 
-    required: List[Dict[str, Any]] = []
+    required: list[dict[str, Any]] = []
     seen: set[str] = set()
 
-    def _append_required(entry: Dict[str, Any]) -> None:
+    def _append_required(entry: dict[str, Any]) -> None:
         env_name = str(entry.get("name") or entry.get("env_var") or "").strip()
         if not env_name or env_name in seen:
             return
         if not _ENV_VAR_NAME_RE.match(env_name):
             return
 
-        normalized: Dict[str, Any] = {
+        normalized: dict[str, Any] = {
             "name": env_name,
             "prompt": str(entry.get("prompt") or f"Enter value for {env_name}").strip(),
         }
@@ -337,8 +338,8 @@ def _get_required_environment_variables(
 
 def _capture_required_environment_variables(
     skill_name: str,
-    missing_entries: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    missing_entries: list[dict[str, Any]],
+) -> dict[str, Any]:
     if not missing_entries:
         return {
             "missing_names": [],
@@ -368,7 +369,7 @@ def _capture_required_environment_variables(
         }
 
     setup_skipped = False
-    remaining_names: List[str] = []
+    remaining_names: list[str] = []
 
     for entry in missing_entries:
         metadata = {"skill_name": skill_name}
@@ -425,7 +426,7 @@ def _get_terminal_backend_name() -> str:
 
 
 def _is_env_var_persisted(
-    var_name: str, env_snapshot: Dict[str, str] | None = None
+    var_name: str, env_snapshot: dict[str, str] | None = None
 ) -> bool:
     if env_snapshot is None:
         env_snapshot = load_env()
@@ -435,11 +436,11 @@ def _is_env_var_persisted(
 
 
 def _remaining_required_environment_names(
-    required_env_vars: List[Dict[str, Any]],
-    capture_result: Dict[str, Any],
+    required_env_vars: list[dict[str, Any]],
+    capture_result: dict[str, Any],
     *,
-    env_snapshot: Dict[str, str] | None = None,
-) -> List[str]:
+    env_snapshot: dict[str, str] | None = None,
+) -> list[str]:
     missing_names = set(capture_result["missing_names"])
 
     if env_snapshot is None:
@@ -465,7 +466,7 @@ def _gateway_setup_hint() -> str:
 
 def _build_setup_note(
     readiness_status: SkillReadinessStatus,
-    missing: List[str],
+    missing: list[str],
     setup_help: str | None = None,
 ) -> str | None:
     if readiness_status == SkillReadinessStatus.SETUP_NEEDED:
@@ -482,7 +483,7 @@ def check_skills_requirements() -> bool:
     return True
 
 
-def _parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
+def _parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     """Parse YAML frontmatter from markdown content.
 
     Delegates to ``agent.skill_utils.parse_frontmatter`` — kept here
@@ -492,7 +493,7 @@ def _parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     return parse_frontmatter(content)
 
 
-def _get_category_from_path(skill_path: Path) -> Optional[str]:
+def _get_category_from_path(skill_path: Path) -> str | None:
     """
     Extract category from skill path based on directory structure.
 
@@ -518,7 +519,7 @@ def _get_category_from_path(skill_path: Path) -> Optional[str]:
     return None
 
 
-def _parse_tags(tags_value) -> List[str]:
+def _parse_tags(tags_value) -> list[str]:
     """
     Parse tags from frontmatter value.
 
@@ -548,7 +549,7 @@ def _parse_tags(tags_value) -> List[str]:
     return [t.strip().strip("\"'") for t in tags_value.split(",") if t.strip()]
 
 
-def _get_disabled_skill_names() -> Set[str]:
+def _get_disabled_skill_names() -> set[str]:
     """Load disabled skill names from config.
 
     Delegates to ``agent.skill_utils.get_disabled_skill_names`` — kept here
@@ -598,7 +599,7 @@ def _is_skill_disabled(name: str, platform: str = None) -> bool:
         return False
 
 
-def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
+def _find_all_skills(*, skip_disabled: bool = False) -> list[dict[str, Any]]:
     """Recursively find all skills in ~/.prostor/skills/ and external dirs.
 
     Args:
@@ -678,7 +679,7 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
     return skills
 
 
-def _sort_skills(skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _sort_skills(skills: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep every skill listing path ordered the same way."""
     return sorted(skills, key=lambda s: (s.get("category") or "", s["name"]))
 
@@ -785,7 +786,7 @@ def _serve_plugin_skill(
             ensure_ascii=False,
         )
 
-    parsed_frontmatter: Dict[str, Any] = {}
+    parsed_frontmatter: dict[str, Any] = {}
     try:
         parsed_frontmatter, _ = _parse_frontmatter(content)
     except Exception:
@@ -1005,10 +1006,10 @@ def skill_view(
         # loaded the other) so we surface it loudly instead of guessing.
         from agent.skill_utils import iter_skill_index_files
 
-        candidates: List[Tuple[Optional[Path], Path]] = []  # (skill_dir, skill_md)
+        candidates: list[tuple[Path | None, Path]] = []  # (skill_dir, skill_md)
         seen_md: set = set()
 
-        def _record(sd: Optional[Path], smd: Path) -> None:
+        def _record(sd: Path | None, smd: Path) -> None:
             try:
                 key = smd.resolve()
             except Exception:
@@ -1158,7 +1159,7 @@ def skill_view(
                 _warnings.append("skill content contains patterns that may indicate prompt injection")
             logging.getLogger(__name__).warning("Skill security warning for '%s': %s", name, "; ".join(_warnings))
 
-        parsed_frontmatter: Dict[str, Any] = {}
+        parsed_frontmatter: dict[str, Any] = {}
         try:
             parsed_frontmatter, _ = _parse_frontmatter(content)
         except Exception:
@@ -1190,7 +1191,7 @@ def skill_view(
 
         # If a specific file path is requested, read that instead
         if file_path and skill_dir:
-            from tools.path_security import validate_within_dir, has_traversal_component
+            from tools.path_security import has_traversal_component, validate_within_dir
 
             # Security: Prevent path traversal attacks
             if has_traversal_component(file_path):
@@ -1600,6 +1601,8 @@ registry.register(
     check_fn=check_skills_requirements,
     emoji="📚",
 )
+
+
 def _skill_view_with_bump(args, **kw):
     """Invoke skill_view, then bump view_count on success. Best-effort: a
     telemetry failure never breaks the tool call."""

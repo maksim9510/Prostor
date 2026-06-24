@@ -182,6 +182,7 @@ class TestSkillManageCrossProfileErrorUX:
         # Re-import the module so SKILLS_DIR picks up PROSTOR_HOME (set in
         # the fixture). Skill_manager_tool computes SKILLS_DIR at import.
         import importlib
+
         import tools.skill_manager_tool
         importlib.reload(tools.skill_manager_tool)
         from tools.skill_manager_tool import _skill_not_found_error
@@ -197,6 +198,7 @@ class TestSkillManageCrossProfileErrorUX:
         self._make_skill_in_profile(fake_prostor["coder_home"], "everywhere-skill")
 
         import importlib
+
         import tools.skill_manager_tool
         importlib.reload(tools.skill_manager_tool)
         from tools.skill_manager_tool import _skill_not_found_error
@@ -212,6 +214,7 @@ class TestSkillManageCrossProfileErrorUX:
     ):
         """When no profile has the skill, error falls back to skills_list hint."""
         import importlib
+
         import tools.skill_manager_tool
         importlib.reload(tools.skill_manager_tool)
         from tools.skill_manager_tool import _skill_not_found_error

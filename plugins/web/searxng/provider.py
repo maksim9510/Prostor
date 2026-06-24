@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict
+from typing import Any
 
 from agent.web_search_provider import WebSearchProvider
 
@@ -65,7 +65,7 @@ class SearXNGWebSearchProvider(WebSearchProvider):
     def supports_extract(self) -> bool:
         return False
 
-    def search(self, query: str, limit: int = 5) -> Dict[str, Any]:
+    def search(self, query: str, limit: int = 5) -> dict[str, Any]:
         """Execute a search against the configured SearXNG instance."""
         import httpx
 
@@ -73,7 +73,7 @@ class SearXNGWebSearchProvider(WebSearchProvider):
         if not base_url:
             return {"success": False, "error": "SEARXNG_URL is not set"}
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "q": query,
             "format": "json",
             "pageno": 1,
@@ -138,7 +138,7 @@ class SearXNGWebSearchProvider(WebSearchProvider):
 
         return {"success": True, "data": {"web": web_results}}
 
-    def get_setup_schema(self) -> Dict[str, Any]:
+    def get_setup_schema(self) -> dict[str, Any]:
         return {
             "name": "SearXNG",
             "badge": "free · self-hosted",

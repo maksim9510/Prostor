@@ -9,7 +9,6 @@ import pytest
 
 from prostor_cli.models import get_copilot_model_context
 
-
 # Sample catalog items mimicking the Copilot /models API response
 _SAMPLE_CATALOG = [
     {

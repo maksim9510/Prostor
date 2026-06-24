@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 
 def hooks_command(args) -> None:
@@ -49,8 +49,8 @@ def hooks_command(args) -> None:
 # ---------------------------------------------------------------------------
 
 def _cmd_list(_args) -> None:
-    from prostor_cli.config import load_config
     from agent import shell_hooks
+    from prostor_cli.config import load_config
 
     specs = shell_hooks.iter_configured_hooks(load_config())
 
@@ -61,7 +61,7 @@ def _cmd_list(_args) -> None:
         print("for the config schema and worked examples.")
         return
 
-    by_event: Dict[str, List] = {}
+    by_event: dict[str, list] = {}
     for spec in specs:
         by_event.setdefault(spec.event, []).append(spec)
 
@@ -186,9 +186,9 @@ _DEFAULT_PAYLOADS = {
 
 
 def _cmd_test(args) -> None:
+    from agent import shell_hooks
     from prostor_cli.config import load_config
     from prostor_cli.plugins import VALID_HOOKS
-    from agent import shell_hooks
 
     event = args.event
     if event not in VALID_HOOKS:
@@ -238,7 +238,7 @@ def _cmd_test(args) -> None:
         print()
 
 
-def _print_run_result(result: Dict[str, Any]) -> None:
+def _print_run_result(result: dict[str, Any]) -> None:
     if result.get("error"):
         print(f"      ✗ error: {result['error']}")
         return
@@ -291,8 +291,8 @@ def _cmd_revoke(args) -> None:
 # ---------------------------------------------------------------------------
 
 def _cmd_doctor(_args) -> None:
-    from prostor_cli.config import load_config
     from agent import shell_hooks
+    from prostor_cli.config import load_config
 
     specs = shell_hooks.iter_configured_hooks(load_config())
 

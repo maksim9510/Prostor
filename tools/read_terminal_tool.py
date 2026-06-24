@@ -10,15 +10,15 @@ over the platform-injected callback.
 
 import json
 import os
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from tools.registry import registry, tool_error
 
 
 def read_terminal_tool(
-    start_line: Optional[int] = None,
-    count: Optional[int] = None,
-    callback: Optional[Callable] = None,
+    start_line: int | None = None,
+    count: int | None = None,
+    callback: Callable | None = None,
 ) -> str:
     """Return the in-app terminal's contents (+ line metadata) as a JSON string."""
     if callback is None:

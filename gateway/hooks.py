@@ -39,12 +39,12 @@ and ``thread_id`` is non-empty.
 import asyncio
 import importlib.util
 import sys
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import yaml
 
 from prostor_core import get_prostor_home
-
 
 HOOKS_DIR = get_prostor_home() / "hooks"
 
@@ -61,11 +61,11 @@ class HookRegistry:
 
     def __init__(self):
         # event_type -> [handler_fn, ...]
-        self._handlers: Dict[str, List[Callable]] = {}
-        self._loaded_hooks: List[dict] = []  # metadata for listing
+        self._handlers: dict[str, list[Callable]] = {}
+        self._loaded_hooks: list[dict] = []  # metadata for listing
 
     @property
-    def loaded_hooks(self) -> List[dict]:
+    def loaded_hooks(self) -> list[dict]:
         """Return metadata about all loaded hooks."""
         return list(self._loaded_hooks)
 
@@ -159,7 +159,7 @@ class HookRegistry:
             except Exception as e:
                 print(f"[hooks] Error loading hook {hook_dir.name}: {e}", flush=True)
 
-    def _resolve_handlers(self, event_type: str) -> List[Callable]:
+    def _resolve_handlers(self, event_type: str) -> list[Callable]:
         """Return all handlers that should fire for ``event_type``.
 
         Exact matches fire first, followed by wildcard matches (e.g.
@@ -172,7 +172,7 @@ class HookRegistry:
             handlers.extend(self._handlers.get(wildcard_key, []))
         return handlers
 
-    async def emit(self, event_type: str, context: Optional[Dict[str, Any]] = None) -> None:
+    async def emit(self, event_type: str, context: dict[str, Any] | None = None) -> None:
         """
         Fire all handlers registered for an event, discarding return values.
 
@@ -200,8 +200,8 @@ class HookRegistry:
     async def emit_collect(
         self,
         event_type: str,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[Any]:
+        context: dict[str, Any] | None = None,
+    ) -> list[Any]:
         """Fire handlers and return their non-None return values in order.
 
         Like :meth:`emit` but captures each handler's return value. Used for
@@ -214,7 +214,7 @@ class HookRegistry:
         if context is None:
             context = {}
 
-        results: List[Any] = []
+        results: list[Any] = []
         for fn in self._resolve_handlers(event_type):
             try:
                 result = fn(event_type, context)

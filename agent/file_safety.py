@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
 
 
 def _prostor_home_path() -> Path:
@@ -77,7 +76,7 @@ def build_write_denied_prefixes(home: str) -> list[str]:
     ]
 
 
-def get_safe_write_root() -> Optional[str]:
+def get_safe_write_root() -> str | None:
     """Return the resolved PROSTOR_WRITE_SAFE_ROOT path, or None if unset."""
     root = os.getenv("PROSTOR_WRITE_SAFE_ROOT", "")
     if not root:
@@ -145,7 +144,7 @@ _BLOCKED_PROJECT_ENV_BASENAMES: set[str] = {
 }
 
 
-def get_read_block_error(path: str) -> Optional[str]:
+def get_read_block_error(path: str) -> str | None:
     """Return an error message when a read targets a denied Prostor path.
 
     Three categories are blocked:
@@ -344,7 +343,7 @@ def _resolve_active_profile_name() -> str:
     return "default"
 
 
-def classify_cross_profile_target(path: str) -> Optional[dict]:
+def classify_cross_profile_target(path: str) -> dict | None:
     """Classify a write target as cross-profile if it lands in another
     profile's scoped area (skills/plugins/cron/memories).
 
@@ -367,8 +366,8 @@ def classify_cross_profile_target(path: str) -> Optional[dict]:
     except (OSError, RuntimeError):
         return None
 
-    target_profile: Optional[str] = None
-    area: Optional[str] = None
+    target_profile: str | None = None
+    area: str | None = None
 
     try:
         rel = target.relative_to(root_real)
@@ -407,7 +406,7 @@ def classify_cross_profile_target(path: str) -> Optional[dict]:
     }
 
 
-def get_cross_profile_warning(path: str) -> Optional[str]:
+def get_cross_profile_warning(path: str) -> str | None:
     """Return a model-facing warning string when ``path`` is cross-profile.
 
     Returns ``None`` when the write is in-scope (same profile) or outside
@@ -460,7 +459,7 @@ def get_cross_profile_warning(path: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-def _find_sandbox_mirror_segments(parts: tuple) -> Optional[int]:
+def _find_sandbox_mirror_segments(parts: tuple) -> int | None:
     """Return the index of the inner ``.prostor`` part in a sandbox-mirror path.
 
     Matches ``…/sandboxes/<backend>/<task>/home/.prostor/…`` and returns the
@@ -478,7 +477,7 @@ def _find_sandbox_mirror_segments(parts: tuple) -> Optional[int]:
     return None
 
 
-def classify_sandbox_mirror_target(path: str) -> Optional[dict]:
+def classify_sandbox_mirror_target(path: str) -> dict | None:
     """Classify a write target as a sandbox-mirror of authoritative Prostor state.
 
     Returns ``None`` when the path does not match the sandbox-mirror shape.
@@ -514,7 +513,7 @@ def classify_sandbox_mirror_target(path: str) -> Optional[dict]:
     }
 
 
-def get_sandbox_mirror_warning(path: str) -> Optional[str]:
+def get_sandbox_mirror_warning(path: str) -> str | None:
     """Return a model-facing warning when ``path`` lands in a sandbox mirror.
 
     Returns ``None`` when the path is not a sandbox-mirror target. Caller
@@ -565,7 +564,7 @@ def get_sandbox_mirror_warning(path: str) -> Optional[str]:
 def classify_container_mirror_target(
     path: str,
     mirror_prefix: str | None = None,
-) -> Optional[dict]:
+) -> dict | None:
     """Classify a write target as a container-side sandbox mirror.
 
     ``mirror_prefix`` must be supplied by the caller after it has established
@@ -596,7 +595,7 @@ def classify_container_mirror_target(
 def get_container_mirror_warning(
     path: str,
     mirror_prefix: str | None = None,
-) -> Optional[str]:
+) -> str | None:
     """Return a model-facing warning when *path* lands in the container's
     sandbox mirror of authoritative Prostor state.
 

@@ -9,12 +9,12 @@ import tempfile
 
 import pytest
 
-from prostor_cli.completion import _walk, generate_bash, generate_zsh, generate_fish
-
+from prostor_cli.completion import _walk, generate_bash, generate_fish, generate_zsh
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_parser() -> argparse.ArgumentParser:
     """Build a minimal parser that mirrors the real prostor structure."""
@@ -232,6 +232,7 @@ class TestSubcommandDrift:
         multi-word session names after -c/-r are never accidentally split.
         """
         import inspect
+
         from prostor_cli.main import _coalesce_session_name_args
 
         source = inspect.getsource(_coalesce_session_name_args)

@@ -8,8 +8,9 @@ import ipaddress
 import json
 import logging
 from collections import deque
+from collections.abc import Awaitable, Callable
 from hashlib import sha1
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any
 
 try:
     from aiohttp import web
@@ -34,7 +35,7 @@ DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8646
 DEFAULT_WEBHOOK_PATH = "/msgraph/webhook"
 DEFAULT_MAX_SEEN_RECEIPTS = 5000
-NotificationScheduler = Callable[[Dict[str, Any], MessageEvent], Awaitable[None] | None]
+NotificationScheduler = Callable[[dict[str, Any], MessageEvent], Awaitable[None] | None]
 
 
 def check_msgraph_webhook_requirements() -> bool:
@@ -59,7 +60,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
             for value in (extra.get("accepted_resources") or [])
             if str(value).strip()
         ]
-        self._client_state: Optional[str] = self._string_or_none(extra.get("client_state"))
+        self._client_state: str | None = self._string_or_none(extra.get("client_state"))
         self._max_seen_receipts = max(
             1, int(extra.get("max_seen_receipts", DEFAULT_MAX_SEEN_RECEIPTS))
         )
@@ -67,14 +68,14 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
             self._parse_allowed_source_cidrs(extra.get("allowed_source_cidrs"))
         )
         self._runner = None
-        self._notification_scheduler: Optional[NotificationScheduler] = None
+        self._notification_scheduler: NotificationScheduler | None = None
         self._seen_receipts: set[str] = set()
         self._seen_receipt_order: deque[str] = deque()
         self._accepted_count = 0
         self._duplicate_count = 0
 
     @staticmethod
-    def _string_or_none(value: Any) -> Optional[str]:
+    def _string_or_none(value: Any) -> str | None:
         if value is None:
             return None
         text = str(value).strip()
@@ -86,7 +87,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
         return raw if raw.startswith("/") else f"/{raw}"
 
     @staticmethod
-    def _build_receipt_key(notification: Dict[str, Any]) -> Optional[str]:
+    def _build_receipt_key(notification: dict[str, Any]) -> str | None:
         explicit_id = str(notification.get("id") or "").strip()
         if explicit_id:
             return f"id:{explicit_id}"
@@ -130,7 +131,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
                 )
         return networks
 
-    def set_notification_scheduler(self, scheduler: Optional[NotificationScheduler]) -> None:
+    def set_notification_scheduler(self, scheduler: NotificationScheduler | None) -> None:
         self._notification_scheduler = scheduler
 
     def _source_allowlist_required_but_missing(self) -> bool:
@@ -180,16 +181,16 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         logger.info("[msgraph_webhook] Response for %s: %s", chat_id, content[:200])
         return SendResult(success=True)
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         return {"name": chat_id, "type": "webhook"}
 
-    async def _handle_health(self, request: "web.Request") -> "web.Response":
+    async def _handle_health(self, request: web.Request) -> web.Response:
         if not self._source_ip_allowed(request):
             return web.Response(status=403)
         return web.json_response(
@@ -202,7 +203,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
             }
         )
 
-    async def _handle_validation(self, request: "web.Request") -> "web.Response":
+    async def _handle_validation(self, request: web.Request) -> web.Response:
         """Handle Microsoft Graph subscription validation handshake.
 
         Graph validates a subscription endpoint by sending a GET with
@@ -218,7 +219,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
             return web.Response(status=400)
         return web.Response(text=validation_token, content_type="text/plain")
 
-    async def _handle_notification(self, request: "web.Request") -> "web.Response":
+    async def _handle_notification(self, request: web.Request) -> web.Response:
         if not self._source_ip_allowed(request):
             return web.Response(status=403)
 
@@ -283,7 +284,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
             return web.Response(status=403)
         return web.Response(status=400)
 
-    def _source_ip_allowed(self, request: "web.Request") -> bool:
+    def _source_ip_allowed(self, request: web.Request) -> bool:
         """Return True if the request's source IP is in the configured allowlist.
 
         Loopback-only binds may omit ``allowed_source_cidrs`` for local reverse
@@ -323,7 +324,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
                 return True
         return False
 
-    def _verify_client_state(self, notification: Dict[str, Any]) -> bool:
+    def _verify_client_state(self, notification: dict[str, Any]) -> bool:
         """Verify the Graph-supplied clientState matches the configured secret.
 
         Uses ``hmac.compare_digest`` instead of ``==`` so that a mismatch
@@ -352,8 +353,8 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
 
     def _build_message_event(
         self,
-        notification: Dict[str, Any],
-        receipt_key: Optional[str],
+        notification: dict[str, Any],
+        receipt_key: str | None,
     ) -> MessageEvent:
         message_id = receipt_key or f"sha1:{sha1(json.dumps(notification, sort_keys=True).encode('utf-8')).hexdigest()}"
         source = self.build_source(
@@ -372,7 +373,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
             internal=True,
         )
 
-    def _render_prompt(self, notification: Dict[str, Any]) -> str:
+    def _render_prompt(self, notification: dict[str, Any]) -> str:
         template = self.config.extra.get("prompt", "")
         if template:
             payload = {
@@ -385,10 +386,10 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
         rendered = json.dumps(notification, indent=2, sort_keys=True)[:4000]
         return f"Microsoft Graph change notification:\n\n```json\n{rendered}\n```"
 
-    def _render_template(self, template: str, payload: Dict[str, Any]) -> str:
+    def _render_template(self, template: str, payload: dict[str, Any]) -> str:
         import re
 
-        def _resolve(match: "re.Match[str]") -> str:
+        def _resolve(match: re.Match[str]) -> str:
             key = match.group(1)
             value: Any = payload
             for part in key.split("."):
@@ -404,7 +405,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
 
     def _schedule_notification(
         self,
-        notification: Dict[str, Any],
+        notification: dict[str, Any],
         event: MessageEvent,
     ) -> None:
         scheduler = self._notification_scheduler

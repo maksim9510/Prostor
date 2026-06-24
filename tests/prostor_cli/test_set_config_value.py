@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from prostor_cli.config import set_config_value, config_command
+from prostor_cli.config import config_command, set_config_value
 
 
 @pytest.fixture(autouse=True)

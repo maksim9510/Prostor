@@ -18,16 +18,16 @@ import pytest
 
 from gateway.config import PlatformConfig
 from gateway.platforms.base import (
+    SUPPORTED_VIDEO_TYPES,
     MessageEvent,
     MessageType,
     SendResult,
-    SUPPORTED_VIDEO_TYPES,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock the telegram package if it's not installed
 # ---------------------------------------------------------------------------
+
 
 def _ensure_telegram_mock():
     """Install mock telegram modules so TelegramAdapter can be imported."""
@@ -53,10 +53,10 @@ _ensure_telegram_mock()
 # Now we can safely import
 from plugins.platforms.telegram.adapter import TelegramAdapter  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers to build mock Telegram objects
 # ---------------------------------------------------------------------------
+
 
 def _make_file_obj(data: bytes = b"hello"):
     """Create a mock Telegram File with download_as_bytearray."""

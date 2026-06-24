@@ -20,7 +20,6 @@ import stat
 import subprocess
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SH = REPO_ROOT / "scripts" / "install.sh"
 

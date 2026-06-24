@@ -17,7 +17,6 @@ import sys
 
 import prostor_cli
 
-
 # The exact glyphs the setup wizard / banners print (setup.py ~line 2962+).
 _BANNER = "┌─────┐\n│ ⚕ Prostor │\n└─────┘"
 
@@ -81,7 +80,7 @@ def test_latin1_stdout_is_repaired_to_utf8(monkeypatch):
     assert sys.stderr.encoding.lower().replace("-", "") == "utf8"
     # The banner now encodes without raising.
     sys.stdout.write(_BANNER)
-    assert "⚕".encode("utf-8") in sys.stdout.getvalue()
+    assert "⚕".encode() in sys.stdout.getvalue()
 
 
 def test_ascii_posix_locale_is_repaired(monkeypatch):
@@ -151,7 +150,7 @@ def test_fallback_when_reconfigure_unavailable(monkeypatch, tmp_path):
     sys.stdout.write(_BANNER)
     sys.stdout.flush()
     fh.close()
-    assert "⚕".encode("utf-8") in real_path.read_bytes()
+    assert "⚕".encode() in real_path.read_bytes()
 
 
 def test_broken_stream_does_not_raise(monkeypatch):

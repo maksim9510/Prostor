@@ -9,15 +9,15 @@ Handles:
 """
 
 import hashlib
+import json
 import logging
 import os
-import json
 import threading
 import uuid
-from pathlib import Path
-from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -54,24 +54,25 @@ def _hash_chat_id(value: str) -> str:
     return _hash_id(value)
 
 
+from utils import atomic_replace
+
 from .config import (
-    Platform,
     GatewayConfig,
-    SessionResetPolicy,  # noqa: F401 — re-exported via gateway/__init__.py
     HomeChannel,
+    Platform,
+    SessionResetPolicy,  # noqa: F401 — re-exported via gateway/__init__.py
 )
 from .whatsapp_identity import (
     canonical_whatsapp_identifier,
     normalize_whatsapp_identifier,  # noqa: F401 - re-exported for gateway.session callers
 )
-from utils import atomic_replace
 
 
 @dataclass
 class SessionSource:
     """
     Describes where a message originated from.
-    
+
     This information is used to:
     1. Route responses back to the right place
     2. Inject context into the system prompt
@@ -79,24 +80,24 @@ class SessionSource:
     """
     platform: Platform
     chat_id: str
-    chat_name: Optional[str] = None
+    chat_name: str | None = None
     chat_type: str = "dm"  # "dm", "group", "channel", "thread"
-    user_id: Optional[str] = None
-    user_name: Optional[str] = None
-    thread_id: Optional[str] = None  # For forum topics, Discord threads, etc.
-    chat_topic: Optional[str] = None  # Channel topic/description (Discord, Slack)
-    user_id_alt: Optional[str] = None  # Platform-specific stable alt ID (Signal UUID, Feishu union_id)
-    chat_id_alt: Optional[str] = None  # Signal group internal ID
+    user_id: str | None = None
+    user_name: str | None = None
+    thread_id: str | None = None  # For forum topics, Discord threads, etc.
+    chat_topic: str | None = None  # Channel topic/description (Discord, Slack)
+    user_id_alt: str | None = None  # Platform-specific stable alt ID (Signal UUID, Feishu union_id)
+    chat_id_alt: str | None = None  # Signal group internal ID
     is_bot: bool = False  # True when the message author is a bot/webhook (Discord)
-    guild_id: Optional[str] = None  # Discord guild / Slack workspace / Matrix server scope
-    parent_chat_id: Optional[str] = None  # Parent channel when chat_id refers to a thread
-    message_id: Optional[str] = None  # ID of the triggering message (for pin/reply/react)
+    guild_id: str | None = None  # Discord guild / Slack workspace / Matrix server scope
+    parent_chat_id: str | None = None  # Parent channel when chat_id refers to a thread
+    message_id: str | None = None  # ID of the triggering message (for pin/reply/react)
     role_authorized: bool = False  # True when adapter granted access via role (not user ID)
     # Profile this inbound message is routed to in a multiplexing gateway
     # (from the /p/<profile>/ URL prefix or per-credential adapter ownership).
     # None => the gateway's active/default profile. Drives both session-key
     # namespacing and the per-turn config/credential scope.
-    profile: Optional[str] = None
+    profile: str | None = None
 
     @property
     def description(self) -> str:
@@ -119,7 +120,7 @@ class SessionSource:
 
         return ", ".join(parts)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         d = {
             "platform": self.platform.value,
             "chat_id": self.chat_id,
@@ -145,7 +146,7 @@ class SessionSource:
         return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SessionSource":
+    def from_dict(cls, data: dict[str, Any]) -> "SessionSource":
         return cls(
             platform=Platform(data["platform"]),
             chat_id=str(data["chat_id"]),
@@ -168,24 +169,24 @@ class SessionSource:
 class SessionContext:
     """
     Full context for a session, used for dynamic system prompt injection.
-    
+
     The agent receives this information to understand:
     - Where messages are coming from
     - What platforms are available
     - Where it can deliver scheduled task outputs
     """
     source: SessionSource
-    connected_platforms: List[Platform]
-    home_channels: Dict[Platform, HomeChannel]
+    connected_platforms: list[Platform]
+    home_channels: dict[Platform, HomeChannel]
     shared_multi_user_session: bool = False
 
     # Session metadata
     session_key: str = ""
     session_id: str = ""
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "source": self.source.to_dict(),
             "connected_platforms": [p.value for p in self.connected_platforms],
@@ -450,7 +451,7 @@ def build_session_context_prompt(
 class SessionEntry:
     """
     Entry in the session store.
-    
+
     Maps a session key to its current session ID and metadata.
     """
     session_key: str
@@ -459,11 +460,11 @@ class SessionEntry:
     updated_at: datetime
 
     # Origin metadata for delivery routing
-    origin: Optional[SessionSource] = None
+    origin: SessionSource | None = None
 
     # Display metadata
-    display_name: Optional[str] = None
-    platform: Optional[Platform] = None
+    display_name: str | None = None
+    platform: Platform | None = None
     chat_type: str = "dm"
 
     # Token tracking
@@ -481,7 +482,7 @@ class SessionEntry:
     # Set when a session was created because the previous one expired;
     # consumed once by the message handler to inject a notice into context
     was_auto_reset: bool = False
-    auto_reset_reason: Optional[str] = None  # "idle" or "daily"
+    auto_reset_reason: str | None = None  # "idle" or "daily"
     reset_had_activity: bool = False  # whether the expired session had any messages
 
     # Set by reset_session() when the user explicitly sends /new or /reset.
@@ -513,10 +514,10 @@ class SessionEntry:
     # ``.restart_failure_counts`` stuck-loop counter (#7536), not by a
     # parallel counter on this entry.
     resume_pending: bool = False
-    resume_reason: Optional[str] = None  # e.g. "restart_timeout"
-    last_resume_marked_at: Optional[datetime] = None
+    resume_reason: str | None = None  # e.g. "restart_timeout"
+    last_resume_marked_at: datetime | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         result = {
             "session_key": self.session_key,
             "session_id": self.session_id,
@@ -552,7 +553,7 @@ class SessionEntry:
         return result
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SessionEntry":
+    def from_dict(cls, data: dict[str, Any]) -> "SessionEntry":
         origin = None
         if "origin" in data and data["origin"]:
             origin = SessionSource.from_dict(data["origin"])
@@ -622,7 +623,7 @@ def is_shared_multi_user_session(
     return not group_sessions_per_user
 
 
-def _session_key_namespace(profile: Optional[str]) -> str:
+def _session_key_namespace(profile: str | None) -> str:
     """Return the ``agent:<ns>`` namespace prefix for a session key.
 
     The historical key format is ``agent:main:<platform>:<chat_type>:...`` where
@@ -646,7 +647,7 @@ def build_session_key(
     source: SessionSource,
     group_sessions_per_user: bool = True,
     thread_sessions_per_user: bool = False,
-    profile: Optional[str] = None,
+    profile: str | None = None,
 ) -> str:
     """Build a deterministic session key from a message source.
 
@@ -736,7 +737,7 @@ def build_session_key(
 class SessionStore:
     """
     Manages session storage and retrieval.
-    
+
     Uses SQLite (via SessionDB) for session metadata and message transcripts.
     Falls back to legacy JSONL files if SQLite is unavailable.
     """
@@ -745,7 +746,7 @@ class SessionStore:
                  has_active_processes_fn=None):
         self.sessions_dir = sessions_dir
         self.config = config
-        self._entries: Dict[str, SessionEntry] = {}
+        self._entries: dict[str, SessionEntry] = {}
         self._loaded = False
         self._lock = threading.Lock()
         self._has_active_processes_fn = has_active_processes_fn
@@ -773,7 +774,7 @@ class SessionStore:
 
         if sessions_file.exists():
             try:
-                with open(sessions_file, "r", encoding="utf-8") as f:
+                with open(sessions_file, encoding="utf-8") as f:
                     data = json.load(f)
                     for key, entry_data in data.items():
                         try:
@@ -809,7 +810,7 @@ class SessionStore:
                 logger.debug("Could not remove temp file %s: %s", tmp_path, e)
             raise
 
-    def _resolve_profile_for_key(self, source: Optional[SessionSource] = None) -> Optional[str]:
+    def _resolve_profile_for_key(self, source: SessionSource | None = None) -> str | None:
         """Return the profile namespace for session keys, or None when off.
 
         When ``multiplex_profiles`` is disabled (default), returns ``None`` so
@@ -839,7 +840,7 @@ class SessionStore:
 
     def _is_session_expired(self, entry: SessionEntry) -> bool:
         """Check if a session has expired based on its reset policy.
-        
+
         Works from the entry alone — no SessionSource needed.
         Used by the background expiry watcher to proactively flush memories.
         Sessions with active background processes are never considered expired.
@@ -875,13 +876,13 @@ class SessionStore:
 
         return False
 
-    def _should_reset(self, entry: SessionEntry, source: SessionSource) -> Optional[str]:
+    def _should_reset(self, entry: SessionEntry, source: SessionSource) -> str | None:
         """
         Check if a session should be reset based on policy.
-        
+
         Returns the reset reason ("idle" or "daily") if a reset is needed,
         or None if the session is still valid.
-        
+
         Sessions with active background processes are never reset.
         """
         if self._has_active_processes_fn:
@@ -906,9 +907,9 @@ class SessionStore:
 
         if policy.mode in {"daily", "both"}:
             today_reset = now.replace(
-                hour=policy.at_hour, 
-                minute=0, 
-                second=0, 
+                hour=policy.at_hour,
+                minute=0,
+                second=0,
                 microsecond=0
             )
             if now.hour < policy.at_hour:
@@ -1215,7 +1216,7 @@ class SessionStore:
                 self._save()
         return count
 
-    def reset_session(self, session_key: str, display_name: Optional[str] = None) -> Optional[SessionEntry]:
+    def reset_session(self, session_key: str, display_name: str | None = None) -> SessionEntry | None:
         """Force reset a session, creating a new session ID."""
         db_end_session_id = None
         db_create_kwargs = None
@@ -1267,7 +1268,7 @@ class SessionStore:
 
         return new_entry
 
-    def switch_session(self, session_key: str, target_session_id: str) -> Optional[SessionEntry]:
+    def switch_session(self, session_key: str, target_session_id: str) -> SessionEntry | None:
         """Switch a session key to point at an existing session ID.
 
         Used by ``/resume`` to restore a previously-named session.
@@ -1322,7 +1323,7 @@ class SessionStore:
 
         return new_entry
 
-    def list_sessions(self, active_minutes: Optional[int] = None) -> List[SessionEntry]:
+    def list_sessions(self, active_minutes: int | None = None) -> list[SessionEntry]:
         """List all sessions, optionally filtered by activity."""
         with self._lock:
             self._ensure_loaded_locked()
@@ -1336,7 +1337,7 @@ class SessionStore:
 
         return entries
 
-    def lookup_by_session_id(self, session_id: str) -> Optional[SessionEntry]:
+    def lookup_by_session_id(self, session_id: str) -> SessionEntry | None:
         """Return the active session entry for a persisted session ID, if any."""
         if not session_id:
             return None
@@ -1347,7 +1348,7 @@ class SessionStore:
                     return entry
         return None
 
-    def append_to_transcript(self, session_id: str, message: Dict[str, Any], skip_db: bool = False) -> None:
+    def append_to_transcript(self, session_id: str, message: dict[str, Any], skip_db: bool = False) -> None:
         """Append a message to a session's transcript (SQLite).
 
         Args:
@@ -1382,7 +1383,7 @@ class SessionStore:
             except Exception as e:
                 logger.debug("Session DB operation failed: %s", e)
 
-    def rewrite_transcript(self, session_id: str, messages: List[Dict[str, Any]]) -> None:
+    def rewrite_transcript(self, session_id: str, messages: list[dict[str, Any]]) -> None:
         """Replace the entire transcript for a session with new messages.
 
         Used by /retry, /undo, and /compress to persist modified conversation
@@ -1394,7 +1395,7 @@ class SessionStore:
             except Exception as e:
                 logger.debug("Failed to rewrite transcript in DB: %s", e)
 
-    def load_transcript(self, session_id: str) -> List[Dict[str, Any]]:
+    def load_transcript(self, session_id: str) -> list[dict[str, Any]]:
         """Load all messages from a session's transcript.
 
         state.db is the canonical store. The legacy JSONL fallback was removed
@@ -1409,7 +1410,7 @@ class SessionStore:
             logger.debug("Could not load messages from DB: %s", e)
             return []
 
-    def rewind_session(self, session_id: str, n: int = 1) -> Optional[Dict[str, Any]]:
+    def rewind_session(self, session_id: str, n: int = 1) -> dict[str, Any] | None:
         """Back up ``n`` user turns via soft-delete, keeping rows for audit.
 
         Unlike :meth:`rewrite_transcript` (a hard replace used by /retry),
@@ -1465,11 +1466,11 @@ class SessionStore:
 def build_session_context(
     source: SessionSource,
     config: GatewayConfig,
-    session_entry: Optional[SessionEntry] = None
+    session_entry: SessionEntry | None = None
 ) -> SessionContext:
     """
     Build a full session context from a source and config.
-    
+
     This is used to inject context into the agent's system prompt.
     """
     connected = config.get_connected_platforms()

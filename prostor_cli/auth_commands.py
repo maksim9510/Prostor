@@ -5,9 +5,10 @@ from __future__ import annotations
 import math
 import sys
 import time
-from types import SimpleNamespace
 import uuid
+from types import SimpleNamespace
 
+import prostor_cli.auth as auth_mod
 from agent.credential_pool import (
     AUTH_TYPE_API_KEY,
     AUTH_TYPE_OAUTH,
@@ -16,9 +17,9 @@ from agent.credential_pool import (
     SOURCE_MANUAL_DEVICE_CODE,
     STATUS_EXHAUSTED,
     STRATEGY_FILL_FIRST,
-    STRATEGY_ROUND_ROBIN,
-    STRATEGY_RANDOM,
     STRATEGY_LEAST_USED,
+    STRATEGY_RANDOM,
+    STRATEGY_ROUND_ROBIN,
     PooledCredential,
     _exhausted_until,
     _normalize_custom_pool_name,
@@ -27,11 +28,9 @@ from agent.credential_pool import (
     list_custom_pool_providers,
     load_pool,
 )
-import prostor_cli.auth as auth_mod
 from prostor_cli.auth import PROVIDER_REGISTRY
-from prostor_constants import OPENROUTER_BASE_URL
 from prostor_cli.secret_prompt import masked_secret_prompt
-
+from prostor_constants import OPENROUTER_BASE_URL
 
 # Providers that support OAuth login in addition to API keys.
 _OAUTH_CAPABLE_PROVIDERS = {"anthropic", "nous", "openai-codex", "xai-oauth", "qwen-oauth", "google-gemini-cli", "minimax-oauth"}
@@ -582,8 +581,8 @@ def _interactive_auth() -> None:
             _cfg_auth_mode = str(_model_cfg.get("auth_mode") or "").strip().lower()
             if _cfg_provider == "azure-foundry" and _cfg_auth_mode == "entra_id":
                 from agent.azure_identity_adapter import (
-                    EntraIdentityConfig,
                     SCOPE_AI_AZURE_DEFAULT,
+                    EntraIdentityConfig,
                     describe_active_credential,
                     has_azure_identity_installed,
                 )

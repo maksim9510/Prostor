@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Set
 
 from prostor_cli.config import get_env_value, load_config
 from prostor_cli.nous_account import (
@@ -13,17 +13,15 @@ from prostor_cli.nous_account import (
     get_nous_portal_account_info,
 )
 from tools.managed_tool_gateway import is_managed_tool_gateway_ready
-from utils import is_truthy_value
 from tools.tool_backend_helpers import (
     fal_key_is_configured,
     has_direct_modal_credentials,
-    managed_nous_tools_enabled,
     normalize_browser_cloud_provider,
     normalize_modal_mode,
     resolve_modal_backend_state,
     resolve_openai_audio_api_key,
 )
-
+from utils import is_truthy_value
 
 _DEFAULT_PLATFORM_TOOLSETS = {
     "cli": "prostor-cli",
@@ -34,7 +32,7 @@ _DEFAULT_PLATFORM_TOOLSETS = {
 # `prostor tools` picker scope its entitlement gate to the selected backend, so a
 # free-tool-pool user is allowed image gen but denied video gen at select time —
 # consistent with the per-category feature gates in get_nous_subscription_features.
-MANAGED_FEATURE_COVERAGE_CATEGORY: Dict[str, str] = {
+MANAGED_FEATURE_COVERAGE_CATEGORY: dict[str, str] = {
     "web": "firecrawl",
     "image_gen": "fal",
     "video_gen": "fal-video",
@@ -73,8 +71,8 @@ class NousSubscriptionFeatures:
     subscribed: bool
     nous_auth_present: bool
     provider_is_nous: bool
-    features: Dict[str, NousFeatureState]
-    account_info: Optional[NousPortalAccountInfo] = None
+    features: dict[str, NousFeatureState]
+    account_info: NousPortalAccountInfo | None = None
 
     @property
     def web(self) -> NousFeatureState:
@@ -110,7 +108,7 @@ class NousSubscriptionFeatures:
             yield self.features[key]
 
 
-def _model_config_dict(config: Dict[str, object]) -> Dict[str, object]:
+def _model_config_dict(config: dict[str, object]) -> dict[str, object]:
     model_cfg = config.get("model")
     if isinstance(model_cfg, dict):
         return dict(model_cfg)
@@ -119,7 +117,7 @@ def _model_config_dict(config: Dict[str, object]) -> Dict[str, object]:
     return {}
 
 
-def _toolset_enabled(config: Dict[str, object], toolset_key: str) -> bool:
+def _toolset_enabled(config: dict[str, object], toolset_key: str) -> bool:
     from toolsets import resolve_toolset
 
     platform_toolsets = config.get("platform_toolsets")
@@ -141,7 +139,7 @@ def _toolset_enabled(config: Dict[str, object], toolset_key: str) -> bool:
             if default_toolset:
                 toolset_names = [default_toolset]
 
-        available_tools: Set[str] = set()
+        available_tools: set[str] = set()
         for toolset_name in toolset_names:
             if not isinstance(toolset_name, str) or not toolset_name:
                 continue
@@ -321,7 +319,7 @@ def _resolve_browser_feature_state(
 
 
 def get_nous_subscription_features(
-    config: Optional[Dict[str, object]] = None,
+    config: dict[str, object] | None = None,
     *,
     force_fresh: bool = False,
 ) -> NousSubscriptionFeatures:
@@ -729,9 +727,9 @@ def get_nous_subscription_features(
 
 
 def apply_nous_managed_defaults(
-    config: Dict[str, object],
+    config: dict[str, object],
     *,
-    enabled_toolsets: Optional[Iterable[str]] = None,
+    enabled_toolsets: Iterable[str] | None = None,
     force_fresh: bool = False,
 ) -> set[str]:
     features = get_nous_subscription_features(config, force_fresh=force_fresh)
@@ -854,7 +852,7 @@ _GATEWAY_TOOL_LABELS = {
 }
 
 
-def _get_gateway_direct_credentials() -> Dict[str, bool]:
+def _get_gateway_direct_credentials() -> dict[str, bool]:
     """Return a dict of tool_key -> has_direct_credentials."""
     fal_direct = fal_key_is_configured()
     return {
@@ -900,7 +898,7 @@ _ALL_GATEWAY_KEYS = ("web", "image_gen", "video_gen", "tts", "stt", "browser")
 
 
 def get_gateway_eligible_tools(
-    config: Optional[Dict[str, object]] = None,
+    config: dict[str, object] | None = None,
     *,
     force_fresh: bool = False,
 ) -> tuple[list[str], list[str], list[str]]:
@@ -967,7 +965,7 @@ def get_gateway_eligible_tools(
 
 
 def apply_gateway_defaults(
-    config: Dict[str, object],
+    config: dict[str, object],
     tool_keys: list[str],
 ) -> set[str]:
     """Apply Tool Gateway config for the given tool keys.
@@ -1040,7 +1038,7 @@ def apply_gateway_defaults(
 
 
 def prompt_enable_tool_gateway(
-    config: Dict[str, object],
+    config: dict[str, object],
     *,
     force_fresh: bool = True,
 ) -> set[str]:
@@ -1129,7 +1127,7 @@ def prompt_enable_tool_gateway(
 def ensure_nous_portal_access(
     *,
     capability: str = "the Nous Tool Gateway",
-    coverage_category: Optional[str] = None,
+    coverage_category: str | None = None,
 ) -> bool:
     """Make sure the user is entitled to the Nous Tool Gateway, logging in if
     needed.

@@ -7,7 +7,7 @@ Handler injected to avoid importing ``main``.
 from __future__ import annotations
 
 import argparse
-from typing import Callable
+from collections.abc import Callable
 
 from prostor_cli.subcommands._shared import add_accept_hooks_flag
 

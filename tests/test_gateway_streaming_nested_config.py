@@ -1,6 +1,6 @@
 """Regression test for #25676 — nested gateway.streaming config must be loaded."""
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def _load_with_yaml_dict(yaml_dict: dict):

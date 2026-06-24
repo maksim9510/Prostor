@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import FrozenSet, Optional
 
 
 @dataclass(frozen=True)
@@ -31,7 +30,7 @@ class UpstreamCredential:
     token_type: str = "Bearer"
     """Auth scheme — currently always ``Bearer`` for supported providers."""
 
-    expires_at: Optional[str] = None
+    expires_at: str | None = None
     """ISO-8601 expiry timestamp for the bearer, when known. Informational."""
 
 
@@ -50,7 +49,7 @@ class UpstreamAdapter(ABC):
 
     @property
     @abstractmethod
-    def allowed_paths(self) -> FrozenSet[str]:
+    def allowed_paths(self) -> frozenset[str]:
         """Set of relative request paths the upstream accepts.
 
         Paths are relative to the proxy's ``/v1`` mount point. For example,
@@ -86,7 +85,7 @@ class UpstreamAdapter(ABC):
         *,
         failed_credential: UpstreamCredential,
         status_code: int,
-    ) -> Optional[UpstreamCredential]:
+    ) -> UpstreamCredential | None:
         """Return an alternate credential after an upstream auth failure.
 
         The default is no retry. Providers can override this for one-shot

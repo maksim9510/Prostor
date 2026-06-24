@@ -8,18 +8,18 @@ from unittest.mock import patch
 import pytest
 
 from tools.skill_manager_tool import (
-    _validate_name,
-    _validate_category,
-    _validate_frontmatter,
-    _validate_file_path,
+    MAX_NAME_LENGTH,
     _create_skill,
+    _delete_skill,
     _edit_skill,
     _patch_skill,
-    _delete_skill,
-    _write_file,
     _remove_file,
+    _validate_category,
+    _validate_file_path,
+    _validate_frontmatter,
+    _validate_name,
+    _write_file,
     skill_manage,
-    MAX_NAME_LENGTH,
 )
 
 
@@ -565,7 +565,7 @@ class TestSkillManageDispatcher:
 
     def test_create_from_background_review_marks_agent_created(self, tmp_path):
         """Background-review fork creates ARE marked as agent-created."""
-        from tools.skill_provenance import set_current_write_origin, BACKGROUND_REVIEW
+        from tools.skill_provenance import BACKGROUND_REVIEW, set_current_write_origin
         token = set_current_write_origin(BACKGROUND_REVIEW)
         try:
             with _skill_dir(tmp_path):
@@ -639,7 +639,7 @@ class TestSecurityScanGate:
     def test_scan_blocks_dangerous_when_flag_on(self, tmp_path):
         """Dangerous verdict + flag on → returns an error string for the agent."""
         from tools.skill_manager_tool import _security_scan_skill
-        from tools.skills_guard import ScanResult, Finding
+        from tools.skills_guard import Finding, ScanResult
 
         finding = Finding(
             pattern_id="test", severity="critical", category="exfiltration",

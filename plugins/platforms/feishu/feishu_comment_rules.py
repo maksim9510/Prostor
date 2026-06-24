@@ -14,7 +14,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from prostor_constants import get_prostor_home
 
@@ -42,9 +42,9 @@ _VALID_POLICIES = ("allowlist", "pairing")
 @dataclass(frozen=True)
 class CommentDocumentRule:
     """Per-document rule.  ``None`` means 'inherit from lower tier'."""
-    enabled: Optional[bool] = None
-    policy: Optional[str] = None
-    allow_from: Optional[frozenset] = None
+    enabled: bool | None = None
+    policy: str | None = None
+    allow_from: frozenset | None = None
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ class CommentsConfig:
     enabled: bool = True
     policy: str = "pairing"
     allow_from: frozenset = field(default_factory=frozenset)
-    documents: Dict[str, CommentDocumentRule] = field(default_factory=dict)
+    documents: dict[str, CommentDocumentRule] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,7 @@ class _MtimeCache:
     def __init__(self, path: Path):
         self._path = path
         self._mtime: float = 0.0
-        self._data: Optional[dict] = None
+        self._data: dict | None = None
 
     def load(self) -> dict:
         try:
@@ -90,7 +90,7 @@ class _MtimeCache:
             return self._data
 
         try:
-            with open(self._path, "r", encoding="utf-8") as f:
+            with open(self._path, encoding="utf-8") as f:
                 data = json.load(f)
             if not isinstance(data, dict):
                 data = {}
@@ -111,7 +111,7 @@ _pairing_cache = _MtimeCache(PAIRING_FILE)
 # Config parsing
 # ---------------------------------------------------------------------------
 
-def _parse_frozenset(raw: Any) -> Optional[frozenset]:
+def _parse_frozenset(raw: Any) -> frozenset | None:
     """Parse a list of strings into a frozenset; return None if key absent."""
     if raw is None:
         return None
@@ -139,7 +139,7 @@ def load_config() -> CommentsConfig:
     if not raw:
         return CommentsConfig()
 
-    documents: Dict[str, CommentDocumentRule] = {}
+    documents: dict[str, CommentDocumentRule] = {}
     raw_docs = raw.get("documents", {})
     if isinstance(raw_docs, dict):
         for key, rule_raw in raw_docs.items():
@@ -271,7 +271,7 @@ def pairing_remove(user_open_id: str) -> bool:
     return True
 
 
-def pairing_list() -> Dict[str, Any]:
+def pairing_list() -> dict[str, Any]:
     """Return the approved dict  {user_open_id: {approved_at: ...}}."""
     data = _pairing_cache.load()
     approved = data.get("approved", {})

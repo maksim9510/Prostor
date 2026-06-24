@@ -5,7 +5,6 @@ import pytest
 import yaml
 
 from tests.tools.conftest import register_all_web_providers
-
 from tools.website_policy import WebsitePolicyError, check_website_access, load_website_blocklist
 
 
@@ -368,8 +367,8 @@ class TestWebToolPolicy:
 
     @pytest.mark.asyncio
     async def test_web_extract_short_circuits_blocked_url(self, monkeypatch):
-        from tools import web_tools
         from plugins.web.firecrawl import provider as firecrawl_provider
+        from tools import web_tools
 
         # Allow test URLs past SSRF check so website policy is what gets tested
         async def _allow_ssrf(_url: str) -> bool:
@@ -405,8 +404,8 @@ class TestWebToolPolicy:
 
     @pytest.mark.asyncio
     async def test_web_extract_blocks_redirected_final_url(self, monkeypatch):
-        from tools import web_tools
         from plugins.web.firecrawl import provider as firecrawl_provider
+        from tools import web_tools
 
         # Allow test URLs past SSRF check so website policy is what gets tested
         async def _allow_ssrf(_url: str) -> bool:

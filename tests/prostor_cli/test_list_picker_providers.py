@@ -16,6 +16,7 @@ network or auth state is required.
 """
 
 import pytest
+
 from prostor_cli import model_switch
 
 

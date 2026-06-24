@@ -10,9 +10,7 @@ import json
 import logging
 import os
 import re
-import ssl
 import time
-from email.utils import formatdate
 
 from agent.redact import redact_sensitive_text
 
@@ -336,7 +334,7 @@ def _handle_send(args):
         return tool_error("Interrupted")
 
     try:
-        from gateway.config import load_gateway_config, Platform
+        from gateway.config import Platform, load_gateway_config
         config = load_gateway_config()
     except Exception as e:
         return json.dumps(_error(f"Failed to load gateway config: {e}"))
@@ -1243,6 +1241,7 @@ async def _send_signal(extra, chat_id, message, media_files=None):
     except ImportError:
         return {"error": "httpx not installed"}
 
+    from gateway.platforms.signal_format import markdown_to_signal
     from gateway.platforms.signal_rate_limit import (
         SIGNAL_BATCH_PACING_NOTICE_THRESHOLD,
         SIGNAL_MAX_ATTACHMENTS_PER_MSG,
@@ -1253,7 +1252,6 @@ async def _send_signal(extra, chat_id, message, media_files=None):
         _signal_send_timeout,
         get_scheduler,
     )
-    from gateway.platforms.signal_format import markdown_to_signal
 
     try:
         http_url = extra.get("http_url", "http://127.0.0.1:8080").rstrip("/")

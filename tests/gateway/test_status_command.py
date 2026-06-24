@@ -1,7 +1,7 @@
 """Tests for gateway /status behavior and token persistence."""
 
-from datetime import datetime
 import time
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -593,9 +593,10 @@ async def test_status_command_bypasses_active_session_guard():
     """When an agent is running, /status must be dispatched immediately via
     base.handle_message — not queued or treated as an interrupt (#5046)."""
     import asyncio
+
+    from gateway.config import Platform, PlatformConfig
     from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType
     from gateway.session import build_session_key
-    from gateway.config import Platform, PlatformConfig
 
     source = _make_source()
     session_key = build_session_key(source)
@@ -682,6 +683,7 @@ async def test_post_delivery_callback_generation_snapshot_happens_after_bind():
     fire a fresher run's callbacks.
     """
     import asyncio
+
     from gateway.platforms.base import BasePlatformAdapter
 
     source = _make_source()
@@ -703,7 +705,7 @@ async def test_post_delivery_callback_generation_snapshot_happens_after_bind():
     async def fake_handler(event):
         # Simulate what _bind_adapter_run_generation does mid-run.
         interrupt_event = adapter._active_sessions.get(session_key)
-        setattr(interrupt_event, "_prostor_run_generation", 1)
+        interrupt_event._prostor_run_generation = 1
         # Stale run registers its callback at generation=1.
         adapter.register_post_delivery_callback(
             session_key,

@@ -40,7 +40,7 @@ import mimetypes
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ _IMAGE_URL_RE = re.compile(
 )
 
 
-def extract_image_refs(text: str) -> Tuple[List[str], List[str]]:
+def extract_image_refs(text: str) -> tuple[list[str], list[str]]:
     """Scan free-form text for image references the model should see.
 
     Returns ``(local_paths, urls)``:
@@ -156,7 +156,7 @@ _TRUE_TOKENS = frozenset({"true", "yes", "on", "1"})
 _FALSE_TOKENS = frozenset({"false", "no", "off", "0"})
 
 
-def _coerce_capability_bool(raw: Any) -> Optional[bool]:
+def _coerce_capability_bool(raw: Any) -> bool | None:
     """Return True/False for recognised boolean values, None otherwise."""
     if isinstance(raw, bool):
         return raw
@@ -174,10 +174,10 @@ def _coerce_capability_bool(raw: Any) -> Optional[bool]:
 
 
 def _supports_vision_override(
-    cfg: Optional[Dict[str, Any]],
+    cfg: dict[str, Any] | None,
     provider: str,
     model: str,
-) -> Optional[bool]:
+) -> bool | None:
     """Resolve user-declared vision capability from config.yaml.
 
     Resolution order, first hit wins:
@@ -196,7 +196,7 @@ def _supports_vision_override(
 
     # 1. Top-level shortcut
     model_cfg_raw = cfg.get("model")
-    model_cfg: Dict[str, Any] = model_cfg_raw if isinstance(model_cfg_raw, dict) else {}
+    model_cfg: dict[str, Any] = model_cfg_raw if isinstance(model_cfg_raw, dict) else {}
     top = _coerce_capability_bool(model_cfg.get("supports_vision"))
     if top is not None:
         return top
@@ -208,14 +208,14 @@ def _supports_vision_override(
     # both as candidate provider keys.
     config_provider = str(model_cfg.get("provider") or "").strip()
     providers_raw = cfg.get("providers")
-    providers_cfg: Dict[str, Any] = providers_raw if isinstance(providers_raw, dict) else {}
+    providers_cfg: dict[str, Any] = providers_raw if isinstance(providers_raw, dict) else {}
     for p in dict.fromkeys(filter(None, (provider, config_provider))):
         entry_raw = providers_cfg.get(p)
-        entry: Dict[str, Any] = entry_raw if isinstance(entry_raw, dict) else {}
+        entry: dict[str, Any] = entry_raw if isinstance(entry_raw, dict) else {}
         models_raw = entry.get("models")
-        models_cfg: Dict[str, Any] = models_raw if isinstance(models_raw, dict) else {}
+        models_cfg: dict[str, Any] = models_raw if isinstance(models_raw, dict) else {}
         per_model_raw = models_cfg.get(model)
-        per_model: Dict[str, Any] = per_model_raw if isinstance(per_model_raw, dict) else {}
+        per_model: dict[str, Any] = per_model_raw if isinstance(per_model_raw, dict) else {}
         coerced = _coerce_capability_bool(per_model.get("supports_vision"))
         if coerced is not None:
             return coerced
@@ -261,7 +261,7 @@ def _coerce_mode(raw: Any) -> str:
     return "auto"
 
 
-def _explicit_aux_vision_override(cfg: Optional[Dict[str, Any]]) -> bool:
+def _explicit_aux_vision_override(cfg: dict[str, Any] | None) -> bool:
     """True when the user configured a specific auxiliary vision backend.
 
     An explicit override means the user *wants* the text pipeline (they're
@@ -289,8 +289,8 @@ def _explicit_aux_vision_override(cfg: Optional[Dict[str, Any]]) -> bool:
 def _lookup_supports_vision(
     provider: str,
     model: str,
-    cfg: Optional[Dict[str, Any]] = None,
-) -> Optional[bool]:
+    cfg: dict[str, Any] | None = None,
+) -> bool | None:
     """Return True/False if we can resolve caps, None if unknown.
 
     Consults the user's ``supports_vision`` override in config.yaml first
@@ -316,7 +316,7 @@ def _lookup_supports_vision(
 def decide_image_input_mode(
     provider: str,
     model: str,
-    cfg: Optional[Dict[str, Any]],
+    cfg: dict[str, Any] | None,
 ) -> str:
     """Return ``"native"`` or ``"text"`` for the given turn.
 
@@ -361,7 +361,7 @@ def decide_image_input_mode(
 # it fires, which is cheaper than permanent quality loss.
 
 
-def _sniff_mime_from_bytes(raw: bytes) -> Optional[str]:
+def _sniff_mime_from_bytes(raw: bytes) -> str | None:
     """Detect image MIME from magic bytes. Returns None if unrecognised.
 
     Filename-based detection (``mimetypes.guess_type``) is unreliable when
@@ -396,7 +396,7 @@ def _sniff_mime_from_bytes(raw: bytes) -> Optional[str]:
     return None
 
 
-def _guess_mime(path: Path, raw: Optional[bytes] = None) -> str:
+def _guess_mime(path: Path, raw: bytes | None = None) -> str:
     """Return image MIME type for *path*.
 
     If *raw* bytes are provided, magic-byte sniffing wins (authoritative).
@@ -422,7 +422,7 @@ def _guess_mime(path: Path, raw: Optional[bytes] = None) -> str:
     }.get(suffix, "image/jpeg")
 
 
-def _file_to_data_url(path: Path) -> Optional[str]:
+def _file_to_data_url(path: Path) -> str | None:
     """Encode a local image as a base64 data URL at its native size.
 
     Size limits are NOT enforced here — the agent retry loop
@@ -446,9 +446,9 @@ def _file_to_data_url(path: Path) -> Optional[str]:
 
 def build_native_content_parts(
     user_text: str,
-    image_paths: List[str],
-    image_urls: Optional[List[str]] = None,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+    image_paths: list[str],
+    image_urls: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Build an OpenAI-style ``content`` list for a user turn.
 
     Shape:
@@ -482,10 +482,10 @@ def build_native_content_parts(
     that couldn't be read from disk; URLs are never skipped (they're
     not validated here).
     """
-    skipped: List[str] = []
-    image_parts: List[Dict[str, Any]] = []
-    attached_paths: List[str] = []
-    attached_urls: List[str] = []
+    skipped: list[str] = []
+    image_parts: list[dict[str, Any]] = []
+    attached_paths: list[str] = []
+    attached_urls: list[str] = []
 
     for raw_path in image_paths:
         p = Path(raw_path)
@@ -518,11 +518,11 @@ def build_native_content_parts(
     # the user's caption (or a neutral default) with one hint per image.
     if attached_paths or attached_urls:
         base_text = text or "What do you see in this image?"
-        hint_lines: List[str] = []
+        hint_lines: list[str] = []
         hint_lines.extend(f"[Image attached at: {p}]" for p in attached_paths)
         hint_lines.extend(f"[Image attached: {u}]" for u in attached_urls)
         combined_text = f"{base_text}\n\n" + "\n".join(hint_lines)
-        parts: List[Dict[str, Any]] = [{"type": "text", "text": combined_text}]
+        parts: list[dict[str, Any]] = [{"type": "text", "text": combined_text}]
         parts.extend(image_parts)
         return parts, skipped
 

@@ -68,6 +68,7 @@ def curator_status_env(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     import importlib
+
     import prostor_constants
     importlib.reload(prostor_constants)
     from tools import skill_usage

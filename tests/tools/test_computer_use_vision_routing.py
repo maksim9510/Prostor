@@ -18,10 +18,10 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # _explicit_aux_vision_override
 # ---------------------------------------------------------------------------
+
 
 class TestExplicitAuxVisionOverride:
     """Mirror agent.image_routing — config detection must agree across paths."""

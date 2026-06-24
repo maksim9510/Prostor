@@ -27,7 +27,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from agent.account_usage import fetch_account_usage, render_account_usage_lines
 from agent.i18n import t
@@ -61,7 +61,7 @@ class GatewaySlashCommandsMixin:
         adapter = self.adapters.get(platform) if getattr(self, "adapters", None) else None
         return getattr(adapter, "typed_command_prefix", "/") if adapter is not None else "/"
 
-    async def _handle_reset_command(self, event: MessageEvent) -> Union[str, EphemeralReply]:
+    async def _handle_reset_command(self, event: MessageEvent) -> str | EphemeralReply:
         """Handle /new or /reset command."""
         source = event.source
 
@@ -230,8 +230,8 @@ class GatewaySlashCommandsMixin:
 
     async def _handle_profile_command(self, event: MessageEvent) -> str:
         """Handle /profile — show active profile name and home directory."""
-        from prostor_constants import display_prostor_home
         from prostor_cli.profiles import get_active_profile_name
+        from prostor_constants import display_prostor_home
 
         display = display_prostor_home()
         profile_name = get_active_profile_name()
@@ -311,6 +311,7 @@ class GatewaySlashCommandsMixin:
         import asyncio
         import re
         import shlex
+
         from prostor_cli.kanban import run_slash
 
         text = (event.text or "").strip()
@@ -574,7 +575,7 @@ class GatewaySlashCommandsMixin:
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
         return f"sha256:{digest}"
 
-    def _gateway_session_origin_for_id(self, session_id: str) -> Optional[SessionSource]:
+    def _gateway_session_origin_for_id(self, session_id: str) -> SessionSource | None:
         """Best-effort origin lookup for gateway session IDs."""
         lookup = getattr(type(self.session_store), "lookup_by_session_id", None)
         if callable(lookup):
@@ -590,7 +591,7 @@ class GatewaySlashCommandsMixin:
         return None
 
     @staticmethod
-    def _same_matrix_room(current: SessionSource, origin: Optional[SessionSource]) -> bool:
+    def _same_matrix_room(current: SessionSource, origin: SessionSource | None) -> bool:
         return (
             origin is not None
             and origin.platform == Platform.MATRIX
@@ -689,7 +690,7 @@ class GatewaySlashCommandsMixin:
 
         return "\n".join(lines)
 
-    async def _handle_stop_command(self, event: MessageEvent) -> Union[str, EphemeralReply]:
+    async def _handle_stop_command(self, event: MessageEvent) -> str | EphemeralReply:
         """Handle /stop command - interrupt a running agent.
 
         When an agent is truly hung (blocked thread that never checks
@@ -845,7 +846,7 @@ class GatewaySlashCommandsMixin:
             "  /platform resume <name> — re-queue a paused platform"
         )
 
-    async def _handle_restart_command(self, event: MessageEvent) -> Union[str, EphemeralReply]:
+    async def _handle_restart_command(self, event: MessageEvent) -> str | EphemeralReply:
         """Handle /restart command - drain active work, then restart the gateway."""
         from gateway.run import _prostor_home
         # Defensive idempotency check: if the previous gateway process
@@ -1029,7 +1030,7 @@ class GatewaySlashCommandsMixin:
             getattr(getattr(event, "source", None), "platform", None),
         )
 
-    async def _handle_model_command(self, event: MessageEvent) -> Optional[str]:
+    async def _handle_model_command(self, event: MessageEvent) -> str | None:
         """Handle /model command — switch model.
 
         Supports:
@@ -1040,13 +1041,17 @@ class GatewaySlashCommandsMixin:
           /model <name> --provider <provider> — switch provider + model
           /model --provider <provider>        — switch to provider, auto-detect model
         """
-        from gateway.run import _prostor_home, _load_gateway_config
         import yaml
+
+        from gateway.run import _load_gateway_config, _prostor_home
         from prostor_cli.model_switch import (
-            switch_model as _switch_model, parse_model_flags,
-            resolve_persist_behavior,
             list_authenticated_providers,
             list_picker_providers,
+            parse_model_flags,
+            resolve_persist_behavior,
+        )
+        from prostor_cli.model_switch import (
+            switch_model as _switch_model,
         )
         from prostor_cli.providers import get_label
 
@@ -1587,7 +1592,7 @@ class GatewaySlashCommandsMixin:
 
     async def _handle_personality_command(self, event: MessageEvent) -> str:
         """Handle /personality command - list or set a personality."""
-        from gateway.run import _prostor_home, _load_gateway_config
+        from gateway.run import _load_gateway_config, _prostor_home
         from prostor_constants import display_prostor_home
 
         args = event.get_command_args().strip().lower()
@@ -1691,7 +1696,7 @@ class GatewaySlashCommandsMixin:
         # Let the normal message handler process it
         return await self._handle_message(retry_event)
 
-    async def _handle_goal_command(self, event: "MessageEvent") -> str:
+    async def _handle_goal_command(self, event: MessageEvent) -> str:
         """Handle /goal for gateway platforms.
 
         Subcommands: ``/goal`` / ``/goal status`` / ``/goal pause`` /
@@ -1768,7 +1773,7 @@ class GatewaySlashCommandsMixin:
 
         return t("gateway.goal.set", budget=state.max_turns, goal=state.goal)
 
-    async def _handle_subgoal_command(self, event: "MessageEvent") -> str:
+    async def _handle_subgoal_command(self, event: MessageEvent) -> str:
         """Handle /subgoal for gateway platforms (mirror of CLI handler).
 
         Subgoals are extra criteria appended to the active goal mid-loop.
@@ -2095,8 +2100,9 @@ class GatewaySlashCommandsMixin:
             /reasoning show|on               Show model reasoning in responses
             /reasoning hide|off              Hide model reasoning from responses
         """
-        from gateway.run import _prostor_home, _platform_config_key
         import yaml
+
+        from gateway.run import _platform_config_key, _prostor_home
 
         raw_args = event.get_command_args().strip()
         args, persist_global = self._parse_reasoning_command_args(raw_args)
@@ -2310,8 +2316,9 @@ class GatewaySlashCommandsMixin:
 
     async def _handle_fast_command(self, event: MessageEvent) -> str:
         """Handle /fast — mirror the CLI Priority Processing toggle in gateway chats."""
-        from gateway.run import _prostor_home, _load_gateway_config, _resolve_gateway_model
         import yaml
+
+        from gateway.run import _load_gateway_config, _prostor_home, _resolve_gateway_model
         from prostor_cli.models import model_supports_fast_mode
 
         args = event.get_command_args().strip().lower()
@@ -2362,7 +2369,7 @@ class GatewaySlashCommandsMixin:
             return t("gateway.fast.saved", label=label)
         return t("gateway.fast.session_only", label=label)
 
-    async def _handle_yolo_command(self, event: MessageEvent) -> Union[str, EphemeralReply]:
+    async def _handle_yolo_command(self, event: MessageEvent) -> str | EphemeralReply:
         """Handle /yolo — toggle dangerous command approval bypass for this session only."""
         from tools.approval import (
             disable_session_yolo,
@@ -2388,7 +2395,7 @@ class GatewaySlashCommandsMixin:
         ``display.platforms.<platform>.tool_progress`` so each channel can
         have its own verbosity level independently.
         """
-        from gateway.run import _prostor_home, _load_gateway_config, _platform_config_key
+        from gateway.run import _load_gateway_config, _platform_config_key, _prostor_home
 
         config_path = _prostor_home / "config.yaml"
         platform_key = _platform_config_key(event.source.platform)
@@ -2456,7 +2463,7 @@ class GatewaySlashCommandsMixin:
         are respected but not modified here — edit config.yaml directly for
         per-platform control.
         """
-        from gateway.run import _prostor_home, _load_gateway_config, _platform_config_key, _resolve_gateway_model
+        from gateway.run import _load_gateway_config, _platform_config_key, _prostor_home, _resolve_gateway_model
         from gateway.runtime_footer import resolve_footer_config
 
         config_path = _prostor_home / "config.yaml"
@@ -2559,9 +2566,9 @@ class GatewaySlashCommandsMixin:
         partial, keep_last, focus_topic = parse_partial_compress_args(_raw_args)
 
         try:
-            from run_agent import AIAgent
             from agent.manual_compression_feedback import summarize_manual_compression
             from agent.model_metadata import estimate_request_tokens_rough
+            from run_agent import AIAgent
 
             session_key = self._session_key_for_source(source)
             model, runtime_kwargs = self._resolve_session_agent_runtime(
@@ -3403,8 +3410,8 @@ class GatewaySlashCommandsMixin:
                     i += 1
 
         try:
-            from prostor_state import SessionDB
             from agent.insights import InsightsEngine
+            from prostor_state import SessionDB
 
             loop = asyncio.get_running_loop()
 
@@ -3421,7 +3428,7 @@ class GatewaySlashCommandsMixin:
             logger.error("Insights command error: %s", e, exc_info=True)
             return t("gateway.insights.error", error=e)
 
-    async def _handle_reload_mcp_command(self, event: MessageEvent) -> Optional[str]:
+    async def _handle_reload_mcp_command(self, event: MessageEvent) -> str | None:
         """Handle /reload-mcp — reconnect MCP servers and rebuild the cached agent.
 
         Reloading MCP tools invalidates the provider prompt cache for the
@@ -3455,7 +3462,7 @@ class GatewaySlashCommandsMixin:
         # stores the resume handler; the button/text response triggers
         # ``_resolve_slash_confirm`` which invokes the handler with the
         # chosen outcome.
-        async def _on_confirm(choice: str) -> Optional[str]:
+        async def _on_confirm(choice: str) -> str | None:
             if choice == "cancel":
                 return t("gateway.reload_mcp.cancelled")
             if choice == "always":
@@ -3592,7 +3599,7 @@ class GatewaySlashCommandsMixin:
         invoking the bundle's own ``/<slug>`` command, not by this one.
         """
         try:
-            from agent.skill_bundles import list_bundles, _bundles_dir
+            from agent.skill_bundles import _bundles_dir, list_bundles
         except Exception as exc:
             logger.warning("Bundles command unavailable: %s", exc)
             return f"Bundles subsystem unavailable: {exc}"
@@ -3619,7 +3626,7 @@ class GatewaySlashCommandsMixin:
         lines.append("Invoke a bundle with `/<slug>` to load all its skills.")
         return "\n".join(lines)
 
-    async def _handle_approve_command(self, event: MessageEvent) -> Optional[str]:
+    async def _handle_approve_command(self, event: MessageEvent) -> str | None:
         """Handle /approve command — unblock waiting agent thread(s).
 
         The agent thread(s) are blocked inside tools/approval.py waiting for
@@ -3643,7 +3650,8 @@ class GatewaySlashCommandsMixin:
         session_key = self._session_key_for_source(source)
 
         from tools.approval import (
-            resolve_gateway_approval, has_blocking_approval,
+            has_blocking_approval,
+            resolve_gateway_approval,
         )
 
         if not has_blocking_approval(session_key):
@@ -3689,7 +3697,8 @@ class GatewaySlashCommandsMixin:
         session_key = self._session_key_for_source(source)
 
         from tools.approval import (
-            resolve_gateway_approval, has_blocking_approval,
+            has_blocking_approval,
+            resolve_gateway_approval,
         )
 
         if not has_blocking_approval(session_key):
@@ -3723,10 +3732,14 @@ class GatewaySlashCommandsMixin:
         full log uploads should use ``prostor debug share`` from the CLI.
         """
         import asyncio
+
         from prostor_cli.debug import (
-            _capture_dump, collect_debug_report,
-            upload_to_pastebin, _schedule_auto_delete,
-            _GATEWAY_PRIVACY_NOTICE, _best_effort_sweep_expired_pastes,
+            _GATEWAY_PRIVACY_NOTICE,
+            _best_effort_sweep_expired_pastes,
+            _capture_dump,
+            _schedule_auto_delete,
+            collect_debug_report,
+            upload_to_pastebin,
         )
 
         loop = asyncio.get_running_loop()
@@ -3767,12 +3780,13 @@ class GatewaySlashCommandsMixin:
         files are written so either the current gateway process or the next one
         can notify the user when the update finishes.
         """
-        from gateway.run import _prostor_home, _resolve_prostor_bin
         import json
         import shutil
         import subprocess
         from datetime import datetime
-        from prostor_cli.config import is_managed, format_managed_message
+
+        from gateway.run import _prostor_home, _resolve_prostor_bin
+        from prostor_cli.config import format_managed_message, is_managed
 
         # Block non-messaging platforms (API server, webhooks, ACP)
         platform = event.source.platform
@@ -3848,6 +3862,7 @@ class GatewaySlashCommandsMixin:
         try:
             if sys.platform == "win32":
                 import textwrap
+
                 from prostor_cli._subprocess_compat import windows_detach_popen_kwargs
 
                 # prostor_cmd is a list of argv parts we can pass directly

@@ -1,9 +1,9 @@
 """Tests for save_config_value() in cli.py — atomic write behavior."""
 
-import yaml
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 
 
 class TestSaveConfigValueAtomic:

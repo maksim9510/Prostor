@@ -64,7 +64,7 @@ class _MockPluginContext:
         check_fn: Any,
         **kwargs: Any,
     ) -> None:
-        from gateway.platform_registry import platform_registry, PlatformEntry
+        from gateway.platform_registry import PlatformEntry, platform_registry
 
         entry = PlatformEntry(
             name=name,

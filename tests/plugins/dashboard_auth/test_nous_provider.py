@@ -21,7 +21,7 @@ import hashlib
 import json
 import time
 import urllib.parse
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -40,14 +40,13 @@ from prostor_cli.dashboard_auth import (
     assert_protocol_compliance,
 )
 
-
 # ---------------------------------------------------------------------------
 # RSA keypair fixture (module-scope — keygen is slow)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
-def rsa_keypair() -> Dict[str, Any]:
+def rsa_keypair() -> dict[str, Any]:
     """Generate an RS256 keypair + matching JWK for verify_session tests."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     private_pem = key.private_bytes(
@@ -80,7 +79,7 @@ def rsa_keypair() -> Dict[str, Any]:
 
 
 def _mint_token(
-    rsa_keypair: Dict[str, Any],
+    rsa_keypair: dict[str, Any],
     *,
     iss: str = "https://portal.example.com",
     aud: str = "agent:inst123",
@@ -90,7 +89,7 @@ def _mint_token(
     org_id: str | None = "org_xyz",
     scope: str = "agent_dashboard:access",
     ttl_seconds: int = 900,
-    extra_claims: Dict[str, Any] | None = None,
+    extra_claims: dict[str, Any] | None = None,
 ) -> str:
     now = int(time.time())
     claims = {
@@ -259,7 +258,7 @@ class TestConfigYamlSource:
         with a stub returning the given dict. Tests pass the intended
         ``dashboard.oauth`` block; the stub returns the wrapping structure."""
 
-        def _set(oauth_block: Dict[str, Any] | None) -> None:
+        def _set(oauth_block: dict[str, Any] | None) -> None:
             cfg = {}
             if oauth_block is not None:
                 cfg = {"dashboard": {"oauth": oauth_block}}

@@ -15,7 +15,7 @@ Covers:
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 
@@ -27,9 +27,9 @@ class _FakeProvider(TranscriptionProvider):
     def __init__(
         self,
         name: str = "fake",
-        display: Optional[str] = None,
+        display: str | None = None,
         available: bool = True,
-        transcribe_impl: Optional[Any] = None,
+        transcribe_impl: Any | None = None,
     ):
         self._name = name
         self._display = display

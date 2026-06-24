@@ -15,16 +15,15 @@ Features:
 
 Usage:
     from toolsets import get_toolset, resolve_toolset, get_all_toolsets
-    
+
     # Get tools for a specific toolset
     tools = get_toolset("research")
-    
+
     # Resolve a toolset to get all tool names (including from composed toolsets)
     all_tools = resolve_toolset("full_stack")
 """
 
-from typing import List, Dict, Any, Set, Optional
-
+from typing import Any
 
 # Shared tool list for CLI and all messaging platform toolsets.
 # Edit this once to update all platforms simultaneously.
@@ -575,13 +574,13 @@ TOOLSETS = {
 }
 
 
-def get_toolset(name: str) -> Optional[Dict[str, Any]]:
+def get_toolset(name: str) -> dict[str, Any] | None:
     """
     Get a toolset definition by name.
-    
+
     Args:
         name (str): Name of the toolset
-        
+
     Returns:
         Dict: Toolset definition with description, tools, and includes
         None: If toolset not found
@@ -626,17 +625,17 @@ def get_toolset(name: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def resolve_toolset(name: str, visited: Set[str] = None) -> List[str]:
+def resolve_toolset(name: str, visited: set[str] = None) -> list[str]:
     """
     Recursively resolve a toolset to get all tool names.
-    
+
     This function handles toolset composition by recursively resolving
     included toolsets and combining all tools.
-    
+
     Args:
         name (str): Name of the toolset to resolve
         visited (Set[str]): Set of already visited toolsets (for cycle detection)
-        
+
     Returns:
         List[str]: List of all tool names in the toolset
     """
@@ -646,7 +645,7 @@ def resolve_toolset(name: str, visited: Set[str] = None) -> List[str]:
     # Special aliases that represent all tools across every toolset
     # This ensures future toolsets are automatically included without changes.
     if name in {"all", "*"}:
-        all_tools: Set[str] = set()
+        all_tools: set[str] = set()
         for toolset_name in get_toolset_names():
             # Use a fresh visited set per branch to avoid cross-branch contamination
             resolved = resolve_toolset(toolset_name, visited.copy())
@@ -700,13 +699,13 @@ def resolve_toolset(name: str, visited: Set[str] = None) -> List[str]:
     return sorted(tools)
 
 
-def resolve_multiple_toolsets(toolset_names: List[str]) -> List[str]:
+def resolve_multiple_toolsets(toolset_names: list[str]) -> list[str]:
     """
     Resolve multiple toolsets and combine their tools.
-    
+
     Args:
         toolset_names (List[str]): List of toolset names to resolve
-        
+
     Returns:
         List[str]: Combined list of all tool names (deduplicated)
     """
@@ -719,7 +718,7 @@ def resolve_multiple_toolsets(toolset_names: List[str]) -> List[str]:
     return sorted(all_tools)
 
 
-def _get_plugin_toolset_names() -> Set[str]:
+def _get_plugin_toolset_names() -> set[str]:
     """Return toolset names registered by plugins (from the tool registry).
 
     These are toolsets that exist in the registry but not in the static
@@ -736,7 +735,7 @@ def _get_plugin_toolset_names() -> Set[str]:
         return set()
 
 
-def _get_registry_toolset_aliases() -> Dict[str, str]:
+def _get_registry_toolset_aliases() -> dict[str, str]:
     """Return explicit toolset aliases registered in the live registry."""
     try:
         from tools.registry import registry
@@ -745,12 +744,12 @@ def _get_registry_toolset_aliases() -> Dict[str, str]:
         return {}
 
 
-def get_all_toolsets() -> Dict[str, Dict[str, Any]]:
+def get_all_toolsets() -> dict[str, dict[str, Any]]:
     """
     Get all available toolsets with their definitions.
 
     Includes both statically-defined toolsets and plugin-registered ones.
-    
+
     Returns:
         Dict: All toolset definitions
     """
@@ -770,12 +769,12 @@ def get_all_toolsets() -> Dict[str, Dict[str, Any]]:
     return result
 
 
-def get_toolset_names() -> List[str]:
+def get_toolset_names() -> list[str]:
     """
     Get names of all available toolsets (excluding aliases).
 
     Includes plugin-registered toolset names.
-    
+
     Returns:
         List[str]: List of toolset names
     """
@@ -794,10 +793,10 @@ def get_toolset_names() -> List[str]:
 def validate_toolset(name: str) -> bool:
     """
     Check if a toolset name is valid.
-    
+
     Args:
         name (str): Toolset name to validate
-        
+
     Returns:
         bool: True if valid, False otherwise
     """
@@ -814,12 +813,12 @@ def validate_toolset(name: str) -> bool:
 def create_custom_toolset(
     name: str,
     description: str,
-    tools: List[str] = None,
-    includes: List[str] = None
+    tools: list[str] = None,
+    includes: list[str] = None
 ) -> None:
     """
     Create a custom toolset at runtime.
-    
+
     Args:
         name (str): Name for the new toolset
         description (str): Description of the toolset
@@ -833,13 +832,13 @@ def create_custom_toolset(
     }
 
 
-def get_toolset_info(name: str) -> Dict[str, Any]:
+def get_toolset_info(name: str) -> dict[str, Any]:
     """
     Get detailed information about a toolset including resolved tools.
-    
+
     Args:
         name (str): Toolset name
-        
+
     Returns:
         Dict: Detailed toolset information
     """

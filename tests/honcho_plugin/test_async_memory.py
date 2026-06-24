@@ -13,17 +13,16 @@ import json
 import time
 from unittest.mock import MagicMock, patch
 
-
 from plugins.memory.honcho.client import HonchoClientConfig
 from plugins.memory.honcho.session import (
     HonchoSession,
     HonchoSessionManager,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_session(**kwargs) -> HonchoSession:
     return HonchoSession(

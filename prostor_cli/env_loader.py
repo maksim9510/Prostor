@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from utils import atomic_replace
 
+from utils import atomic_replace
 
 # Env var name suffixes that indicate credential values.  These are the
 # only env vars whose values we sanitize on load — we must not silently
@@ -370,7 +370,7 @@ def _load_secrets_config(home_path: Path) -> dict:
     except ImportError:
         return {}
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except Exception:  # noqa: BLE001
         return {}

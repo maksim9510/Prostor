@@ -301,9 +301,9 @@ async def test_gateway_stop_kills_tool_subprocesses_before_adapter_disconnect_on
         call_order.append("disconnect")
 
     # Patch the module-level names the stop() helper imports lazily.
+    import tools.browser_tool as _bt
     import tools.process_registry as _pr
     import tools.terminal_tool as _tt
-    import tools.browser_tool as _bt
     monkeypatch.setattr(_pr.process_registry, "kill_all", _fake_kill_all)
     monkeypatch.setattr(_tt, "cleanup_all_environments", _fake_cleanup_envs)
     monkeypatch.setattr(_bt, "cleanup_all_browsers", _fake_cleanup_browsers)
@@ -345,9 +345,9 @@ async def test_gateway_stop_kills_tool_subprocesses_on_graceful_path(monkeypatch
         kill_count += 1
         return 0
 
+    import tools.browser_tool as _bt
     import tools.process_registry as _pr
     import tools.terminal_tool as _tt
-    import tools.browser_tool as _bt
     monkeypatch.setattr(_pr.process_registry, "kill_all", _fake_kill_all)
     monkeypatch.setattr(_tt, "cleanup_all_environments", lambda: None)
     monkeypatch.setattr(_bt, "cleanup_all_browsers", lambda: None)

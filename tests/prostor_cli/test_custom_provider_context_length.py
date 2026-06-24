@@ -209,7 +209,7 @@ class TestGetModelContextLengthHonorsOverride:
         """With custom_providers=None and all probes disabled, resolver
         returns DEFAULT_FALLBACK_CONTEXT (256K after the stepdown bump).
         """
-        from agent.model_metadata import get_model_context_length, DEFAULT_FALLBACK_CONTEXT
+        from agent.model_metadata import DEFAULT_FALLBACK_CONTEXT, get_model_context_length
         patches = self._mock_all_probes()
         for p in patches:
             p.start()
@@ -234,7 +234,7 @@ class TestContextProbeTiers:
         assert CONTEXT_PROBE_TIERS[0] == 256_000
         assert DEFAULT_FALLBACK_CONTEXT == 256_000
         # Tiers still descend monotonically
-        for a, b in zip(CONTEXT_PROBE_TIERS, CONTEXT_PROBE_TIERS[1:]):
+        for a, b in zip(CONTEXT_PROBE_TIERS, CONTEXT_PROBE_TIERS[1:], strict=False):
             assert a > b, f"tiers must strictly descend, got {a} then {b}"
         # 128K is still a tier (users relying on it probe-down get there)
         assert 128_000 in CONTEXT_PROBE_TIERS
