@@ -26,10 +26,9 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Callable
 from datetime import datetime
-from typing import Any
-from urllib.parse import parse_qs, urlparse, urlunparse
+from typing import Any, Callable, Dict, List, Optional
+from urllib.parse import urlparse, parse_qs, urlunparse
 
 from agent.context_compressor import ContextCompressor
 from agent.iteration_budget import IterationBudget
@@ -50,7 +49,7 @@ from agent.tool_guardrails import (
 )
 from prostor_cli.config import cfg_get
 from prostor_cli.timeouts import get_provider_request_timeout
-from prostor_core import get_prostor_home
+from prostor_constants import get_prostor_home
 from utils import base_url_host_matches, is_truthy_value
 
 # Use the same logger name as run_agent so tests patching ``run_agent.logger``
@@ -69,7 +68,7 @@ def _ra():
     return run_agent
 
 
-def _build_codex_gpt55_autoraise_notice(autoraise: dict[str, float]) -> str:
+def _build_codex_gpt55_autoraise_notice(autoraise: Dict[str, float]) -> str:
     """Build the one-time notice shown when Codex gpt-5.5 raises compaction.
 
     ``autoraise`` is ``{"from": <old_ratio>, "to": <new_ratio>}``. The same
@@ -93,7 +92,7 @@ def _normalized_custom_base_url(value: Any) -> str:
     return value.strip().rstrip("/")
 
 
-def _custom_provider_model_matches(agent_model: str, entry: dict[str, Any]) -> bool:
+def _custom_provider_model_matches(agent_model: str, entry: Dict[str, Any]) -> bool:
     provider_model = str(entry.get("model", "") or "").strip().lower()
     if not provider_model:
         return True
@@ -105,8 +104,8 @@ def _custom_provider_extra_body_for_agent(
     provider: str,
     model: str,
     base_url: str,
-    custom_providers: list[dict[str, Any]],
-) -> dict[str, Any] | None:
+    custom_providers: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
     if (provider or "").strip().lower() != "custom":
         return None
 
@@ -114,7 +113,7 @@ def _custom_provider_extra_body_for_agent(
     if not target_url:
         return None
 
-    fallback: dict[str, Any] | None = None
+    fallback: Optional[Dict[str, Any]] = None
     for entry in custom_providers or []:
         if not isinstance(entry, dict):
             continue
@@ -133,7 +132,7 @@ def _custom_provider_extra_body_for_agent(
     return fallback
 
 
-def _merge_custom_provider_extra_body(agent, custom_providers: list[dict[str, Any]]) -> None:
+def _merge_custom_provider_extra_body(agent, custom_providers: List[Dict[str, Any]]) -> None:
     extra_body = _custom_provider_extra_body_for_agent(
         provider=agent.provider,
         model=agent.model,
@@ -165,8 +164,8 @@ def init_agent(
     model: str = "",
     max_iterations: int = 90,  # Default tool-calling iterations (shared with subagents)
     tool_delay: float = 1.0,
-    enabled_toolsets: list[str] = None,
-    disabled_toolsets: list[str] = None,
+    enabled_toolsets: List[str] = None,
+    disabled_toolsets: List[str] = None,
     save_trajectories: bool = False,
     verbose_logging: bool = False,
     quiet_mode: bool = False,
@@ -174,13 +173,13 @@ def init_agent(
     ephemeral_system_prompt: str = None,
     log_prefix_chars: int = 100,
     log_prefix: str = "",
-    providers_allowed: list[str] = None,
-    providers_ignored: list[str] = None,
-    providers_order: list[str] = None,
+    providers_allowed: List[str] = None,
+    providers_ignored: List[str] = None,
+    providers_order: List[str] = None,
     provider_sort: str = None,
     provider_require_parameters: bool = False,
     provider_data_collection: str = None,
-    openrouter_min_coding_score: float | None = None,
+    openrouter_min_coding_score: Optional[float] = None,
     session_id: str = None,
     tool_progress_callback: callable = None,
     tool_start_callback: callable = None,
@@ -196,12 +195,12 @@ def init_agent(
     status_callback: callable = None,
     notice_callback: callable = None,
     notice_clear_callback: callable = None,
-    event_callback: Callable[[str, dict], None] | None = None,
+    event_callback: Optional[Callable[[str, dict], None]] = None,
     max_tokens: int = None,
-    reasoning_config: dict[str, Any] = None,
+    reasoning_config: Dict[str, Any] = None,
     service_tier: str = None,
-    request_overrides: dict[str, Any] = None,
-    prefill_messages: list[dict[str, Any]] = None,
+    request_overrides: Dict[str, Any] = None,
+    prefill_messages: List[Dict[str, Any]] = None,
     platform: str = None,
     user_id: str = None,
     user_id_alt: str = None,
@@ -216,8 +215,8 @@ def init_agent(
     skip_memory: bool = False,
     session_db=None,
     parent_session_id: str = None,
-    iteration_budget: IterationBudget = None,
-    fallback_model: dict[str, Any] = None,
+    iteration_budget: "IterationBudget" = None,
+    fallback_model: Dict[str, Any] = None,
     credential_pool=None,
     checkpoints_enabled: bool = False,
     checkpoint_max_snapshots: int = 20,
@@ -266,7 +265,8 @@ def init_agent(
             output_config.format instead of a trailing-assistant prefill.
         platform (str): The interface platform the user is on (e.g. "cli", "telegram", "discord", "whatsapp").
             Used to inject platform-specific formatting hints into the system prompt.
-        skip_context_files (bool): If True, skip auto-injection of SOUL.md, AGENTS.md, and .cursorrules
+        skip_context_files (bool): If True, skip auto-injection of project context files
+            (SOUL.md, .prostor.md, AGENTS.md, CLAUDE.md, .cursorrules) from the cwd / PROSTOR_HOME
             into the system prompt. Use this for batch processing and data generation to avoid
             polluting trajectories with user-specific persona or project instructions.
         load_soul_identity (bool): If True, still use ~/.prostor/SOUL.md as the primary
@@ -431,6 +431,7 @@ def init_agent(
     agent.event_callback = event_callback
     agent.tool_gen_callback = tool_gen_callback
 
+    
     # Tool execution state — allows _vprint during tool execution
     # even when stream consumers are registered (no tokens streaming then)
     agent._executing_tools = False
@@ -451,7 +452,7 @@ def init_agent(
     # last tool result's content so the model sees it on its next
     # iteration. Message-role alternation is preserved (we modify an
     # existing tool message rather than inserting a new user turn).
-    agent._pending_steer: str | None = None
+    agent._pending_steer: Optional[str] = None
     agent._pending_steer_lock = threading.Lock()
 
     # Concurrent-tool worker thread tracking.  `_execute_tool_calls_concurrent`
@@ -463,12 +464,12 @@ def init_agent(
     # their tids explicitly.
     agent._tool_worker_threads: set[int] = set()
     agent._tool_worker_threads_lock = threading.Lock()
-
+    
     # Subagent delegation state
     agent._delegate_depth = 0        # 0 = top-level agent, incremented for children
     agent._active_children = []      # Running child AIAgents (for interrupt propagation)
     agent._active_children_lock = threading.Lock()
-
+    
     # Store OpenRouter provider preferences
     agent.providers_allowed = providers_allowed
     agent.providers_ignored = providers_ignored
@@ -481,7 +482,7 @@ def init_agent(
     # Store toolset filtering options
     agent.enabled_toolsets = enabled_toolsets
     agent.disabled_toolsets = disabled_toolsets
-
+    
     # Model response configuration
     agent.max_tokens = max_tokens  # None = use model default
     agent.reasoning_config = reasoning_config  # None = use default (medium for OpenRouter)
@@ -489,7 +490,7 @@ def init_agent(
     agent.request_overrides = dict(request_overrides or {})
     agent.prefill_messages = prefill_messages or []  # Prefilled conversation turns
     agent._force_ascii_payload = False
-
+    
     # Anthropic prompt caching: auto-enabled for Claude models on native
     # Anthropic, OpenRouter, and third-party gateways that speak the
     # Anthropic protocol (``api_mode == 'anthropic_messages'``). Reduces
@@ -541,7 +542,7 @@ def init_agent(
     agent._tool_snapshot_generation = 0
     # Rate limit tracking — updated from x-ratelimit-* response headers
     # after each API call.  Accessed by /usage slash command.
-    agent._rate_limit_state: RateLimitState | None = None
+    agent._rate_limit_state: Optional["RateLimitState"] = None
 
     # Credits tracking (dev-only, L0 usage-aware-credits) — updated from
     # x-nous-credits-* response headers after each API call.  Session-start
@@ -577,7 +578,7 @@ def init_agent(
         # console. Any future noise reduction belongs at the
         # handler level inside prostor_logging.py, not here.
         pass
-
+    
     # Internal stream callback (set during streaming TTS).
     # Initialized here so _vprint can reference it before run_conversation.
     agent._stream_callback = None
@@ -611,7 +612,7 @@ def init_agent(
     # Cache anthropic image-to-text fallbacks per image payload/URL so a
     # single tool loop does not repeatedly re-run auxiliary vision on the
     # same image history.
-    agent._anthropic_image_fallback_cache: dict[str, str] = {}
+    agent._anthropic_image_fallback_cache: Dict[str, str] = {}
 
     # Initialize LLM client via centralized provider router.
     # The router handles auth resolution, base URL, headers, and
@@ -808,6 +809,8 @@ def init_agent(
                 # _default_headers instead.
                 _routed_headers = getattr(_routed_client, "_custom_headers", None)
                 if not _routed_headers:
+                    _routed_headers = getattr(_routed_client, "default_headers", None)
+                if not _routed_headers:
                     _routed_headers = getattr(_routed_client, "_default_headers", None)
                 if _routed_headers:
                     client_kwargs["default_headers"] = dict(_routed_headers)
@@ -861,6 +864,8 @@ def init_agent(
                                 client_kwargs["timeout"] = _provider_timeout
                             _fb_headers = getattr(_fb_client, "_custom_headers", None)
                             if not _fb_headers:
+                                _fb_headers = getattr(_fb_client, "default_headers", None)
+                            if not _fb_headers:
                                 _fb_headers = getattr(_fb_client, "_default_headers", None)
                             if _fb_headers:
                                 client_kwargs["default_headers"] = dict(_fb_headers)
@@ -879,7 +884,7 @@ def init_agent(
                         "select a provider, or run `prostor setup` for first-time "
                         "configuration."
                     )
-
+        
         agent._client_kwargs = client_kwargs  # stored for rebuilding after interrupt
 
         # Enable fine-grained tool streaming for Claude on OpenRouter.
@@ -934,7 +939,7 @@ def init_agent(
                     print("⚠️  Warning: API key appears invalid or missing")
         except Exception as e:
             raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
-
+    
     # Provider fallback chain — ordered list of backup providers tried
     # when the primary is exhausted (rate-limit, overload, connection
     # failure).  Supports both legacy single-dict ``fallback_model`` and
@@ -973,7 +978,7 @@ def init_agent(
         disabled_toolsets=disabled_toolsets,
         quiet_mode=agent.quiet_mode,
     )
-
+    
     # Show tool configuration and store valid tool names for validation
     agent.valid_tool_names = set()
     if agent.tools:
@@ -1006,16 +1011,16 @@ def init_agent(
         missing_reqs = [name for name, available in requirements.items() if not available]
         if missing_reqs:
             print(f"⚠️  Some tools may not work due to missing requirements: {missing_reqs}")
-
+    
     # Show trajectory saving status
     if agent.save_trajectories and not agent.quiet_mode:
         print("📝 Trajectory saving enabled")
-
+    
     # Show ephemeral system prompt status
     if agent.ephemeral_system_prompt and not agent.quiet_mode:
         prompt_preview = agent.ephemeral_system_prompt[:60] + "..." if len(agent.ephemeral_system_prompt) > 60 else agent.ephemeral_system_prompt
         print(f"🔒 Ephemeral system prompt: '{prompt_preview}' (not saved to trajectories)")
-
+    
     # Show prompt caching status
     if agent._use_prompt_caching and not agent.quiet_mode:
         if agent._use_native_cache_layout and agent.provider == "anthropic":
@@ -1025,7 +1030,7 @@ def init_agent(
         else:
             source = "Claude via OpenRouter"
         print(f"💾 Prompt caching: ENABLED ({source}, {agent._cache_ttl} TTL)")
-
+    
     # Session logging setup - auto-save conversation trajectories for debugging
     agent.session_start = datetime.now()
     if session_id:
@@ -1065,9 +1070,9 @@ def init_agent(
         pass
     # logs_dir is retained unconditionally for request_dump_*.json (debug
     # breadcrumb path written by agent_runtime_helpers.dump_api_request_debug).
-
+    
     # Track conversation messages for session logging
-    agent._session_messages: list[dict[str, Any]] = []
+    agent._session_messages: List[Dict[str, Any]] = []
     # Responses encrypted reasoning replay state.  Some OpenAI-compatible
     # routes accept GPT-5 Responses requests but later reject replayed
     # encrypted reasoning blobs (HTTP 400 ``invalid_encrypted_content``).
@@ -1077,10 +1082,10 @@ def init_agent(
     agent._codex_reasoning_replay_enabled = True
     agent._memory_write_origin = "assistant_tool"
     agent._memory_write_context = "foreground"
-
+    
     # Cached system prompt -- built once per session, only rebuilt on compression
-    agent._cached_system_prompt: str | None = None
-
+    agent._cached_system_prompt: Optional[str] = None
+    
     # Filesystem checkpoint manager (transparent — not a tool)
     from tools.checkpoint_manager import CheckpointManager
     agent._checkpoint_mgr = CheckpointManager(
@@ -1089,22 +1094,28 @@ def init_agent(
         max_total_size_mb=checkpoint_max_total_size_mb,
         max_file_size_mb=checkpoint_max_file_size_mb,
     )
-
+    
     # SQLite session store (optional -- provided by CLI or gateway)
     agent._session_db = session_db
     agent._parent_session_id = parent_session_id
     agent._last_flushed_db_idx = 0  # tracks DB-write cursor to prevent duplicate writes
     agent._session_db_created = False  # DB row deferred to run_conversation()
+    # Most agents own their session row and should finalize it on close().
+    # Some temporary helper agents (manual compression / session-hygiene /
+    # background-review forks) rotate or share the session forward to a
+    # continuation row that must remain open after the helper is torn down;
+    # those callers explicitly set this flag to False.
+    agent._end_session_on_close = True
     agent._session_init_model_config = {
         "max_iterations": agent.max_iterations,
         "reasoning_config": reasoning_config,
         "max_tokens": max_tokens,
     }
-
+    
     # In-memory todo list for task planning (one per agent/session)
     from tools.todo_tool import TodoStore
     agent._todo_store = TodoStore()
-
+    
     # Load config once for memory, skills, and compression sections
     try:
         from prostor_cli.config import load_config as _load_agent_config
@@ -1146,6 +1157,8 @@ def init_agent(
                 agent._memory_store.load_from_disk()
         except Exception:
             pass  # Memory is optional -- don't break agent init
+    
+
 
     # Memory provider plugin (external — one at a time, alongside built-in)
     # Reads memory.provider from config to select which plugin to activate.
@@ -1298,8 +1311,6 @@ def init_agent(
     try:
         from agent.auxiliary_client import (
             _compression_threshold_for_model as _cthresh_fn,
-        )
-        from agent.auxiliary_client import (
             _is_codex_gpt55 as _is_codex_gpt55_fn,
         )
         _model_cthresh = _cthresh_fn(
@@ -1487,6 +1498,8 @@ def init_agent(
 
     agent._ensure_lmstudio_runtime_loaded(_config_context_length)
 
+
+
     # Select context engine: config-driven (like memory providers).
     # 1. Check config.yaml context.engine setting
     # 2. Check plugins/context_engine/<name>/ directory (repo-shipped)
@@ -1562,6 +1575,7 @@ def init_agent(
             provider=agent.provider,
             api_mode=agent.api_mode,
             abort_on_summary_failure=compression_abort_on_summary_failure,
+            max_tokens=agent.max_tokens,
         )
     agent.compression_enabled = compression_enabled
     agent.compression_in_place = compression_in_place
@@ -1650,7 +1664,7 @@ def init_agent(
     agent.session_estimated_cost_usd = 0.0
     agent.session_cost_status = "unknown"
     agent.session_cost_source = "none"
-
+    
     # ── Ollama num_ctx injection ──
     # Ollama defaults to 2048 context regardless of the model's capabilities.
     # When running against an Ollama server, detect the model's max context
@@ -1702,7 +1716,7 @@ def init_agent(
 
     if not agent.quiet_mode:
         if compression_enabled:
-            print(f"📊 Context limit: {agent.context_compressor.context_length:,} tokens (compress at {int(compression_threshold * 100)}% = {agent.context_compressor.threshold_tokens:,})")
+            print(f"📊 Context limit: {agent.context_compressor.context_length:,} tokens (compress at {int(compression_threshold*100)}% = {agent.context_compressor.threshold_tokens:,})")
         else:
             print(f"📊 Context limit: {agent.context_compressor.context_length:,} tokens (auto-compression disabled)")
         # One-time notice when the Codex gpt-5.5 autoraise kicked in, with the
@@ -1761,6 +1775,7 @@ def init_agent(
             "anthropic_base_url": agent._anthropic_base_url,
             "is_anthropic_oauth": agent._is_anthropic_oauth,
         })
+
 
 
 __all__ = ["init_agent"]
