@@ -45,7 +45,7 @@ def _build_full_manifest(
     to omit those three pieces and get a flat DM surface where ``/help``,
     ``/new``, etc. work inline.
     """
-    from hermes_cli.commands import slack_app_manifest
+    from prostor_cli.commands import slack_app_manifest
 
     partial = slack_app_manifest()
     slashes = partial["features"]["slash_commands"]
@@ -150,7 +150,7 @@ def slack_manifest_command(args) -> int:
     include_assistant = not getattr(args, "no_assistant", False)
 
     if getattr(args, "slashes_only", False):
-        from hermes_cli.commands import slack_app_manifest
+        from prostor_cli.commands import slack_app_manifest
 
         manifest = slack_app_manifest()["features"]["slash_commands"]
     else:

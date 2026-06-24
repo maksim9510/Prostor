@@ -25,7 +25,7 @@ from gateway.restart import (
     GATEWAY_SERVICE_RESTART_EXIT_CODE,
     parse_restart_drain_timeout,
 )
-from hermes_cli.config import (
+from prostor_cli.config import (
     get_env_value,
     get_hermes_home,
     is_managed,
@@ -37,7 +37,7 @@ from hermes_cli.config import (
 
 # display_hermes_home is imported lazily at call sites to avoid ImportError
 # when hermes_constants is cached from a pre-update version during `hermes update`.
-from hermes_cli.setup import (
+from prostor_cli.setup import (
     print_header,
     print_info,
     print_success,
@@ -47,7 +47,7 @@ from hermes_cli.setup import (
     prompt_choice,
     prompt_yes_no,
 )
-from hermes_cli.colors import Colors, color
+from prostor_cli.colors import Colors, color
 
 logger = logging.getLogger(__name__)
 
@@ -601,7 +601,7 @@ def find_profile_gateway_processes(
     processes: list[ProfileGatewayProcess] = []
     try:
         from gateway.status import get_running_pid
-        from hermes_cli.profiles import list_profiles
+        from prostor_cli.profiles import list_profiles
     except Exception:
         return processes
 
@@ -712,7 +712,7 @@ def _spawn_gateway_restart_watcher(old_pid: int, run_argv: list[str]) -> bool:
     #
     # ``windows_detach_popen_kwargs()`` returns the right kwargs for the
     # host platform and is a no-op on POSIX (just ``start_new_session=True``).
-    from hermes_cli._subprocess_compat import (
+    from prostor_cli._subprocess_compat import (
         windows_detach_flags_without_breakaway,
         windows_detach_popen_kwargs,
     )
@@ -1166,7 +1166,7 @@ def get_gateway_runtime_snapshot(system: bool = False) -> GatewayRuntimeSnapshot
         # Other container runtimes (or containers built before Phase 2)
         # still get the original "docker (foreground)" label.
         try:
-            from hermes_cli.service_manager import detect_service_manager, get_service_manager
+            from prostor_cli.service_manager import detect_service_manager, get_service_manager
             if detect_service_manager() == "s6":
                 profile = _profile_suffix() or "default"
                 service_name = f"gateway-{profile}"
@@ -1257,7 +1257,7 @@ def _print_other_profiles_gateway_status() -> None:
     avoid confusing another profile's process with the current one.
     """
     try:
-        from hermes_cli.profiles import get_active_profile_name
+        from prostor_cli.profiles import get_active_profile_name
 
         current = get_active_profile_name()
         other_processes = [
@@ -1282,7 +1282,7 @@ def _gateway_list() -> None:
     check each profile individually.
     """
     try:
-        from hermes_cli.profiles import list_profiles, get_active_profile_name
+        from prostor_cli.profiles import list_profiles, get_active_profile_name
     except Exception:
         print("Unable to list profiles.")
         return
@@ -3433,7 +3433,7 @@ def _spawn_detached_gateway() -> bool:
     gateway logs and the PID is tracked via the gateway.pid file that
     `run_gateway` writes, so stop/status/restart keep working.
     """
-    from hermes_cli._subprocess_compat import windows_detach_popen_kwargs
+    from prostor_cli._subprocess_compat import windows_detach_popen_kwargs
 
     log_dir = get_hermes_home() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -4583,7 +4583,7 @@ def _all_platforms() -> list[dict]:
     # User-installed platform plugins under ~/.hermes/plugins/ still require
     # opt-in via ``plugins.enabled`` (untrusted code).
     try:
-        from hermes_cli.plugins import discover_plugins
+        from prostor_cli.plugins import discover_plugins
 
         discover_plugins()
     except Exception as e:
@@ -4778,7 +4778,7 @@ def _setup_standard_platform(platform: dict):
         choice = prompt("  Choice [1/2]", default="1")
         if choice.strip() == "1":
             try:
-                from hermes_cli.telegram_managed_bot import (
+                from prostor_cli.telegram_managed_bot import (
                     auto_setup_telegram_bot_result,
                     is_valid_telegram_bot_token,
                 )
@@ -4942,7 +4942,7 @@ def _is_service_installed() -> bool:
     elif is_macos():
         return get_launchd_plist_path().exists()
     elif is_windows():
-        from hermes_cli import gateway_windows
+        from prostor_cli import gateway_windows
 
         return gateway_windows.is_installed()
     return False
@@ -4995,7 +4995,7 @@ def _is_service_running() -> bool:
         except subprocess.TimeoutExpired:
             return False
     elif is_windows():
-        from hermes_cli import gateway_windows
+        from prostor_cli import gateway_windows
 
         if gateway_windows.is_installed():
             # "installed" doesn't necessarily mean "running" on Windows. The
@@ -5439,7 +5439,7 @@ def _builtin_setup_fn(key: str):
     Late-bound to avoid a circular import with ``hermes_cli.setup`` (which
     imports from this module for the remaining bespoke flows).
     """
-    from hermes_cli import setup as _s
+    from prostor_cli import setup as _s
 
     return {
         # telegram moved into the plugin: setup_fn registered by
@@ -5649,7 +5649,7 @@ def gateway_setup():
                     elif is_macos():
                         launchd_restart()
                     elif is_windows():
-                        from hermes_cli import gateway_windows
+                        from prostor_cli import gateway_windows
 
                         gateway_windows.restart()
                     else:
@@ -5674,7 +5674,7 @@ def gateway_setup():
                     elif is_macos():
                         launchd_start()
                     elif is_windows():
-                        from hermes_cli import gateway_windows
+                        from prostor_cli import gateway_windows
 
                         gateway_windows.start()
                 except UserSystemdUnavailableError as e:
@@ -5714,7 +5714,7 @@ def gateway_setup():
                             launchd_install(force=False)
                             did_install = True
                         else:
-                            from hermes_cli import gateway_windows
+                            from prostor_cli import gateway_windows
 
                             gateway_windows.install(force=False)
                             did_install = True
@@ -5726,7 +5726,7 @@ def gateway_setup():
                                 elif is_macos():
                                     launchd_start()
                                 elif is_windows():
-                                    from hermes_cli import gateway_windows
+                                    from prostor_cli import gateway_windows
                                     gateway_windows.start()
                             except UserSystemdUnavailableError as e:
                                 print_error(
@@ -5794,7 +5794,7 @@ def _dispatch_via_service_manager_if_s6(
     :mod:`hermes_cli.service_manager` are caught and surfaced as
     actionable CLI messages (no raw ``CalledProcessError`` traceback).
     """
-    from hermes_cli.service_manager import (
+    from prostor_cli.service_manager import (
         GatewayNotRegisteredError,
         S6CommandError,
         detect_service_manager,
@@ -5849,7 +5849,7 @@ def _dispatch_all_via_service_manager_if_s6(action: str) -> bool:
     ``action`` is one of ``stop`` / ``restart`` (``start --all`` isn't
     a supported CLI surface).
     """
-    from hermes_cli.service_manager import (
+    from prostor_cli.service_manager import (
         detect_service_manager,
         get_service_manager,
     )
@@ -6072,7 +6072,7 @@ def _gateway_command_inner(args):
         elif is_macos():
             launchd_install(force)
         elif is_windows():
-            from hermes_cli import gateway_windows
+            from prostor_cli import gateway_windows
 
             gateway_windows.install(
                 force=force,
@@ -6101,7 +6101,7 @@ def _gateway_command_inner(args):
             # Phase 4: inside a container with s6 the gateway service is
             # auto-registered when the profile is created (and reconciled
             # at every container boot). `install` is therefore informational.
-            from hermes_cli.service_manager import detect_service_manager
+            from prostor_cli.service_manager import detect_service_manager
             if detect_service_manager() == "s6":
                 print("Per-profile gateways are auto-registered when you create a profile.")
                 print()
@@ -6146,11 +6146,11 @@ def _gateway_command_inner(args):
         elif is_macos():
             launchd_uninstall()
         elif is_windows():
-            from hermes_cli import gateway_windows
+            from prostor_cli import gateway_windows
 
             gateway_windows.uninstall()
         elif is_container():
-            from hermes_cli.service_manager import detect_service_manager
+            from prostor_cli.service_manager import detect_service_manager
             if detect_service_manager() == "s6":
                 print("Per-profile gateways are auto-unregistered when you delete the profile.")
                 print()
@@ -6199,7 +6199,7 @@ def _gateway_command_inner(args):
         elif is_macos():
             launchd_start()
         elif is_windows():
-            from hermes_cli import gateway_windows
+            from prostor_cli import gateway_windows
 
             gateway_windows.start()
         elif is_wsl():
@@ -6280,7 +6280,7 @@ def _gateway_command_inner(args):
                 except subprocess.CalledProcessError:
                     pass
             elif is_windows():
-                from hermes_cli import gateway_windows
+                from prostor_cli import gateway_windows
 
                 if gateway_windows.is_installed():
                     try:
@@ -6313,7 +6313,7 @@ def _gateway_command_inner(args):
                 except subprocess.CalledProcessError:
                     pass
             elif is_windows():
-                from hermes_cli import gateway_windows
+                from prostor_cli import gateway_windows
 
                 if gateway_windows.is_installed():
                     try:
@@ -6377,7 +6377,7 @@ def _gateway_command_inner(args):
                 except subprocess.CalledProcessError:
                     pass
             elif is_windows():
-                from hermes_cli import gateway_windows
+                from prostor_cli import gateway_windows
 
                 if gateway_windows.is_installed():
                     try:
@@ -6401,7 +6401,7 @@ def _gateway_command_inner(args):
             elif is_macos() and get_launchd_plist_path().exists():
                 launchd_start()
             elif is_windows():
-                from hermes_cli import gateway_windows
+                from prostor_cli import gateway_windows
 
                 # On Windows, even without a registered Scheduled Task / Startup
                 # entry, gateway_windows.start() uses the safe detached
@@ -6432,7 +6432,7 @@ def _gateway_command_inner(args):
             except subprocess.CalledProcessError:
                 pass
         elif is_windows():
-            from hermes_cli import gateway_windows
+            from prostor_cli import gateway_windows
 
             # Prefer the Windows-specific restart path: it supports both
             # registered Scheduled Task / Startup installs and no-service
@@ -6498,7 +6498,7 @@ def _gateway_command_inner(args):
         # Check for service first
         _windows_service_installed = False
         if is_windows():
-            from hermes_cli import gateway_windows
+            from prostor_cli import gateway_windows
 
             _windows_service_installed = gateway_windows.is_installed()
         if supports_systemd_services() and (
@@ -6511,7 +6511,7 @@ def _gateway_command_inner(args):
             launchd_status(deep)
             _print_gateway_process_mismatch(snapshot)
         elif _windows_service_installed:
-            from hermes_cli import gateway_windows
+            from prostor_cli import gateway_windows
 
             gateway_windows.status(deep=deep)
             _print_gateway_process_mismatch(snapshot)

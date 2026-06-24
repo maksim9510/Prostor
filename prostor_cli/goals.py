@@ -674,7 +674,7 @@ def _goal_judge_max_tokens() -> int:
     back to the default rather than crashing the goal loop.
     """
     try:
-        from hermes_cli.config import load_config
+        from prostor_cli.config import load_config
 
         cfg = load_config()
         value = (

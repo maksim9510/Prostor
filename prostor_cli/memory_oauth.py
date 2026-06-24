@@ -37,7 +37,7 @@ def _scope_to_profile(profile: Optional[str]):
         yield
         return
 
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     from hermes_constants import reset_hermes_home_override, set_hermes_home_override
 
     try:

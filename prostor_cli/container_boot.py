@@ -371,7 +371,7 @@ def _register_service(scandir: Path, profile: str, *, start: bool) -> None:
     """
     import shutil
 
-    from hermes_cli.service_manager import (
+    from prostor_cli.service_manager import (
         S6ServiceManager,
         _seed_supervise_skeleton,
         validate_profile_name,

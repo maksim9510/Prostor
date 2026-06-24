@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
-from hermes_cli.secret_prompt import masked_secret_prompt
+from prostor_cli.secret_prompt import masked_secret_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -298,8 +298,8 @@ _EXTRA_ENV_KEYS = frozenset({
 })
 import yaml
 
-from hermes_cli.colors import Colors, color
-from hermes_cli.default_soul import DEFAULT_SOUL_MD
+from prostor_cli.colors import Colors, color
+from prostor_cli.default_soul import DEFAULT_SOUL_MD
 
 
 # =============================================================================
@@ -5187,7 +5187,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     raw_mcp_servers = config.get("mcp_servers")
     if isinstance(raw_mcp_servers, dict):
         try:
-            from hermes_cli.mcp_security import validate_mcp_server_entry as _validate_mcp_server_entry
+            from prostor_cli.mcp_security import validate_mcp_server_entry as _validate_mcp_server_entry
         except Exception:
             _validate_mcp_server_entry = None
         if _validate_mcp_server_entry:
@@ -5828,7 +5828,7 @@ def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
         # Managed scope: fold the managed config file's (mtime, size) into the
         # cache signature so editing /etc/hermes/config.yaml invalidates the
         # cached merged result. (0, 0) means "no managed config file".
-        from hermes_cli import managed_scope
+        from prostor_cli import managed_scope
 
         managed_dir = managed_scope.get_managed_dir()
         managed_cfg_path = (managed_dir / "config.yaml") if managed_dir else None
@@ -5995,7 +5995,7 @@ def save_config(config: Dict[str, Any]):
         # silently lose to managed on the next load. Single-key `config set`
         # hard-rejects (see set_config_value); this is the mechanical safety net
         # for bulk writes so the unmanaged remainder still lands.
-        from hermes_cli import managed_scope
+        from prostor_cli import managed_scope
 
         managed_keys = managed_scope.managed_config_keys()
         if managed_keys:
@@ -6274,7 +6274,7 @@ def save_env_value(key: str, value: str):
         return
     # Managed scope guard: a managed env key can't be set by the user — the
     # managed .env wins at load anyway. Distinct from is_managed() above.
-    from hermes_cli import managed_scope
+    from prostor_cli import managed_scope
 
     if managed_scope.is_env_managed(key):
         managed_dir = managed_scope.get_managed_dir()
@@ -6363,7 +6363,7 @@ def remove_env_value(key: str) -> bool:
         managed_error(f"remove {key}")
         return False
     # Managed scope guard: a managed env key can't be removed by the user.
-    from hermes_cli import managed_scope
+    from prostor_cli import managed_scope
 
     if managed_scope.is_env_managed(key):
         managed_dir = managed_scope.get_managed_dir()
@@ -6570,7 +6570,7 @@ def show_config():
 
     # Managed scope: surface that some settings are administrator-pinned so the
     # user understands why their config.yaml value may not be the effective one.
-    from hermes_cli import managed_scope
+    from prostor_cli import managed_scope
 
     _managed_keys = managed_scope.managed_config_keys()
     _managed_env = managed_scope.load_managed_env()
@@ -6620,7 +6620,7 @@ def show_config():
     for env_key, name in keys:
         value = get_env_value(env_key)
         print(f"  {name:<14} {redact_key(value)}")
-    from hermes_cli.auth import get_anthropic_key
+    from prostor_cli.auth import get_anthropic_key
     anthropic_value = get_anthropic_key()
     print(f"  {'Anthropic':<14} {redact_key(anthropic_value)}")
     
@@ -6816,7 +6816,7 @@ def set_config_value(key: str, value: str):
     # source. Distinct from is_managed() above (the package-manager write-lock).
     # Env-shaped keys (API keys / tokens) route to save_env_value below, which has
     # its own managed-env-key guard; this catches the config.yaml keys.
-    from hermes_cli import managed_scope
+    from prostor_cli import managed_scope
 
     if managed_scope.is_key_managed(key):
         managed_dir = managed_scope.get_managed_dir()

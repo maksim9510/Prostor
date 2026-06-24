@@ -19,16 +19,16 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 
-from hermes_cli.config import (
+from prostor_cli.config import (
     cfg_get,
     load_config, save_config, get_env_value, save_env_value,
 )
-from hermes_cli.colors import Colors, color
-from hermes_cli.nous_subscription import (
+from prostor_cli.colors import Colors, color
+from prostor_cli.nous_subscription import (
     apply_nous_managed_defaults,
     get_nous_subscription_features,
 )
-from hermes_cli.nous_account import format_nous_portal_entitlement_message
+from prostor_cli.nous_account import format_nous_portal_entitlement_message
 from tools.tool_backend_helpers import fal_key_is_configured
 from utils import base_url_hostname, is_truthy_value
 
@@ -39,7 +39,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 # ─── UI Helpers (shared with setup.py) ────────────────────────────────────────
 
-from hermes_cli.cli_output import (  # noqa: E402 — late import block
+from prostor_cli.cli_output import (  # noqa: E402 — late import block
     print_error as _print_error,
     print_info as _print_info,
     print_success as _print_success,
@@ -124,7 +124,7 @@ def _xai_credentials_present() -> bool:
     gates schema registration if creds later expire or get revoked.
     """
     try:
-        from hermes_cli.auth import _read_xai_oauth_tokens
+        from prostor_cli.auth import _read_xai_oauth_tokens
 
         _read_xai_oauth_tokens()
         return True
@@ -175,7 +175,7 @@ def _get_effective_configurable_toolsets():
     result = list(CONFIGURABLE_TOOLSETS)
     seen = {ts_key for ts_key, _, _ in result}
     try:
-        from hermes_cli.plugins import discover_plugins, get_plugin_toolsets
+        from prostor_cli.plugins import discover_plugins, get_plugin_toolsets
         discover_plugins()  # idempotent — ensures plugins are loaded
         for entry in get_plugin_toolsets():
             if entry[0] in seen:
@@ -190,7 +190,7 @@ def _get_effective_configurable_toolsets():
 def _get_plugin_toolset_keys() -> set:
     """Return the set of toolset keys provided by plugins."""
     try:
-        from hermes_cli.plugins import discover_plugins, get_plugin_toolsets
+        from prostor_cli.plugins import discover_plugins, get_plugin_toolsets
         discover_plugins()  # idempotent — ensures plugins are loaded
         return {ts_key for ts_key, _, _ in get_plugin_toolsets()}
     except Exception:
@@ -223,7 +223,7 @@ def _checklist_toolset_keys(platform: str) -> Set[str]:
 # Platform display config — derived from the canonical registry so every
 # module shares the same data.  Kept as dict-of-dicts for backward
 # compatibility with existing ``PLATFORMS[key]["label"]`` access patterns.
-from hermes_cli.platforms import PLATFORMS as _PLATFORMS_REGISTRY
+from prostor_cli.platforms import PLATFORMS as _PLATFORMS_REGISTRY
 
 PLATFORMS = {
     k: {"label": info.label, "default_toolset": info.default_toolset}
@@ -1118,7 +1118,7 @@ def _run_post_setup(post_setup_key: str):
         # already have an app, it skips the wizard and just does OAuth.
         from types import SimpleNamespace
         try:
-            from hermes_cli.auth import login_spotify_command
+            from prostor_cli.auth import login_spotify_command
         except Exception as exc:
             _print_warning(f"    Could not load Spotify auth: {exc}")
             _print_info("    Run manually: hermes auth spotify")
@@ -1155,7 +1155,7 @@ def _run_post_setup(post_setup_key: str):
         # The plugin ships in the repo but doesn't load until the user enables
         # it (standalone plugins are opt-in).
         try:
-            from hermes_cli.plugins_cmd import _get_enabled_set, _save_enabled_set
+            from prostor_cli.plugins_cmd import _get_enabled_set, _save_enabled_set
             enabled = _get_enabled_set()
             if "observability/langfuse" in enabled or "langfuse" in enabled:
                 _print_success("    Plugin observability/langfuse already enabled")
@@ -1177,7 +1177,7 @@ def _run_post_setup(post_setup_key: str):
         # console.x.ai. The picker entries declare empty env_vars so we
         # drive the full auth UX here.
         try:
-            from hermes_cli.auth import get_xai_oauth_auth_status
+            from prostor_cli.auth import get_xai_oauth_auth_status
             oauth_logged_in = bool(get_xai_oauth_auth_status().get("logged_in"))
         except Exception:
             oauth_logged_in = False
@@ -1194,12 +1194,12 @@ def _run_post_setup(post_setup_key: str):
 
         _print_info("    xAI needs credentials. Choose one:")
         try:
-            from hermes_cli.setup import (
+            from prostor_cli.setup import (
                 _run_xai_oauth_login_from_setup,
                 prompt_choice,
                 prompt as _setup_prompt,
             )
-            from hermes_cli.config import save_env_value
+            from prostor_cli.config import save_env_value
         except Exception as exc:
             _print_warning(f"    Could not load setup helpers: {exc}")
             _print_info("    Run later: hermes auth add xai-oauth   (or set XAI_API_KEY)")
@@ -1719,7 +1719,7 @@ def _toolset_has_keys(
 
 def _prompt_choice(question: str, choices: list, default: int = 0) -> int:
     """Single-select menu (arrow keys). Delegates to curses_radiolist."""
-    from hermes_cli.curses_ui import curses_radiolist
+    from prostor_cli.curses_ui import curses_radiolist
     return curses_radiolist(question, choices, selected=default, cancel_returns=default)
 
 
@@ -1779,7 +1779,7 @@ def _prompt_toolset_checklist(
     force_fresh: bool = True,
 ) -> Set[str]:
     """Multi-select checklist of toolsets. Returns set of selected toolset keys."""
-    from hermes_cli.curses_ui import curses_checklist
+    from prostor_cli.curses_ui import curses_checklist
     from toolsets import resolve_toolset
 
     # Pre-compute per-tool token counts (cached after first call).
@@ -1866,7 +1866,7 @@ def _plugin_image_gen_providers() -> list[dict]:
     """
     try:
         from agent.image_gen_registry import list_providers
-        from hermes_cli.plugins import _ensure_plugins_discovered
+        from prostor_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = list_providers()
@@ -1904,7 +1904,7 @@ def _plugin_video_gen_providers() -> list[dict]:
     """
     try:
         from agent.video_gen_registry import list_providers
-        from hermes_cli.plugins import _ensure_plugins_discovered
+        from prostor_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = list_providers()
@@ -1957,7 +1957,7 @@ def _plugin_web_search_providers() -> list[dict]:
     """
     try:
         from agent.web_search_registry import list_providers as _list_web_providers
-        from hermes_cli.plugins import _ensure_plugins_discovered
+        from prostor_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = _list_web_providers()
@@ -2012,7 +2012,7 @@ def _plugin_browser_providers() -> list[dict]:
     """
     try:
         from agent.browser_registry import list_providers as _list_browser_providers
-        from hermes_cli.plugins import _ensure_plugins_discovered
+        from prostor_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = _list_browser_providers()
@@ -2063,7 +2063,7 @@ def _plugin_tts_providers() -> list[dict]:
     """
     try:
         from agent.tts_registry import _BUILTIN_NAMES, list_providers
-        from hermes_cli.plugins import _ensure_plugins_discovered
+        from prostor_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = list_providers()
@@ -2271,7 +2271,7 @@ def _toolset_needs_configuration_prompt(
             return False
         try:
             from agent.image_gen_registry import list_providers
-            from hermes_cli.plugins import _ensure_plugins_discovered
+            from prostor_cli.plugins import _ensure_plugins_discovered
 
             _ensure_plugins_discovered()
             for provider in list_providers():
@@ -2288,7 +2288,7 @@ def _toolset_needs_configuration_prompt(
         # available — no in-tree fallback (every backend is a plugin).
         try:
             from agent.video_gen_registry import list_providers
-            from hermes_cli.plugins import _ensure_plugins_discovered
+            from prostor_cli.plugins import _ensure_plugins_discovered
 
             _ensure_plugins_discovered()
             for provider in list_providers():
@@ -2620,7 +2620,7 @@ def _plugin_image_gen_catalog(plugin_name: str):
     """
     try:
         from agent.image_gen_registry import get_provider
-        from hermes_cli.plugins import _ensure_plugins_discovered
+        from prostor_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         provider = get_provider(plugin_name)
@@ -2715,7 +2715,7 @@ def _plugin_video_gen_catalog(plugin_name: str):
     """
     try:
         from agent.video_gen_registry import get_provider
-        from hermes_cli.plugins import _ensure_plugins_discovered
+        from prostor_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         provider = get_provider(plugin_name)
@@ -2921,7 +2921,7 @@ def _configure_provider(
     # auth + entitlement only, no inference-provider switch and no bulk
     # "enable all tools" prompt (that lives in `hermes model`).
     if managed_feature:
-        from hermes_cli.nous_subscription import (
+        from prostor_cli.nous_subscription import (
             MANAGED_FEATURE_COVERAGE_CATEGORY,
             ensure_nous_portal_access,
         )
@@ -3289,7 +3289,7 @@ def _reconfigure_provider(
     # Same inline Nous Portal login + entitlement gate as _configure_provider:
     # managed Tool Gateway backends only activate with paid Portal access.
     if managed_feature:
-        from hermes_cli.nous_subscription import (
+        from prostor_cli.nous_subscription import (
             MANAGED_FEATURE_COVERAGE_CATEGORY,
             ensure_nous_portal_access,
         )
@@ -3728,7 +3728,7 @@ def _configure_mcp_tools_interactive(config: dict):
     a per-server curses checklist.  Writes changes back as ``tools.exclude``
     entries in config.yaml.
     """
-    from hermes_cli.curses_ui import curses_checklist
+    from prostor_cli.curses_ui import curses_checklist
 
     mcp_servers = config.get("mcp_servers") or {}
     if not mcp_servers:

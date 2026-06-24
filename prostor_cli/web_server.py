@@ -43,8 +43,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from hermes_cli import __version__, __release_date__
-from hermes_cli.config import (
+from prostor_cli import __version__, __release_date__
+from prostor_cli.config import (
     cfg_get,
     DEFAULT_CONFIG,
     OPTIONAL_ENV_VARS,
@@ -64,7 +64,7 @@ from hermes_cli.config import (
     redact_key,
     write_platform_config_field,
 )
-from hermes_cli.memory_providers import (
+from prostor_cli.memory_providers import (
     MemoryProvider,
     ProviderField,
     get_memory_provider,
@@ -147,14 +147,14 @@ def _start_desktop_cron_ticker(stop_event: "threading.Event", interval: int = 60
 
 def _warm_gateway_module() -> None:
     try:
-        import hermes_cli.gateway  # noqa: F401
+        import prostor_cli.gateway  # noqa: F401
     except Exception:
         pass
 
 
 def _resolve_restart_drain_timeout() -> float:
     try:
-        from hermes_cli.gateway import _get_restart_drain_timeout
+        from prostor_cli.gateway import _get_restart_drain_timeout
         return _get_restart_drain_timeout()
     except ImportError:
         from gateway.restart import DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT
@@ -235,7 +235,7 @@ def _get_chat_argv_lock(app: "FastAPI") -> asyncio.Lock:
 app = FastAPI(title="Hermes Agent", version=__version__, lifespan=_lifespan)
 
 # Memory-provider OAuth connect routes live in the memory layer, not here.
-from hermes_cli.memory_oauth import router as _memory_oauth_router  # noqa: E402
+from prostor_cli.memory_oauth import router as _memory_oauth_router  # noqa: E402
 
 app.include_router(_memory_oauth_router)
 
@@ -287,7 +287,7 @@ app.add_middleware(
 # Keep the upstream list minimal — only truly non-sensitive, read-only
 # endpoints belong there.
 # ---------------------------------------------------------------------------
-from hermes_cli.dashboard_auth.public_paths import (
+from prostor_cli.dashboard_auth.public_paths import (
     PUBLIC_API_PATHS as _PUBLIC_API_PATHS,
 )
 
@@ -473,7 +473,7 @@ async def host_header_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def _dashboard_auth_gate(request: Request, call_next):
-    from hermes_cli.dashboard_auth.middleware import gated_auth_middleware
+    from prostor_cli.dashboard_auth.middleware import gated_auth_middleware
     return await gated_auth_middleware(request, call_next)
 
 
@@ -858,8 +858,8 @@ def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, st
        ``normalize_model_for_provider`` (e.g. ``anthropic/claude-opus-4.6``
        on native anthropic → ``claude-opus-4-6``).
     """
-    from hermes_cli.models import _KNOWN_PROVIDER_NAMES, normalize_provider
-    from hermes_cli.model_normalize import normalize_model_for_provider
+    from prostor_cli.models import _KNOWN_PROVIDER_NAMES, normalize_provider
+    from prostor_cli.model_normalize import normalize_model_for_provider
 
     prov_in = (provider or "").strip()
     model_in = (model or "").strip()
@@ -877,7 +877,7 @@ def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, st
             )
         except Exception:
             cur_provider = ""
-        from hermes_cli.models import _AGGREGATOR_PROVIDERS
+        from prostor_cli.models import _AGGREGATOR_PROVIDERS
         if cur_provider and normalize_provider(cur_provider) in _AGGREGATOR_PROVIDERS:
             canonical = normalize_provider(cur_provider)
             prov_in = cur_provider
@@ -1934,7 +1934,7 @@ async def get_status(profile: Optional[str] = None):
         auth_required = bool(getattr(app.state, "auth_required", False))
         auth_providers: list[str] = []
         try:
-            from hermes_cli.dashboard_auth import list_providers as _list_providers
+            from prostor_cli.dashboard_auth import list_providers as _list_providers
             auth_providers = [p.name for p in _list_providers()]
         except Exception:
             # Module not importable yet (early startup) — leave as [].
@@ -2183,7 +2183,7 @@ async def get_portal_status():
     cfg = load_config() or {}
     auth: Dict[str, Any] = {}
     try:
-        from hermes_cli.auth import get_nous_auth_status
+        from prostor_cli.auth import get_nous_auth_status
 
         auth = get_nous_auth_status() or {}
     except Exception:
@@ -2191,7 +2191,7 @@ async def get_portal_status():
 
     features = []
     try:
-        from hermes_cli.nous_subscription import get_nous_subscription_features
+        from prostor_cli.nous_subscription import get_nous_subscription_features
 
         feats = get_nous_subscription_features(cfg)
         if feats is not None:
@@ -2273,7 +2273,7 @@ async def run_debug_share_endpoint(body: DebugShareRequest | None = None):
     dashboard renders those as real, copyable links instead of scraping a log
     tail. Pastes auto-delete after 6 hours (handled inside the share core).
     """
-    from hermes_cli.debug import build_debug_share
+    from prostor_cli.debug import build_debug_share
 
     req = body or DebugShareRequest()
     try:
@@ -2672,7 +2672,7 @@ async def check_hermes_update(force: bool = False):
     # caches the result for 6h. ``force`` busts the cache so the "Check now"
     # button reflects reality immediately.
     try:
-        from hermes_cli.banner import check_for_updates
+        from prostor_cli.banner import check_for_updates
 
         if force:
             try:
@@ -3051,7 +3051,7 @@ async def get_profiles_sessions(
         raise HTTPException(status_code=400, detail="order must be one of: created, recent")
 
     from hermes_state import SessionDB
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
 
     targets: List[Tuple[str, Path]] = []
     if profile and profile != "all":
@@ -3636,7 +3636,7 @@ def get_model_options(profile: Optional[str] = None, refresh: bool = False):
     Models" control. Normal opens leave it false to stay on the 1h cache.
     """
     try:
-        from hermes_cli.inventory import build_models_payload, load_picker_context
+        from prostor_cli.inventory import build_models_payload, load_picker_context
 
         # include_unconfigured + picker_hints + canonical_order mirror the
         # tui_gateway `model.options` JSON-RPC handler exactly, so every GUI
@@ -3681,7 +3681,7 @@ def get_recommended_default_model(provider: str = ""):
 
     if slug == "nous":
         try:
-            from hermes_cli.models import (
+            from prostor_cli.models import (
                 get_curated_nous_model_ids,
                 get_pricing_for_provider,
                 check_nous_free_tier,
@@ -3689,7 +3689,7 @@ def get_recommended_default_model(provider: str = ""):
                 union_with_portal_free_recommendations,
                 union_with_portal_paid_recommendations,
             )
-            from hermes_cli.auth import get_provider_auth_state
+            from prostor_cli.auth import get_provider_auth_state
 
             model_ids = get_curated_nous_model_ids()
             pricing = get_pricing_for_provider("nous") or {}
@@ -3722,7 +3722,7 @@ def get_recommended_default_model(provider: str = ""):
 
     # Non-Nous: first curated model for the provider, matching prior behaviour.
     try:
-        from hermes_cli.inventory import build_models_payload, load_picker_context
+        from prostor_cli.inventory import build_models_payload, load_picker_context
 
         payload = build_models_payload(load_picker_context())
         for row in payload.get("providers", []):
@@ -3811,7 +3811,7 @@ async def set_model_assignment(body: ModelAssignment, profile: Optional[str] = N
         # event-loop thread could cross-restore the module globals).
         if model and not body.confirm_expensive_model:
             try:
-                from hermes_cli.model_cost_guard import expensive_model_warning
+                from prostor_cli.model_cost_guard import expensive_model_warning
 
                 # Pricing lookup can hit models.dev / a /models endpoint on a
                 # cache miss — keep it off the event loop.
@@ -3879,8 +3879,8 @@ def _apply_model_assignment_sync(
         gateway_tools: list[str] = []
         if provider.strip().lower() == "nous":
             try:
-                from hermes_cli.nous_subscription import apply_nous_managed_defaults
-                from hermes_cli.tools_config import _get_platform_tools
+                from prostor_cli.nous_subscription import apply_nous_managed_defaults
+                from prostor_cli.tools_config import _get_platform_tools
 
                 enabled = _get_platform_tools(
                     cfg, "cli", include_default_mcp_servers=False
@@ -3906,7 +3906,7 @@ def _apply_model_assignment_sync(
         # provider. Dedups by base_url, so re-saving is idempotent.
         if provider.strip().lower() in {"custom", "local"} and base_url:
             try:
-                from hermes_cli.main import _auto_provider_name, _save_custom_provider
+                from prostor_cli.main import _auto_provider_name, _save_custom_provider
 
                 _save_custom_provider(
                     base_url,
@@ -4090,7 +4090,7 @@ def _catalog_provider_env_metadata() -> dict:
     this only supplies membership + grouping + sensible fallbacks.
     """
     try:
-        from hermes_cli.provider_catalog import provider_catalog
+        from prostor_cli.provider_catalog import provider_catalog
     except Exception:
         return {}
 
@@ -4099,7 +4099,7 @@ def _catalog_provider_env_metadata() -> dict:
     # promoted into a provider card. Copilot lists GITHUB_TOKEN among its auth
     # aliases, but its provider card uses the provider-owned COPILOT_GITHUB_TOKEN.
     try:
-        from hermes_cli.config import OPTIONAL_ENV_VARS as _OPT
+        from prostor_cli.config import OPTIONAL_ENV_VARS as _OPT
     except Exception:
         _OPT = {}
     _non_provider_keys = {
@@ -5609,16 +5609,16 @@ def _anthropic_oauth_status() -> Dict[str, Any]:
     # environment first (where Bitwarden-sourced secrets land) then .env.
     env_var_order: tuple = ("ANTHROPIC_API_KEY", "ANTHROPIC_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
     try:
-        from hermes_cli.auth import PROVIDER_REGISTRY
+        from prostor_cli.auth import PROVIDER_REGISTRY
         env_var_order = PROVIDER_REGISTRY["anthropic"].api_key_env_vars
     except (ImportError, KeyError):
         pass
     try:
-        from hermes_cli.config import get_env_value
+        from prostor_cli.config import get_env_value
     except ImportError:
         get_env_value = None  # type: ignore
     try:
-        from hermes_cli.env_loader import format_secret_source_suffix
+        from prostor_cli.env_loader import format_secret_source_suffix
     except ImportError:
         format_secret_source_suffix = None  # type: ignore
 
@@ -5779,7 +5779,7 @@ def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
         except Exception as e:
             return {"logged_in": False, "error": str(e)}
     try:
-        from hermes_cli import auth as hauth
+        from prostor_cli import auth as hauth
         if provider_id == "nous":
             raw = hauth.get_nous_auth_status()
             return {
@@ -5934,7 +5934,7 @@ def _build_oauth_catalog() -> list[Dict[str, Any]]:
     # 2. Catalog accounts-providers not already covered — keeps the Accounts tab
     #    in lockstep with the `hermes model` universe (zero-edit for new plugins).
     try:
-        from hermes_cli.provider_catalog import provider_catalog
+        from prostor_cli.provider_catalog import provider_catalog
         for d in provider_catalog():
             if d.tab != "accounts" or d.slug in seen:
                 continue
@@ -6044,7 +6044,7 @@ async def disconnect_oauth_provider(
                 pass
             # Also clear the credential pool entry if present.
             try:
-                from hermes_cli.auth import clear_provider_auth
+                from prostor_cli.auth import clear_provider_auth
                 cleared = clear_provider_auth("anthropic") or cleared
             except Exception:
                 pass
@@ -6052,7 +6052,7 @@ async def disconnect_oauth_provider(
             return {"ok": bool(cleared), "provider": provider_id}
 
         try:
-            from hermes_cli.auth import clear_provider_auth, invalidate_nous_auth_status_cache
+            from prostor_cli.auth import clear_provider_auth, invalidate_nous_auth_status_cache
             cleared = clear_provider_auth(provider_id)
             if provider_id == "nous":
                 invalidate_nous_auth_status_cache()
@@ -6374,7 +6374,7 @@ async def _start_device_code_flow(
     so the UI can render the verification page link + user code.
     """
     if provider_id == "nous":
-        from hermes_cli.auth import (
+        from prostor_cli.auth import (
             _request_device_code,
             PROVIDER_REGISTRY,
         )
@@ -6467,7 +6467,7 @@ async def _start_device_code_flow(
         # flow; the PKCE bit (verifier + challenge from
         # _minimax_pkce_pair) is a security extension that binds the
         # token exchange to the original session.
-        from hermes_cli.auth import (
+        from prostor_cli.auth import (
             _minimax_pkce_pair,
             _minimax_request_user_code,
             MINIMAX_OAUTH_CLIENT_ID,
@@ -6555,7 +6555,7 @@ def _start_xai_loopback_flow(profile: Optional[str] = None) -> Dict[str, Any]:
     background worker that waits for the redirect and finishes the exchange.
     Returns the authorize URL for the client to open in the browser.
     """
-    from hermes_cli import auth as hauth
+    from prostor_cli import auth as hauth
 
     discovery = hauth._xai_oauth_discovery()
     server, thread, callback_result, redirect_uri = hauth._xai_start_callback_server()
@@ -6614,7 +6614,7 @@ def _xai_loopback_worker(session_id: str) -> None:
     """Wait for the xAI loopback callback, exchange the code, persist tokens."""
     from datetime import datetime, timezone
 
-    from hermes_cli import auth as hauth
+    from prostor_cli import auth as hauth
 
     with _oauth_sessions_lock:
         sess = _oauth_sessions.get(session_id)
@@ -6756,7 +6756,7 @@ def _add_xai_oauth_pool_entry(
 
 def _nous_poller(session_id: str) -> None:
     """Background poller that drives a Nous device-code flow to completion."""
-    from hermes_cli.auth import (
+    from prostor_cli.auth import (
         _poll_for_token,
         refresh_nous_oauth_from_state,
     )
@@ -6806,7 +6806,7 @@ def _nous_poller(session_id: str) -> None:
                 timeout_seconds=15.0,
                 force_refresh=False,
             )
-            from hermes_cli.auth import persist_nous_credentials
+            from prostor_cli.auth import persist_nous_credentials
             persist_nous_credentials(full_state)
         with _oauth_sessions_lock:
             sess["status"] = "approved"
@@ -6829,7 +6829,7 @@ def _minimax_poller(session_id: str) -> None:
     path leaves the system in the same state as
     ``hermes auth add minimax-oauth``.
     """
-    from hermes_cli.auth import (
+    from prostor_cli.auth import (
         _minimax_poll_token,
         _minimax_resolve_token_expiry_unix,
         _minimax_save_auth_state,
@@ -6919,7 +6919,7 @@ def _codex_full_login_worker(session_id: str) -> None:
     """
     try:
         import httpx
-        from hermes_cli.auth import (
+        from prostor_cli.auth import (
             CODEX_OAUTH_CLIENT_ID,
             CODEX_OAUTH_TOKEN_URL,
             DEFAULT_CODEX_BASE_URL,
@@ -7002,7 +7002,7 @@ def _codex_full_login_worker(session_id: str) -> None:
         if not access_token:
             raise RuntimeError("token exchange did not return access_token")
 
-        from hermes_cli.auth import _save_codex_tokens
+        from prostor_cli.auth import _save_codex_tokens
 
         with _profile_scope(_oauth_session_profile(session_id)):
             _save_codex_tokens({
@@ -7553,7 +7553,7 @@ async def get_logs(
     component: Optional[str] = None,
     search: Optional[str] = None,
 ):
-    from hermes_cli.logs import _read_tail, LOG_FILES
+    from prostor_cli.logs import _read_tail, LOG_FILES
 
     log_name = LOG_FILES.get(file)
     if not log_name:
@@ -7620,7 +7620,7 @@ _CRON_PROFILE_LOCK = threading.RLock()
 
 def _cron_profile_dicts() -> List[Dict[str, Any]]:
     """Return dashboard profile records, falling back to a directory scan."""
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     try:
         return [_profile_to_dict(p) for p in profiles_mod.list_profiles()]
     except Exception:
@@ -7630,7 +7630,7 @@ def _cron_profile_dicts() -> List[Dict[str, Any]]:
 
 def _cron_profile_home(profile: Optional[str]) -> Tuple[str, Path]:
     """Resolve a profile query value to (profile_name, HERMES_HOME)."""
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
 
     raw = (profile or "default").strip() or "default"
     try:
@@ -8083,7 +8083,7 @@ def _mcp_server_summary(name: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/api/mcp/servers")
 async def list_mcp_servers(profile: Optional[str] = None):
-    from hermes_cli.mcp_config import _get_mcp_servers
+    from prostor_cli.mcp_config import _get_mcp_servers
 
     with _profile_scope(profile):
         servers = _get_mcp_servers()
@@ -8096,7 +8096,7 @@ async def list_mcp_servers(profile: Optional[str] = None):
 
 @app.post("/api/mcp/servers")
 async def add_mcp_server(body: MCPServerCreate, profile: Optional[str] = None):
-    from hermes_cli.mcp_config import _get_mcp_servers, _save_mcp_server
+    from prostor_cli.mcp_config import _get_mcp_servers, _save_mcp_server
 
     name = (body.name or "").strip()
     if not name:
@@ -8141,7 +8141,7 @@ async def add_mcp_server(body: MCPServerCreate, profile: Optional[str] = None):
 
 @app.delete("/api/mcp/servers/{name}")
 async def remove_mcp_server(name: str, profile: Optional[str] = None):
-    from hermes_cli.mcp_config import _remove_mcp_server
+    from prostor_cli.mcp_config import _remove_mcp_server
 
     with _profile_scope(profile):
         removed = _remove_mcp_server(name)
@@ -8153,7 +8153,7 @@ async def remove_mcp_server(name: str, profile: Optional[str] = None):
 @app.post("/api/mcp/servers/{name}/test")
 async def test_mcp_server(name: str, profile: Optional[str] = None):
     """Connect to the server, list its tools, disconnect.  Returns tool list."""
-    from hermes_cli.mcp_config import _get_mcp_servers, _probe_single_server
+    from prostor_cli.mcp_config import _get_mcp_servers, _probe_single_server
 
     with _profile_scope(profile):
         servers = _get_mcp_servers()
@@ -8228,7 +8228,7 @@ async def list_mcp_catalog(profile: Optional[str] = None):
     and identical for every profile).
     """
     try:
-        from hermes_cli import mcp_catalog
+        from prostor_cli import mcp_catalog
     except Exception as exc:
         _log.exception("mcp_catalog import failed")
         raise HTTPException(status_code=500, detail=f"Catalog unavailable: {exc}")
@@ -8311,7 +8311,7 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[s
     Entries that need a git bootstrap (``needs_install``) are installed via
     the CLI action path because the clone can take time.
     """
-    from hermes_cli import mcp_catalog
+    from prostor_cli import mcp_catalog
 
     name = (body.name or "").strip()
     entry = mcp_catalog.get_entry(name)
@@ -8485,7 +8485,7 @@ def _webhook_route_summary(name: str, route: Dict[str, Any], base_url: str) -> D
 
 @app.get("/api/webhooks")
 async def list_webhooks():
-    import hermes_cli.webhook as wh
+    import prostor_cli.webhook as wh
 
     base_url = wh._get_webhook_base_url()
     subs = wh._load_subscriptions()
@@ -8525,7 +8525,7 @@ async def create_webhook(body: WebhookCreate):
     import re as _re
     import secrets as _secrets
     import time as _time
-    import hermes_cli.webhook as wh
+    import prostor_cli.webhook as wh
 
     if not wh._is_webhook_enabled():
         raise HTTPException(
@@ -8574,7 +8574,7 @@ async def create_webhook(body: WebhookCreate):
 
 @app.delete("/api/webhooks/{name}")
 async def delete_webhook(name: str):
-    import hermes_cli.webhook as wh
+    import prostor_cli.webhook as wh
 
     key = (name or "").strip().lower()
     subs = wh._load_subscriptions()
@@ -8598,7 +8598,7 @@ async def set_webhook_enabled(name: str, body: WebhookEnabledToggle):
     gateway hot-reloads the subscriptions file, so this takes effect on the
     next event without a restart.
     """
-    import hermes_cli.webhook as wh
+    import prostor_cli.webhook as wh
 
     key = (name or "").strip().lower()
     subs = wh._load_subscriptions()
@@ -8683,7 +8683,7 @@ def _pool_entry_summary(entry: Any, index: int) -> Dict[str, Any]:
 @app.get("/api/credentials/pool")
 async def list_credential_pool():
     from agent.credential_pool import load_pool
-    from hermes_cli.auth import read_credential_pool
+    from prostor_cli.auth import read_credential_pool
 
     providers = []
     # read_credential_pool(None) lists every provider that has pooled entries;
@@ -8951,11 +8951,11 @@ async def list_hooks():
     currently executable, plus the set of valid hook events so the create
     form can offer them.
     """
-    from hermes_cli.config import load_config as _load_config
+    from prostor_cli.config import load_config as _load_config
     from agent import shell_hooks
 
     try:
-        from hermes_cli.plugins import VALID_HOOKS
+        from prostor_cli.plugins import VALID_HOOKS
         valid_events = sorted(VALID_HOOKS)
     except Exception:
         valid_events = []
@@ -9019,7 +9019,7 @@ async def create_hook(body: HookCreate):
         raise HTTPException(status_code=400, detail="event and command are required")
 
     try:
-        from hermes_cli.plugins import VALID_HOOKS
+        from prostor_cli.plugins import VALID_HOOKS
         if event not in VALID_HOOKS:
             raise HTTPException(
                 status_code=400,
@@ -9170,7 +9170,7 @@ def _profile_cli_args(profile: Optional[str]) -> List[str]:
     requested = (profile or "").strip()
     if not requested or requested.lower() in {"current", "default"}:
         return []
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     _resolve_profile_dir(requested)
     return ["-p", profiles_mod.normalize_profile_name(requested)]
 
@@ -9422,7 +9422,7 @@ async def preview_skill_hub(identifier: str = ""):
         raise HTTPException(status_code=400, detail="identifier is required")
 
     def _run():
-        from hermes_cli.skills_hub import _resolve_source_meta_and_bundle
+        from prostor_cli.skills_hub import _resolve_source_meta_and_bundle
         from tools.skills_hub import create_source_router
 
         sources = create_source_router()
@@ -9486,7 +9486,7 @@ async def scan_skill_hub(identifier: str = ""):
     def _run():
         import shutil as _shutil
 
-        from hermes_cli.skills_hub import _resolve_source_meta_and_bundle
+        from prostor_cli.skills_hub import _resolve_source_meta_and_bundle
         from tools.skills_hub import create_source_router, quarantine_bundle
         from tools.skills_guard import scan_skill, should_allow_install
 
@@ -9700,7 +9700,7 @@ def _fallback_profile_dicts(profiles_mod) -> List[Dict[str, Any]]:
 
 def _resolve_profile_dir(name: str) -> Path:
     """Validate ``name`` and resolve to its directory or raise an HTTPException."""
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     try:
         profiles_mod.validate_profile_name(name)
     except ValueError as e:
@@ -9750,7 +9750,7 @@ def _write_profile_mcp_servers(profile_dir: Path, servers: List["MCPServerCreate
     Returns the number of servers written.
     """
     from hermes_constants import set_hermes_home_override, reset_hermes_home_override
-    from hermes_cli.mcp_security import validate_mcp_server_entry
+    from prostor_cli.mcp_security import validate_mcp_server_entry
 
     written = 0
     token = set_hermes_home_override(str(profile_dir))
@@ -9806,7 +9806,7 @@ def _disable_unselected_skills(profile_dir: Path, keep: List[str]) -> int:
     number of skills newly disabled.
     """
     from hermes_constants import set_hermes_home_override, reset_hermes_home_override
-    from hermes_cli.skills_config import get_disabled_skills, save_disabled_skills
+    from prostor_cli.skills_config import get_disabled_skills, save_disabled_skills
 
     keep_set = {s.strip() for s in keep if s and s.strip()}
     disabled_count = 0
@@ -9832,7 +9832,7 @@ def _disable_unselected_skills(profile_dir: Path, keep: List[str]) -> int:
 
 @app.get("/api/profiles")
 async def list_profiles_endpoint():
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     try:
         return {"profiles": [_profile_to_dict(p) for p in profiles_mod.list_profiles()]}
     except Exception:
@@ -9842,7 +9842,7 @@ async def list_profiles_endpoint():
 
 @app.post("/api/profiles")
 async def create_profile_endpoint(body: ProfileCreate):
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     explicit_source = (body.clone_from or "").strip()
     if explicit_source:
         # Duplicating a specific profile: clone its config/skills/SOUL (or full
@@ -9962,7 +9962,7 @@ async def get_active_profile_endpoint():
     the profile new CLI invocations pick up. ``current`` is the profile
     the running dashboard/gateway is scoped to (derived from HERMES_HOME).
     """
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     try:
         active = profiles_mod.get_active_profile() or "default"
     except Exception:
@@ -9981,7 +9981,7 @@ async def set_active_profile_endpoint(body: ProfileActiveUpdate):
     Note: this does not retarget the already-running dashboard process —
     it changes which profile subsequent CLI commands and gateways use.
     """
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     try:
         profiles_mod.set_active_profile(body.name)
     except FileNotFoundError as e:
@@ -10055,7 +10055,7 @@ async def open_profile_terminal_endpoint(name: str):
 
 @app.patch("/api/profiles/{name}")
 async def rename_profile_endpoint(name: str, body: ProfileRename):
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     try:
         path = profiles_mod.rename_profile(name, body.new_name)
     except FileNotFoundError as e:
@@ -10073,7 +10073,7 @@ async def delete_profile_endpoint(name: str):
     """Delete a profile. The dashboard collects the user's confirmation in
     its own dialog before this request, so we always pass ``yes=True`` to
     skip the CLI's interactive prompt."""
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     try:
         path = profiles_mod.delete_profile(name, yes=True)
     except FileNotFoundError as e:
@@ -10116,7 +10116,7 @@ async def update_profile_description_endpoint(name: str, body: ProfileDescriptio
     user-authored description (``description_auto: false``) so the
     auto-describer won't overwrite it on a sweep.
     """
-    from hermes_cli import profiles as profiles_mod
+    from prostor_cli import profiles as profiles_mod
     profile_dir = _resolve_profile_dir(name)
     text = (body.description or "").strip()
     try:
@@ -10163,7 +10163,7 @@ async def describe_profile_auto_endpoint(name: str, body: ProfileDescribeAuto):
     """
     _resolve_profile_dir(name)
     try:
-        from hermes_cli import profile_describer
+        from prostor_cli import profile_describer
         outcome = profile_describer.describe_profile(name, overwrite=bool(body.overwrite))
     except Exception as e:
         _log.exception("POST /api/profiles/%s/describe-auto failed", name)
@@ -10297,7 +10297,7 @@ class SkillToggle(BaseModel):
 @app.get("/api/skills")
 async def get_skills(profile: Optional[str] = None):
     from tools.skills_tool import _find_all_skills
-    from hermes_cli.skills_config import get_disabled_skills
+    from prostor_cli.skills_config import get_disabled_skills
     with _profile_scope(profile):
         config = load_config()
         disabled = get_disabled_skills(config)
@@ -10309,7 +10309,7 @@ async def get_skills(profile: Optional[str] = None):
 
 @app.put("/api/skills/toggle")
 async def toggle_skill(body: SkillToggle, profile: Optional[str] = None):
-    from hermes_cli.skills_config import get_disabled_skills, save_disabled_skills
+    from prostor_cli.skills_config import get_disabled_skills, save_disabled_skills
     with _profile_scope(body.profile or profile):
         config = load_config()
         disabled = get_disabled_skills(config)
@@ -10402,7 +10402,7 @@ async def update_skill_content(body: SkillContentUpdate):
 
 @app.get("/api/tools/toolsets")
 async def get_toolsets(profile: Optional[str] = None):
-    from hermes_cli.tools_config import (
+    from prostor_cli.tools_config import (
         _get_effective_configurable_toolsets,
         _get_platform_tools,
         _toolset_has_keys,
@@ -10450,7 +10450,7 @@ async def toggle_toolset(name: str, body: ToolsetToggle, profile: Optional[str] 
     lockstep. Scoped to ``body.profile`` when provided. Returns 400 for
     unknown toolset keys.
     """
-    from hermes_cli.tools_config import (
+    from prostor_cli.tools_config import (
         _get_effective_configurable_toolsets,
         _get_platform_tools,
         _save_platform_tools,
@@ -10483,13 +10483,13 @@ async def get_toolset_config(name: str, profile: Optional[str] = None):
     entry. Toolsets without a ``TOOL_CATEGORIES`` entry return an empty
     provider list and ``has_category: false``. Returns 400 for unknown keys.
     """
-    from hermes_cli.tools_config import (
+    from prostor_cli.tools_config import (
         TOOL_CATEGORIES,
         _get_effective_configurable_toolsets,
         _is_provider_active,
         _visible_providers,
     )
-    from hermes_cli.config import get_env_value
+    from prostor_cli.config import get_env_value
 
     valid = {ts_key for ts_key, _, _ in _get_effective_configurable_toolsets()}
     if name not in valid:
@@ -10553,7 +10553,7 @@ async def select_toolset_provider(
     API keys and post-setup flows are handled by separate endpoints. Returns
     400 for unknown toolset or provider names.
     """
-    from hermes_cli.tools_config import (
+    from prostor_cli.tools_config import (
         apply_provider_selection,
         _get_effective_configurable_toolsets,
     )
@@ -10589,12 +10589,12 @@ async def save_toolset_env(name: str, body: ToolsetEnvUpdate, profile: Optional[
     "leave unchanged" and skipped. Returns the saved/skipped key lists and the
     refreshed ``is_set`` status. Returns 400 for unknown toolset or env keys.
     """
-    from hermes_cli.tools_config import (
+    from prostor_cli.tools_config import (
         TOOL_CATEGORIES,
         _get_effective_configurable_toolsets,
         _visible_providers,
     )
-    from hermes_cli.config import get_env_value, save_env_value
+    from prostor_cli.config import get_env_value, save_env_value
 
     valid_ts = {ts_key for ts_key, _, _ in _get_effective_configurable_toolsets()}
     if name not in valid_ts:
@@ -10657,7 +10657,7 @@ async def run_toolset_post_setup(
     write per-profile state must see the same HERMES_HOME the rest of the
     drawer's writes targeted — so the scope is threaded for consistency.
     """
-    from hermes_cli.tools_config import (
+    from prostor_cli.tools_config import (
         _get_effective_configurable_toolsets,
         valid_post_setup_keys,
     )
@@ -11031,7 +11031,7 @@ async def get_models_analytics(days: int = 30, profile: Optional[str] = None):
 # so the /api/pty WebSocket handler needs no platform guards.
 if sys.platform.startswith("win"):
     try:
-        from hermes_cli.win_pty_bridge import WinPtyBridge as PtyBridge, PtyUnavailableError
+        from prostor_cli.win_pty_bridge import WinPtyBridge as PtyBridge, PtyUnavailableError
         _PTY_BRIDGE_AVAILABLE = True
     except ImportError:  # pragma: no cover - pywinpty missing
         PtyBridge = None  # type: ignore[assignment]
@@ -11042,7 +11042,7 @@ if sys.platform.startswith("win"):
             pass
 else:
     try:
-        from hermes_cli.pty_bridge import PtyBridge, PtyUnavailableError
+        from prostor_cli.pty_bridge import PtyBridge, PtyUnavailableError
         _PTY_BRIDGE_AVAILABLE = True
     except ImportError:  # pragma: no cover - dev env without ptyprocess
         PtyBridge = None  # type: ignore[assignment]
@@ -11232,8 +11232,8 @@ def _ws_auth_reason(ws: "WebSocket") -> tuple[Optional[str], str]:
     if auth_required:
         # Lazy import — keeps this function importable in test harnesses
         # that don't bring in the dashboard_auth layer.
-        from hermes_cli.dashboard_auth.audit import AuditEvent, audit_log
-        from hermes_cli.dashboard_auth.ws_tickets import (
+        from prostor_cli.dashboard_auth.audit import AuditEvent, audit_log
+        from prostor_cli.dashboard_auth.ws_tickets import (
             TicketInvalid,
             consume_internal_credential,
             consume_ticket,
@@ -11326,7 +11326,7 @@ def _resolve_chat_argv(
     dashboard's in-memory gateway runs under the dashboard's own profile,
     so a profile-scoped chat must spawn its own gateway subprocess.
     """
-    from hermes_cli.main import PROJECT_ROOT, _make_tui_argv
+    from prostor_cli.main import PROJECT_ROOT, _make_tui_argv
 
     profile_dir: Optional[Path] = None
     requested = (profile or "").strip()
@@ -11336,7 +11336,7 @@ def _resolve_chat_argv(
     argv, cwd = _make_tui_argv(PROJECT_ROOT / "ui-tui", tui_dev=False)
     env = os.environ.copy()
     try:
-        from hermes_cli.config import apply_terminal_config_to_env
+        from prostor_cli.config import apply_terminal_config_to_env
         apply_terminal_config_to_env(env=env)
     except Exception:
         _log.debug("Failed to apply terminal config bridge for dashboard chat", exc_info=True)
@@ -11398,7 +11398,7 @@ def _build_gateway_ws_url() -> Optional[str]:
     )
 
     if getattr(app.state, "auth_required", False):
-        from hermes_cli.dashboard_auth.ws_tickets import internal_ws_credential
+        from prostor_cli.dashboard_auth.ws_tickets import internal_ws_credential
 
         qs = urllib.parse.urlencode({"internal": internal_ws_credential()})
     else:
@@ -11456,7 +11456,7 @@ def _build_sidecar_url(channel: str) -> Optional[str]:
     if getattr(app.state, "auth_required", False):
         # Gated mode — use the internal credential so the WS upgrade survives
         # _ws_auth_ok and the child can reconnect.
-        from hermes_cli.dashboard_auth.ws_tickets import internal_ws_credential
+        from prostor_cli.dashboard_auth.ws_tickets import internal_ws_credential
 
         qs = urllib.parse.urlencode(
             {"internal": internal_ws_credential(), "channel": channel}
@@ -11763,7 +11763,7 @@ def _normalise_prefix(raw: Optional[str]) -> str:
     the gate middleware, the OAuth routes, the cookie helpers, and the
     SPA mount all agree on validation rules.
     """
-    from hermes_cli.dashboard_auth.prefix import normalise_prefix
+    from prostor_cli.dashboard_auth.prefix import normalise_prefix
     return normalise_prefix(raw)
 
 
@@ -12288,7 +12288,7 @@ def _discover_dashboard_plugins() -> list:
     plugins = []
     seen_names: set = set()
 
-    from hermes_cli.plugins import get_bundled_plugins_dir
+    from prostor_cli.plugins import get_bundled_plugins_dir
     bundled_root = get_bundled_plugins_dir()
     search_dirs = [
         (get_hermes_home() / "plugins", "user"),
@@ -12429,7 +12429,7 @@ def _strip_dashboard_manifest(p: Dict[str, Any]) -> Dict[str, Any]:
 
 def _merged_plugins_hub() -> Dict[str, Any]:
     """Agent discovery + dashboard manifests + optional provider picker metadata."""
-    from hermes_cli.plugins_cmd import (
+    from prostor_cli.plugins_cmd import (
         _discover_all_plugins,
         _get_current_context_engine,
         _get_current_memory_provider,
@@ -12562,7 +12562,7 @@ async def get_plugins_hub(request: Request):
 @app.post("/api/dashboard/agent-plugins/install")
 async def post_agent_plugin_install(request: Request, body: _AgentPluginInstallBody):
     _require_token(request)
-    from hermes_cli.plugins_cmd import dashboard_install_plugin
+    from prostor_cli.plugins_cmd import dashboard_install_plugin
 
     result = dashboard_install_plugin(
         body.identifier.strip(),
@@ -12592,7 +12592,7 @@ def _validate_plugin_name(name: str) -> str:
 async def post_agent_plugin_enable(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
-    from hermes_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
+    from prostor_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
 
     result = dashboard_set_agent_plugin_enabled(name, enabled=True)
     if not result.get("ok"):
@@ -12604,7 +12604,7 @@ async def post_agent_plugin_enable(request: Request, name: str):
 async def post_agent_plugin_disable(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
-    from hermes_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
+    from prostor_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
 
     result = dashboard_set_agent_plugin_enabled(name, enabled=False)
     if not result.get("ok"):
@@ -12616,7 +12616,7 @@ async def post_agent_plugin_disable(request: Request, name: str):
 async def post_agent_plugin_update(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
-    from hermes_cli.plugins_cmd import dashboard_update_user_plugin
+    from prostor_cli.plugins_cmd import dashboard_update_user_plugin
 
     result = dashboard_update_user_plugin(name)
     if not result.get("ok"):
@@ -12629,7 +12629,7 @@ async def post_agent_plugin_update(request: Request, name: str):
 async def delete_agent_plugin(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
-    from hermes_cli.plugins_cmd import dashboard_remove_user_plugin
+    from prostor_cli.plugins_cmd import dashboard_remove_user_plugin
 
     result = dashboard_remove_user_plugin(name)
     if not result.get("ok"):
@@ -12647,7 +12647,7 @@ class _PluginProvidersPutBody(BaseModel):
 async def put_plugin_providers(request: Request, body: _PluginProvidersPutBody):
     """Persist memory provider / context engine selection (writes config.yaml)."""
     _require_token(request)
-    from hermes_cli.plugins_cmd import (
+    from prostor_cli.plugins_cmd import (
         _save_context_engine,
         _save_memory_provider,
     )
@@ -12835,7 +12835,7 @@ _mount_plugin_api_routes()
 # SPA catch-all so /{full_path:path} doesn't swallow them.  These are
 # always mounted — the gate middleware decides whether to enforce auth,
 # not whether the routes exist.
-from hermes_cli.dashboard_auth.routes import router as _dashboard_auth_router  # noqa: E402
+from prostor_cli.dashboard_auth.routes import router as _dashboard_auth_router  # noqa: E402
 app.include_router(_dashboard_auth_router)
 
 mount_spa(app)
@@ -12914,7 +12914,7 @@ def start_server(
     import uvicorn
 
     try:
-        from hermes_cli.nous_auth_keepalive import start_nous_auth_keepalive
+        from prostor_cli.nous_auth_keepalive import start_nous_auth_keepalive
 
         start_nous_auth_keepalive()
     except Exception as exc:
@@ -12943,7 +12943,7 @@ def start_server(
         # The gate engages on every non-loopback bind. Require at least one
         # provider to be registered, else fail closed — there is no longer an
         # escape hatch that serves the dashboard without authentication.
-        from hermes_cli.dashboard_auth import list_providers
+        from prostor_cli.dashboard_auth import list_providers
         if not list_providers():
             # Surface the *specific* reason any bundled provider declined
             # to register (e.g. missing HERMES_DASHBOARD_OAUTH_CLIENT_ID).
