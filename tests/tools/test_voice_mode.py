@@ -999,7 +999,7 @@ class TestPlayBeep:
         assert len(audio_arg) > 0
 
     def test_beep_double_produces_longer_audio(self, mock_sd):
-        np = pytest.importorskip("numpy")
+        pytest.importorskip("numpy")
 
         from tools.voice_mode import play_beep
 
@@ -1422,7 +1422,6 @@ class TestSubprocessTimeoutKill:
     def test_timeout_kills_process(self):
         import subprocess
         proc = subprocess.Popen(["sleep", "600"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        pid = proc.pid
         assert proc.poll() is None
 
         try:

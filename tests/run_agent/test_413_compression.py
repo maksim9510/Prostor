@@ -6,7 +6,7 @@ Verifies that:
 - Preflight compression proactively compresses oversized sessions before API calls
 """
 
-#pytestmark = pytest.mark.skip(reason="Hangs in non-interactive environments")
+# pytestmark = pytest.mark.skip(reason="Hangs in non-interactive environments")
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -663,7 +663,7 @@ class TestPreflightCompression:
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
         ):
-            result = agent.run_conversation("hello", conversation_history=big_history)
+            agent.run_conversation("hello", conversation_history=big_history)
 
         mock_compress.assert_not_called()
 

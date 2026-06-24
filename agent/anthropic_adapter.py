@@ -782,7 +782,7 @@ def build_anthropic_client(
         kwargs["api_key"] = api_key
         kwargs["default_headers"] = {
             "User-Agent": "claude-code/0.1.0",
-            **( {"anthropic-beta": ",".join(common_betas)} if common_betas else {})
+            **({"anthropic-beta": ",".join(common_betas)} if common_betas else {})
         }
     elif _requires_bearer_auth(normalized_base_url):
         # Some Anthropic-compatible providers (e.g. MiniMax) expect the API key in

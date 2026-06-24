@@ -749,8 +749,7 @@ class GeminiCloudCodeClient:
                         raise _gemini_http_error(response)
                     tool_call_counter: list[int] = [0]
                     for event in _iter_sse_events(response):
-                        for chunk in _translate_stream_event(event, model, tool_call_counter):
-                            yield chunk
+                        yield from _translate_stream_event(event, model, tool_call_counter)
             except httpx.HTTPError as exc:
                 raise CodeAssistError(
                     f"Streaming request failed: {exc}",

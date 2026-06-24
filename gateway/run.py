@@ -15,25 +15,36 @@ from gateway.helpers import (
     _build_document_context_note,
     _build_gateway_agent_history,
     _build_media_placeholder,
+    _build_replay_entry,  # noqa: F401 — re-exported for tests
+    _bridge_max_turns_from_config,  # noqa: F401 — re-exported for tests
     _check_unavailable_skill,
     _clear_planned_restart_notification,
     _collect_auto_append_media_tags,
+    _coerce_gateway_timestamp,  # noqa: F401 — re-exported for tests
     _current_max_iterations,
     _dequeue_pending_event,
     _dispose_unused_adapter,
     _drain_gateway_watch_events,
     _ensure_windows_gateway_venv_imports,
     _float_env,
+    _format_duration,  # noqa: F401 — re-exported for tests
     _format_gateway_process_notification,
     _gateway_loop_exception_handler,
+    _gateway_platform_value,  # noqa: F401 — re-exported for tests
+    _gateway_provider_error_reply,  # noqa: F401 — re-exported for tests
+    _GATEWAY_PROVIDER_ERROR_SHAPE_RE,  # noqa: F401 — re-exported for tests
+    _has_platform_display_override,  # noqa: F401 — re-exported for tests
     _home_target_env_var,
-    _home_thread_env_var,
+    _home_thread_env_var,  # noqa: F401 — re-exported for tests
+    _is_auto_continue_noise,  # noqa: F401 — re-exported for tests
     _is_control_interrupt_message,
     _is_fresh_gateway_interruption,
-    _is_transient_network_error,
+    _is_interrupted_tool_result,  # noqa: F401 — re-exported for tests
+    _is_transient_network_error,  # noqa: F401 — re-exported for tests
     _last_transcript_timestamp,
     _load_gateway_config,
     _load_gateway_runtime_config,
+    _looks_like_gateway_provider_error,  # noqa: F401 — re-exported for tests
     _message_timestamps_enabled,
     _non_conversational_metadata,
     _normalize_empty_agent_response,
@@ -46,37 +57,24 @@ from gateway.helpers import (
     _probe_audio_duration,
     _profile_runtime_scope,
     _redact_gateway_user_facing_secrets,
+    _reload_runtime_env_preserving_config_authority,  # noqa: F401 — re-exported for tests
     _resolve_gateway_display_bool,
     _resolve_gateway_model,
     _resolve_progress_thread_id,
     _resolve_prostor_bin,
     _resolve_runtime_agent_kwargs,
+    _restart_notification_pending,  # noqa: F401 — re-exported for tests
     _sanitize_gateway_final_response,
     _send_or_update_status_coro,
     _should_clear_resume_pending_after_turn,
+    _skill_slug_from_frontmatter,  # noqa: F401 — re-exported for tests
+    _strip_auto_continue_noise,  # noqa: F401 — re-exported for tests
+    _strip_dangling_tool_call_tail,  # noqa: F401 — re-exported for tests
+    _strip_interrupted_tool_tails,  # noqa: F401 — re-exported for tests
     _teams_pipeline_plugin_enabled,
+    _try_resolve_fallback_provider,  # noqa: F401 — re-exported for tests
+    _uses_telegram_observed_group_context,  # noqa: F401 — re-exported for tests
     _wrap_current_message_with_observed_context,
-    _bridge_max_turns_from_config,
-    _coerce_gateway_timestamp,
-    _format_duration,
-    _gateway_platform_value,
-    _gateway_provider_error_reply,
-    _GATEWAY_PROVIDER_ERROR_SHAPE_RE,
-    _has_platform_display_override,
-    _is_auto_continue_noise,
-    _is_interrupted_tool_result,
-    _looks_like_gateway_provider_error,
-    _reload_runtime_env_preserving_config_authority,
-    _restart_notification_pending,
-    _skill_slug_from_frontmatter,
-    _strip_auto_continue_noise,
-    _strip_dangling_tool_call_tail,
-    _strip_interrupted_tool_tails,
-    _uses_telegram_observed_group_context,
-    _build_replay_entry,
-    _try_resolve_fallback_provider,
-    _build_replay_entry,
-    _try_resolve_fallback_provider,
     render_notice_line,
 )
 from gateway.platform_status_mixin import GatewayPlatformStatusMixin
@@ -399,7 +397,6 @@ from prostor_cli.env_loader import load_prostor_dotenv
 
 _env_path = _prostor_home / '.env'
 load_prostor_dotenv(prostor_home=_prostor_home, project_env=Path(__file__).resolve().parents[1] / '.env')
-
 
 
 # Platforms that bind a host TCP port (HTTP/webhook listeners). In a profile
@@ -741,6 +738,7 @@ _CONTROL_INTERRUPT_MESSAGES = frozenset(
 # Used by tools (e.g. send_message) that need to route through a live
 # adapter for plugin platforms.  Set in GatewayRunner.__init__().
 import weakref as _weakref
+
 
 def _gateway_runner_ref():
     return None

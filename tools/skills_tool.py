@@ -70,7 +70,7 @@ import json
 import logging
 import os
 import re
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
@@ -155,7 +155,7 @@ def load_env() -> dict[str, str]:
     return env_vars
 
 
-class SkillReadinessStatus(str, Enum):
+class SkillReadinessStatus(StrEnum):
     AVAILABLE = "available"
     SETUP_NEEDED = "setup_needed"
     UNSUPPORTED = "unsupported"

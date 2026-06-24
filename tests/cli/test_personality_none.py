@@ -115,7 +115,7 @@ class TestGatewayPersonalityNone:
 
         with patch("gateway.run._prostor_home", tmp_path):
             event = self._make_event("default")
-            result = await runner._handle_personality_command(event)
+            await runner._handle_personality_command(event)
 
         assert runner._ephemeral_system_prompt == ""
 

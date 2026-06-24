@@ -5,7 +5,7 @@ from prostor_state_messages_mixin import SessionMessagesMixin
 from prostor_state_prune_mixin import SessionPruneMixin
 from prostor_state_schema_mixin import SessionSchemaMixin
 
-#!/usr/bin/env python3
+# !/usr/bin/env python3
 """
 SQLite State Store for Prostor Agent.
 

@@ -709,7 +709,7 @@ class TestUpdatePromptInterception:
         prostor_home = tmp_path / "prostor"
         prostor_home.mkdir()
 
-        event = _make_event(text="hello", chat_id="67890")
+        _make_event(text="hello", chat_id="67890")
 
         # No pending prompt
         runner._is_user_authorized = MagicMock(return_value=True)

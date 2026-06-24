@@ -383,7 +383,7 @@ class MiniSWERunner:
                         tool_response = "<tool_response>\n"
                         tool_response += json.dumps({
                             "tool_call_id": tool_msg.get("tool_call_id", ""),
-                            "name": msg["tool_calls"][len(tool_responses)]["function"]["name"] \
+                            "name": msg["tool_calls"][len(tool_responses)]["function"]["name"]
                                 if len(tool_responses) < len(msg["tool_calls"]) else "unknown",
                             "content": tool_content
                         }, ensure_ascii=False)

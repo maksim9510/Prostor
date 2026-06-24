@@ -1026,7 +1026,7 @@ class TestStreamConverseWithCallbacks:
             {"messageStop": {"stopReason": "tool_use"}},
             {"metadata": {"usage": {"inputTokens": 0, "outputTokens": 0}}},
         ]}
-        result = stream_converse_with_callbacks(
+        stream_converse_with_callbacks(
             events, on_tool_start=lambda name: tools_started.append(name),
         )
         assert tools_started == ["read_file"]
@@ -1048,7 +1048,7 @@ class TestStreamConverseWithCallbacks:
             call_count["n"] += 1
             return call_count["n"] >= 3  # Interrupt after 2 events
 
-        result = stream_converse_with_callbacks(
+        stream_converse_with_callbacks(
             events,
             on_text_delta=lambda t: deltas.append(t),
             on_interrupt_check=check_interrupt,

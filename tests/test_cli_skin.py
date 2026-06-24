@@ -258,9 +258,7 @@ class TestSkinAwareAnsi:
     def test_fallback_when_no_skin_engine(self, monkeypatch):
         # If prostor_cli.skin_engine isn't importable, fall back to fallback_hex
         # The class handles ImportError internally
-        from prostor_cli import cli_skin
         # Force the import to fail inside the class
-        orig_import = cli_skin.get_active_skin if False else None  # placeholder
 
         # Simpler: just create one and let it fall back
         skin = SkinAwareAnsi("nonexistent_key", fallback_hex="#FF0000")
@@ -271,9 +269,9 @@ class TestSkinAwareAnsi:
 
     def test_reset_clears_cache(self):
         skin = SkinAwareAnsi("key", fallback_hex="#FF0000")
-        first = str(skin)
+        str(skin)
         skin.reset()
-        second = str(skin)
+        str(skin)
         # After reset, the string should still be the same value
         # (because the skin engine fallback is the same), but
         # reset() must clear the cache.

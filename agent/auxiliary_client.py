@@ -242,7 +242,7 @@ def _is_codex_gpt55(model: str | None, provider: str | None = None) -> bool:
 def _fixed_temperature_for_model(
     model: str | None,
     base_url: str | None = None,
-) -> "float | None | object":
+) -> float | None | object:
     """Return a temperature directive for models with strict contracts.
 
     Returns:
@@ -981,7 +981,7 @@ class _AsyncCodexChatShim:
 class AsyncCodexAuxiliaryClient:
     """Async-compatible wrapper matching AsyncOpenAI.chat.completions.create()."""
 
-    def __init__(self, sync_wrapper: "CodexAuxiliaryClient"):
+    def __init__(self, sync_wrapper: CodexAuxiliaryClient):
         sync_adapter = sync_wrapper.chat.completions
         async_adapter = _AsyncCodexCompletionsAdapter(sync_adapter)
         self.chat = _AsyncCodexChatShim(async_adapter)
@@ -1124,7 +1124,7 @@ class _AsyncAnthropicChatShim:
 
 
 class AsyncAnthropicAuxiliaryClient:
-    def __init__(self, sync_wrapper: "AnthropicAuxiliaryClient"):
+    def __init__(self, sync_wrapper: AnthropicAuxiliaryClient):
         sync_adapter = sync_wrapper.chat.completions
         async_adapter = _AsyncAnthropicCompletionsAdapter(sync_adapter)
         self.chat = _AsyncAnthropicChatShim(async_adapter)

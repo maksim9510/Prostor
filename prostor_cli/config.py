@@ -6978,7 +6978,7 @@ def _inject_platform_plugin_env_vars() -> None:
                 # is a password field unless explicitly overridden.
                 name_upper = name.upper()
                 is_secret = bool(meta.get("password") or meta.get("secret"))
-                if not is_secret and not meta.get("password") is False:
+                if not is_secret and meta.get("password") is not False:
                     is_secret = any(
                         name_upper.endswith(suf)
                         for suf in ("_TOKEN", "_SECRET", "_KEY", "_PASSWORD", "_JSON")

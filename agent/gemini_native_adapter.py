@@ -957,8 +957,7 @@ class GeminiNativeClient:
                         raise gemini_http_error(response)
                     tool_call_indices: dict[str, dict[str, Any]] = {}
                     for event in _iter_sse_events(response):
-                        for chunk in translate_stream_event(event, model, tool_call_indices):
-                            yield chunk
+                        yield from translate_stream_event(event, model, tool_call_indices)
             except httpx.HTTPError as exc:
                 raise GeminiAPIError(
                     f"Gemini streaming request failed: {exc}",

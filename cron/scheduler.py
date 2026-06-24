@@ -424,8 +424,7 @@ def _iter_home_target_platforms():
 
     Used by the ``deliver=origin`` fallback when the job has no origin.
     """
-    for name in _HOME_TARGET_ENV_VARS:
-        yield name
+    yield from _HOME_TARGET_ENV_VARS
     try:
         from prostor_cli.plugins import discover_plugins
         discover_plugins()  # idempotent
@@ -1558,7 +1557,7 @@ def run_job(job: dict) -> tuple[bool, str, str, str | None]:
     if prompt is None:
         logger.info("Job '%s': script produced no output, skipping AI call.", job_name)
         return True, "", SILENT_MARKER, None
-    origin = _resolve_origin(job)
+    _resolve_origin(job)
     _cron_session_id = f"cron_{job_id}_{_prostor_now().strftime('%Y%m%d_%H%M%S')}"
 
     logger.info("Running job '%s' (ID: %s)", job_name, job_id)

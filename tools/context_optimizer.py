@@ -177,7 +177,6 @@ class ContextWindowOptimizer:
                 # Use the more recent of creation and last reference
                 effective_age = min(age, ref_age)
 
-                old_state = entry.state
                 old_tokens = entry.current_tokens
 
                 if effective_age <= fresh_limit:

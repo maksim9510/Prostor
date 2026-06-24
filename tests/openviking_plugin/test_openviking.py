@@ -780,7 +780,7 @@ class TestOpenVikingRead:
 
         try:
             provider._tool_read({"uri": "viking://user/prostor/.overview.md", "level": "overview"})
-            assert False, "Expected summary endpoint error to be raised"
+            raise AssertionError("Expected summary endpoint error to be raised")
         except RuntimeError:
             pass
 

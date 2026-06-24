@@ -88,7 +88,7 @@ class TestInstallCuaDriverUpgrade:
              patch.object(tools_config, "_check_cua_driver_asset_for_arch",
                           return_value=True), \
              patch.object(tools_config, "_run_cua_driver_installer",
-                          return_value=True) as runner:
+                          return_value=True):
             assert tools_config.install_cua_driver(upgrade=False) is True
 
 

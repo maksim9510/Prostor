@@ -468,8 +468,6 @@ class TestSessionContext:
         """Session context is per-thread — one thread's context doesn't leak."""
         prostor_logging.setup_logging(prostor_home=prostor_home)
 
-        results = {}
-
         def thread_a():
             prostor_logging.set_session_context("thread_a_session")
             logging.getLogger("test.thread_a").info("from thread A")

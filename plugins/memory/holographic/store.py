@@ -76,10 +76,10 @@ CREATE TABLE IF NOT EXISTS memory_banks (
 """
 
 # Trust adjustment constants
-_HELPFUL_DELTA =  0.05
+_HELPFUL_DELTA = 0.05
 _UNHELPFUL_DELTA = -0.10
-_TRUST_MIN =  0.0
-_TRUST_MAX =  1.0
+_TRUST_MIN = 0.0
+_TRUST_MAX = 1.0
 
 # Entity extraction patterns
 _RE_CAPITALIZED = re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b')

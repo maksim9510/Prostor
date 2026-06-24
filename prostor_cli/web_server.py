@@ -8106,7 +8106,7 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: str | None
     # The -p subprocess rebinds PROSTOR_HOME-derived paths in the child.
     if entry.install is not None:
         try:
-            proc = _spawn_prostor_action(
+            _spawn_prostor_action(
                 _profile_cli_args(effective_profile) + ["mcp", "install", name],
                 "mcp-install",
             )

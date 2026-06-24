@@ -326,7 +326,7 @@ def _run_one_file(
         # case it left grandchildren behind; already-dead is a no-op.
         _kill_tree(proc, pgid=pgid)
 
-        output +=  "\n"
+        output += "\n"
 
     if rc == 5:
         # No tests collected — every test in the file was filtered out.

@@ -435,7 +435,7 @@ class AIAgent:
         skip_memory: bool = False,
         session_db=None,
         parent_session_id: str = None,
-        iteration_budget: "IterationBudget" = None,
+        iteration_budget: IterationBudget = None,
         fallback_model: dict[str, Any] = None,
         credential_pool=None,
         checkpoints_enabled: bool = False,
@@ -4310,7 +4310,7 @@ class AIAgent:
         from agent.chat_completion_helpers import interruptible_streaming_api_call
         return interruptible_streaming_api_call(self, api_kwargs, on_first_delta=on_first_delta)
 
-    def _try_activate_fallback(self, reason: "FailoverReason | None" = None) -> bool:
+    def _try_activate_fallback(self, reason: FailoverReason | None = None) -> bool:
         """Forwarder — see ``agent.chat_completion_helpers.try_activate_fallback``."""
         from agent.chat_completion_helpers import try_activate_fallback
         return try_activate_fallback(self, reason)
@@ -5063,7 +5063,7 @@ class AIAgent:
         return reapply_reasoning_echo_for_provider(self, api_messages)
 
     @staticmethod
-    def _sanitize_tool_calls_for_strict_api(api_msg: dict, model: "str | None" = None) -> dict:
+    def _sanitize_tool_calls_for_strict_api(api_msg: dict, model: str | None = None) -> dict:
         """Strip Codex Responses API fields from tool_calls for strict providers.
 
         Providers like Mistral, Fireworks, and other strict OpenAI-compatible APIs

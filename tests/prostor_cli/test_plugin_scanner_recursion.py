@@ -275,7 +275,7 @@ class TestBundledBackendAutoLoad:
         """The bundled ``plugins/image_gen/openai/`` plugin loads without
         any opt-in — it's ``kind: backend`` and shipped in-repo."""
         import os
-        prostor_home = Path(os.environ["PROSTOR_HOME"])  # set by hermetic conftest fixture
+        Path(os.environ["PROSTOR_HOME"])  # set by hermetic conftest fixture
 
         mgr = PluginManager()
         mgr.discover_and_load()
@@ -307,7 +307,7 @@ class TestRegisterImageGenProvider:
 
         import os
         prostor_home = Path(os.environ["PROSTOR_HOME"])  # set by hermetic conftest fixture
-        plugin_dir = _write_plugin(
+        _write_plugin(
             prostor_home / "plugins",
             ["my-img-plugin"],
             register_body=(

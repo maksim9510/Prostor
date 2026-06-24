@@ -234,7 +234,7 @@ def main():
     # Per-run attribution tracking
     claims = [e for e in all_events if e["kind"] == "claimed"]
     completions = [e for e in all_events if e["kind"] == "completed"]
-    blocks = [e for e in all_events if e["kind"] == "blocked"]
+    [e for e in all_events if e["kind"] == "blocked"]
 
     # Every completion must have a matching claim on the same run_id AND
     # the same worker (workers don't steal each other's runs).

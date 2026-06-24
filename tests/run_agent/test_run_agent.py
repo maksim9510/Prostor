@@ -1134,7 +1134,7 @@ class TestBuildSystemPrompt:
                 )
                 break
         else:
-            assert False, "Expected a 'Conversation started:' line in the system prompt"
+            raise AssertionError("Expected a 'Conversation started:' line in the system prompt")
 
     def test_includes_nous_subscription_prompt(self, agent, monkeypatch):
         monkeypatch.setattr(run_agent, "build_nous_subscription_prompt", lambda tool_names: "NOUS SUBSCRIPTION BLOCK")
@@ -5701,7 +5701,7 @@ class TestAnthropicBaseUrlPassthrough:
             patch("agent.anthropic_adapter.build_anthropic_client") as mock_build,
         ):
             mock_build.return_value = MagicMock()
-            a = AIAgent(
+            AIAgent(
                 api_key="sk-ant-api03-test1234567890",
                 base_url="https://llm-proxy.company.com/v1",
                 api_mode="anthropic_messages",
@@ -5720,7 +5720,7 @@ class TestAnthropicBaseUrlPassthrough:
             patch("agent.anthropic_adapter.build_anthropic_client") as mock_build,
         ):
             mock_build.return_value = MagicMock()
-            a = AIAgent(
+            AIAgent(
                 api_key="sk-ant...7890",
                 api_mode="anthropic_messages",
                 quiet_mode=True,

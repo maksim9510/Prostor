@@ -112,7 +112,7 @@ def estimate_usage_cost(*args, **kwargs):
 from prostor_cli.cli_utils import (
     format_duration_compact,
     format_token_count_compact,
-    strip_reasoning_tags as _strip_reasoning_tags,
+    strip_reasoning_tags as _strip_reasoning_tags,  # noqa: F401 — re-exported for tests
 )
 
 
@@ -9253,7 +9253,7 @@ class ProstorCLI(CLIAgentSetupMixin, CLICommandsMixin):
             # Print stacked scrollback line for "all" / "new" modes
             if function_name and self.tool_progress_mode in {"all", "new"}:
                 duration = kwargs.get("duration", 0.0)
-                is_error = kwargs.get("is_error", False)
+                kwargs.get("is_error", False)
                 # Pop stored args from tool.started for this function
                 stored = self._pending_tool_info.get(function_name)
                 stored_args = stored.pop(0) if stored else {}

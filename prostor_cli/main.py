@@ -1737,8 +1737,7 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
                 "--progress=false",
             ],
             cwd=str(npm_cwd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -7934,10 +7933,8 @@ def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
                 capture_output=True,
                 text=True,
             )
-            upstream_exists = False
             compare_branch = f"origin/{branch}"
         else:
-            upstream_exists = True
             compare_branch = f"upstream/{branch}"
     else:
         # Non-default branch: compare against origin/<branch> directly.
@@ -7948,7 +7945,6 @@ def _cmd_update_check(branch: str = "main", *, branch_explicit: bool = False):
             capture_output=True,
             text=True,
         )
-        upstream_exists = False
         compare_branch = f"origin/{branch}"
 
     if fetch_result.returncode != 0:

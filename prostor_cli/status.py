@@ -90,7 +90,6 @@ def _effective_provider_label() -> str:
     return provider_label(effective)
 
 
-
 from prostor_constants import is_termux as _is_termux
 
 

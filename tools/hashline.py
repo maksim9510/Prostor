@@ -544,7 +544,7 @@ class HashLineIndex:
 
         # For each candidate line, find the pattern substring
         matches = []
-        pattern_text = pattern.strip()
+        pattern.strip()
 
         for line_idx in sorted(candidate_lines):
             line = self.lines[line_idx]

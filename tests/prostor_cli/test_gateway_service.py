@@ -844,9 +844,8 @@ class TestLaunchdServiceRecovery:
 
     def test_launchd_stop_tolerates_already_unloaded(self, monkeypatch, capsys):
         """launchd_stop silently handles exit codes 3/113 (job not loaded)."""
-        label = gateway_cli.get_launchd_label()
-        domain = gateway_cli._launchd_domain()
-        target = f"{domain}/{label}"
+        gateway_cli.get_launchd_label()
+        gateway_cli._launchd_domain()
 
         def fake_run(cmd, check=False, **kwargs):
             if "bootout" in cmd:
@@ -905,7 +904,7 @@ class TestLaunchdServiceRecovery:
         # _launchd_domain() must return user/<uid>.
         gateway_cli._resolved_launchd_domain = None
         monkeypatch.setattr(os, "getuid", lambda: 501)
-        label = gateway_cli.get_launchd_label()
+        gateway_cli.get_launchd_label()
 
         def fake_run(cmd, check=False, **kwargs):
             if "print" in cmd and "gui/" in " ".join(cmd):
@@ -1114,7 +1113,7 @@ class TestLaunchdDomainDetection:
         works, _launchd_domain() must return ``user/<uid>``."""
         self._reset_domain_cache()
         monkeypatch.setattr(os, "getuid", lambda: 501)
-        label = gateway_cli.get_launchd_label()
+        gateway_cli.get_launchd_label()
 
         run_calls = []
 
@@ -1136,7 +1135,7 @@ class TestLaunchdDomainDetection:
         ``launchctl managername`` as a tiebreaker: Aqua -> gui, else -> user."""
         self._reset_domain_cache()
         monkeypatch.setattr(os, "getuid", lambda: 501)
-        label = gateway_cli.get_launchd_label()
+        gateway_cli.get_launchd_label()
 
         def fake_run(cmd, check=False, **kwargs):
             if "print" in cmd:
@@ -1841,7 +1840,7 @@ class TestSystemServiceIdentityRootHandling:
         """When root is explicitly passed via --run-as-user root, allow it."""
 
         root_info = pwd.getpwnam("root")
-        root_group = grp.getgrgid(root_info.pw_gid).gr_name
+        grp.getgrgid(root_info.pw_gid).gr_name
 
         username, group, home = gateway_cli._system_service_identity(run_as_user="root")
         assert username == "root"
@@ -2491,7 +2490,6 @@ class TestLegacyProstorUnitDetection:
             "ExecStart=/venv/bin/python /opt/prostor/gateway/run.py",
         ]
         for i, execstart in enumerate(variants):
-            name = "prostor.service" if i == 0 else "prostor.service"  # same name
             # Test each variant fresh
             (user_dir / "prostor.service").write_text(
                 f"[Unit]\nDescription=Old Prostor\n[Service]\n{execstart}\n",
@@ -2698,7 +2696,7 @@ class TestMigrateLegacyCommand:
         """Verify the argparse subparser is registered and parses flags."""
         import prostor_cli.main as cli_main
 
-        parser = cli_main.build_parser() if hasattr(cli_main, "build_parser") else None
+        cli_main.build_parser() if hasattr(cli_main, "build_parser") else None
         # Fall back to calling main's setup helper if direct access isn't exposed
         # The key thing: the subparser must exist. We verify by constructing
         # a namespace through argparse directly — but if build_parser isn't

@@ -621,7 +621,7 @@ DEFAULT_TOOLSETS = ["terminal", "file", "web"]
 # ---------------------------------------------------------------------------
 
 
-class DelegateEvent(str, enum.Enum):
+class DelegateEvent(enum.StrEnum):
     """Formal event types emitted during delegation progress.
 
     _build_child_progress_callback normalises incoming legacy strings
