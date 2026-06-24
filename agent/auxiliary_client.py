@@ -40,6 +40,8 @@ Payment / credit exhaustion fallback:
   their OpenRouter balance but has Codex OAuth or another provider available.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os

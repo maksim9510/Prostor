@@ -1,3 +1,4 @@
+
 """
 DingTalk Device Flow authorization.
 
@@ -10,8 +11,9 @@ The verification_uri_complete is rendered as a QR code in the terminal so the
 user can scan it with DingTalk to authorize, yielding AppKey + AppSecret
 automatically.
 """
-
 from __future__ import annotations
+
+
 
 import logging
 import os
@@ -232,6 +234,9 @@ def dingtalk_qr_auth() -> tuple[str, str] | None:
     Returns (client_id, client_secret) on success, or None if the user
     cancelled or the flow failed.
     """
+
+from __future__ import annotations
+
     from prostor_cli.setup import print_error, print_info, print_success, print_warning
 
     print()

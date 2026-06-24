@@ -1,3 +1,4 @@
+
 """disk_cleanup — ephemeral file cleanup for Prostor Agent.
 
 Library module wrapping the deterministic cleanup rules written by
@@ -18,8 +19,9 @@ Rules:
 Scope: strictly PROSTOR_HOME and /tmp/prostor-*
 Never touches: ~/.prostor/logs/ or any system directory.
 """
-
 from __future__ import annotations
+
+
 
 import json
 import logging
@@ -546,6 +548,9 @@ def guess_category(path: Path) -> str | None:
 
     Used by the ``post_tool_call`` hook to auto-track ephemeral files.
     """
+
+from __future__ import annotations
+
     if not is_safe_path(path):
         return None
 

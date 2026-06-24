@@ -9,6 +9,8 @@ which has provider-specific conditionals for max_tokens defaults,
 reasoning configuration, temperature handling, and extra_body assembly.
 """
 
+from __future__ import annotations
+
 import copy
 from typing import Any
 

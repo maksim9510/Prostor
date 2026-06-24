@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+
+from __future__ import annotations
+
 """
 Grep-based checker for Windows cross-platform footguns.
 
@@ -26,7 +29,6 @@ Suppress an intentional use (e.g. tests or platform-gated code) with:
     os.kill(pid, 0)  # windows-footgun: ok — only called on POSIX
 """
 
-from __future__ import annotations
 
 import argparse
 import os

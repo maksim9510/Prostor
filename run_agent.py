@@ -20,6 +20,8 @@ Usage:
     response = agent.run_conversation("Tell me about the latest Python updates")
 """
 
+from __future__ import annotations
+
 # IMPORTANT: prostor_bootstrap must be the very first import — UTF-8 stdio
 # on Windows.  No-op on POSIX.  See prostor_bootstrap.py for full rationale.
 try:
