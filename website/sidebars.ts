@@ -18,7 +18,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Using Prostor',
+      label: 'Using Hermes',
       collapsed: true,
       items: [
         'user-guide/cli',
@@ -60,6 +60,7 @@ const sidebars: SidebarsConfig = {
           label: 'Core',
           items: [
             'user-guide/features/tools',
+            'user-guide/features/tool-search',
             'user-guide/features/skills',
             'user-guide/features/lsp',
             'user-guide/features/curator',
@@ -103,6 +104,7 @@ const sidebars: SidebarsConfig = {
             'user-guide/features/vision',
             'user-guide/features/image-generation',
             'user-guide/features/spotify',
+            'user-guide/features/pets',
             'user-guide/features/tts',
             'user-guide/features/deliverable-mode',
           ],
@@ -150,8 +152,7 @@ const sidebars: SidebarsConfig = {
                   items: [
                     'user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-claude-code',
                     'user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-codex',
-                    'user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-prostor-agent',
-                    'user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-kanban-codex-lane',
+                    'user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-hermes-agent',
                     'user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-opencode',
                   ],
                 },
@@ -186,16 +187,6 @@ const sidebars: SidebarsConfig = {
                   collapsed: true,
                   items: [
                     'user-guide/skills/bundled/data-science/data-science-jupyter-live-kernel',
-                  ],
-                },
-                {
-                  type: 'category',
-                  label: 'devops',
-                  key: 'skills-bundled-devops',
-                  collapsed: true,
-                  items: [
-                    'user-guide/skills/bundled/devops/devops-kanban-orchestrator',
-                    'user-guide/skills/bundled/devops/devops-kanban-worker',
                   ],
                 },
                 {
@@ -278,6 +269,7 @@ const sidebars: SidebarsConfig = {
                     'user-guide/skills/bundled/productivity/productivity-nano-pdf',
                     'user-guide/skills/bundled/productivity/productivity-notion',
                     'user-guide/skills/bundled/productivity/productivity-ocr-and-documents',
+                    'user-guide/skills/bundled/productivity/productivity-petdex',
                     'user-guide/skills/bundled/productivity/productivity-powerpoint',
                     'user-guide/skills/bundled/productivity/productivity-teams-meeting-pipeline',
                   ],
@@ -319,7 +311,7 @@ const sidebars: SidebarsConfig = {
                   key: 'skills-bundled-software-development',
                   collapsed: true,
                   items: [
-                    'user-guide/skills/bundled/software-development/software-development-prostor-agent-skill-authoring',
+                    'user-guide/skills/bundled/software-development/software-development-hermes-agent-skill-authoring',
                     'user-guide/skills/bundled/software-development/software-development-node-inspect-debugger',
                     'user-guide/skills/bundled/software-development/software-development-plan',
                     'user-guide/skills/bundled/software-development/software-development-python-debugpy',
@@ -404,7 +396,7 @@ const sidebars: SidebarsConfig = {
                   items: [
                     'user-guide/skills/optional/devops/devops-cli',
                     'user-guide/skills/optional/devops/devops-docker-management',
-                    'user-guide/skills/optional/devops/devops-prostor-s6-container-supervision',
+                    'user-guide/skills/optional/devops/devops-hermes-s6-container-supervision',
                     'user-guide/skills/optional/devops/devops-pinggy-tunnel',
                     'user-guide/skills/optional/devops/devops-watchers',
                   ],
@@ -686,16 +678,16 @@ const sidebars: SidebarsConfig = {
       collapsed: true,
       items: [
         'guides/run-nemotron-3-ultra-free',
-        'guides/run-prostor-with-nous-portal',
+        'guides/run-hermes-with-nous-portal',
         'guides/tips',
         'guides/local-llm-on-mac',
         'guides/daily-briefing-bot',
         'guides/team-telegram-assistant',
         'guides/python-library',
-        'guides/use-mcp-with-prostor',
-        'guides/use-soul-with-prostor',
-        'guides/use-voice-mode-with-prostor',
-        'guides/build-a-prostor-plugin',
+        'guides/use-mcp-with-hermes',
+        'guides/use-soul-with-hermes',
+        'guides/use-voice-mode-with-hermes',
+        'guides/build-a-hermes-plugin',
         'guides/automate-with-cron',
         'guides/cron-script-only',
         'guides/automation-blueprints',

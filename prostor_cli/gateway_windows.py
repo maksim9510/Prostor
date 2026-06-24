@@ -13,7 +13,7 @@ Design notes
   ``schtasks /Run`` immediately after install so the gateway starts right
   away without waiting for the next logon.
 * We write two files: a shared ``gateway.cmd`` wrapper script (cwd + env + the
-  actual ``python -m prostor_cli.main gateway run --replace`` invocation) and
+  actual ``python -m hermes_cli.main gateway run --replace`` invocation) and
   EITHER a schtasks entry pointing at it OR a Startup-folder ``.cmd`` that
   spawns it detached.
 * Status = merge of "is the schtasks entry registered?" + "is the startup
@@ -37,8 +37,8 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import UTC
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 # Short timeouts: schtasks occasionally wedges and we don't want to hang forever.
 _SCHTASKS_TIMEOUT_S = 15
@@ -50,8 +50,11 @@ _FALLBACK_PATTERNS = re.compile(
 )
 _ACCESS_DENIED_PATTERN = re.compile(r"(access is denied|acceso denegado)", re.IGNORECASE)
 
-_TASK_NAME_DEFAULT = "Prostor_Gateway"
-_TASK_DESCRIPTION = "Prostor Agent Gateway - Messaging Platform Integration"
+_TASK_NAME_DEFAULT = "Hermes_Gateway"
+_TASK_DESCRIPTION = "Hermes Agent Gateway - Messaging Platform Integration"
+_TASK_LOGON_DELAY = "PT30S"
+_TASK_RESTART_INTERVAL = "PT1M"
+_TASK_RESTART_COUNT = 999
 
 
 def _schtasks_encoding() -> str:
@@ -165,8 +168,8 @@ def _is_running_as_admin() -> bool:
 
 
 def _current_profile_cli_args() -> list[str]:
-    """Return CLI args that preserve the current Prostor profile."""
-    from prostor_cli.gateway import _profile_arg
+    """Return CLI args that preserve the current Hermes profile."""
+    from hermes_cli.gateway import _profile_arg
 
     profile_arg = _profile_arg()
     return shlex.split(profile_arg) if profile_arg else []
@@ -180,7 +183,7 @@ def _launch_elevated_gateway_command(command: str, extra_args: list[str] | None 
     decisions are already collected in the parent shell before this point.
     """
     _assert_windows()
-    args = ["-m", "prostor_cli.main", *_current_profile_cli_args(), "gateway", command]
+    args = ["-m", "hermes_cli.main", *_current_profile_cli_args(), "gateway", command]
     if extra_args:
         args.extend(extra_args)
     params = subprocess.list2cmdline(args)
@@ -211,15 +214,15 @@ def _launch_elevated_install(
     start_on_login: bool | None = None,
 ) -> bool:
     """Launch an elevated gateway install via UAC and return True on handoff."""
-    old_start_now = os.environ.get("PROSTOR_GATEWAY_INSTALL_START_NOW")
-    old_start_on_login = os.environ.get("PROSTOR_GATEWAY_INSTALL_START_ON_LOGIN")
-    old_handoff = os.environ.get("PROSTOR_GATEWAY_ELEVATED_HANDOFF")
+    old_start_now = os.environ.get("HERMES_GATEWAY_INSTALL_START_NOW")
+    old_start_on_login = os.environ.get("HERMES_GATEWAY_INSTALL_START_ON_LOGIN")
+    old_handoff = os.environ.get("HERMES_GATEWAY_ELEVATED_HANDOFF")
     try:
         if start_now is not None:
-            os.environ["PROSTOR_GATEWAY_INSTALL_START_NOW"] = "1" if start_now else "0"
+            os.environ["HERMES_GATEWAY_INSTALL_START_NOW"] = "1" if start_now else "0"
         if start_on_login is not None:
-            os.environ["PROSTOR_GATEWAY_INSTALL_START_ON_LOGIN"] = "1" if start_on_login else "0"
-        os.environ["PROSTOR_GATEWAY_ELEVATED_HANDOFF"] = "1"
+            os.environ["HERMES_GATEWAY_INSTALL_START_ON_LOGIN"] = "1" if start_on_login else "0"
+        os.environ["HERMES_GATEWAY_ELEVATED_HANDOFF"] = "1"
         extra_args = ["--elevated-handoff"]
         if force:
             extra_args.append("--force")
@@ -230,9 +233,9 @@ def _launch_elevated_install(
         return _launch_elevated_gateway_command("install", extra_args)
     finally:
         for key, old in (
-            ("PROSTOR_GATEWAY_INSTALL_START_NOW", old_start_now),
-            ("PROSTOR_GATEWAY_INSTALL_START_ON_LOGIN", old_start_on_login),
-            ("PROSTOR_GATEWAY_ELEVATED_HANDOFF", old_handoff),
+            ("HERMES_GATEWAY_INSTALL_START_NOW", old_start_now),
+            ("HERMES_GATEWAY_INSTALL_START_ON_LOGIN", old_start_on_login),
+            ("HERMES_GATEWAY_ELEVATED_HANDOFF", old_handoff),
         ):
             if old is None:
                 os.environ.pop(key, None)
@@ -252,12 +255,12 @@ def _launch_elevated_uninstall() -> bool:
 def get_task_name() -> str:
     """Scheduled Task name, scoped per profile.
 
-    Default profile: ``Prostor_Gateway``
-    Named profile X: ``Prostor_Gateway_<X>``
+    Default profile: ``Hermes_Gateway``
+    Named profile X: ``Hermes_Gateway_<X>``
     """
     _assert_windows()
-    # Local import to avoid circular module initialization during prostor_cli boot.
-    from prostor_cli.gateway import _profile_suffix
+    # Local import to avoid circular module initialization during hermes_cli boot.
+    from hermes_cli.gateway import _profile_suffix
 
     suffix = _profile_suffix()
     if not suffix:
@@ -273,14 +276,14 @@ def _sanitize_filename(value: str) -> str:
 def get_task_script_path() -> Path:
     """The generated ``gateway.cmd`` wrapper that the schtasks entry invokes.
 
-    Lives under ``%LOCALAPPDATA%\\prostor\\gateway-service\\<task_name>.cmd``
-    (or ``<PROSTOR_HOME>/gateway-service/<task_name>.cmd`` so per-profile
-    Prostor installs stay self-contained).
+    Lives under ``%LOCALAPPDATA%\\hermes\\gateway-service\\<task_name>.cmd``
+    (or ``<HERMES_HOME>/gateway-service/<task_name>.cmd`` so per-profile
+    Hermes installs stay self-contained).
     """
     _assert_windows()
-    from prostor_cli.config import get_prostor_home
+    from hermes_cli.config import get_hermes_home
 
-    script_dir = Path(get_prostor_home()) / "gateway-service"
+    script_dir = Path(get_hermes_home()) / "gateway-service"
     script_dir.mkdir(parents=True, exist_ok=True)
     return script_dir / f"{_sanitize_filename(get_task_name())}.cmd"
 
@@ -316,15 +319,15 @@ def get_startup_entry_path() -> Path:
 def _stable_gateway_working_dir(project_root: Path) -> str:
     """Return a stable cwd for detached/startup gateway runs.
 
-    Mirror the POSIX service invariant: anchor at ``PROSTOR_HOME`` whenever it
+    Mirror the POSIX service invariant: anchor at ``HERMES_HOME`` whenever it
     exists so Scheduled Task / Startup launches do not fail at the ``cd`` step
     after a transient checkout or worktree is moved away. Fall back to the
-    source checkout only if ``PROSTOR_HOME`` cannot be resolved yet.
+    source checkout only if ``HERMES_HOME`` cannot be resolved yet.
     """
-    from prostor_cli.config import get_prostor_home
+    from hermes_cli.config import get_hermes_home
 
     try:
-        home = get_prostor_home()
+        home = get_hermes_home()
         if home and Path(home).is_dir():
             return str(Path(home).resolve())
     except Exception:
@@ -339,15 +342,15 @@ def _stable_gateway_working_dir(project_root: Path) -> str:
 def _build_gateway_cmd_script(
     python_path: str,
     working_dir: str,
-    prostor_home: str,
+    hermes_home: str,
     profile_arg: str,
 ) -> str:
     """Build the ``gateway.cmd`` wrapper content (CRLF-terminated).
 
     The script:
       - cd's into a stable working directory
-      - exports PROSTOR_HOME, PYTHONIOENCODING, VIRTUAL_ENV
-      - invokes ``pythonw -m prostor_cli.main [--profile X] gateway run``
+      - exports HERMES_HOME, PYTHONIOENCODING, VIRTUAL_ENV
+      - invokes ``pythonw -m hermes_cli.main [--profile X] gateway run``
         directly so the wrapper cmd.exe exits without a visible gateway console
 
     We intentionally do NOT inline PATH overrides here — cmd.exe inherits
@@ -356,16 +359,17 @@ def _build_gateway_cmd_script(
     """
     lines = ["@echo off", f"rem {_TASK_DESCRIPTION}"]
     lines.append(f"cd /d {_quote_cmd_script_arg(working_dir)}")
-    lines.append(f'set "PROSTOR_HOME={prostor_home}"')
+    lines.append(f'set "HERMES_HOME={hermes_home}"')
     lines.append('set "PYTHONIOENCODING=utf-8"')
-    lines.append('set "PROSTOR_GATEWAY_DETACHED=1"')
+    lines.append('set "HERMES_GATEWAY_DETACHED=1"')
+    pythonw_path, venv_dir, extra_pythonpath = _resolve_detached_python(python_path)
     # VIRTUAL_ENV lets the gateway's own python detection find the venv
-    # if someone imports prostor_constants-based logic during startup.
-    venv_dir = str(Path(python_path).resolve().parent.parent)
+    # if someone imports hermes_constants-based logic during startup.
     lines.append(f'set "VIRTUAL_ENV={venv_dir}"')
+    pythonpath_entries = [str(Path(__file__).resolve().parent.parent), *extra_pythonpath]
+    lines.append(f'set "PYTHONPATH={";".join([*pythonpath_entries, "%PYTHONPATH%"])}"')
 
-    pythonw_path = _derive_venv_pythonw(python_path)
-    prog_args = [pythonw_path, "-m", "prostor_cli.main"]
+    prog_args = [pythonw_path, "-m", "hermes_cli.main"]
     if profile_arg:
         prog_args.extend(profile_arg.split())
     prog_args.extend(["gateway", "run"])
@@ -377,6 +381,78 @@ def _build_gateway_cmd_script(
     # should be idempotent, not churn parent/child takeover loops.
     lines.append(" ".join(_quote_cmd_script_arg(a) for a in prog_args))
     lines.append("exit /b 0")
+    return "\r\n".join(lines) + "\r\n"
+
+
+def _quote_vbs_string(value: str) -> str:
+    """Quote a value as a VBScript double-quoted string literal.
+
+    VBScript escapes an embedded double-quote by doubling it. A newline cannot
+    appear inside a literal, so refuse it (same guard as ``_quote_cmd_script_arg``).
+    """
+    if "\r" in value or "\n" in value:
+        raise ValueError(f"refusing to quote VBScript value containing newline: {value!r}")
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _build_gateway_vbs_script(
+    python_path: str,
+    working_dir: str,
+    hermes_home: str,
+    profile_arg: str,
+) -> str:
+    """Build a console-less ``gateway.vbs`` launcher (CRLF-terminated).
+
+    The Scheduled Task runs this through ``wscript.exe`` instead of ``cmd.exe``.
+
+    Why: issue #45599 root cause #1. Driving the gateway through ``cmd.exe``
+    allocates a console, and during logon Windows broadcasts ``CTRL_CLOSE_EVENT``
+    to console process groups — reaping cmd.exe and the half-initialized gateway
+    with ``STATUS_CONTROL_C_EXIT`` (``0xC000013A``). Task Scheduler treats that
+    code as a user cancel, so the ``RestartOnFailure`` policy never fires and the
+    gateway silently disappears on every reboot.
+
+    ``wscript.exe`` and ``pythonw.exe`` are both GUI-subsystem executables with
+    no console, so this launcher receives no console control events. It mirrors
+    ``_build_gateway_cmd_script`` (same env + argv via ``_resolve_detached_python``)
+    but sets the environment on the WScript.Shell process and ``Run``s pythonw
+    directly — no cmd.exe anywhere in the chain.
+    """
+    pythonw_path, venv_dir, extra_pythonpath = _resolve_detached_python(python_path)
+
+    prog_args = [pythonw_path, "-m", "hermes_cli.main"]
+    if profile_arg:
+        prog_args.extend(profile_arg.split())
+    prog_args.extend(["gateway", "run"])
+    # list2cmdline gives CreateProcess-correct quoting for WScript.Shell.Run.
+    command_line = subprocess.list2cmdline(prog_args)
+
+    repo_root = str(Path(__file__).resolve().parent.parent)
+    static_pythonpath = os.pathsep.join([repo_root, *extra_pythonpath])
+
+    lines = [
+        f"' {_TASK_DESCRIPTION}",
+        "Option Explicit",
+        "Dim sh, env, existing_pp",
+        'Set sh = CreateObject("WScript.Shell")',
+        'Set env = sh.Environment("PROCESS")',
+        f"env.Item({_quote_vbs_string('HERMES_HOME')}) = {_quote_vbs_string(hermes_home)}",
+        f"env.Item({_quote_vbs_string('PYTHONIOENCODING')}) = {_quote_vbs_string('utf-8')}",
+        f"env.Item({_quote_vbs_string('HERMES_GATEWAY_DETACHED')}) = {_quote_vbs_string('1')}",
+        f"env.Item({_quote_vbs_string('VIRTUAL_ENV')}) = {_quote_vbs_string(str(venv_dir))}",
+        # Mirror the cmd wrapper's ``PYTHONPATH=<static>;%PYTHONPATH%``: chain onto
+        # whatever PYTHONPATH the task environment already carries, at runtime.
+        f"existing_pp = env.Item({_quote_vbs_string('PYTHONPATH')})",
+        "If Len(existing_pp) > 0 Then",
+        f"  env.Item({_quote_vbs_string('PYTHONPATH')}) = {_quote_vbs_string(static_pythonpath + os.pathsep)} & existing_pp",
+        "Else",
+        f"  env.Item({_quote_vbs_string('PYTHONPATH')}) = {_quote_vbs_string(static_pythonpath)}",
+        "End If",
+        f"sh.CurrentDirectory = {_quote_vbs_string(working_dir)}",
+        # Window style 0 = hidden; bWaitOnReturn False = detached/async. pythonw is
+        # GUI-subsystem so no console is ever created for the gateway either.
+        f"sh.Run {_quote_vbs_string(command_line)}, 0, False",
+    ]
     return "\r\n".join(lines) + "\r\n"
 
 
@@ -409,8 +485,8 @@ def _write_task_script() -> Path:
     """Generate and write the gateway.cmd wrapper. Return its absolute path."""
     _assert_windows()
     # Local imports to avoid circular-init at module load time.
-    from prostor_cli.config import get_prostor_home
-    from prostor_cli.gateway import (
+    from hermes_cli.config import get_hermes_home
+    from hermes_cli.gateway import (
         PROJECT_ROOT,
         _profile_arg,
         get_python_path,
@@ -418,14 +494,23 @@ def _write_task_script() -> Path:
 
     python_path = get_python_path()
     working_dir = _stable_gateway_working_dir(PROJECT_ROOT)
-    prostor_home = str(Path(get_prostor_home()).resolve())
-    profile_arg = _profile_arg(prostor_home)
+    hermes_home = str(Path(get_hermes_home()).resolve())
+    profile_arg = _profile_arg(hermes_home)
 
-    content = _build_gateway_cmd_script(python_path, working_dir, prostor_home, profile_arg)
+    content = _build_gateway_cmd_script(python_path, working_dir, hermes_home, profile_arg)
     script_path = get_task_script_path()
     tmp = script_path.with_suffix(".tmp")
     tmp.write_text(content, encoding="utf-8", newline="")
     tmp.replace(script_path)
+
+    # Also render the console-less .vbs launcher the Scheduled Task runs via
+    # wscript.exe (issue #45599 fix A). The .cmd above stays for the
+    # Startup-folder fallback and direct /Run paths.
+    vbs_content = _build_gateway_vbs_script(python_path, working_dir, hermes_home, profile_arg)
+    vbs_path = script_path.with_suffix(".vbs")
+    vbs_tmp = vbs_path.with_name(vbs_path.name + ".tmp")
+    vbs_tmp.write_text(vbs_content, encoding="utf-8", newline="")
+    vbs_tmp.replace(vbs_path)
     return script_path
 
 
@@ -444,16 +529,82 @@ def _resolve_task_user() -> str | None:
     return f"{domain}\\{username}" if domain else username
 
 
+def _build_scheduled_task_xml(task_name: str, launcher_path: Path, user: str | None) -> str:
+    """Render a Task Scheduler XML definition with safe long-running defaults.
+
+    ``launcher_path`` is the console-less ``.vbs`` the task runs via
+    ``wscript.exe`` — not the ``.cmd`` (see ``_build_gateway_vbs_script`` /
+    issue #45599 root cause #1).
+    """
+    user_principal = f"\n      <UserId>{escape(user)}</UserId>" if user else ""
+    return f"""<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>{escape(_TASK_DESCRIPTION)}</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>{_TASK_LOGON_DELAY}</Delay>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">{user_principal}
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <RestartOnFailure>
+      <Interval>{_TASK_RESTART_INTERVAL}</Interval>
+      <Count>{_TASK_RESTART_COUNT}</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>wscript.exe</Command>
+      <Arguments>//B //Nologo "{escape(str(launcher_path))}"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+
+def _write_scheduled_task_xml(task_name: str, launcher_path: Path, user: str | None) -> Path:
+    xml_path = launcher_path.with_suffix(".task.xml")
+    xml_path.write_text(
+        _build_scheduled_task_xml(task_name, launcher_path, user),
+        encoding="utf-16",
+        newline="",
+    )
+    return xml_path
+
+
 def _install_scheduled_task(task_name: str, script_path: Path) -> tuple[bool, str]:
     """Create or replace the Scheduled Task. Returns (success, detail).
 
-    Always recreate instead of ``/Change``. Older Prostor builds and failed
+    Always recreate instead of ``/Change``. Older Hermes builds and failed
     experiments may have left repeat/restart settings on the task; ``/Change``
     preserves those stale triggers and can make the gateway relaunch every
     minute. Delete+create gives us a clean ONLOGON task every install.
     """
-    quoted_script = _quote_schtasks_arg(str(script_path))
-
     delete_code, delete_out, delete_err = _exec_schtasks(["/Delete", "/F", "/TN", task_name])
     delete_detail = (delete_err or delete_out or "").strip()
     if delete_code != 0 and delete_detail and "cannot find" not in delete_detail.lower():
@@ -461,35 +612,33 @@ def _install_scheduled_task(task_name: str, script_path: Path) -> tuple[bool, st
             return (False, f"schtasks /Delete failed (code {delete_code}): {delete_detail}")
         # Non-fatal: /Create /F below may still replace it. Keep the detail in
         # the final error if creation also fails.
-    # password" variant; if that fails, retry without /RU /NP /IT.
-    base = [
-        "/Create",
-        "/F",
-        "/SC",
-        "ONLOGON",
-        "/RL",
-        "LIMITED",
-        "/TN",
-        task_name,
-        "/TR",
-        quoted_script,
-    ]
     user = _resolve_task_user()
-    variants = []
-    if user:
-        variants.append([*base, "/RU", user, "/NP", "/IT"])
+    # The Scheduled Task launches the console-less .vbs (issue #45599 fix A), not
+    # the .cmd. The .cmd stays for the Startup-folder fallback and direct /Run.
+    launcher_path = script_path.with_suffix(".vbs")
+    xml_path = _write_scheduled_task_xml(task_name, launcher_path, user)
+    base = ["/Create", "/F", "/TN", task_name, "/XML", str(xml_path)]
+    variants = [[*base, "/RU", user, "/NP", "/IT"]] if user else []
     variants.append(base)
 
     last_code = 1
     last_err = ""
-    for argv in variants:
-        code, out, err = _exec_schtasks(argv)
-        if code == 0:
-            return (True, f"Created Scheduled Task {task_name!r}")
-        last_code, last_err = code, (err or out or "")
+    try:
+        for argv in variants:
+            code, out, err = _exec_schtasks(argv)
+            if code == 0:
+                return (True, f"Created Scheduled Task {task_name!r}")
+            last_code, last_err = code, (err or out or "")
+    finally:
+        try:
+            xml_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     if delete_detail and "cannot find" not in delete_detail.lower():
         last_err = f"{last_err.strip()} (delete detail: {delete_detail})"
     return (False, f"schtasks /Create failed (code {last_code}): {last_err.strip()}")
+
+
 
 
 def _install_startup_entry(script_path: Path) -> Path:
@@ -576,8 +725,8 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
     layer in between.
     """
     _assert_windows()
-    from prostor_cli.config import get_prostor_home
-    from prostor_cli.gateway import (
+    from hermes_cli.config import get_hermes_home
+    from hermes_cli.gateway import (
         PROJECT_ROOT,
         _profile_arg,
         get_python_path,
@@ -586,18 +735,18 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
     python_exe, venv_dir, extra_pythonpath = _resolve_detached_python(get_python_path())
     project_root = str(PROJECT_ROOT)
     working_dir = _stable_gateway_working_dir(PROJECT_ROOT)
-    prostor_home = str(Path(get_prostor_home()).resolve())
-    profile_arg = _profile_arg(prostor_home)
+    hermes_home = str(Path(get_hermes_home()).resolve())
+    profile_arg = _profile_arg(hermes_home)
 
-    argv = [python_exe, "-m", "prostor_cli.main"]
+    argv = [python_exe, "-m", "hermes_cli.main"]
     if profile_arg:
         argv.extend(profile_arg.split())
     argv.extend(["gateway", "run"])
 
     env_overlay = {
-        "PROSTOR_HOME": prostor_home,
+        "HERMES_HOME": hermes_home,
         "PYTHONIOENCODING": "utf-8",
-        "PROSTOR_GATEWAY_DETACHED": "1",
+        "HERMES_GATEWAY_DETACHED": "1",
         "VIRTUAL_ENV": str(venv_dir),
     }
     _prepend_pythonpath(env_overlay, [project_root, *extra_pythonpath] if extra_pythonpath else [project_root])
@@ -607,7 +756,7 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
 def _spawn_detached(script_path: Path | None = None) -> int:
     """Launch the gateway as a fully detached background process.
 
-    We spawn ``pythonw.exe -m prostor_cli.main gateway run``
+    We spawn ``pythonw.exe -m hermes_cli.main gateway run``
     directly — NOT through a cmd.exe shim — because on Windows a cmd.exe
     child inherits the parent session's console handle and tends to get
     reaped when the spawning shell exits. pythonw.exe has no console, and
@@ -642,9 +791,9 @@ def _spawn_detached(script_path: Path | None = None) -> int:
     # logging module writes to gateway.log through a FileHandler, so the
     # real gateway logs still land there — this just captures anything
     # that goes to print() or native stderr.
-    from prostor_cli.config import get_prostor_home
+    from hermes_cli.config import get_hermes_home
 
-    log_dir = Path(get_prostor_home()) / "logs"
+    log_dir = Path(get_hermes_home()) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     stray_log = log_dir / "gateway-stdio.log"
 
@@ -697,8 +846,8 @@ def _prompt_install_choices(
     start_on_login: bool | None = None,
 ) -> tuple[bool, bool]:
     """Return (start_now, start_on_login), asking before any UAC escalation."""
-    env_start_now = _install_choice_from_env("PROSTOR_GATEWAY_INSTALL_START_NOW")
-    env_start_on_login = _install_choice_from_env("PROSTOR_GATEWAY_INSTALL_START_ON_LOGIN")
+    env_start_now = _install_choice_from_env("HERMES_GATEWAY_INSTALL_START_NOW")
+    env_start_on_login = _install_choice_from_env("HERMES_GATEWAY_INSTALL_START_ON_LOGIN")
     if start_now is None:
         start_now = env_start_now
     if start_on_login is None:
@@ -706,7 +855,7 @@ def _prompt_install_choices(
     if start_now is not None and start_on_login is not None:
         return start_now, start_on_login
 
-    from prostor_cli.setup import prompt_yes_no
+    from hermes_cli.setup import prompt_yes_no
 
     if start_now is None:
         start_now = prompt_yes_no("Start the gateway now after install?", True)
@@ -725,11 +874,11 @@ def _install_startup_fallback(script_path: Path, start_now: bool, detail: str) -
     print(f"✓ Installed Windows login item: {entry}")
     print(f"  Task script: {script_path}")
 
-    # Re-running `prostor -p <profile> gateway install` must be safe.
+    # Re-running `hermes -p <profile> gateway install` must be safe.
     # Startup-folder fallback only installs login persistence. Starting is
     # controlled by the pre-UAC start_now answer so all user decisions happen
     # before any elevation prompt.
-    from prostor_cli.gateway import _profile_arg, find_gateway_pids
+    from hermes_cli.gateway import find_gateway_pids, _profile_arg
 
     running_pids = list(find_gateway_pids())
     if running_pids:
@@ -739,7 +888,7 @@ def _install_startup_fallback(script_path: Path, start_now: bool, detail: str) -
         _report_gateway_start(f"direct spawn (PID {pid})")
     else:
         profile_arg = _profile_arg()
-        start_cmd = f"prostor {profile_arg} gateway start" if profile_arg else "prostor gateway start"
+        start_cmd = f"hermes {profile_arg} gateway start" if profile_arg else "hermes gateway start"
         print("ℹ Startup fallback installed; gateway not started now.")
         print(f"  Start manually with: {start_cmd}")
     _print_next_steps()
@@ -772,7 +921,7 @@ def install(
                 _report_gateway_start(f"direct spawn (PID {pid})")
         else:
             print("ℹ Gateway not started and no auto-start service installed.")
-            print("  Run later with: prostor gateway start")
+            print("  Run later with: hermes gateway start")
         return
 
     task_name = get_task_name()
@@ -783,17 +932,17 @@ def install(
     # Access Denied. We already collected all intent questions above, so avoid
     # a mysterious post-question pause: ask for UAC before touching schtasks.
     if not _is_running_as_admin() and not elevated_handoff:
-        from prostor_cli.setup import prompt_yes_no
+        from hermes_cli.setup import prompt_yes_no
 
         print("↻ Scheduled Task install may need administrator approval on this Windows account.")
         print("  UAC is Windows' admin approval prompt; it is needed to create/update the Scheduled Task.")
         if prompt_yes_no("  Open the UAC prompt now?", False):
             if _launch_elevated_install(force=force, start_now=start_now, start_on_login=start_on_login):
-                print("✓ Launched elevated Prostor gateway install prompt.")
+                print("✓ Launched elevated Hermes gateway install prompt.")
                 if start_now:
                     print("  Approve the Windows UAC prompt; the elevated install will start the gateway afterwards.")
                 else:
-                    print("  Approve the Windows UAC prompt, then run: prostor gateway status")
+                    print("  Approve the Windows UAC prompt, then run: hermes gateway status")
                 return
             print("⚠ Falling back to Startup folder because elevation was unavailable or cancelled.")
         else:
@@ -815,7 +964,7 @@ def install(
                 _report_gateway_start(f"direct spawn (PID {pid})")
         else:
             print("ℹ Gateway not started now.")
-            print("  Start manually with: prostor gateway start")
+            print("  Start manually with: hermes gateway start")
         _print_next_steps()
         return
 
@@ -824,17 +973,17 @@ def install(
     # users a UAC prompt instead of silently installing a less reliable login
     # item, and keeps the fallback for locked-down boxes / cancelled prompts.
     if _is_access_denied(detail) and not _is_running_as_admin():
-        from prostor_cli.setup import prompt_yes_no
+        from hermes_cli.setup import prompt_yes_no
 
         print(f"↻ Scheduled Task install needs administrator approval ({detail.splitlines()[0]})")
         print("  UAC is Windows' admin approval prompt; it is needed to create/update the Scheduled Task.")
         if prompt_yes_no("  Open the UAC prompt now?", False):
             if _launch_elevated_install(force=force, start_now=start_now, start_on_login=start_on_login):
-                print("✓ Launched elevated Prostor gateway install prompt.")
+                print("✓ Launched elevated Hermes gateway install prompt.")
                 if start_now:
                     print("  Approve the Windows UAC prompt; the elevated install will start the gateway afterwards.")
                 else:
-                    print("  Approve the Windows UAC prompt, then run: prostor gateway status")
+                    print("  Approve the Windows UAC prompt, then run: hermes gateway status")
                 return
             print("⚠ Falling back to Startup folder because elevation was unavailable or cancelled.")
         else:
@@ -847,11 +996,11 @@ def install(
         print(f"✓ Installed Windows login item: {entry}")
         print(f"  Task script: {script_path}")
 
-        # Re-running `prostor -p <profile> gateway install` must be safe.
+        # Re-running `hermes -p <profile> gateway install` must be safe.
         # Startup-folder fallback only installs login persistence. Starting is
         # controlled by the pre-UAC start_now answer so all user decisions happen
         # before any elevation prompt.
-        from prostor_cli.gateway import _profile_arg, find_gateway_pids
+        from hermes_cli.gateway import find_gateway_pids, _profile_arg
 
         running_pids = list(find_gateway_pids())
         if running_pids:
@@ -861,7 +1010,7 @@ def install(
             _report_gateway_start(f"direct spawn (PID {pid})")
         else:
             profile_arg = _profile_arg()
-            start_cmd = f"prostor {profile_arg} gateway start" if profile_arg else "prostor gateway start"
+            start_cmd = f"hermes {profile_arg} gateway start" if profile_arg else "hermes gateway start"
             print("ℹ Startup fallback installed; gateway not started now.")
             print(f"  Start manually with: {start_cmd}")
         _print_next_steps()
@@ -877,7 +1026,7 @@ def _wait_for_gateway_ready(timeout_s: float = 6.0, interval_s: float = 0.4) -> 
     Returns the list of PIDs found. Empty list means nothing came up in
     time — the caller should surface that to the user as a failed start.
     """
-    from prostor_cli.gateway import find_gateway_pids
+    from hermes_cli.gateway import find_gateway_pids
 
     deadline = time.time() + timeout_s
     while time.time() < deadline:
@@ -895,19 +1044,19 @@ def _report_gateway_start(via: str) -> None:
     else:
         print(f"⚠ Launched gateway via {via}, but no process detected after 6s.")
         print("  Check the log for startup errors:")
-        from prostor_cli.config import get_prostor_home
-        print(f"    type {Path(get_prostor_home()).resolve()}\\logs\\gateway.log")
-        print(f"    type {Path(get_prostor_home()).resolve()}\\logs\\gateway-stdio.log")
+        from hermes_cli.config import get_hermes_home
+        print(f"    type {Path(get_hermes_home()).resolve()}\\logs\\gateway.log")
+        print(f"    type {Path(get_hermes_home()).resolve()}\\logs\\gateway-stdio.log")
 
 
 def _print_next_steps() -> None:
-    from prostor_cli.config import get_prostor_home
+    from hermes_cli.config import get_hermes_home
 
-    prostor_home = Path(get_prostor_home()).resolve()
+    hermes_home = Path(get_hermes_home()).resolve()
     print()
     print("Next steps:")
-    print("  prostor gateway status                      # Check status")
-    print(f"  type {prostor_home}\\logs\\gateway.log       # View logs")
+    print("  hermes gateway status                      # Check status")
+    print(f"  type {hermes_home}\\logs\\gateway.log       # View logs")
 
 
 def uninstall() -> None:
@@ -925,14 +1074,14 @@ def uninstall() -> None:
             scheduled_task_removed = True
             print(f"✓ Removed Scheduled Task {task_name!r}")
         elif _is_access_denied(detail) and not _is_running_as_admin():
-            from prostor_cli.setup import prompt_yes_no
+            from hermes_cli.setup import prompt_yes_no
 
             print(f"↻ Scheduled Task uninstall needs administrator approval ({detail or 'access denied'})")
             print("  UAC is Windows' admin approval prompt; it is needed to remove the Scheduled Task.")
             if prompt_yes_no("  Open the UAC prompt now?", False):
                 if _launch_elevated_uninstall():
-                    print("✓ Launched elevated Prostor gateway uninstall prompt.")
-                    print("  Approve the Windows UAC prompt, then run: prostor gateway status")
+                    print("✓ Launched elevated Hermes gateway uninstall prompt.")
+                    print("  Approve the Windows UAC prompt, then run: hermes gateway status")
                     return
                 print("⚠ Elevated uninstall prompt was unavailable or cancelled.")
             else:
@@ -996,7 +1145,7 @@ def query_task_status() -> dict[str, str]:
 
 def _gateway_pids() -> list[int]:
     """Reuse the cross-platform PID scanner in gateway.py."""
-    from prostor_cli.gateway import find_gateway_pids
+    from hermes_cli.gateway import find_gateway_pids
 
     return list(find_gateway_pids())
 
@@ -1018,11 +1167,11 @@ def _print_deep_probes() -> None:
       [6] Last lifecycle event in gateway-exit-diag.log
     """
     import json
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    from prostor_cli.config import get_prostor_home
+    from hermes_cli.config import get_hermes_home
 
-    home = Path(get_prostor_home()).resolve()
+    home = Path(get_hermes_home()).resolve()
     pid_path = home / "gateway.pid"
     lock_path = home / "gateway.lock"
     state_path = home / "gateway_state.json"
@@ -1094,7 +1243,7 @@ def _print_deep_probes() -> None:
             if updated_at:
                 try:
                     updated_dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-                    now = datetime.now(UTC)
+                    now = datetime.now(timezone.utc)
                     age_seconds = int((now - updated_dt).total_seconds())
                     age_str = f" (updated {age_seconds}s ago)"
                 except Exception:
@@ -1171,7 +1320,7 @@ def status(deep: bool = False) -> None:
     if not task_installed and not startup_installed and not pids:
         print()
         print("To install:")
-        print("  prostor gateway install")
+        print("  hermes gateway install")
 
 
 def start() -> None:
@@ -1186,18 +1335,18 @@ def start() -> None:
     startup_installed = is_startup_entry_installed()
 
     if not task_installed and not startup_installed:
-        from prostor_cli.setup import prompt_yes_no
+        from hermes_cli.setup import prompt_yes_no
 
         print("✗ Gateway service is not installed")
         if not prompt_yes_no("  Install it now so the gateway starts on login?", True):
-            print("  Run: prostor gateway install")
+            print("  Run: hermes gateway install")
             return
         install(force=False)
         task_installed = is_task_registered()
         startup_installed = is_startup_entry_installed()
         if not task_installed and not startup_installed:
             print("⚠ Gateway install did not complete in this process.")
-            print("  If a UAC prompt opened, approve it, then run: prostor gateway start")
+            print("  If a UAC prompt opened, approve it, then run: hermes gateway start")
             return
 
     if task_installed:
@@ -1229,7 +1378,7 @@ def _drain_gateway_pid(pid: int, drain_timeout: float) -> bool:
     if pid <= 0:
         return False
     try:
-        from gateway.status import _pid_exists, write_planned_stop_marker
+        from gateway.status import write_planned_stop_marker, _pid_exists
     except ImportError:
         return False
 
@@ -1259,8 +1408,8 @@ def stop() -> None:
     + ``kill_gateway_processes(force=True)`` for any strays.
     """
     _assert_windows()
+    from hermes_cli.gateway import kill_gateway_processes, _get_restart_drain_timeout
     from gateway.status import get_running_pid
-    from prostor_cli.gateway import _get_restart_drain_timeout, kill_gateway_processes
 
     # Phase 1: ask the running gateway (if any) to drain itself by writing
     # the planned-stop marker, then wait briefly for it to exit cleanly.
@@ -1330,7 +1479,7 @@ def restart() -> None:
     doesn't produce a running gateway.
     """
     _assert_windows()
-    from prostor_cli.gateway import kill_gateway_processes
+    from hermes_cli.gateway import kill_gateway_processes
 
     stop()
 
@@ -1350,5 +1499,5 @@ def restart() -> None:
     if not _wait_for_gateway_ready(timeout_s=15.0):
         raise RuntimeError(
             "Gateway restart did not produce a running gateway process. "
-            "Check logs/gateway.log and run `prostor gateway status`."
+            "Check logs/gateway.log and run `hermes gateway status`."
         )

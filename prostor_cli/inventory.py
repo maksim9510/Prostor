@@ -34,6 +34,8 @@ Substrate facts (verified May 2026):
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Optional
+
 
 # ─── Public types ───────────────────────────────────────────────────────
 
@@ -54,10 +56,10 @@ class ConfigContext:
     def with_overrides(
         self,
         *,
-        current_provider: str | None = None,
-        current_model: str | None = None,
-        current_base_url: str | None = None,
-    ) -> ConfigContext:
+        current_provider: Optional[str] = None,
+        current_model: Optional[str] = None,
+        current_base_url: Optional[str] = None,
+    ) -> "ConfigContext":
         """Return a copy with truthy overrides applied.
 
         Truthy-only because the TUI reads agent attributes that may be
@@ -80,7 +82,7 @@ def load_picker_context() -> ConfigContext:
     Replaces the inline 17-LOC config-slice that ``web_server.py`` and
     ``tui_gateway/server.py`` (×2 sites) used to do.
     """
-    from prostor_cli.config import get_compatible_custom_providers, load_config
+    from hermes_cli.config import get_compatible_custom_providers, load_config
 
     cfg = load_config()
     model_cfg = cfg.get("model", {})
@@ -133,7 +135,7 @@ def build_models_payload(
     - ``pricing``: enrich each row with formatted per-model pricing and,
       for Nous, ``free_tier``/``unavailable_models`` so the GUI picker can
       show $/Mtok columns and gate paid models on free accounts —
-      mirroring the ``prostor model`` CLI picker. Adds network calls
+      mirroring the ``hermes model`` CLI picker. Adds network calls
       (pricing fetch + Nous tier check); only set for interactive pickers.
     - ``capabilities``: add a per-row ``capabilities`` map
       ``{model: {fast, reasoning}}`` so pickers can gate the model-options
@@ -148,7 +150,7 @@ def build_models_payload(
       "refresh models" action; normal picker opens leave it false to stay
       snappy on the 1h cache.
     """
-    from prostor_cli.model_switch import list_authenticated_providers
+    from hermes_cli.model_switch import list_authenticated_providers
 
     rows = list_authenticated_providers(
         current_provider=ctx.current_provider,
@@ -171,11 +173,11 @@ def build_models_payload(
     # aggregator rows honest: they only show models the user can't get
     # from a more-specific provider.  (#45954)
     try:
-        from prostor_cli.providers import is_aggregator as _is_aggregator
+        from hermes_cli.providers import is_routing_aggregator as _is_routing_aggregator
     except Exception:
-        _is_aggregator = None  # type: ignore[assignment]
+        _is_routing_aggregator = None  # type: ignore[assignment]
 
-    if _is_aggregator is not None:
+    if _is_routing_aggregator is not None:
         user_models: set[str] = set()
         for row in rows:
             if row.get("is_user_defined"):
@@ -184,14 +186,21 @@ def build_models_payload(
             for row in rows:
                 # A user's own configured provider is never an "aggregator
                 # duplicate" of itself: user_models is built from these very
-                # rows, and is_aggregator() reports True for every custom:*
-                # slug.  Without this guard the dedup strips a user-defined
-                # custom provider's entire model list (all of it lives in
-                # user_models), emptying its picker row.
+                # rows, and is_routing_aggregator() reports True for every
+                # custom:* slug.  Without this guard the dedup strips a
+                # user-defined custom provider's entire model list (all of it
+                # lives in user_models), emptying its picker row.
                 if row.get("is_user_defined"):
                     continue
                 slug = row.get("slug", "")
-                if not _is_aggregator(slug):
+                # Only strip overlaps from TRUE routing aggregators (OpenRouter,
+                # custom:* proxies). Flat-namespace resellers (opencode-go /
+                # opencode-zen) serve every listed model as a first-party model,
+                # so their rows must keep models that a user's proxy happens to
+                # share a name with — otherwise a subscription provider's own
+                # catalog (minimax-m3, glm-5, deepseek-v4-flash, ...) is silently
+                # gutted in the picker. (#47077)
+                if not _is_routing_aggregator(slug):
                     continue
                 original = row.get("models") or []
                 filtered = [m for m in original if m.lower() not in user_models]
@@ -226,7 +235,7 @@ def _apply_capabilities(rows: list[dict]) -> None:
     no-op on models that ignore it, whereas hiding it from a capable-but-
     uncatalogued model is the worse failure.
     """
-    from prostor_cli.models import model_supports_fast_mode
+    from hermes_cli.models import model_supports_fast_mode
 
     try:
         from agent.models_dev import get_model_capabilities
@@ -260,7 +269,7 @@ def _apply_capabilities(rows: list[dict]) -> None:
 
 def _append_unconfigured_rows(rows: list[dict], ctx: ConfigContext) -> list[dict]:
     """Build skeleton rows for canonical providers missing from ``rows``."""
-    from prostor_cli.models import _PROVIDER_LABELS, CANONICAL_PROVIDERS
+    from hermes_cli.models import CANONICAL_PROVIDERS, _PROVIDER_LABELS
 
     seen = {r["slug"].lower() for r in rows}
     cur = (ctx.current_provider or "").lower()
@@ -290,7 +299,7 @@ def _apply_picker_hints(rows: list[dict]) -> None:
     the unconfigured skeleton rows from ``_append_unconfigured_rows`` get
     the picker's setup-hint shape.
     """
-    from prostor_cli.auth import PROVIDER_REGISTRY
+    from hermes_cli.auth import PROVIDER_REGISTRY
 
     for row in rows:
         if "authenticated" in row:
@@ -316,7 +325,7 @@ def _apply_picker_hints(rows: list[dict]) -> None:
         row["warning"] = (
             f"paste {key_env} to activate"
             if auth_type == "api_key" and key_env
-            else f"run `prostor model` to configure ({auth_type})"
+            else f"run `hermes model` to configure ({auth_type})"
         )
 
 
@@ -330,7 +339,7 @@ def _reorder_canonical(rows: list[dict]) -> list[dict]:
     canonical. Keying on the flag would silently demote canonical
     providers configured via the new keyed schema.
     """
-    from prostor_cli.models import CANONICAL_PROVIDERS
+    from hermes_cli.models import CANONICAL_PROVIDERS
 
     order = {e.slug: i for i, e in enumerate(CANONICAL_PROVIDERS)}
     canon = sorted(
@@ -363,7 +372,7 @@ def _apply_pricing(
     renders strings — identical formatting to the CLI picker. All failures
     are swallowed (best-effort): a row simply gets no ``pricing`` key.
     """
-    from prostor_cli.models import (
+    from hermes_cli.models import (
         _format_price_per_mtok,
         check_nous_free_tier,
         get_pricing_for_provider,
@@ -371,7 +380,7 @@ def _apply_pricing(
     )
 
     # Resolve Nous free-tier once (cached in models.py for the TTL window).
-    nous_free_tier: bool | None = None
+    nous_free_tier: Optional[bool] = None
 
     for row in rows:
         slug = str(row.get("slug", "")).lower()

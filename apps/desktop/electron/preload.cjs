@@ -1,34 +1,60 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
-contextBridge.exposeInMainWorld('prostorDesktop', {
-  getConnection: profile => ipcRenderer.invoke('prostor:connection', profile),
-  revalidateConnection: () => ipcRenderer.invoke('prostor:connection:revalidate'),
-  touchBackend: profile => ipcRenderer.invoke('prostor:backend:touch', profile),
-  getGatewayWsUrl: profile => ipcRenderer.invoke('prostor:gateway:ws-url', profile),
-  openSessionWindow: (sessionId, opts) => ipcRenderer.invoke('prostor:window:openSession', sessionId, opts),
-  openNewSessionWindow: () => ipcRenderer.invoke('prostor:window:openNewSession'),
-  getBootProgress: () => ipcRenderer.invoke('prostor:boot-progress:get'),
-  getConnectionConfig: profile => ipcRenderer.invoke('prostor:connection-config:get', profile),
-  saveConnectionConfig: payload => ipcRenderer.invoke('prostor:connection-config:save', payload),
-  applyConnectionConfig: payload => ipcRenderer.invoke('prostor:connection-config:apply', payload),
-  testConnectionConfig: payload => ipcRenderer.invoke('prostor:connection-config:test', payload),
-  probeConnectionConfig: remoteUrl => ipcRenderer.invoke('prostor:connection-config:probe', remoteUrl),
-  oauthLoginConnectionConfig: remoteUrl => ipcRenderer.invoke('prostor:connection-config:oauth-login', remoteUrl),
-  oauthLogoutConnectionConfig: remoteUrl => ipcRenderer.invoke('prostor:connection-config:oauth-logout', remoteUrl),
-  profile: {
-    get: () => ipcRenderer.invoke('prostor:profile:get'),
-    set: name => ipcRenderer.invoke('prostor:profile:set', name)
+contextBridge.exposeInMainWorld('hermesDesktop', {
+  getConnection: profile => ipcRenderer.invoke('hermes:connection', profile),
+  revalidateConnection: () => ipcRenderer.invoke('hermes:connection:revalidate'),
+  touchBackend: profile => ipcRenderer.invoke('hermes:backend:touch', profile),
+  getGatewayWsUrl: profile => ipcRenderer.invoke('hermes:gateway:ws-url', profile),
+  openSessionWindow: (sessionId, opts) => ipcRenderer.invoke('hermes:window:openSession', sessionId, opts),
+  openNewSessionWindow: () => ipcRenderer.invoke('hermes:window:openNewSession'),
+  petOverlay: {
+    // Main renderer → main process: window lifecycle + drag. `request` is
+    // `{ bounds, screen }`; resolves with the screen bounds it actually used.
+    open: request => ipcRenderer.invoke('hermes:pet-overlay:open', request),
+    close: () => ipcRenderer.invoke('hermes:pet-overlay:close'),
+    setBounds: bounds => ipcRenderer.send('hermes:pet-overlay:set-bounds', bounds),
+    setIgnoreMouse: ignore => ipcRenderer.send('hermes:pet-overlay:ignore-mouse', ignore),
+    // Flip the overlay focusable (and focus it) while the composer needs keys.
+    setFocusable: focusable => ipcRenderer.send('hermes:pet-overlay:set-focusable', focusable),
+    // Main renderer → overlay (forwarded by main): push the latest pet state.
+    pushState: payload => ipcRenderer.send('hermes:pet-overlay:state', payload),
+    // Overlay → main renderer (forwarded by main): pop back in / composer submit.
+    control: payload => ipcRenderer.send('hermes:pet-overlay:control', payload),
+    // Overlay subscribes to state pushes.
+    onState: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:pet-overlay:state', listener)
+      return () => ipcRenderer.removeListener('hermes:pet-overlay:state', listener)
+    },
+    // Main renderer subscribes to overlay control messages.
+    onControl: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:pet-overlay:control', listener)
+      return () => ipcRenderer.removeListener('hermes:pet-overlay:control', listener)
+    }
   },
-  api: request => ipcRenderer.invoke('prostor:api', request),
-  notify: payload => ipcRenderer.invoke('prostor:notify', payload),
-  requestMicrophoneAccess: () => ipcRenderer.invoke('prostor:requestMicrophoneAccess'),
-  readFileDataUrl: filePath => ipcRenderer.invoke('prostor:readFileDataUrl', filePath),
-  readFileText: filePath => ipcRenderer.invoke('prostor:readFileText', filePath),
-  selectPaths: options => ipcRenderer.invoke('prostor:selectPaths', options),
-  writeClipboard: text => ipcRenderer.invoke('prostor:writeClipboard', text),
-  saveImageFromUrl: url => ipcRenderer.invoke('prostor:saveImageFromUrl', url),
-  saveImageBuffer: (data, ext) => ipcRenderer.invoke('prostor:saveImageBuffer', { data, ext }),
-  saveClipboardImage: () => ipcRenderer.invoke('prostor:saveClipboardImage'),
+  getBootProgress: () => ipcRenderer.invoke('hermes:boot-progress:get'),
+  getConnectionConfig: profile => ipcRenderer.invoke('hermes:connection-config:get', profile),
+  saveConnectionConfig: payload => ipcRenderer.invoke('hermes:connection-config:save', payload),
+  applyConnectionConfig: payload => ipcRenderer.invoke('hermes:connection-config:apply', payload),
+  testConnectionConfig: payload => ipcRenderer.invoke('hermes:connection-config:test', payload),
+  probeConnectionConfig: remoteUrl => ipcRenderer.invoke('hermes:connection-config:probe', remoteUrl),
+  oauthLoginConnectionConfig: remoteUrl => ipcRenderer.invoke('hermes:connection-config:oauth-login', remoteUrl),
+  oauthLogoutConnectionConfig: remoteUrl => ipcRenderer.invoke('hermes:connection-config:oauth-logout', remoteUrl),
+  profile: {
+    get: () => ipcRenderer.invoke('hermes:profile:get'),
+    set: name => ipcRenderer.invoke('hermes:profile:set', name)
+  },
+  api: request => ipcRenderer.invoke('hermes:api', request),
+  notify: payload => ipcRenderer.invoke('hermes:notify', payload),
+  requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),
+  readFileDataUrl: filePath => ipcRenderer.invoke('hermes:readFileDataUrl', filePath),
+  readFileText: filePath => ipcRenderer.invoke('hermes:readFileText', filePath),
+  selectPaths: options => ipcRenderer.invoke('hermes:selectPaths', options),
+  writeClipboard: text => ipcRenderer.invoke('hermes:writeClipboard', text),
+  saveImageFromUrl: url => ipcRenderer.invoke('hermes:saveImageFromUrl', url),
+  saveImageBuffer: (data, ext) => ipcRenderer.invoke('hermes:saveImageBuffer', { data, ext }),
+  saveClipboardImage: () => ipcRenderer.invoke('hermes:saveClipboardImage'),
   getPathForFile: file => {
     try {
       return webUtils.getPathForFile(file) || ''
@@ -36,39 +62,40 @@ contextBridge.exposeInMainWorld('prostorDesktop', {
       return ''
     }
   },
-  normalizePreviewTarget: (target, baseDir) => ipcRenderer.invoke('prostor:normalizePreviewTarget', target, baseDir),
-  watchPreviewFile: url => ipcRenderer.invoke('prostor:watchPreviewFile', url),
-  stopPreviewFileWatch: id => ipcRenderer.invoke('prostor:stopPreviewFileWatch', id),
-  setTitleBarTheme: payload => ipcRenderer.send('prostor:titlebar-theme', payload),
-  setNativeTheme: mode => ipcRenderer.send('prostor:native-theme', mode),
-  setTranslucency: payload => ipcRenderer.send('prostor:translucency', payload),
-  setPreviewShortcutActive: active => ipcRenderer.send('prostor:previewShortcutActive', Boolean(active)),
-  openExternal: url => ipcRenderer.invoke('prostor:openExternal', url),
-  fetchLinkTitle: url => ipcRenderer.invoke('prostor:fetchLinkTitle', url),
-  sanitizeWorkspaceCwd: cwd => ipcRenderer.invoke('prostor:workspace:sanitize', cwd),
+  normalizePreviewTarget: (target, baseDir) => ipcRenderer.invoke('hermes:normalizePreviewTarget', target, baseDir),
+  watchPreviewFile: url => ipcRenderer.invoke('hermes:watchPreviewFile', url),
+  stopPreviewFileWatch: id => ipcRenderer.invoke('hermes:stopPreviewFileWatch', id),
+  setTitleBarTheme: payload => ipcRenderer.send('hermes:titlebar-theme', payload),
+  setNativeTheme: mode => ipcRenderer.send('hermes:native-theme', mode),
+  setTranslucency: payload => ipcRenderer.send('hermes:translucency', payload),
+  setPreviewShortcutActive: active => ipcRenderer.send('hermes:previewShortcutActive', Boolean(active)),
+  openExternal: url => ipcRenderer.invoke('hermes:openExternal', url),
+  openPreviewInBrowser: url => ipcRenderer.invoke('hermes:openPreviewInBrowser', url),
+  fetchLinkTitle: url => ipcRenderer.invoke('hermes:fetchLinkTitle', url),
+  sanitizeWorkspaceCwd: cwd => ipcRenderer.invoke('hermes:workspace:sanitize', cwd),
   settings: {
-    getDefaultProjectDir: () => ipcRenderer.invoke('prostor:setting:defaultProjectDir:get'),
-    setDefaultProjectDir: dir => ipcRenderer.invoke('prostor:setting:defaultProjectDir:set', dir),
-    pickDefaultProjectDir: () => ipcRenderer.invoke('prostor:setting:defaultProjectDir:pick')
+    getDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:get'),
+    setDefaultProjectDir: dir => ipcRenderer.invoke('hermes:setting:defaultProjectDir:set', dir),
+    pickDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:pick')
   },
-  revealLogs: () => ipcRenderer.invoke('prostor:logs:reveal'),
-  getRecentLogs: () => ipcRenderer.invoke('prostor:logs:recent'),
-  readDir: dirPath => ipcRenderer.invoke('prostor:fs:readDir', dirPath),
-  gitRoot: startPath => ipcRenderer.invoke('prostor:fs:gitRoot', startPath),
-  worktrees: cwds => ipcRenderer.invoke('prostor:fs:worktrees', cwds),
+  revealLogs: () => ipcRenderer.invoke('hermes:logs:reveal'),
+  getRecentLogs: () => ipcRenderer.invoke('hermes:logs:recent'),
+  readDir: dirPath => ipcRenderer.invoke('hermes:fs:readDir', dirPath),
+  gitRoot: startPath => ipcRenderer.invoke('hermes:fs:gitRoot', startPath),
+  worktrees: cwds => ipcRenderer.invoke('hermes:fs:worktrees', cwds),
   terminal: {
-    dispose: id => ipcRenderer.invoke('prostor:terminal:dispose', id),
-    resize: (id, size) => ipcRenderer.invoke('prostor:terminal:resize', id, size),
-    start: options => ipcRenderer.invoke('prostor:terminal:start', options),
-    write: (id, data) => ipcRenderer.invoke('prostor:terminal:write', id, data),
+    dispose: id => ipcRenderer.invoke('hermes:terminal:dispose', id),
+    resize: (id, size) => ipcRenderer.invoke('hermes:terminal:resize', id, size),
+    start: options => ipcRenderer.invoke('hermes:terminal:start', options),
+    write: (id, data) => ipcRenderer.invoke('hermes:terminal:write', id, data),
     onData: (id, callback) => {
-      const channel = `prostor:terminal:${id}:data`
+      const channel = `hermes:terminal:${id}:data`
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on(channel, listener)
       return () => ipcRenderer.removeListener(channel, listener)
     },
     onExit: (id, callback) => {
-      const channel = `prostor:terminal:${id}:exit`
+      const channel = `hermes:terminal:${id}:exit`
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on(channel, listener)
       return () => ipcRenderer.removeListener(channel, listener)
@@ -76,88 +103,88 @@ contextBridge.exposeInMainWorld('prostorDesktop', {
   },
   onClosePreviewRequested: callback => {
     const listener = () => callback()
-    ipcRenderer.on('prostor:close-preview-requested', listener)
-    return () => ipcRenderer.removeListener('prostor:close-preview-requested', listener)
+    ipcRenderer.on('hermes:close-preview-requested', listener)
+    return () => ipcRenderer.removeListener('hermes:close-preview-requested', listener)
   },
   onOpenUpdatesRequested: callback => {
     const listener = () => callback()
-    ipcRenderer.on('prostor:open-updates', listener)
-    return () => ipcRenderer.removeListener('prostor:open-updates', listener)
+    ipcRenderer.on('hermes:open-updates', listener)
+    return () => ipcRenderer.removeListener('hermes:open-updates', listener)
   },
   onDeepLink: callback => {
     const listener = (_event, payload) => callback(payload)
-    ipcRenderer.on('prostor:deep-link', listener)
-    return () => ipcRenderer.removeListener('prostor:deep-link', listener)
+    ipcRenderer.on('hermes:deep-link', listener)
+    return () => ipcRenderer.removeListener('hermes:deep-link', listener)
   },
-  signalDeepLinkReady: () => ipcRenderer.invoke('prostor:deep-link-ready'),
+  signalDeepLinkReady: () => ipcRenderer.invoke('hermes:deep-link-ready'),
   onWindowStateChanged: callback => {
     const listener = (_event, payload) => callback(payload)
-    ipcRenderer.on('prostor:window-state-changed', listener)
-    return () => ipcRenderer.removeListener('prostor:window-state-changed', listener)
+    ipcRenderer.on('hermes:window-state-changed', listener)
+    return () => ipcRenderer.removeListener('hermes:window-state-changed', listener)
   },
   onFocusSession: callback => {
     const listener = (_event, sessionId) => callback(sessionId)
-    ipcRenderer.on('prostor:focus-session', listener)
-    return () => ipcRenderer.removeListener('prostor:focus-session', listener)
+    ipcRenderer.on('hermes:focus-session', listener)
+    return () => ipcRenderer.removeListener('hermes:focus-session', listener)
   },
   onNotificationAction: callback => {
     const listener = (_event, payload) => callback(payload)
-    ipcRenderer.on('prostor:notification-action', listener)
-    return () => ipcRenderer.removeListener('prostor:notification-action', listener)
+    ipcRenderer.on('hermes:notification-action', listener)
+    return () => ipcRenderer.removeListener('hermes:notification-action', listener)
   },
   onPreviewFileChanged: callback => {
     const listener = (_event, payload) => callback(payload)
-    ipcRenderer.on('prostor:preview-file-changed', listener)
-    return () => ipcRenderer.removeListener('prostor:preview-file-changed', listener)
+    ipcRenderer.on('hermes:preview-file-changed', listener)
+    return () => ipcRenderer.removeListener('hermes:preview-file-changed', listener)
   },
   onBackendExit: callback => {
     const listener = (_event, payload) => callback(payload)
-    ipcRenderer.on('prostor:backend-exit', listener)
-    return () => ipcRenderer.removeListener('prostor:backend-exit', listener)
+    ipcRenderer.on('hermes:backend-exit', listener)
+    return () => ipcRenderer.removeListener('hermes:backend-exit', listener)
   },
   onPowerResume: callback => {
     const listener = () => callback()
-    ipcRenderer.on('prostor:power-resume', listener)
-    return () => ipcRenderer.removeListener('prostor:power-resume', listener)
+    ipcRenderer.on('hermes:power-resume', listener)
+    return () => ipcRenderer.removeListener('hermes:power-resume', listener)
   },
   onBootProgress: callback => {
     const listener = (_event, payload) => callback(payload)
-    ipcRenderer.on('prostor:boot-progress', listener)
-    return () => ipcRenderer.removeListener('prostor:boot-progress', listener)
+    ipcRenderer.on('hermes:boot-progress', listener)
+    return () => ipcRenderer.removeListener('hermes:boot-progress', listener)
   },
   // First-launch bootstrap progress -- emitted by the install.ps1 stage
   // runner in main.cjs (apps/desktop/electron/bootstrap-runner.cjs).
   // Renderer's install overlay subscribes to live events and queries the
   // current snapshot via getBootstrapState() to recover after a devtools
   // reload mid-bootstrap.
-  getBootstrapState: () => ipcRenderer.invoke('prostor:bootstrap:get'),
-  resetBootstrap: () => ipcRenderer.invoke('prostor:bootstrap:reset'),
-  repairBootstrap: () => ipcRenderer.invoke('prostor:bootstrap:repair'),
-  cancelBootstrap: () => ipcRenderer.invoke('prostor:bootstrap:cancel'),
+  getBootstrapState: () => ipcRenderer.invoke('hermes:bootstrap:get'),
+  resetBootstrap: () => ipcRenderer.invoke('hermes:bootstrap:reset'),
+  repairBootstrap: () => ipcRenderer.invoke('hermes:bootstrap:repair'),
+  cancelBootstrap: () => ipcRenderer.invoke('hermes:bootstrap:cancel'),
   onBootstrapEvent: callback => {
     const listener = (_event, payload) => callback(payload)
-    ipcRenderer.on('prostor:bootstrap:event', listener)
-    return () => ipcRenderer.removeListener('prostor:bootstrap:event', listener)
+    ipcRenderer.on('hermes:bootstrap:event', listener)
+    return () => ipcRenderer.removeListener('hermes:bootstrap:event', listener)
   },
-  getVersion: () => ipcRenderer.invoke('prostor:version'),
-  getRemoteDisplayReason: () => ipcRenderer.invoke('prostor:get-remote-display-reason'),
+  getVersion: () => ipcRenderer.invoke('hermes:version'),
+  getRemoteDisplayReason: () => ipcRenderer.invoke('hermes:get-remote-display-reason'),
   uninstall: {
-    summary: () => ipcRenderer.invoke('prostor:uninstall:summary'),
-    run: mode => ipcRenderer.invoke('prostor:uninstall:run', { mode })
+    summary: () => ipcRenderer.invoke('hermes:uninstall:summary'),
+    run: mode => ipcRenderer.invoke('hermes:uninstall:run', { mode })
   },
   updates: {
-    check: () => ipcRenderer.invoke('prostor:updates:check'),
-    apply: opts => ipcRenderer.invoke('prostor:updates:apply', opts),
-    getBranch: () => ipcRenderer.invoke('prostor:updates:branch:get'),
-    setBranch: name => ipcRenderer.invoke('prostor:updates:branch:set', name),
+    check: () => ipcRenderer.invoke('hermes:updates:check'),
+    apply: opts => ipcRenderer.invoke('hermes:updates:apply', opts),
+    getBranch: () => ipcRenderer.invoke('hermes:updates:branch:get'),
+    setBranch: name => ipcRenderer.invoke('hermes:updates:branch:set', name),
     onProgress: callback => {
       const listener = (_event, payload) => callback(payload)
-      ipcRenderer.on('prostor:updates:progress', listener)
-      return () => ipcRenderer.removeListener('prostor:updates:progress', listener)
+      ipcRenderer.on('hermes:updates:progress', listener)
+      return () => ipcRenderer.removeListener('hermes:updates:progress', listener)
     }
   },
   themes: {
-    fetchMarketplace: id => ipcRenderer.invoke('prostor:vscode-theme:fetch', id),
-    searchMarketplace: query => ipcRenderer.invoke('prostor:vscode-theme:search', query)
+    fetchMarketplace: id => ipcRenderer.invoke('hermes:vscode-theme:fetch', id),
+    searchMarketplace: query => ipcRenderer.invoke('hermes:vscode-theme:search', query)
   }
 })

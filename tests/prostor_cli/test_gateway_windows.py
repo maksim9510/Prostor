@@ -1,12 +1,12 @@
-"""Tests for prostor_cli.gateway_windows."""
+"""Tests for hermes_cli.gateway_windows."""
 
 from pathlib import Path
 
 import pytest
 
-import prostor_cli.gateway as gateway
-import prostor_cli.gateway_windows as gateway_windows
-import prostor_cli.setup as setup
+import hermes_cli.gateway as gateway
+import hermes_cli.gateway_windows as gateway_windows
+import hermes_cli.setup as setup
 
 
 @pytest.mark.parametrize(
@@ -62,7 +62,7 @@ def test_exec_schtasks_decodes_with_replace_errors(monkeypatch):
     monkeypatch.setattr(gateway_windows.shutil, "which", lambda name: r"C:\\Windows\\System32\\schtasks.exe")
     monkeypatch.setattr(gateway_windows.subprocess, "run", fake_run)
 
-    code, out, err = gateway_windows._exec_schtasks(["/Query", "/TN", "Prostor_Gateway"])
+    code, out, err = gateway_windows._exec_schtasks(["/Query", "/TN", "Hermes_Gateway"])
 
     assert (code, out, err) == (0, "ok", "")
     assert captured["errors"] == "replace", "schtasks output must decode with errors='replace'"
@@ -78,11 +78,11 @@ def test_build_gateway_argv_uses_base_pythonw_for_uv_venv_launcher(monkeypatch, 
     project = tmp_path / "project"
     scripts = project / "venv" / "Scripts"
     site_packages = project / "venv" / "Lib" / "site-packages"
-    prostor_home = tmp_path / "prostor-home"
+    hermes_home = tmp_path / "hermes-home"
     base = tmp_path / "uv" / "python" / "cpython-3.11-windows-x86_64-none"
     scripts.mkdir(parents=True)
     site_packages.mkdir(parents=True)
-    prostor_home.mkdir()
+    hermes_home.mkdir()
     base.mkdir(parents=True)
 
     venv_python = scripts / "python.exe"
@@ -95,41 +95,41 @@ def test_build_gateway_argv_uses_base_pythonw_for_uv_venv_launcher(monkeypatch, 
         encoding="utf-8",
     )
 
-    import prostor_cli.gateway as gateway
+    import hermes_cli.gateway as gateway
 
     monkeypatch.setattr(gateway_windows.sys, "platform", "win32")
     monkeypatch.setattr(gateway, "PROJECT_ROOT", project)
     monkeypatch.setattr(gateway, "get_python_path", lambda: str(venv_python))
-    monkeypatch.setattr(gateway, "_profile_arg", lambda prostor_home: "")
-    monkeypatch.setattr("prostor_cli.config.get_prostor_home", lambda: str(prostor_home))
+    monkeypatch.setattr(gateway, "_profile_arg", lambda hermes_home: "")
+    monkeypatch.setattr("hermes_cli.config.get_hermes_home", lambda: str(hermes_home))
 
     argv, cwd, env_overlay = gateway_windows._build_gateway_argv()
 
-    assert argv[:3] == [str(base_pythonw), "-m", "prostor_cli.main"]
-    assert cwd == str(prostor_home.resolve())
+    assert argv[:3] == [str(base_pythonw), "-m", "hermes_cli.main"]
+    assert cwd == str(hermes_home.resolve())
     assert env_overlay["VIRTUAL_ENV"] == str(project / "venv")
     assert str(project) in env_overlay["PYTHONPATH"].split(gateway_windows.os.pathsep)
     assert str(site_packages) in env_overlay["PYTHONPATH"].split(gateway_windows.os.pathsep)
 
 
 class TestStableWindowsGatewayWorkingDir:
-    def test_stable_gateway_working_dir_uses_prostor_home(self, tmp_path, monkeypatch):
-        home = tmp_path / ".prostor"
+    def test_stable_gateway_working_dir_uses_hermes_home(self, tmp_path, monkeypatch):
+        home = tmp_path / ".hermes"
         home.mkdir()
-        monkeypatch.setattr("prostor_cli.config.get_prostor_home", lambda: home)
+        monkeypatch.setattr("hermes_cli.config.get_hermes_home", lambda: home)
         assert gateway_windows._stable_gateway_working_dir(tmp_path / "checkout") == str(home.resolve())
 
     def test_stable_gateway_working_dir_falls_back_to_project_root(self, tmp_path, monkeypatch):
-        missing = tmp_path / "missing" / ".prostor"
+        missing = tmp_path / "missing" / ".hermes"
         project = tmp_path / "checkout"
-        monkeypatch.setattr("prostor_cli.config.get_prostor_home", lambda: missing)
+        monkeypatch.setattr("hermes_cli.config.get_hermes_home", lambda: missing)
         assert gateway_windows._stable_gateway_working_dir(project) == str(project)
 
 
-def test_write_task_script_anchors_cmd_cd_at_prostor_home(monkeypatch, tmp_path):
+def test_write_task_script_anchors_cmd_cd_at_hermes_home(monkeypatch, tmp_path):
     project = tmp_path / "project"
-    prostor_home = tmp_path / "prostor-home"
-    prostor_home.mkdir()
+    hermes_home = tmp_path / "hermes-home"
+    hermes_home.mkdir()
     python_exe = project / "venv" / "Scripts" / "python.exe"
     python_exe.parent.mkdir(parents=True)
     python_exe.write_text("", encoding="utf-8")
@@ -138,26 +138,26 @@ def test_write_task_script_anchors_cmd_cd_at_prostor_home(monkeypatch, tmp_path)
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
     monkeypatch.setattr(gateway, "PROJECT_ROOT", project)
     monkeypatch.setattr(gateway, "get_python_path", lambda: str(python_exe))
-    monkeypatch.setattr(gateway, "_profile_arg", lambda prostor_home: "")
-    monkeypatch.setattr("prostor_cli.config.get_prostor_home", lambda: str(prostor_home))
+    monkeypatch.setattr(gateway, "_profile_arg", lambda hermes_home: "")
+    monkeypatch.setattr("hermes_cli.config.get_hermes_home", lambda: str(hermes_home))
     monkeypatch.setattr(gateway_windows, "get_task_script_path", lambda: script_path)
 
     written = gateway_windows._write_task_script()
     content = script_path.read_text(encoding="utf-8")
 
     assert written == script_path
-    assert f"cd /d {gateway_windows._quote_cmd_script_arg(str(prostor_home.resolve()))}" in content
+    assert f"cd /d {gateway_windows._quote_cmd_script_arg(str(hermes_home.resolve()))}" in content
     assert f"cd /d {gateway_windows._quote_cmd_script_arg(str(project))}" not in content
 
 
 def _arrange_startup_fallback(monkeypatch, tmp_path, running_pids):
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
-    startup_entry = tmp_path / "Startup" / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
+    startup_entry = tmp_path / "Startup" / "Hermes_Gateway_alice.cmd"
     calls = []
 
     monkeypatch.setattr(gateway_windows, "_prompt_install_choices", lambda *args, **kwargs: (False, True))
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
-    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Prostor_Gateway_alice")
+    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Hermes_Gateway_alice")
     monkeypatch.setattr(gateway_windows, "_write_task_script", lambda: script_path)
     monkeypatch.setattr(
         gateway_windows,
@@ -190,12 +190,16 @@ def _arrange_startup_fallback(monkeypatch, tmp_path, running_pids):
 
 def test_gateway_cmd_script_uses_pythonw_without_replace_or_start_churn(monkeypatch):
     """Scheduled Task wrapper should launch pythonw once and avoid replace loops."""
-    monkeypatch.setattr(gateway_windows, "_derive_venv_pythonw", lambda exe: exe.replace("python.exe", "pythonw.exe"))
+    monkeypatch.setattr(
+        gateway_windows,
+        "_resolve_detached_python",
+        lambda exe: (exe.replace("python.exe", "pythonw.exe"), r"C:\\Hermes\\hermes-agent\\venv", []),
+    )
 
     content = gateway_windows._build_gateway_cmd_script(
-        r"C:\\Prostor\\prostor-agent\\venv\\Scripts\\python.exe",
-        r"C:\\Prostor\\prostor-agent",
-        r"C:\\ProstorHome\\profiles\\alice",
+        r"C:\\Hermes\\hermes-agent\\venv\\Scripts\\python.exe",
+        r"C:\\Hermes\\hermes-agent",
+        r"C:\\HermesHome\\profiles\\alice",
         "--profile alice",
     )
 
@@ -204,6 +208,41 @@ def test_gateway_cmd_script_uses_pythonw_without_replace_or_start_churn(monkeypa
     assert "--replace" not in content
     assert "start \"\"" not in content
     assert "exit /b 0" in content
+
+
+def test_gateway_cmd_script_uses_uv_safe_base_pythonw(monkeypatch, tmp_path):
+    """Scheduled Task wrapper should share the detached uv-venv workaround."""
+    project = tmp_path / "project"
+    scripts = project / "venv" / "Scripts"
+    site_packages = project / "venv" / "Lib" / "site-packages"
+    hermes_home = tmp_path / "hermes-home"
+    base = tmp_path / "uv" / "python" / "cpython-3.11-windows-x86_64-none"
+    scripts.mkdir(parents=True)
+    site_packages.mkdir(parents=True)
+    hermes_home.mkdir()
+    base.mkdir(parents=True)
+
+    venv_python = scripts / "python.exe"
+    venv_pythonw = scripts / "pythonw.exe"
+    base_pythonw = base / "pythonw.exe"
+    for exe in (venv_python, venv_pythonw, base_pythonw):
+        exe.write_text("", encoding="utf-8")
+    (project / "venv" / "pyvenv.cfg").write_text(
+        f"home = {base}\nimplementation = CPython\nuv = 0.11.14\nversion_info = 3.11.15\n",
+        encoding="utf-8",
+    )
+
+    content = gateway_windows._build_gateway_cmd_script(
+        str(venv_python),
+        str(hermes_home),
+        str(hermes_home),
+        "",
+    )
+
+    assert str(base_pythonw) in content
+    assert f'set "VIRTUAL_ENV={project / "venv"}"' in content
+    assert str(site_packages) in content
+    assert str(venv_pythonw) not in content
 
 
 def test_elevated_gateway_command_uses_pythonw_hidden_console(monkeypatch):
@@ -221,7 +260,7 @@ def test_elevated_gateway_command_uses_pythonw_hidden_console(monkeypatch):
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
     monkeypatch.setattr(gateway_windows, "_current_profile_cli_args", lambda: ["--profile", "alice"])
     monkeypatch.setattr(gateway_windows, "_derive_venv_pythonw", lambda exe: exe.replace("python.exe", "pythonw.exe"))
-    monkeypatch.setattr(gateway_windows.sys, "executable", r"C:\Prostor\venv\Scripts\python.exe")
+    monkeypatch.setattr(gateway_windows.sys, "executable", r"C:\Hermes\venv\Scripts\python.exe")
     monkeypatch.setattr(gateway_windows.ctypes, "windll", FakeWindll(), raising=False)
 
     assert gateway_windows._launch_elevated_gateway_command("install", ["--start-now", "--elevated-handoff"])
@@ -238,43 +277,127 @@ def test_elevated_gateway_command_uses_pythonw_hidden_console(monkeypatch):
 def test_install_scheduled_task_recreates_instead_of_change(monkeypatch, tmp_path):
     """Install must delete+create so stale minute-repeat task settings are not preserved."""
     calls = []
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
+    xml_seen = {}
 
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
+    monkeypatch.setattr(gateway_windows, "_resolve_task_user", lambda: r"DOMAIN\\alice")
 
     def fake_schtasks(args):
         calls.append(tuple(args))
         if args[0] == "/Delete":
             return (0, "SUCCESS", "")
         if args[0] == "/Create":
+            xml_path = Path(args[args.index("/XML") + 1])
+            xml_seen["text"] = xml_path.read_text(encoding="utf-16")
             return (0, "SUCCESS", "")
         raise AssertionError(f"unexpected schtasks args: {args}")
 
     monkeypatch.setattr(gateway_windows, "_exec_schtasks", fake_schtasks)
-    ok, detail = gateway_windows._install_scheduled_task("Prostor_Gateway_alice", script_path)
+    ok, detail = gateway_windows._install_scheduled_task("Hermes_Gateway_alice", script_path)
 
     assert ok is True
     assert "/Change" not in [arg for call in calls for arg in call]
-    assert calls[0][:4] == ("/Delete", "/F", "/TN", "Prostor_Gateway_alice")
+    assert calls[0][:4] == ("/Delete", "/F", "/TN", "Hermes_Gateway_alice")
     assert calls[1][0] == "/Create"
-    assert "/SC" in calls[1]
-    assert "ONLOGON" in calls[1]
+    assert "/XML" in calls[1]
+    assert "/SC" not in calls[1]
+    assert "<Delay>PT30S</Delay>" in xml_seen["text"]
+    assert "<StartWhenAvailable>true</StartWhenAvailable>" in xml_seen["text"]
+    assert "<StopOnIdleEnd>false</StopOnIdleEnd>" in xml_seen["text"]
+    assert "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>" in xml_seen["text"]
+    assert "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>" in xml_seen["text"]
+    assert "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>" in xml_seen["text"]
+    assert "<RestartOnFailure>" in xml_seen["text"]
+    assert "<Count>999</Count>" in xml_seen["text"]
+    # Scheduled Task launches the console-less .vbs via wscript.exe, never cmd.exe
+    # (issue #45599 fix A: no console -> no logon CTRL_CLOSE_EVENT / 0xC000013A).
+    assert "<Command>wscript.exe</Command>" in xml_seen["text"]
+    assert "//B //Nologo" in xml_seen["text"]
+    assert "Hermes_Gateway_alice.vbs" in xml_seen["text"]
+    assert "cmd.exe" not in xml_seen["text"]
+
+
+def test_gateway_vbs_script_is_console_less(monkeypatch):
+    """The .vbs launcher must avoid cmd.exe entirely and Run pythonw hidden
+    (issue #45599 fix A: no console -> no logon CTRL_CLOSE_EVENT / 0xC000013A)."""
+    monkeypatch.setattr(
+        gateway_windows,
+        "_resolve_detached_python",
+        lambda exe: (r"C:\venv\Scripts\pythonw.exe", Path(r"C:\venv"), []),
+    )
+    content = gateway_windows._build_gateway_vbs_script(
+        r"C:\venv\Scripts\python.exe",
+        r"C:\Hermes",
+        r"C:\Hermes",
+        "--profile work",
+    )
+    assert "cmd.exe" not in content.lower()
+    assert 'CreateObject("WScript.Shell")' in content
+    assert "pythonw.exe" in content
+    assert "hermes_cli.main" in content
+    assert "gateway run" in content
+    assert ", 0, False" in content  # hidden window, detached/async
+    for var in ("HERMES_HOME", "PYTHONIOENCODING", "HERMES_GATEWAY_DETACHED", "VIRTUAL_ENV", "PYTHONPATH"):
+        assert var in content
+    assert "--profile" in content and "work" in content
+    assert content.endswith("\r\n")
+
+
+def test_gateway_vbs_script_quotes_spaced_paths(monkeypatch):
+    """Spaced exe/dir paths stay correctly quoted through the VBScript literal."""
+    monkeypatch.setattr(
+        gateway_windows,
+        "_resolve_detached_python",
+        lambda exe: (r"C:\Program Files\Py\pythonw.exe", Path(r"C:\v env"), []),
+    )
+    content = gateway_windows._build_gateway_vbs_script(
+        r"C:\Program Files\Py\python.exe",
+        r"C:\work dir",
+        r"C:\h home",
+        "",
+    )
+    # list2cmdline quotes the spaced exe; _quote_vbs_string doubles those quotes.
+    assert '""C:\\Program Files\\Py\\pythonw.exe""' in content
+    assert 'sh.CurrentDirectory = "C:\\work dir"' in content
+
+
+def test_gateway_vbs_script_pythonpath_chains_runtime_value(monkeypatch):
+    """PYTHONPATH chains onto the task env's existing value, like ;%PYTHONPATH%."""
+    monkeypatch.setattr(
+        gateway_windows,
+        "_resolve_detached_python",
+        lambda exe: (r"C:\v\pythonw.exe", Path(r"C:\v"), [r"C:\v\Lib\site-packages"]),
+    )
+    content = gateway_windows._build_gateway_vbs_script(
+        r"C:\v\python.exe", r"C:\w", r"C:\h", "",
+    )
+    assert 'existing_pp = env.Item("PYTHONPATH")' in content
+    assert "If Len(existing_pp) > 0 Then" in content
+    assert r"C:\v\Lib\site-packages" in content
+
+
+def test_quote_vbs_string_doubles_quotes_and_rejects_newlines():
+    assert gateway_windows._quote_vbs_string("plain") == '"plain"'
+    assert gateway_windows._quote_vbs_string('a"b') == '"a""b"'
+    with pytest.raises(ValueError):
+        gateway_windows._quote_vbs_string("line1\nline2")
 
 
 def test_install_scheduled_task_success_start_now_uses_direct_spawn_not_task_run(monkeypatch, tmp_path, capsys):
     """Install start-now should not /Run the task; that preserved old restart loops."""
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
     calls = []
 
     monkeypatch.setattr(gateway_windows, "_prompt_install_choices", lambda *args, **kwargs: (True, True))
     monkeypatch.setattr(gateway_windows, "_is_running_as_admin", lambda: True)
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
-    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Prostor_Gateway_alice")
+    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Hermes_Gateway_alice")
     monkeypatch.setattr(gateway_windows, "_write_task_script", lambda: script_path)
     monkeypatch.setattr(
         gateway_windows,
         "_install_scheduled_task",
-        lambda task_name, script_path: (True, "Created Scheduled Task 'Prostor_Gateway_alice'"),
+        lambda task_name, script_path: (True, "Created Scheduled Task 'Hermes_Gateway_alice'"),
     )
     monkeypatch.setattr(gateway_windows, "_gateway_pids", lambda: [])
     monkeypatch.setattr(gateway_windows, "_exec_schtasks", lambda args: calls.append(("schtasks", tuple(args))) or (0, "", ""))
@@ -293,18 +416,18 @@ def test_install_scheduled_task_success_start_now_uses_direct_spawn_not_task_run
 
 def test_install_scheduled_task_success_does_not_auto_start(monkeypatch, tmp_path, capsys):
     """Install should register/update the task only; start is explicit."""
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
     calls = []
 
     monkeypatch.setattr(gateway_windows, "_prompt_install_choices", lambda *args, **kwargs: (False, True))
     monkeypatch.setattr(gateway_windows, "_is_running_as_admin", lambda: True)
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
-    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Prostor_Gateway_alice")
+    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Hermes_Gateway_alice")
     monkeypatch.setattr(gateway_windows, "_write_task_script", lambda: script_path)
     monkeypatch.setattr(
         gateway_windows,
         "_install_scheduled_task",
-        lambda task_name, script_path: (True, "Created Scheduled Task 'Prostor_Gateway_alice'"),
+        lambda task_name, script_path: (True, "Created Scheduled Task 'Hermes_Gateway_alice'"),
     )
     monkeypatch.setattr(gateway_windows, "_exec_schtasks", lambda args: calls.append(("schtasks", tuple(args))) or (0, "", ""))
     monkeypatch.setattr(gateway_windows, "_spawn_detached", lambda path=None: calls.append(("spawn", path)) or 12345)
@@ -323,12 +446,12 @@ def test_install_scheduled_task_success_does_not_auto_start(monkeypatch, tmp_pat
 
 def test_install_access_denied_launches_elevated_install_before_startup_fallback(monkeypatch, tmp_path, capsys):
     """Non-admin Scheduled Task access denied should hand off to UAC elevation."""
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
     calls = []
 
     monkeypatch.setattr(gateway_windows, "_prompt_install_choices", lambda *args, **kwargs: (False, True))
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
-    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Prostor_Gateway_alice")
+    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Hermes_Gateway_alice")
     monkeypatch.setattr(gateway_windows, "_write_task_script", lambda: script_path)
     monkeypatch.setattr(
         gateway_windows,
@@ -354,17 +477,17 @@ def test_install_access_denied_launches_elevated_install_before_startup_fallback
     out = capsys.readouterr().out
     assert "administrator approval" in out
     assert "UAC is Windows' admin approval prompt" in out
-    assert "Launched elevated Prostor gateway install prompt" in out
+    assert "Launched elevated Hermes gateway install prompt" in out
 
 
 def test_install_prompts_start_choices_before_uac(monkeypatch, tmp_path, capsys):
     """Windows install asks start-now and auto-start before any UAC handoff."""
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
     calls = []
     answers = iter([True, True, True])
 
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
-    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Prostor_Gateway_alice")
+    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Hermes_Gateway_alice")
     monkeypatch.setattr(gateway_windows, "_write_task_script", lambda: script_path)
     monkeypatch.setattr(
         gateway_windows,
@@ -459,17 +582,17 @@ def test_install_startup_fallback_does_not_auto_spawn_when_gateway_stopped(monke
     assert ("next_steps", None) in calls
     out = capsys.readouterr().out
     assert "gateway not started now" in out
-    assert "prostor --profile alice gateway start" in out
+    assert "hermes --profile alice gateway start" in out
 
 
 def test_install_access_denied_declined_elevation_uses_startup_fallback(monkeypatch, tmp_path, capsys):
     """Install should ask before UAC; declining keeps the non-jarring fallback path."""
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
     calls = []
 
     monkeypatch.setattr(gateway_windows, "_prompt_install_choices", lambda *args, **kwargs: (False, True))
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
-    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Prostor_Gateway_alice")
+    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Hermes_Gateway_alice")
     monkeypatch.setattr(gateway_windows, "_write_task_script", lambda: script_path)
     monkeypatch.setattr(
         gateway_windows,
@@ -504,12 +627,12 @@ def test_install_access_denied_declined_elevation_uses_startup_fallback(monkeypa
 def test_uninstall_access_denied_prompts_before_elevating(monkeypatch, tmp_path, capsys):
     """Uninstall should hand off to an elevated uninstall only after user consent."""
     calls = []
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
-    startup_entry = tmp_path / "Startup" / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
+    startup_entry = tmp_path / "Startup" / "Hermes_Gateway_alice.cmd"
 
     monkeypatch.setattr(gateway_windows, "_prompt_install_choices", lambda *args, **kwargs: (False, True))
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
-    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Prostor_Gateway_alice")
+    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Hermes_Gateway_alice")
     monkeypatch.setattr(gateway_windows, "get_task_script_path", lambda: script_path)
     monkeypatch.setattr(gateway_windows, "get_startup_entry_path", lambda: startup_entry)
     monkeypatch.setattr(gateway_windows, "is_task_registered", lambda: True)
@@ -529,21 +652,21 @@ def test_uninstall_access_denied_prompts_before_elevating(monkeypatch, tmp_path,
     out = capsys.readouterr().out
     assert "uninstall needs administrator approval" in out
     assert "UAC is Windows' admin approval prompt" in out
-    assert "Launched elevated Prostor gateway uninstall prompt" in out
+    assert "Launched elevated Hermes gateway uninstall prompt" in out
 
 
 def test_uninstall_access_denied_declined_keeps_task_and_cleans_files(monkeypatch, tmp_path, capsys):
     """Declining UAC should not surprise the user, but should still remove user-writable artifacts."""
     calls = []
-    script_path = tmp_path / "Prostor_Gateway_alice.cmd"
-    startup_entry = tmp_path / "Startup" / "Prostor_Gateway_alice.cmd"
+    script_path = tmp_path / "Hermes_Gateway_alice.cmd"
+    startup_entry = tmp_path / "Startup" / "Hermes_Gateway_alice.cmd"
     startup_entry.parent.mkdir(parents=True)
     script_path.write_text("task", encoding="utf-8")
     startup_entry.write_text("startup", encoding="utf-8")
 
     monkeypatch.setattr(gateway_windows, "_prompt_install_choices", lambda *args, **kwargs: (False, True))
     monkeypatch.setattr(gateway_windows, "_assert_windows", lambda: None)
-    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Prostor_Gateway_alice")
+    monkeypatch.setattr(gateway_windows, "get_task_name", lambda: "Hermes_Gateway_alice")
     monkeypatch.setattr(gateway_windows, "get_task_script_path", lambda: script_path)
     monkeypatch.setattr(gateway_windows, "get_startup_entry_path", lambda: startup_entry)
     monkeypatch.setattr(gateway_windows, "is_task_registered", lambda: True)
@@ -572,7 +695,7 @@ def test_uninstall_access_denied_declined_keeps_task_and_cleans_files(monkeypatc
 #
 # Background: on Windows, asyncio.add_signal_handler raises NotImplementedError,
 # so the gateway's SIGTERM handler (which drains in-flight agents and writes
-# resume_pending=True) never fires when `prostor gateway stop` kills the
+# resume_pending=True) never fires when `hermes gateway stop` kills the
 # process. The fix: stop() writes the planned_stop_marker first, waits for
 # the gateway's marker-watcher thread to drain + exit cleanly, then escalates
 # to taskkill if drain times out.
@@ -610,8 +733,8 @@ def test_stop_writes_planned_stop_marker_before_killing(monkeypatch):
         events.append(("kill", kwargs.get("force", False)))
         return 0
 
-    monkeypatch.setattr("prostor_cli.gateway.kill_gateway_processes", fake_kill)
-    monkeypatch.setattr("prostor_cli.gateway._get_restart_drain_timeout", lambda: 5.0)
+    monkeypatch.setattr("hermes_cli.gateway.kill_gateway_processes", fake_kill)
+    monkeypatch.setattr("hermes_cli.gateway._get_restart_drain_timeout", lambda: 5.0)
 
     gateway_windows.stop()
 
@@ -643,7 +766,6 @@ def test_stop_waits_for_graceful_drain_before_force_kill(monkeypatch):
 
     # Simulate the gateway exiting cleanly after one poll tick.
     poll_count = [0]
-
     def fake_pid_exists(check_pid):
         poll_count[0] += 1
         return poll_count[0] < 2  # alive on first poll, gone on second
@@ -653,8 +775,8 @@ def test_stop_waits_for_graceful_drain_before_force_kill(monkeypatch):
     def fake_kill(**kwargs):
         events.append(("kill", kwargs.get("force", False)))
         return 0
-    monkeypatch.setattr("prostor_cli.gateway.kill_gateway_processes", fake_kill)
-    monkeypatch.setattr("prostor_cli.gateway._get_restart_drain_timeout", lambda: 5.0)
+    monkeypatch.setattr("hermes_cli.gateway.kill_gateway_processes", fake_kill)
+    monkeypatch.setattr("hermes_cli.gateway._get_restart_drain_timeout", lambda: 5.0)
 
     gateway_windows.stop()
 
@@ -670,7 +792,7 @@ def test_stop_escalates_to_force_kill_when_drain_times_out(monkeypatch):
 
     Drain timeout = gateway is stuck or unresponsive. Without the
     taskkill /T /F escalation, the gateway stays alive and the next
-    `prostor gateway start` fails with "another instance is running".
+    `hermes gateway start` fails with "another instance is running".
     """
     pid = 77777
     events = []
@@ -687,9 +809,9 @@ def test_stop_escalates_to_force_kill_when_drain_times_out(monkeypatch):
     def fake_kill(**kwargs):
         events.append(("kill", kwargs.get("force", False)))
         return 1
-    monkeypatch.setattr("prostor_cli.gateway.kill_gateway_processes", fake_kill)
+    monkeypatch.setattr("hermes_cli.gateway.kill_gateway_processes", fake_kill)
     # Tiny drain timeout to keep the test fast.
-    monkeypatch.setattr("prostor_cli.gateway._get_restart_drain_timeout", lambda: 1.0)
+    monkeypatch.setattr("hermes_cli.gateway._get_restart_drain_timeout", lambda: 1.0)
 
     gateway_windows.stop()
 
@@ -719,8 +841,8 @@ def test_stop_no_running_gateway_skips_drain(monkeypatch):
     def fake_kill(**kwargs):
         events.append(("kill", kwargs.get("force", False)))
         return 0
-    monkeypatch.setattr("prostor_cli.gateway.kill_gateway_processes", fake_kill)
-    monkeypatch.setattr("prostor_cli.gateway._get_restart_drain_timeout", lambda: 5.0)
+    monkeypatch.setattr("hermes_cli.gateway.kill_gateway_processes", fake_kill)
+    monkeypatch.setattr("hermes_cli.gateway._get_restart_drain_timeout", lambda: 5.0)
 
     gateway_windows.stop()
 
@@ -774,7 +896,6 @@ def test_drain_helper_still_waits_if_marker_write_fails(monkeypatch):
     platform after all) still gets observed cleanly.
     """
     pid = 44444
-
     def fake_write(target_pid):
         raise OSError("disk full")
 

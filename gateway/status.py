@@ -4,9 +4,9 @@ Gateway runtime status helpers.
 Provides PID-file based detection of whether the gateway daemon is running,
 used by send_message's check_fn to gate availability in the CLI.
 
-The PID file lives at ``{PROSTOR_HOME}/gateway.pid``.  PROSTOR_HOME defaults to
-``~/.prostor`` but can be overridden via the environment variable.  This means
-separate PROSTOR_HOME directories naturally get separate PID files — a property
+The PID file lives at ``{HERMES_HOME}/gateway.pid``.  HERMES_HOME defaults to
+``~/.hermes`` but can be overridden via the environment variable.  This means
+separate HERMES_HOME directories naturally get separate PID files — a property
 that will be useful when we add named profiles (multiple agents running
 concurrently under distinct configurations).
 """
@@ -18,11 +18,10 @@ import shlex
 import signal
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
-
-from prostor_core import get_prostor_home
+from hermes_constants import get_hermes_home
+from typing import Any, Optional
 from utils import atomic_json_write
 
 if sys.platform == "win32":
@@ -30,7 +29,7 @@ if sys.platform == "win32":
 else:
     import fcntl
 
-_GATEWAY_KIND = "prostor-gateway"
+_GATEWAY_KIND = "hermes-gateway"
 _RUNTIME_STATUS_FILE = "gateway_state.json"
 _LOCKS_DIRNAME = "gateway-locks"
 _IS_WINDOWS = sys.platform == "win32"
@@ -44,16 +43,16 @@ _WINDOWS_LOCK_OFFSET = 1024 * 1024
 
 
 def _get_pid_path() -> Path:
-    """Return the path to the gateway PID file, respecting PROSTOR_HOME."""
-    home = get_prostor_home()
+    """Return the path to the gateway PID file, respecting HERMES_HOME."""
+    home = get_hermes_home()
     return home / "gateway.pid"
 
 
-def _get_gateway_lock_path(pid_path: Path | None = None) -> Path:
+def _get_gateway_lock_path(pid_path: Optional[Path] = None) -> Path:
     """Return the path to the runtime gateway lock file."""
     if pid_path is not None:
         return pid_path.with_name(_GATEWAY_LOCK_FILENAME)
-    home = get_prostor_home()
+    home = get_hermes_home()
     return home / _GATEWAY_LOCK_FILENAME
 
 
@@ -64,15 +63,15 @@ def _get_runtime_status_path() -> Path:
 
 def _get_lock_dir() -> Path:
     """Return the machine-local directory for token-scoped gateway locks."""
-    override = os.getenv("PROSTOR_GATEWAY_LOCK_DIR")
+    override = os.getenv("HERMES_GATEWAY_LOCK_DIR")
     if override:
         return Path(override)
     state_home = Path(os.getenv("XDG_STATE_HOME", Path.home() / ".local" / "state"))
-    return state_home / "prostor" / _LOCKS_DIRNAME
+    return state_home / "hermes" / _LOCKS_DIRNAME
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def terminate_pid(pid: int, *, force: bool = False) -> None:
@@ -110,22 +109,47 @@ def _get_scope_lock_path(scope: str, identity: str) -> Path:
     return _get_lock_dir() / f"{scope}-{_scope_hash(identity)}.lock"
 
 
-def _get_process_start_time(pid: int) -> int | None:
-    """Return the kernel start time for a process when available."""
+def _get_process_start_time(pid: int) -> Optional[int]:
+    """Return a stable per-process start-time fingerprint, or None.
+
+    Used as a PID-reuse guard: a ``(pid, start_time)`` pair uniquely identifies
+    a process, so a recycled PID (same number, different process) yields a
+    different value and is never mistaken for the original.
+
+    On Linux this is field 22 of ``/proc/<pid>/stat`` (start time in clock
+    ticks since boot, an int).  On platforms without ``/proc`` (macOS, Windows)
+    we fall back to ``psutil.Process(pid).create_time()`` — a float epoch
+    timestamp — quantized to an int (centiseconds) for stable equality.
+
+    The two sources are never mixed on a single platform: ``/proc`` always
+    succeeds first on Linux, and always fails on macOS/Windows so psutil is
+    always used there.  Because the guard only compares the value recorded at
+    spawn against the live value *on the same host*, the differing units across
+    platforms are irrelevant — only same-source equality matters.
+    """
     stat_path = Path(f"/proc/{pid}/stat")
     try:
         # Field 22 in /proc/<pid>/stat is process start time (clock ticks).
         return int(stat_path.read_text(encoding="utf-8").split()[21])
     except (FileNotFoundError, IndexError, PermissionError, ValueError, OSError):
+        pass
+
+    # No /proc (macOS / Windows): psutil is a hard dependency and exposes a
+    # cross-platform creation time.  Quantize to centiseconds so repeated reads
+    # of the same process compare equal without float-precision fragility.
+    try:
+        import psutil  # type: ignore
+        return int(round(psutil.Process(pid).create_time() * 100))
+    except Exception:
         return None
 
 
-def get_process_start_time(pid: int) -> int | None:
+def get_process_start_time(pid: int) -> Optional[int]:
     """Public wrapper for retrieving a process start time when available."""
     return _get_process_start_time(pid)
 
 
-def _read_process_cmdline(pid: int) -> str | None:
+def _read_process_cmdline(pid: int) -> Optional[str]:
     """Return the process command line as a space-separated string.
 
     On Linux, reads /proc/<pid>/cmdline directly.  On macOS and other
@@ -166,12 +190,12 @@ def _read_process_cmdline(pid: int) -> str | None:
     return None
 
 
-def looks_like_gateway_command_line(command: str | None) -> bool:
-    """Return True only for a real ``gateway run`` process command line.
+def _gateway_command_subcommand(command: str | None) -> str | None:
+    """Return the Hermes gateway lifecycle subcommand from a command line.
 
     Lifecycle decisions (is the gateway up? did restart relaunch it?) must not
     fire on loose substring matches.  The previous ``"... gateway" in cmdline``
-    test also matched ``prostor_cli.main gateway status`` and even unrelated
+    test also matched ``hermes_cli.main gateway status`` and even unrelated
     processes like ``python -m tui_gateway`` -- which made ``restart()`` race
     against a still-draining old process and ``status``/``start`` report false
     positives.  This requires the actual ``gateway`` subcommand followed by
@@ -180,14 +204,14 @@ def looks_like_gateway_command_line(command: str | None) -> bool:
     word "gateway".
 
     Tokenizes quote-aware (``shlex``) so quoted Windows paths with spaces
-    (``"C:\\Program Files\\...\\prostor-gateway.exe"``) survive, and strips
-    ``--profile``/``-p`` selectors from anywhere in argv -- Prostor's
+    (``"C:\\Program Files\\...\\hermes-gateway.exe"``) survive, and strips
+    ``--profile``/``-p`` selectors from anywhere in argv -- Hermes's
     ``_apply_profile_override`` removes them before argparse, so the profile
     flag (and a profile literally named ``gateway``) can legally appear on
     either side of the ``gateway`` subcommand.
     """
     if not command:
-        return False
+        return None
 
     try:
         raw_tokens = shlex.split(command, posix=False)
@@ -196,24 +220,24 @@ def looks_like_gateway_command_line(command: str | None) -> bool:
     # Strip surrounding quotes, normalize slashes + case per token.
     tokens = [t.strip("\"'").replace("\\", "/").lower() for t in raw_tokens]
     if not tokens:
-        return False
+        return None
 
     # Gateway-dedicated entrypoints carry no subcommand to inspect.
     for token in tokens:
         if token == "gateway/run.py" or token.endswith("/gateway/run.py"):
-            return True
+            return "run"
         basename = token.rsplit("/", 1)[-1]
-        if basename in ("prostor-gateway", "prostor-gateway.exe"):
-            return True
+        if basename in ("hermes-gateway", "hermes-gateway.exe"):
+            return "run"
 
     joined = " ".join(tokens)
     has_gateway_entry = (
-        "prostor_cli.main" in joined
-        or "prostor_cli/main.py" in joined
-        or any(t.rsplit("/", 1)[-1] in ("prostor", "prostor.exe") for t in tokens)
+        "hermes_cli.main" in joined
+        or "hermes_cli/main.py" in joined
+        or any(t.rsplit("/", 1)[-1] in ("hermes", "hermes.exe") for t in tokens)
     )
     if not has_gateway_entry:
-        return False
+        return None
 
     # Drop profile selectors anywhere: --profile X / -p X / --profile=X / -p=X.
     # This consumes a profile VALUE of "gateway" too, so the real subcommand
@@ -235,13 +259,32 @@ def looks_like_gateway_command_line(command: str | None) -> bool:
         if token != "gateway":
             continue
         if i + 1 >= len(filtered):
-            return True  # bare `prostor gateway` defaults to `run`
-        return filtered[i + 1] == "run"
-    return False
+            return "run"  # bare `hermes gateway` defaults to `run`
+        return filtered[i + 1]
+    return None
+
+
+def looks_like_gateway_command_line(command: str | None) -> bool:
+    """Return True only for a real ``gateway run`` process command line."""
+    return _gateway_command_subcommand(command) == "run"
+
+
+def looks_like_gateway_runtime_command_line(command: str | None) -> bool:
+    """Return True for command lines that can host the gateway runtime.
+
+    ``gateway restart`` is normally a management command, not the gateway
+    runtime. On hosts without a service manager, though, the manual restart
+    fallback executes ``run_gateway()`` in that same process, so its argv stays
+    as ``gateway restart`` while it owns the webhook port and writes runtime
+    state. Keep the public ``looks_like_gateway_command_line()`` strict, and
+    use this broader matcher only when validating Hermes-owned runtime records
+    or no-supervisor cleanup scans.
+    """
+    return _gateway_command_subcommand(command) in {"run", "restart"}
 
 
 def _looks_like_gateway_process(pid: int) -> bool:
-    """Return True when the live PID still looks like the Prostor gateway."""
+    """Return True when the live PID still looks like the Hermes gateway."""
     cmdline = _read_process_cmdline(pid)
     if not cmdline:
         return False
@@ -258,7 +301,7 @@ def _record_looks_like_gateway(record: dict[str, Any]) -> bool:
         return False
 
     cmdline = " ".join(str(part) for part in argv)
-    return looks_like_gateway_command_line(cmdline)
+    return looks_like_gateway_runtime_command_line(cmdline)
 
 
 def _build_pid_record() -> dict:
@@ -283,7 +326,7 @@ def _build_runtime_status_record() -> dict[str, Any]:
     return payload
 
 
-def _read_json_file(path: Path) -> dict[str, Any] | None:
+def _read_json_file(path: Path) -> Optional[dict[str, Any]]:
     if not path.exists():
         return None
     try:
@@ -306,7 +349,7 @@ def _write_json_file(path: Path, payload: dict[str, Any]) -> None:
     atomic_json_write(path, payload, indent=None, separators=(",", ":"))
 
 
-def _read_pid_record(pid_path: Path | None = None) -> dict | None:
+def _read_pid_record(pid_path: Optional[Path] = None) -> Optional[dict]:
     pid_path = pid_path or _get_pid_path()
     if not pid_path.exists():
         return None
@@ -335,11 +378,11 @@ def _read_pid_record(pid_path: Path | None = None) -> dict | None:
     return None
 
 
-def _read_gateway_lock_record(lock_path: Path | None = None) -> dict[str, Any] | None:
+def _read_gateway_lock_record(lock_path: Optional[Path] = None) -> Optional[dict[str, Any]]:
     return _read_pid_record(lock_path or _get_gateway_lock_path())
 
 
-def _pid_from_record(record: dict[str, Any] | None) -> int | None:
+def _pid_from_record(record: Optional[dict[str, Any]]) -> Optional[int]:
     if not record:
         return None
     try:
@@ -471,6 +514,7 @@ def _pid_exists(pid: int) -> bool:
             return False
 
 
+
 def _release_file_lock(handle) -> None:
     try:
         if _IS_WINDOWS:
@@ -517,7 +561,7 @@ def release_gateway_runtime_lock() -> None:
         pass
 
 
-def is_gateway_runtime_lock_active(lock_path: Path | None = None) -> bool:
+def is_gateway_runtime_lock_active(lock_path: Optional[Path] = None) -> bool:
     """Return True when some process currently owns the gateway runtime lock."""
     global _gateway_lock_handle
     resolved_lock_path = lock_path or _get_gateway_lock_path()
@@ -595,10 +639,10 @@ def write_runtime_status(
     if restart_requested is not _UNSET:
         payload["restart_requested"] = bool(restart_requested)
     if active_agents is not _UNSET:
-        payload["active_agents"] = max(0, int(active_agents))
+        payload["active_agents"] = parse_active_agents(active_agents)
     if served_profiles is not _UNSET:
         # Profiles this gateway multiplexes (multi-profile mode). Absent/empty
-        # for a single-profile gateway. Lets `prostor status` show per-profile
+        # for a single-profile gateway. Lets `hermes status` show per-profile
         # coverage without a second probe.
         payload["served_profiles"] = list(served_profiles or [])
 
@@ -616,14 +660,78 @@ def write_runtime_status(
     _write_json_file(path, payload)
 
 
-def read_runtime_status() -> dict[str, Any] | None:
-    """Read the persisted gateway runtime health/status information."""
-    return _read_json_file(_get_runtime_status_path())
+def read_runtime_status(path: Optional[Path] = None) -> Optional[dict[str, Any]]:
+    """Read the persisted gateway runtime health/status information.
+
+    ``path`` is optional so callers that need to inspect a *different*
+    profile's state file (e.g. the dashboard enumerating every profile)
+    can do so without mutating ``HERMES_HOME`` in-process.  Defaults to
+    the active profile's ``gateway_state.json``.
+    """
+    return _read_json_file(path or _get_runtime_status_path())
+
+
+def parse_active_agents(raw: Any) -> int:
+    """Coerce a persisted ``active_agents`` value to a clamped non-negative int.
+
+    The shared coercion for the in-flight gateway-turn count. Used on the WRITE
+    side (``write_runtime_status``) and by both HTTP read surfaces
+    (``/api/status`` and ``/health/detailed``) so the count is clamped to a
+    single contract — never negative, never raising on a manually-edited or
+    otherwise non-numeric value (degrades to ``0``).
+    """
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+# States in which the gateway is alive and could be asked to drain.  Anything
+# else (draining already, stopping, stopped, startup_failed, None) is NOT a
+# valid begin-drain target.
+_DRAINABLE_GATEWAY_STATES = frozenset({"running"})
+
+
+def derive_gateway_busy(
+    *, gateway_running: bool, gateway_state: Any, active_agents: Any
+) -> bool:
+    """Whether the gateway is actively processing in-flight turns.
+
+    The contract NAS gates lifecycle actions on.  Busy iff the gateway is live
+    (``gateway_running``), in the ``running`` state, AND at least one agent is
+    mid-turn (``active_agents > 0``).  Degrades to ``False`` whenever liveness
+    is unknown, the state is anything but ``running``, or the count is
+    absent/unparseable — i.e. a down or file-absent gateway reads "not busy",
+    never a spurious "busy".
+
+    NOTE: liveness keys off ``gateway_running`` (a live PID / health probe),
+    NEVER ``updated_at`` — a healthy idle gateway never advances that timestamp.
+    """
+    if not gateway_running:
+        return False
+    if gateway_state not in _DRAINABLE_GATEWAY_STATES:
+        return False
+    try:
+        return int(active_agents) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def derive_gateway_drainable(*, gateway_running: bool, gateway_state: Any) -> bool:
+    """Whether the gateway can accept a begin-drain request right now.
+
+    True iff the gateway is live and in the ``running`` state — i.e. not already
+    draining/stopping/stopped and not in a failed-start state.  This is
+    independent of ``active_agents``: an idle running gateway is drainable (the
+    drain just completes immediately).  Degrades to ``False`` for a down or
+    non-running gateway.
+    """
+    return bool(gateway_running) and gateway_state in _DRAINABLE_GATEWAY_STATES
 
 
 def get_runtime_status_running_pid(
-    runtime: dict[str, Any] | None = None,
-) -> int | None:
+    runtime: Optional[dict[str, Any]] = None,
+) -> Optional[int]:
     """Return a live gateway PID from the runtime status record, if valid.
 
     ``get_running_pid()`` is the primary liveness source because it verifies the
@@ -680,11 +788,11 @@ def remove_pid_file() -> None:
         pass
 
 
-def acquire_scoped_lock(scope: str, identity: str, metadata: dict[str, Any] | None = None) -> tuple[bool, dict[str, Any] | None]:
+def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, Any]] = None) -> tuple[bool, Optional[dict[str, Any]]]:
     """Acquire a machine-local lock keyed by scope + identity.
 
     Used to prevent multiple local gateways from using the same external identity
-    at once (e.g. the same Telegram bot token across different PROSTOR_HOME dirs).
+    at once (e.g. the same Telegram bot token across different HERMES_HOME dirs).
     """
     lock_path = _get_scope_lock_path(scope, identity)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -816,8 +924,8 @@ def release_scoped_lock(scope: str, identity: str) -> None:
 
 def release_all_scoped_locks(
     *,
-    owner_pid: int | None = None,
-    owner_start_time: int | None = None,
+    owner_pid: Optional[int] = None,
+    owner_start_time: Optional[int] = None,
 ) -> int:
     """Remove scoped lock files in the lock directory.
 
@@ -867,7 +975,7 @@ def release_all_scoped_locks(
 # unexpected kills — but that also means a --replace takeover target
 # exits 1, which tricks systemd into reviving it 30 seconds later,
 # starting a flap loop against the replacer when both services are
-# enabled in the user's systemd (e.g. ``prostor.service`` + ``prostor-
+# enabled in the user's systemd (e.g. ``hermes.service`` + ``hermes-
 # gateway.service``).
 #
 # The takeover marker breaks the loop: the replacer writes a short-lived
@@ -886,20 +994,20 @@ _PLANNED_STOP_MARKER_TTL_S = 60
 
 def _get_takeover_marker_path() -> Path:
     """Return the path to the --replace takeover marker file."""
-    home = get_prostor_home()
+    home = get_hermes_home()
     return home / _TAKEOVER_MARKER_FILENAME
 
 
 def _get_planned_stop_marker_path() -> Path:
     """Return the path to the intentional gateway stop marker file."""
-    home = get_prostor_home()
+    home = get_hermes_home()
     return home / _PLANNED_STOP_MARKER_FILENAME
 
 
 def _marker_is_stale(written_at: str, ttl_s: int) -> bool:
     try:
         written_dt = datetime.fromisoformat(written_at)
-        age = (datetime.now(UTC) - written_dt).total_seconds()
+        age = (datetime.now(timezone.utc) - written_dt).total_seconds()
         return age > ttl_s
     except (TypeError, ValueError):
         return True
@@ -941,7 +1049,7 @@ def _consume_pid_marker_for_self(
     # platforms without ``/proc`` (macOS, native Windows — the very
     # platform the planned-stop watcher exists for). Requiring a non-None
     # match there would make every consume return False, so a legitimate
-    # ``prostor gateway stop`` on Windows would be misclassified as an
+    # ``hermes gateway stop`` on Windows would be misclassified as an
     # unexpected ``UNKNOWN`` exit (exit 1) and revived by the service
     # manager. So: when both start_times are known they must match; when
     # either is unknown, fall back to PID equality alone (bounded by the
@@ -1117,10 +1225,10 @@ def clear_planned_stop_marker() -> None:
 
 
 def get_running_pid(
-    pid_path: Path | None = None,
+    pid_path: Optional[Path] = None,
     *,
     cleanup_stale: bool = True,
-) -> int | None:
+) -> Optional[int]:
     """Return the PID of a running gateway instance, or ``None``.
 
     Checks the PID file and verifies the process is actually alive.
@@ -1130,6 +1238,10 @@ def get_running_pid(
     resolved_lock_path = _get_gateway_lock_path(resolved_pid_path)
     lock_active = is_gateway_runtime_lock_active(resolved_lock_path)
     if not lock_active:
+        if pid_path is None:
+            runtime_pid = get_runtime_status_running_pid()
+            if runtime_pid is not None:
+                return runtime_pid
         _cleanup_invalid_pid_path(resolved_pid_path, cleanup_stale=cleanup_stale)
         return None
 
@@ -1153,11 +1265,15 @@ def get_running_pid(
             return pid
 
     _cleanup_invalid_pid_path(resolved_pid_path, cleanup_stale=cleanup_stale)
+    if pid_path is None:
+        runtime_pid = get_runtime_status_running_pid()
+        if runtime_pid is not None:
+            return runtime_pid
     return None
 
 
 def is_gateway_running(
-    pid_path: Path | None = None,
+    pid_path: Optional[Path] = None,
     *,
     cleanup_stale: bool = True,
 ) -> bool:

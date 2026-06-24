@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-
-from __future__ import annotations
-
 """
 Delegate Tool -- Subagent Architecture
 
@@ -29,21 +26,20 @@ import threading
 import time
 from concurrent.futures import (
     ThreadPoolExecutor,
-)
-from concurrent.futures import (
     TimeoutError as FuturesTimeoutError,
 )
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from toolsets import TOOLSETS
 
 # Sentinel value used by the runtime provider system for providers that are
 # not natively known (named custom providers, third-party aggregators, etc.).
-# Must match prostor_cli.runtime_provider.RUNTIME_PROVIDER_TYPE_CUSTOM.
+# Must match hermes_cli.runtime_provider.RUNTIME_PROVIDER_TYPE_CUSTOM.
 _RUNTIME_PROVIDER_CUSTOM = "custom"
 from tools import file_state
 from tools.terminal_tool import set_approval_callback as _set_subagent_approval_cb
 from utils import base_url_hostname, is_truthy_value
+
 
 # Tools that children must never have access to
 DELEGATE_BLOCKED_TOOLS = frozenset(
@@ -53,6 +49,7 @@ DELEGATE_BLOCKED_TOOLS = frozenset(
         "memory",  # no writes to shared MEMORY.md
         "send_message",  # no cross-platform side effects
         "execute_code",  # children should reason step-by-step, not write scripts
+        "cronjob",  # no scheduling more work in the parent's name
     ]
 )
 
@@ -114,10 +111,9 @@ def _get_subagent_approval_callback():
         return _subagent_auto_approve
     return _subagent_auto_deny
 
-
 # Build a description fragment listing toolsets available for subagents.
 # Excludes toolsets where ALL tools are blocked, composite/platform toolsets
-# (prostor-* prefixed), and scenario toolsets.
+# (hermes-* prefixed), and scenario toolsets.
 #
 # NOTE: "delegation" is in this exclusion set so the subagent-facing
 # capability hint string (_TOOLSET_LIST_STR) doesn't advertise it as a
@@ -129,12 +125,18 @@ _SUBAGENT_TOOLSETS = sorted(
     name
     for name, defn in TOOLSETS.items()
     if name not in _EXCLUDED_TOOLSET_NAMES
-    and not name.startswith("prostor-")
+    and not name.startswith("hermes-")
     and not all(t in DELEGATE_BLOCKED_TOOLS for t in defn.get("tools", []))
 )
 _TOOLSET_LIST_STR = ", ".join(f"'{n}'" for n in _SUBAGENT_TOOLSETS)
 
 _DEFAULT_MAX_CONCURRENT_CHILDREN = 3
+# One-shot guard: the high-concurrency cost advisory is emitted at most once
+# per process. _get_max_concurrent_children() runs on every get_definitions()
+# schema rebuild (via _build_top_level_description / _build_tasks_param_description),
+# so without this flag a config of max_concurrent_children>10 spams the log on
+# every turn / agent spawn even when delegate_task is never called.
+_HIGH_CONCURRENCY_WARNED = False
 MAX_DEPTH = 1  # flat by default: parent (0) -> child (1); grandchild rejected unless max_spawn_depth raised.
 # Configurable depth cap consulted by _get_max_spawn_depth; MAX_DEPTH
 # stays as the default fallback and is still the symbol tests import.
@@ -159,7 +161,7 @@ _spawn_paused: bool = False
 _active_subagents_lock = threading.Lock()
 # subagent_id -> mutable record tracking the live child agent.  Stays only
 # for the lifetime of the run; _run_single_child is the owner.
-_active_subagents: dict[str, dict[str, Any]] = {}
+_active_subagents: Dict[str, Dict[str, Any]] = {}
 
 
 def set_spawn_paused(paused: bool) -> bool:
@@ -179,7 +181,7 @@ def is_spawn_paused() -> bool:
         return _spawn_paused
 
 
-def _register_subagent(record: dict[str, Any]) -> None:
+def _register_subagent(record: Dict[str, Any]) -> None:
     sid = record.get("subagent_id")
     if not sid:
         return
@@ -215,7 +217,7 @@ def interrupt_subagent(subagent_id: str) -> bool:
     return True
 
 
-def list_active_subagents() -> list[dict[str, Any]]:
+def list_active_subagents() -> List[Dict[str, Any]]:
     """Snapshot of the currently running subagent tree.
 
     Each record: {subagent_id, parent_id, depth, goal, model, started_at,
@@ -229,11 +231,11 @@ def list_active_subagents() -> list[dict[str, Any]]:
 
 
 def _extract_output_tail(
-    result: dict[str, Any],
+    result: Dict[str, Any],
     *,
     max_entries: int = 12,
     max_chars: int = 8000,
-) -> list[dict[str, Any]]:
+) -> List[Dict[str, Any]]:
     """Pull the last N tool-call results from a child's conversation.
 
     Powers the overlay's "Output" section — the cc-swarm-parity feature.
@@ -246,8 +248,8 @@ def _extract_output_tail(
         return []
 
     # Walk in reverse to build a tail; stop when we have enough.
-    tail: list[dict[str, Any]] = []
-    pending_call_by_id: dict[str, str] = {}
+    tail: List[Dict[str, Any]] = []
+    pending_call_by_id: Dict[str, str] = {}
 
     # First pass (forward): build tool_call_id -> tool_name map
     for msg in messages:
@@ -347,7 +349,7 @@ def _looks_like_error_output(content: Any) -> bool:
     )
 
 
-def _normalize_role(r: str | None) -> str:
+def _normalize_role(r: Optional[str]) -> str:
     """Normalise a caller-provided role to 'leaf' or 'orchestrator'.
 
     None/empty -> 'leaf'.  Unknown strings coerce to 'leaf' with a
@@ -379,11 +381,14 @@ def _get_max_concurrent_children() -> int:
         try:
             result = max(1, int(val))
             if result > 10:
-                logger.warning(
-                    "delegation.max_concurrent_children=%d: each child consumes API tokens "
-                    "independently. High values multiply cost linearly.",
-                    result,
-                )
+                global _HIGH_CONCURRENCY_WARNED
+                if not _HIGH_CONCURRENCY_WARNED:
+                    _HIGH_CONCURRENCY_WARNED = True
+                    logger.warning(
+                        "delegation.max_concurrent_children=%d: each child consumes API tokens "
+                        "independently. High values multiply cost linearly.",
+                        result,
+                    )
             return result
         except (TypeError, ValueError):
             logger.warning(
@@ -434,7 +439,7 @@ def _get_max_async_children() -> int:
     return _DEFAULT_MAX_ASYNC_CHILDREN
 
 
-def _get_child_timeout() -> float | None:
+def _get_child_timeout() -> Optional[float]:
     """Read delegation.child_timeout_seconds from config.
 
     Returns the number of seconds a single child agent is allowed to run
@@ -556,10 +561,10 @@ def _is_mcp_toolset_name(name: str) -> bool:
 def _expand_parent_toolsets(parent_toolsets: set) -> set:
     """Expand composite toolsets so individual toolset names are recognized.
 
-    When a parent uses a composite toolset like ``prostor-cli`` (which bundles
+    When a parent uses a composite toolset like ``hermes-cli`` (which bundles
     all core tools), the child may request individual toolsets such as ``web``
     or ``terminal``.  A simple name-based intersection would reject them
-    because ``"web" != "prostor-cli"``.
+    because ``"web" != "hermes-cli"``.
 
     This helper collects the tool names from each parent toolset, then adds
     the names of any individual toolsets whose tools are a *subset* of the
@@ -585,8 +590,8 @@ def _expand_parent_toolsets(parent_toolsets: set) -> set:
 
 
 def _preserve_parent_mcp_toolsets(
-    child_toolsets: list[str], parent_toolsets: set[str]
-) -> list[str]:
+    child_toolsets: List[str], parent_toolsets: set[str]
+) -> List[str]:
     """Append any parent MCP toolsets that are missing from a narrowed child."""
     preserved = list(child_toolsets)
     for toolset_name in sorted(parent_toolsets):
@@ -601,7 +606,7 @@ DEFAULT_MAX_ITERATIONS = 50
 # mid-task. Errors should come from what the child actually does; stuck-child
 # detection lives in the heartbeat staleness monitor below. Users can opt back
 # in via delegation.child_timeout_seconds.
-DEFAULT_CHILD_TIMEOUT: float | None = None
+DEFAULT_CHILD_TIMEOUT: Optional[float] = None
 _HEARTBEAT_INTERVAL = 30  # seconds between parent activity heartbeats during delegation
 # Stale-heartbeat thresholds. A child with no API-call progress is either:
 #   - idle between turns (no current_tool) — probably stuck on a slow API call
@@ -621,7 +626,7 @@ DEFAULT_TOOLSETS = ["terminal", "file", "web"]
 # ---------------------------------------------------------------------------
 
 
-class DelegateEvent(enum.StrEnum):
+class DelegateEvent(str, enum.Enum):
     """Formal event types emitted during delegation progress.
 
     _build_child_progress_callback normalises incoming legacy strings
@@ -644,7 +649,7 @@ class DelegateEvent(enum.StrEnum):
 
 # Legacy event strings → DelegateEvent mapping.
 # Incoming child-agent events use the old names; the callback normalises them.
-_LEGACY_EVENT_MAP: dict[str, DelegateEvent] = {
+_LEGACY_EVENT_MAP: Dict[str, DelegateEvent] = {
     "_thinking": DelegateEvent.TASK_THINKING,
     "reasoning.available": DelegateEvent.TASK_THINKING,
     "tool.started": DelegateEvent.TASK_TOOL_STARTED,
@@ -660,9 +665,9 @@ def check_delegate_requirements() -> bool:
 
 def _build_child_system_prompt(
     goal: str,
-    context: str | None = None,
+    context: Optional[str] = None,
     *,
-    workspace_path: str | None = None,
+    workspace_path: Optional[str] = None,
     role: str = "leaf",
     max_spawn_depth: int = 2,
     child_depth: int = 1,
@@ -734,7 +739,7 @@ def _build_child_system_prompt(
     return "\n".join(parts)
 
 
-def _resolve_workspace_hint(parent_agent) -> str | None:
+def _resolve_workspace_hint(parent_agent) -> Optional[str]:
     """Best-effort local workspace hint for child prompts.
 
     We only inject a path when we have a concrete absolute directory. This avoids
@@ -761,13 +766,22 @@ def _resolve_workspace_hint(parent_agent) -> str | None:
     return None
 
 
-def _strip_blocked_tools(toolsets: list[str]) -> list[str]:
-    """Remove toolsets that contain only blocked tools."""
+def _strip_blocked_tools(toolsets: List[str]) -> List[str]:
+    """Remove toolsets that contain only blocked tools.
+
+    The strip set is derived from DELEGATE_BLOCKED_TOOLS plus the explicit
+    composite/scenario toolsets (delegation, code_execution) that have no
+    one-to-one tool. This keeps the blocklist and the strip set in lockstep
+    so new blocked tools can't silently leak through as toolset names.
+    """
+    # Composite toolsets that should never pass through to children, even
+    # though their individual tools aren't all in DELEGATE_BLOCKED_TOOLS.
+    _COMPOSITE_BLOCKED_TOOLSETS = frozenset({"delegation", "code_execution"})
     blocked_toolset_names = {
-        "delegation",
-        "clarify",
-        "memory",
-        "code_execution",
+        name
+        for name, defn in TOOLSETS.items()
+        if name in _COMPOSITE_BLOCKED_TOOLSETS
+        or all(t in DELEGATE_BLOCKED_TOOLS for t in defn.get("tools", []))
     }
     return [t for t in toolsets if t not in blocked_toolset_names]
 
@@ -778,13 +792,13 @@ def _build_child_progress_callback(
     parent_agent,
     task_count: int = 1,
     *,
-    subagent_id: str | None = None,
-    parent_id: str | None = None,
-    depth: int | None = None,
-    model: str | None = None,
-    toolsets: list[str] | None = None,
-    session_ref: dict[str, Any] | None = None,
-) -> callable | None:
+    subagent_id: Optional[str] = None,
+    parent_id: Optional[str] = None,
+    depth: Optional[int] = None,
+    model: Optional[str] = None,
+    toolsets: Optional[List[str]] = None,
+    session_ref: Optional[Dict[str, Any]] = None,
+) -> Optional[callable]:
     """Build a callback that relays child agent tool calls to the parent display.
 
     Two display paths:
@@ -812,11 +826,11 @@ def _build_child_progress_callback(
 
     # Gateway: batch tool names, flush periodically
     _BATCH_SIZE = 5
-    _batch: list[str] = []
+    _batch: List[str] = []
     _tool_count = [0]  # per-subagent running counter (list for closure mutation)
 
-    def _identity_kwargs() -> dict[str, Any]:
-        kw: dict[str, Any] = {
+    def _identity_kwargs() -> Dict[str, Any]:
+        kw: Dict[str, Any] = {
             "task_index": task_index,
             "task_count": task_count,
             "goal": goal_label,
@@ -977,20 +991,20 @@ def _build_child_progress_callback(
 def _build_child_agent(
     task_index: int,
     goal: str,
-    context: str | None,
-    toolsets: list[str] | None,
-    model: str | None,
+    context: Optional[str],
+    toolsets: Optional[List[str]],
+    model: Optional[str],
     max_iterations: int,
     task_count: int,
     parent_agent,
     # Credential overrides from delegation config (provider:model resolution)
-    override_provider: str | None = None,
-    override_base_url: str | None = None,
-    override_api_key: str | None = None,
-    override_api_mode: str | None = None,
+    override_provider: Optional[str] = None,
+    override_base_url: Optional[str] = None,
+    override_api_key: Optional[str] = None,
+    override_api_mode: Optional[str] = None,
     # ACP transport overrides — lets a non-ACP parent spawn ACP child agents
-    override_acp_command: str | None = None,
-    override_acp_args: list[str] | None = None,
+    override_acp_command: Optional[str] = None,
+    override_acp_args: Optional[List[str]] = None,
     # Per-call role controlling whether the child can further delegate.
     # 'leaf' (default) cannot; 'orchestrator' retains the delegation
     # toolset subject to depth/kill-switch bounds applied below.
@@ -1005,9 +1019,8 @@ def _build_child_agent(
     routing subagents to a different provider:model pair (e.g. cheap/fast
     model on OpenRouter while the parent runs on Nous Portal).
     """
-    import uuid as _uuid
-
     from run_agent import AIAgent
+    import uuid as _uuid
 
     # ── Role resolution ─────────────────────────────────────────────────
     # Honor the caller's role only when BOTH the kill switch and the
@@ -1052,7 +1065,7 @@ def _build_child_agent(
 
     if toolsets:
         # Intersect with parent — subagent must not gain tools the parent lacks.
-        # Expand composite toolsets (e.g. prostor-cli) so that individual
+        # Expand composite toolsets (e.g. hermes-cli) so that individual
         # toolset names (e.g. web, terminal) are recognised during intersection.
         expanded_parent = _expand_parent_toolsets(parent_toolsets)
         child_toolsets = [t for t in toolsets if t in expanded_parent]
@@ -1095,7 +1108,7 @@ def _build_child_agent(
     # Build progress callback to relay tool calls to parent display.
     # Identity kwargs thread the subagent_id through every emitted event so the
     # TUI can reconstruct the spawn tree and route per-branch controls.
-    child_session_ref: dict[str, Any] = {}
+    child_session_ref: Dict[str, Any] = {}
     child_progress_cb = _build_child_progress_callback(
         task_index,
         goal,
@@ -1173,7 +1186,7 @@ def _build_child_agent(
     try:
         delegation_effort = str(delegation_cfg.get("reasoning_effort") or "").strip()
         if delegation_effort:
-            from prostor_constants import parse_reasoning_effort
+            from hermes_constants import parse_reasoning_effort
 
             parsed = parse_reasoning_effort(delegation_effort)
             if parsed is not None:
@@ -1295,7 +1308,7 @@ def _build_child_agent(
             logger.debug("spawn_requested relay failed: %s", exc)
 
     try:
-        from prostor_cli.plugins import invoke_hook as _invoke_hook
+        from hermes_cli.plugins import invoke_hook as _invoke_hook
         _invoke_hook(
             "subagent_start",
             parent_session_id=getattr(parent_agent, "session_id", None),
@@ -1318,29 +1331,28 @@ def _dump_subagent_timeout_diagnostic(
     task_index: int,
     timeout_seconds: float,
     duration_seconds: float,
-    worker_thread: threading.Thread | None,
+    worker_thread: Optional[threading.Thread],
     goal: str,
-) -> str | None:
+) -> Optional[str]:
     """Write a structured diagnostic dump for a subagent that timed out
     before making any API call.
 
     See issue #14726: users hit "subagent timed out after 300s with no response"
     with zero API calls and no way to inspect what happened. This helper
-    writes a dedicated log under ``~/.prostor/logs/subagent-<sid>-<ts>.log``
+    writes a dedicated log under ``~/.hermes/logs/subagent-<sid>-<ts>.log``
     capturing the child's config, system-prompt / tool-schema sizes, activity
     tracker snapshot, and the worker thread's Python stack at timeout.
 
     Returns the absolute path to the diagnostic file, or None on failure.
     """
     try:
+        from hermes_constants import get_hermes_home
         import datetime as _dt
         import sys as _sys
         import traceback as _traceback
 
-        from prostor_constants import get_prostor_home
-
-        prostor_home = get_prostor_home()
-        logs_dir = prostor_home / "logs"
+        hermes_home = get_hermes_home()
+        logs_dir = hermes_home / "logs"
         try:
             logs_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -1350,12 +1362,11 @@ def _dump_subagent_timeout_diagnostic(
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         dump_path = logs_dir / f"subagent-timeout-{subagent_id}-{ts}.log"
 
-        lines: list[str] = []
-
+        lines: List[str] = []
         def _w(line: str = "") -> None:
             lines.append(line)
 
-        _w("# Subagent timeout diagnostic — issue #14726")
+        _w(f"# Subagent timeout diagnostic — issue #14726")
         _w(f"# Generated: {_dt.datetime.now().isoformat()}")
         _w("")
         _w("## Timeout")
@@ -1464,7 +1475,7 @@ def _run_single_child(
     child=None,
     parent_agent=None,
     **_kwargs,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Run a pre-built child agent. Called from within a thread.
     Returns a structured result dict.
@@ -1641,7 +1652,7 @@ def _run_single_child(
         )
         # Capture the worker thread so the timeout diagnostic can dump its
         # Python stack (see #14726 — 0-API-call hangs are opaque without it).
-        _worker_thread_holder: dict[str, threading.Thread | None] = {"t": None}
+        _worker_thread_holder: Dict[str, Optional[threading.Thread]] = {"t": None}
 
         def _relay_child_text(delta: str) -> None:
             # Forward the child's streamed reply text up the progress relay so
@@ -1687,7 +1698,7 @@ def _run_single_child(
             # When a subagent times out BEFORE making any API call, dump a
             # diagnostic to help users (and us) see what the child was doing.
             # See #14726 — without this, 0-API-call hangs are black boxes.
-            diagnostic_path: str | None = None
+            diagnostic_path: Optional[str] = None
             child_api_calls = 0
             try:
                 _summary = child.get_activity_summary()
@@ -1789,8 +1800,8 @@ def _run_single_child(
 
         # Build tool trace from conversation messages (already in memory).
         # Uses tool_call_id to correctly pair parallel tool calls with results.
-        tool_trace: list[dict[str, Any]] = []
-        trace_by_id: dict[str, dict[str, Any]] = {}
+        tool_trace: list[Dict[str, Any]] = []
+        trace_by_id: Dict[str, Dict[str, Any]] = {}
         messages = result.get("messages") or []
         if isinstance(messages, list):
             for msg in messages:
@@ -1836,7 +1847,7 @@ def _run_single_child(
         _output_tokens = getattr(child, "session_completion_tokens", 0)
         _model = getattr(child, "model", None)
 
-        entry: dict[str, Any] = {
+        entry: Dict[str, Any] = {
             "task_index": task_index,
             "status": status,
             "summary": summary,
@@ -1935,7 +1946,7 @@ def _run_single_child(
 
         _output_tail = _extract_output_tail(result, max_entries=8, max_chars=600)
 
-        complete_kwargs: dict[str, Any] = {
+        complete_kwargs: Dict[str, Any] = {
             "preview": summary[:160] if summary else entry.get("error", ""),
             "status": status,
             "duration_seconds": duration,
@@ -2049,7 +2060,7 @@ def _run_single_child(
 
 def _recover_tasks_from_json_string(
     tasks: Any,
-) -> tuple[list[dict[str, Any]] | None, str | None]:
+) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
     if not isinstance(tasks, str):
         return None, None
     raw = tasks.strip()
@@ -2071,15 +2082,15 @@ def _recover_tasks_from_json_string(
 
 
 def delegate_task(
-    goal: str | None = None,
-    context: str | None = None,
-    toolsets: list[str] | None = None,
-    tasks: list[dict[str, Any]] | None = None,
-    max_iterations: int | None = None,
-    acp_command: str | None = None,
-    acp_args: list[str] | None = None,
-    role: str | None = None,
-    background: bool | None = None,
+    goal: Optional[str] = None,
+    context: Optional[str] = None,
+    toolsets: Optional[List[str]] = None,
+    tasks: Optional[List[Dict[str, Any]]] = None,
+    max_iterations: Optional[int] = None,
+    acp_command: Optional[str] = None,
+    acp_args: Optional[List[str]] = None,
+    role: Optional[str] = None,
+    background: Optional[bool] = None,
     parent_agent=None,
 ) -> str:
     """
@@ -2332,8 +2343,7 @@ def delegate_task(
                             completed_count += 1
                         break
 
-                    from concurrent.futures import FIRST_COMPLETED
-                    from concurrent.futures import wait as _cf_wait
+                    from concurrent.futures import wait as _cf_wait, FIRST_COMPLETED
 
                     done, pending = _cf_wait(
                         pending, timeout=0.5, return_when=FIRST_COMPLETED
@@ -2366,7 +2376,7 @@ def delegate_task(
                         status = entry.get("status", "?")
                         icon = "✓" if status == "completed" else "✗"
                         remaining = n_tasks - completed_count
-                        completion_line = f"{icon} [{idx + 1}/{n_tasks}] {label}  ({dur}s)"
+                        completion_line = f"{icon} [{idx+1}/{n_tasks}] {label}  ({dur}s)"
                         if spinner_ref:
                             try:
                                 spinner_ref.print_above(completion_line)
@@ -2420,7 +2430,7 @@ def delegate_task(
         # child was closed.
         _parent_session_id = getattr(parent_agent, "session_id", None)
         try:
-            from prostor_cli.plugins import invoke_hook as _invoke_hook
+            from hermes_cli.plugins import invoke_hook as _invoke_hook
         except Exception:
             _invoke_hook = None
         # Aggregate child spend here so the parent's footer/UI reflect the true
@@ -2496,8 +2506,36 @@ def delegate_task(
     # not blocked in the meantime. This is the contract: dispatch N subagents,
     # keep chatting, get the combined summaries back together at the end.
     if background:
-        from tools.approval import get_current_session_key
         from tools.async_delegation import dispatch_async_delegation_batch
+        from tools.approval import get_current_session_key
+
+        # Stateless request/response sessions (the API server / WebUI path)
+        # cannot route a detached subagent result back to the agent after the
+        # turn ends — there is no persistent channel and the adapter's send()
+        # is a no-op, so a background dispatch would silently never re-enter the
+        # conversation (issue #10760). Fall back to SYNCHRONOUS execution: the
+        # work still runs and its result returns in this same response, which is
+        # strictly better than a handle that never resolves. Mirrors the
+        # pool-at-capacity inline fallback below.
+        try:
+            from gateway.session_context import async_delivery_supported
+            _async_ok = async_delivery_supported()
+        except Exception:
+            _async_ok = True
+        if not _async_ok:
+            logger.info(
+                "delegate_task: async delivery unsupported on this session "
+                "(stateless HTTP API); running the batch synchronously instead."
+            )
+            _sync_result = _execute_and_aggregate()
+            if isinstance(_sync_result, dict):
+                _sync_result["note"] = (
+                    "background=true is not available on this endpoint (stateless "
+                    "HTTP API — no channel to deliver a detached subagent result "
+                    "after the turn ends), so the subagent(s) ran SYNCHRONOUSLY and "
+                    "the result is included above."
+                )
+            return json.dumps(_sync_result, ensure_ascii=False)
 
         _session_key = get_current_session_key(default="")
         _child_agents = [c for (_, _, c) in children]
@@ -2582,9 +2620,9 @@ def delegate_task(
 
 
 def _resolve_child_credential_pool(
-    effective_provider: str | None,
+    effective_provider: Optional[str],
     parent_agent,
-    effective_base_url: str | None = None,
+    effective_base_url: Optional[str] = None,
 ):
     """Resolve a credential pool for the child agent.
 
@@ -2708,7 +2746,7 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
         # proxies — pick the right transport automatically. Without this,
         # subagents would default to chat_completions and hit 404s on endpoints
         # that only speak the Anthropic Messages protocol. Fixes #10213.
-        from prostor_cli.runtime_provider import _detect_api_mode_for_url
+        from hermes_cli.runtime_provider import _detect_api_mode_for_url
 
         base_lower = configured_base_url.lower()
         provider = "custom"
@@ -2751,7 +2789,7 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
 
     # Provider is configured — resolve full credentials
     try:
-        from prostor_cli.runtime_provider import resolve_runtime_provider
+        from hermes_cli.runtime_provider import resolve_runtime_provider
 
         runtime = resolve_runtime_provider(requested=configured_provider, target_model=configured_model)
     except Exception as exc:
@@ -2766,7 +2804,7 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
     if not api_key:
         raise ValueError(
             f"Delegation provider '{configured_provider}' resolved but has no API key. "
-            f"Set the appropriate environment variable or run 'prostor auth'."
+            f"Set the appropriate environment variable or run 'hermes auth'."
         )
 
     return {
@@ -2784,7 +2822,7 @@ def _load_config() -> dict:
     """Load delegation config from CLI_CONFIG or persistent config.
 
     Checks the runtime config (cli.py CLI_CONFIG) first, then falls back
-    to the persistent config (prostor_cli/config.py load_config()) so that
+    to the persistent config (hermes_cli/config.py load_config()) so that
     ``delegation.model`` / ``delegation.provider`` are picked up regardless
     of the entry point (CLI, gateway, cron).
     """
@@ -2797,7 +2835,7 @@ def _load_config() -> dict:
     except Exception:
         pass
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         full = load_config()
         return full.get("delegation") or {}
@@ -2855,20 +2893,61 @@ def _build_top_level_description() -> str:
         )
 
     return (
-        f"Spawn subagents in isolated contexts. Batch: up to {max_children} "
-        f"parallel tasks. {nesting_clause}\n\n"
-        "Modes: 1) 'goal' = single task, 2) 'tasks' = parallel batch. "
-        "Returns immediately; results re-enter conversation as new messages.\n\n"
-        "Use for: reasoning-heavy subtasks, context-flood prevention, "
-        "parallel workstreams. Don't use for: mechanical steps (use "
-        "execute_code), single tool calls, user interaction (no clarify), "
-        "durable work (use cronjob/terminal background).\n\n"
-        "Key constraints:\n"
-        "- NO memory of parent conversation — pass context explicitly\n"
-        "- Subagent summaries are self-reports — verify side-effects\n"
-        "- Non-English output: specify language in 'context'\n"
-        "- Leaf: cannot delegate. Orchestrator: can spawn workers "
-        f"(depth={max_depth})"
+        "Spawn one or more subagents to work on tasks in isolated contexts. "
+        "Each subagent gets its own conversation, terminal session, and toolset. "
+        "Only the final summary is returned -- intermediate tool results "
+        "never enter your context window.\n\n"
+        "TWO MODES (one of 'goal' or 'tasks' is required):\n"
+        "1. Single task: provide 'goal' (+ optional context, toolsets).\n"
+        f"2. Batch (parallel): provide 'tasks' array with up to {max_children} "
+        f"items concurrently for this user (configured via "
+        f"delegation.max_concurrent_children in config.yaml). {nesting_clause}\n\n"
+        "BOTH MODES RUN IN THE BACKGROUND. delegate_task returns immediately — "
+        "you and the user keep working, and each subagent's full result "
+        "re-enters the conversation as its own new message when it finishes. A "
+        "batch is just N independent background subagents (N handles, each "
+        "completes on its own). Do NOT wait or poll; just continue with other "
+        "work after dispatching.\n\n"
+        "WHEN TO USE delegate_task:\n"
+        "- Reasoning-heavy subtasks (debugging, code review, research synthesis)\n"
+        "- Tasks that would flood your context with intermediate data\n"
+        "- Parallel independent workstreams (research A and B simultaneously)\n\n"
+        "WHEN NOT TO USE (use these instead):\n"
+        "- Mechanical multi-step work with no reasoning needed -> use execute_code\n"
+        "- Single tool call -> just call the tool directly\n"
+        "- Tasks needing user interaction -> subagents cannot use clarify\n"
+        "- Durable long-running work that must outlive the current turn -> "
+        "use cronjob (action='create') or terminal(background=True, "
+        "notify_on_complete=True) instead. Background delegations are NOT "
+        "durable: if the parent session is closed (/new) or the process exits "
+        "before a subagent finishes, that subagent's work is discarded, and "
+        "/stop cancels every running background subagent.\n\n"
+        "IMPORTANT:\n"
+        "- Subagents have NO memory of your conversation. Pass all relevant "
+        "info (file paths, error messages, constraints) via the 'context' field.\n"
+        "- If the user is writing in a non-English language, or asked for "
+        "output in a specific language / tone / style, say so in 'context' "
+        "(e.g. \"respond in Chinese\", \"return output in Japanese\"). "
+        "Otherwise subagents default to English and their summaries will "
+        "contaminate your final reply with the wrong language.\n"
+        "- Subagent summaries are SELF-REPORTS, not verified facts. A subagent "
+        "that claims \"uploaded successfully\" or \"file written\" may be wrong. "
+        "For operations with external side-effects (HTTP POST/PUT, remote "
+        "writes, file creation at shared paths, publishing), require the "
+        "subagent to return a verifiable handle (URL, ID, absolute path, HTTP "
+        "status) and verify it yourself — fetch the URL, stat the file, read "
+        "back the content — before telling the user the operation succeeded.\n"
+        "- Leaf subagents (role='leaf', the default) CANNOT call: "
+        "delegate_task, clarify, memory, send_message, execute_code.\n"
+        "- Orchestrator subagents (role='orchestrator') retain "
+        "delegate_task so they can spawn their own workers, but still "
+        "cannot use clarify, memory, send_message, or execute_code. "
+        f"Orchestrators are bounded by max_spawn_depth={max_depth} for this "
+        f"user and can be disabled globally via "
+        "delegation.orchestrator_enabled=false.\n"
+        "- Subagent model is NOT selectable per call: children inherit the parent model (plus its fallback chain) unless you pin all subagents to a model via delegation.provider / delegation.model in config.yaml.\n"
+        "- Each subagent gets its own terminal session (separate working directory and state).\n"
+        "- Results are always returned as an array, one entry per task."
     )
 
 
@@ -2954,7 +3033,7 @@ DELEGATE_TASK_SCHEMA = {
     # delegation.max_concurrent_children / max_spawn_depth, not the framework
     # defaults. Building these lazily (instead of at module import) also
     # avoids forcing cli.CLI_CONFIG to load before the test conftest can
-    # redirect PROSTOR_HOME.
+    # redirect HERMES_HOME.
     "description": (
         "Spawn one or more subagents in isolated contexts. "
         "Description is rebuilt at every get_definitions() call to reflect "
@@ -2983,8 +3062,12 @@ DELEGATE_TASK_SCHEMA = {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": (
-                    "Toolsets for subagent. Default: inherits parent. "
-                    f"Available: {_TOOLSET_LIST_STR}."
+                    "Toolsets to enable for this subagent. "
+                    "Default: inherits your enabled toolsets. "
+                    f"Available toolsets: {_TOOLSET_LIST_STR}. "
+                    "Common patterns: ['terminal', 'file'] for code work, "
+                    "['web'] for research, ['browser'] for web interaction, "
+                    "['terminal', 'file', 'web'] for full-stack tasks."
                 ),
             },
             "tasks": {
@@ -3048,8 +3131,14 @@ DELEGATE_TASK_SCHEMA = {
             "acp_command": {
                 "type": "string",
                 "description": (
-                    "ACP command override (e.g. 'copilot'). Only if user "
-                    "explicitly has ACP CLI installed."
+                    "Override ACP command for child agents (e.g. 'copilot'). "
+                    "When set, children use ACP subprocess transport instead of inheriting "
+                    "the parent's transport. Requires an ACP-compatible CLI "
+                    "(currently GitHub Copilot CLI via 'copilot --acp --stdio'). "
+                    "See agent/copilot_acp_client.py for the implementation. "
+                    "IMPORTANT: Do NOT set this unless the user has explicitly told you "
+                    "a specific ACP-compatible CLI is installed and configured. "
+                    "Leave empty to use the parent's default transport (Hermes subagents)."
                 ),
             },
             "acp_args": {

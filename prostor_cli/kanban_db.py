@@ -1,10 +1,10 @@
 """SQLite-backed Kanban board for multi-profile, multi-project collaboration.
 
 In a fresh install the board lives at ``<root>/kanban.db`` where
-``<root>`` is the **shared Prostor root** (the parent of any active
+``<root>`` is the **shared Hermes root** (the parent of any active
 profile). Profiles intentionally collapse onto a shared board: it IS
 the cross-profile coordination primitive. A worker spawned with
-``prostor -p <profile>`` joins the same board as the dispatcher that
+``hermes -p <profile>`` joins the same board as the dispatcher that
 claimed the task. The same applies to ``<root>/kanban/workspaces/`` and
 ``<root>/kanban/logs/``.
 
@@ -12,7 +12,7 @@ claimed the task. The same applies to ``<root>/kanban/workspaces/`` and
 separate unrelated streams of work (e.g. one per project / repo / domain).
 Each board is a directory under ``<root>/kanban/boards/<slug>/`` with
 its own ``kanban.db``, ``workspaces/``, and ``logs/``. All boards share
-the profile's Prostor home but are otherwise isolated: a worker spawned
+the profile's Hermes home but are otherwise isolated: a worker spawned
 for a task on board ``atm10-server`` sees only that board's tasks,
 cannot enumerate other boards, and its dispatcher ticks don't touch
 other boards' DBs.
@@ -27,27 +27,27 @@ Board resolution order (highest precedence first, all optional):
 * ``board=`` argument passed directly to :func:`connect` / :func:`init_db`
   (explicit — used by the CLI ``--board`` flag and the dashboard
   ``?board=...`` query param).
-* ``PROSTOR_KANBAN_BOARD`` env var (used by the dispatcher to pin workers
+* ``HERMES_KANBAN_BOARD`` env var (used by the dispatcher to pin workers
   to the board their task lives on — workers cannot see other boards).
-* ``PROSTOR_KANBAN_DB`` env var (pins the DB file path directly — legacy
+* ``HERMES_KANBAN_DB`` env var (pins the DB file path directly — legacy
   override still honoured; highest precedence when the file path itself
   is what the caller wants to force).
 * ``<root>/kanban/current`` — a one-line text file holding the slug of
-  the "currently selected" board. Written by ``prostor kanban boards
+  the "currently selected" board. Written by ``hermes kanban boards
   switch <slug>``. When absent, the active board is ``default``.
 
-In standard installs ``<root>`` is ``~/.prostor``. In Docker / custom
-deployments where ``PROSTOR_HOME`` points outside ``~/.prostor`` (e.g.
-``/opt/prostor``), ``<root>`` is ``PROSTOR_HOME``. Legacy env-var
+In standard installs ``<root>`` is ``~/.hermes``. In Docker / custom
+deployments where ``HERMES_HOME`` points outside ``~/.hermes`` (e.g.
+``/opt/hermes``), ``<root>`` is ``HERMES_HOME``. Legacy env-var
 overrides still work:
 
-* ``PROSTOR_KANBAN_DB`` — pin the database file path directly.
-* ``PROSTOR_KANBAN_WORKSPACES_ROOT`` — pin the workspaces root directly.
-* ``PROSTOR_KANBAN_HOME`` — pin the umbrella root that anchors kanban
+* ``HERMES_KANBAN_DB`` — pin the database file path directly.
+* ``HERMES_KANBAN_WORKSPACES_ROOT`` — pin the workspaces root directly.
+* ``HERMES_KANBAN_HOME`` — pin the umbrella root that anchors kanban
   paths. Useful for tests and unusual deployments.
 
-The dispatcher injects ``PROSTOR_KANBAN_DB``,
-``PROSTOR_KANBAN_WORKSPACES_ROOT``, and ``PROSTOR_KANBAN_BOARD`` into
+The dispatcher injects ``HERMES_KANBAN_DB``,
+``HERMES_KANBAN_WORKSPACES_ROOT``, and ``HERMES_KANBAN_BOARD`` into
 worker subprocess env so workers converge on the exact DB the
 dispatcher used to claim their task — even under unusual symlink or
 Docker layouts.
@@ -55,7 +55,7 @@ Docker layouts.
 Schema is intentionally small: tasks, task_links, task_comments,
 task_events.  The ``workspace_kind`` field decouples coordination from git
 worktrees so that research / ops / digital-twin workloads work alongside
-coding workloads.  See ``docs/prostor-kanban-v1-spec.pdf`` for the full
+coding workloads.  See ``docs/hermes-kanban-v1-spec.pdf`` for the full
 design specification.
 
 Concurrency strategy: WAL mode + ``BEGIN IMMEDIATE`` for write
@@ -73,7 +73,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-import logging
 import os
 import re
 import secrets
@@ -82,12 +81,12 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import logging
 import time
-from collections.abc import Iterable
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Optional
 
 from toolsets import get_toolset_names
 
@@ -104,11 +103,37 @@ VALID_WORKSPACE_KINDS = {"scratch", "worktree", "dir"}
 KNOWN_TOOLSET_NAMES = frozenset(name.casefold() for name in get_toolset_names())
 _IS_WINDOWS = sys.platform == "win32"
 
+
+def _fire_kanban_lifecycle_hook(event: str, task_id: str, **fields: Any) -> None:
+    """Fire a kanban lifecycle plugin hook, fully best-effort.
+
+    Called by the claim/complete/block transitions AFTER their write txn has
+    committed, so plugin code never runs while a SQLite write lock is held and
+    always observes durable board state. Any failure (plugins unavailable,
+    a plugin raising, import error) is swallowed — a misbehaving observer must
+    never break a board state transition.
+
+    ``profile_name`` is resolved from the active HERMES_HOME so dispatcher- and
+    worker-side hooks both carry the right profile without the caller plumbing
+    it through.
+    """
+    try:
+        from hermes_cli.plugins import invoke_hook
+        from hermes_cli.profiles import get_active_profile_name
+        try:
+            profile_name = get_active_profile_name()
+        except Exception:
+            profile_name = "default"
+        invoke_hook(event, task_id=task_id, profile_name=profile_name, **fields)
+    except Exception as exc:  # pragma: no cover - defensive
+        _log.debug("kanban lifecycle hook %s failed: %s", event, exc)
+
+
 # A running task's claim is valid for 15 minutes by default; after that the
 # next dispatcher tick reclaims it. Workers that outlive this window should
 # call ``heartbeat_claim(task_id)`` periodically. In practice most kanban
 # workloads either finish within 15m, set a longer claim explicitly, or use
-# ``PROSTOR_KANBAN_CLAIM_TTL_SECONDS`` to raise the default claim window for
+# ``HERMES_KANBAN_CLAIM_TTL_SECONDS`` to raise the default claim window for
 # long single-call MCP workflows.
 DEFAULT_CLAIM_TTL_SECONDS = 15 * 60
 
@@ -133,18 +158,18 @@ DEFAULT_CLAIM_HEARTBEAT_MAX_STALE_SECONDS = 60 * 60
 RECLAIM_DEFER_GRACE_SECONDS = 120
 
 
-def _resolve_claim_ttl_seconds(ttl_seconds: int | None = None) -> int:
+def _resolve_claim_ttl_seconds(ttl_seconds: Optional[int] = None) -> int:
     """Return the effective claim TTL, honoring the kanban env override.
 
     Explicit call-site values win. Otherwise a positive integer from
-    ``PROSTOR_KANBAN_CLAIM_TTL_SECONDS`` overrides the built-in default.
+    ``HERMES_KANBAN_CLAIM_TTL_SECONDS`` overrides the built-in default.
     Invalid or non-positive env values fall back silently so existing
     installs keep working.
     """
     if ttl_seconds is not None:
         return max(1, int(ttl_seconds))
 
-    raw = os.environ.get("PROSTOR_KANBAN_CLAIM_TTL_SECONDS", "").strip()
+    raw = os.environ.get("HERMES_KANBAN_CLAIM_TTL_SECONDS", "").strip()
     if raw:
         try:
             parsed = int(raw)
@@ -179,12 +204,12 @@ KANBAN_RATE_LIMIT_EXIT_CODE = 75
 def _resolve_crash_grace_seconds() -> int:
     """Return the crash-detection grace period in seconds.
 
-    Reads ``PROSTOR_KANBAN_CRASH_GRACE_SECONDS`` from the environment;
+    Reads ``HERMES_KANBAN_CRASH_GRACE_SECONDS`` from the environment;
     falls back to ``DEFAULT_CRASH_GRACE_SECONDS`` when absent, empty,
     non-integer, or negative. A value of 0 restores immediate-reclaim
     behaviour (useful for tests).
     """
-    raw = os.environ.get("PROSTOR_KANBAN_CRASH_GRACE_SECONDS", "").strip()
+    raw = os.environ.get("HERMES_KANBAN_CRASH_GRACE_SECONDS", "").strip()
     if raw:
         try:
             parsed = int(raw)
@@ -198,14 +223,14 @@ def _resolve_crash_grace_seconds() -> int:
 def _resolve_rate_limit_cooldown_seconds() -> int:
     """Return the rate-limit requeue cooldown in seconds.
 
-    Reads ``PROSTOR_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS`` from the environment;
+    Reads ``HERMES_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS`` from the environment;
     falls back to ``DEFAULT_RATE_LIMIT_COOLDOWN_SECONDS`` when absent, empty,
     non-integer, or negative. A value of 0 disables the cooldown (re-spawn on
     the next tick) — useful for tests that want to assert the task becomes
     spawnable again immediately.
     """
     raw = os.environ.get(
-        "PROSTOR_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS", ""
+        "HERMES_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS", ""
     ).strip()
     if raw:
         try:
@@ -223,10 +248,10 @@ def _resolve_rate_limit_cooldown_seconds() -> int:
 # plenty of headroom. Each constant is tuned independently so users
 # who need to relax one don't have to relax all of them.
 _CTX_MAX_PRIOR_ATTEMPTS = 10      # most recent N prior runs shown in full
-_CTX_MAX_COMMENTS = 30      # most recent N comments shown in full
-_CTX_MAX_FIELD_BYTES = 4 * 1024   # 4 KB per summary/error/metadata/result
-_CTX_MAX_BODY_BYTES = 8 * 1024   # 8 KB per task.body (opening post)
-_CTX_MAX_COMMENT_BYTES = 2 * 1024   # 2 KB per comment
+_CTX_MAX_COMMENTS       = 30      # most recent N comments shown in full
+_CTX_MAX_FIELD_BYTES    = 4 * 1024   # 4 KB per summary/error/metadata/result
+_CTX_MAX_BODY_BYTES     = 8 * 1024   # 8 KB per task.body (opening post)
+_CTX_MAX_COMMENT_BYTES  = 2 * 1024   # 2 KB per comment
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +260,7 @@ _CTX_MAX_COMMENT_BYTES = 2 * 1024   # 2 KB per comment
 
 DEFAULT_BOARD = "default"
 _CURRENT_BOARD_OVERRIDE: ContextVar[str | None] = ContextVar(
-    "prostor_kanban_current_board_override",
+    "hermes_kanban_current_board_override",
     default=None,
 )
 
@@ -249,16 +274,15 @@ def scoped_current_board(slug: str):
     finally:
         _CURRENT_BOARD_OVERRIDE.reset(token)
 
-
 # Slug validator: lowercase alphanumerics, digits, hyphens; 1–64 chars.
 # Strict enough to stop traversal (`..`) and embedded path separators, loose
-# enough that kebab-case names like ``atm10-server`` or ``prostor-agent``
+# enough that kebab-case names like ``atm10-server`` or ``hermes-agent``
 # pass without fuss. Board names with display formatting (spaces, emoji)
 # live in ``board.json``; the slug is just the directory name.
 _BOARD_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-_]{0,63}$")
 
 
-def _normalize_board_slug(slug: str | None) -> str | None:
+def _normalize_board_slug(slug: Optional[str]) -> Optional[str]:
     """Lowercase + strip a slug; validate; return ``None`` for empty."""
     if slug is None:
         return None
@@ -274,26 +298,26 @@ def _normalize_board_slug(slug: str | None) -> str | None:
 
 
 def kanban_home() -> Path:
-    """Return the shared Prostor root that anchors the kanban board.
+    """Return the shared Hermes root that anchors the kanban board.
 
     Resolution order:
 
-    1. ``PROSTOR_KANBAN_HOME`` env var when set and non-empty (explicit
+    1. ``HERMES_KANBAN_HOME`` env var when set and non-empty (explicit
        override for tests and unusual deployments).
-    2. ``get_default_prostor_root()``, which already returns ``<root>``
-       when ``PROSTOR_HOME`` is ``<root>/profiles/<name>``, and returns
-       ``PROSTOR_HOME`` directly for Docker / custom deployments.
+    2. ``get_default_hermes_root()``, which already returns ``<root>``
+       when ``HERMES_HOME`` is ``<root>/profiles/<name>``, and returns
+       ``HERMES_HOME`` directly for Docker / custom deployments.
 
     The kanban board is shared across profiles **by design** (see the
     module docstring). Resolving the kanban paths through the active
-    profile's ``PROSTOR_HOME`` would silently fork the board per profile,
+    profile's ``HERMES_HOME`` would silently fork the board per profile,
     which breaks the dispatcher / worker handoff.
     """
-    override = os.environ.get("PROSTOR_KANBAN_HOME", "").strip()
+    override = os.environ.get("HERMES_KANBAN_HOME", "").strip()
     if override:
         return Path(override).expanduser()
-    from prostor_constants import get_default_prostor_root
-    return get_default_prostor_root()
+    from hermes_constants import get_default_hermes_root
+    return get_default_hermes_root()
 
 
 def boards_root() -> Path:
@@ -310,7 +334,7 @@ def boards_root() -> Path:
 def current_board_path() -> Path:
     """Return the path to ``<root>/kanban/current``.
 
-    One-line text file written by ``prostor kanban boards switch <slug>``
+    One-line text file written by ``hermes kanban boards switch <slug>``
     to persist the user's board selection across CLI invocations. Absent
     by default (meaning: active board is ``default``).
     """
@@ -322,9 +346,9 @@ def get_current_board() -> str:
 
     Order (highest precedence first):
 
-    1. ``PROSTOR_KANBAN_BOARD`` env var (set by the dispatcher on worker
+    1. ``HERMES_KANBAN_BOARD`` env var (set by the dispatcher on worker
        spawn, or manually for ad-hoc overrides).
-    2. ``<root>/kanban/current`` on disk (set by ``prostor kanban boards
+    2. ``<root>/kanban/current`` on disk (set by ``hermes kanban boards
        switch``), but only when that board still exists.
     3. ``DEFAULT_BOARD`` (``"default"``).
 
@@ -341,7 +365,7 @@ def get_current_board() -> str:
         except ValueError:
             pass
 
-    env = os.environ.get("PROSTOR_KANBAN_BOARD", "").strip()
+    env = os.environ.get("HERMES_KANBAN_BOARD", "").strip()
     if env:
         try:
             normed = _normalize_board_slug(env)
@@ -370,7 +394,7 @@ def set_current_board(slug: str) -> Path:
 
     Writes ``<root>/kanban/current``. The caller should validate the slug
     exists first (via :func:`board_exists`) — this function does not —
-    so that ``prostor kanban boards switch <typo>`` returns an error
+    so that ``hermes kanban boards switch <typo>`` returns an error
     instead of silently pointing at nothing.
     """
     normed = _normalize_board_slug(slug)
@@ -390,7 +414,7 @@ def clear_current_board() -> None:
         pass
 
 
-def board_dir(board: str | None = None) -> Path:
+def board_dir(board: Optional[str] = None) -> Path:
     """Return the on-disk directory for ``board``.
 
     ``default`` is ``<root>/kanban/boards/default/`` **for metadata only**
@@ -404,7 +428,7 @@ def board_dir(board: str | None = None) -> Path:
     return boards_root() / slug
 
 
-def board_exists(board: str | None = None) -> bool:
+def board_exists(board: Optional[str] = None) -> bool:
     """Return True if the board has persisted metadata or a DB on disk.
 
     ``default`` is considered to always exist — its DB is created
@@ -418,12 +442,12 @@ def board_exists(board: str | None = None) -> bool:
     return (d / "board.json").exists() or (d / "kanban.db").exists()
 
 
-def kanban_db_path(board: str | None = None) -> Path:
+def kanban_db_path(board: Optional[str] = None) -> Path:
     """Return the path to the ``kanban.db`` for ``board``.
 
     Resolution (highest precedence first):
 
-    1. ``PROSTOR_KANBAN_DB`` env var — pins the path directly. Honoured for
+    1. ``HERMES_KANBAN_DB`` env var — pins the path directly. Honoured for
        back-compat and for the dispatcher→worker handoff (defense in
        depth: dispatcher injects this into worker env so workers are
        immune to any path-resolution disagreement).
@@ -432,7 +456,7 @@ def kanban_db_path(board: str | None = None) -> Path:
     3. Board ``default`` → ``<root>/kanban.db`` (back-compat path).
        Other boards → ``<root>/kanban/boards/<slug>/kanban.db``.
     """
-    override = os.environ.get("PROSTOR_KANBAN_DB", "").strip()
+    override = os.environ.get("HERMES_KANBAN_DB", "").strip()
     if override:
         return Path(override).expanduser()
     slug = _normalize_board_slug(board)
@@ -443,18 +467,18 @@ def kanban_db_path(board: str | None = None) -> Path:
     return board_dir(slug) / "kanban.db"
 
 
-def workspaces_root(board: str | None = None) -> Path:
+def workspaces_root(board: Optional[str] = None) -> Path:
     """Return the directory under which ``scratch`` workspaces are created.
 
     Anchored per-board so workspaces don't leak between projects.
-    ``PROSTOR_KANBAN_WORKSPACES_ROOT`` pins the path directly (highest
+    ``HERMES_KANBAN_WORKSPACES_ROOT`` pins the path directly (highest
     precedence) — the dispatcher injects this into worker env.
 
     ``default`` keeps the legacy path ``<root>/kanban/workspaces/`` so
     that existing scratch workspaces from before the boards feature are
     preserved. Other boards use ``<root>/kanban/boards/<slug>/workspaces/``.
     """
-    override = os.environ.get("PROSTOR_KANBAN_WORKSPACES_ROOT", "").strip()
+    override = os.environ.get("HERMES_KANBAN_WORKSPACES_ROOT", "").strip()
     if override:
         return Path(override).expanduser()
     slug = _normalize_board_slug(board)
@@ -465,14 +489,14 @@ def workspaces_root(board: str | None = None) -> Path:
     return board_dir(slug) / "workspaces"
 
 
-def attachments_root(board: str | None = None) -> Path:
+def attachments_root(board: Optional[str] = None) -> Path:
     """Return the directory under which task file attachments are stored.
 
     Mirrors :func:`worker_logs_dir` / :func:`workspaces_root`: anchored
     per-board so attachments don't leak between projects. Each task gets
     its own ``<root>/.../attachments/<task_id>/`` subdirectory.
 
-    ``PROSTOR_KANBAN_ATTACHMENTS_ROOT`` pins the path directly (highest
+    ``HERMES_KANBAN_ATTACHMENTS_ROOT`` pins the path directly (highest
     precedence) for tests and unusual deployments.
 
     ``default`` uses ``<root>/kanban/attachments/``; other boards use
@@ -484,7 +508,7 @@ def attachments_root(board: str | None = None) -> Path:
     directly. Remote backends (Docker/Modal) need this directory mounted;
     see the kanban docs.
     """
-    override = os.environ.get("PROSTOR_KANBAN_ATTACHMENTS_ROOT", "").strip()
+    override = os.environ.get("HERMES_KANBAN_ATTACHMENTS_ROOT", "").strip()
     if override:
         return Path(override).expanduser()
     slug = _normalize_board_slug(board)
@@ -495,17 +519,17 @@ def attachments_root(board: str | None = None) -> Path:
     return board_dir(slug) / "attachments"
 
 
-def task_attachments_dir(task_id: str, board: str | None = None) -> Path:
+def task_attachments_dir(task_id: str, board: Optional[str] = None) -> Path:
     """Return the per-task attachment directory ``<root>/<task_id>/``."""
     return attachments_root(board=board) / task_id
 
 
-def worker_logs_dir(board: str | None = None) -> Path:
+def worker_logs_dir(board: Optional[str] = None) -> Path:
     """Return the directory under which per-task worker logs are written.
 
     ``default`` keeps the legacy path ``<root>/kanban/logs/``. Other
     boards use ``<root>/kanban/boards/<slug>/logs/``. Logs follow the
-    board — makes ``prostor kanban log`` unambiguous even when multiple
+    board — makes ``hermes kanban log`` unambiguous even when multiple
     boards have tasks with the same id.
     """
     slug = _normalize_board_slug(board)
@@ -516,7 +540,7 @@ def worker_logs_dir(board: str | None = None) -> Path:
     return board_dir(slug) / "logs"
 
 
-def board_metadata_path(board: str | None = None) -> Path:
+def board_metadata_path(board: Optional[str] = None) -> Path:
     """Return the path to ``board.json`` for ``board``.
 
     Stores display metadata (display name, description, icon, color,
@@ -537,7 +561,7 @@ def _default_board_display_name(slug: str) -> str:
     return " ".join(part.capitalize() for part in slug.replace("_", "-").split("-") if part) or slug
 
 
-def read_board_metadata(board: str | None = None) -> dict:
+def read_board_metadata(board: Optional[str] = None) -> dict:
     """Return ``board.json`` contents (or synthesized defaults).
 
     Never raises — a missing / malformed ``board.json`` falls back to a
@@ -572,14 +596,14 @@ def read_board_metadata(board: str | None = None) -> dict:
 
 
 def write_board_metadata(
-    board: str | None,
+    board: Optional[str],
     *,
-    name: str | None = None,
-    description: str | None = None,
-    icon: str | None = None,
-    color: str | None = None,
-    archived: bool | None = None,
-    default_workdir: str | None = None,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+    archived: Optional[bool] = None,
+    default_workdir: Optional[str] = None,
 ) -> dict:
     """Create / update ``board.json`` for ``board``.
 
@@ -618,11 +642,11 @@ def write_board_metadata(
 def create_board(
     slug: str,
     *,
-    name: str | None = None,
-    description: str | None = None,
-    icon: str | None = None,
-    color: str | None = None,
-    default_workdir: str | None = None,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+    default_workdir: Optional[str] = None,
 ) -> dict:
     """Create a new board directory + DB + metadata. Idempotent.
 
@@ -747,22 +771,22 @@ class Task:
 
     id: str
     title: str
-    body: str | None
-    assignee: str | None
+    body: Optional[str]
+    assignee: Optional[str]
     status: str
     priority: int
-    created_by: str | None
+    created_by: Optional[str]
     created_at: int
-    started_at: int | None
-    completed_at: int | None
+    started_at: Optional[int]
+    completed_at: Optional[int]
     workspace_kind: str
-    workspace_path: str | None
-    claim_lock: str | None
-    claim_expires: int | None
-    tenant: str | None
-    branch_name: str | None = None
-    result: str | None = None
-    idempotency_key: str | None = None
+    workspace_path: Optional[str]
+    claim_lock: Optional[str]
+    claim_expires: Optional[int]
+    tenant: Optional[str]
+    branch_name: Optional[str] = None
+    result: Optional[str] = None
+    idempotency_key: Optional[str] = None
     # Unified non-success counter. Incremented on any of:
     #   * spawn failure (dispatcher couldn't launch the worker)
     #   * timed_out outcome (worker exceeded max_runtime_seconds)
@@ -771,21 +795,20 @@ class Task:
     # ``_record_task_failure`` for the circuit-breaker trip rule.
     # (Pre-rename column: ``spawn_failures``.)
     consecutive_failures: int = 0
-    worker_pid: int | None = None
+    worker_pid: Optional[int] = None
     # Short excerpt of the last failure's error text (any outcome, not
     # just spawn). Pre-rename column: ``last_spawn_error``.
-    last_failure_error: str | None = None
-    max_runtime_seconds: int | None = None
-    last_heartbeat_at: int | None = None
-    current_run_id: int | None = None
-    workflow_template_id: str | None = None
-    current_step_key: str | None = None
-    # Force-loaded skills for the worker on this task (appended to the
-    # dispatcher's built-in `kanban-worker` via --skills). Stored as a
-    # JSON array of skill names. None = use only the defaults; empty
-    # list = explicitly no extra skills.
-    skills: list | None = None
-    model_override: str | None = None
+    last_failure_error: Optional[str] = None
+    max_runtime_seconds: Optional[int] = None
+    last_heartbeat_at: Optional[int] = None
+    current_run_id: Optional[int] = None
+    workflow_template_id: Optional[str] = None
+    current_step_key: Optional[str] = None
+    # Force-loaded skills for the worker on this task (passed via
+    # --skills). Stored as a JSON array of skill names. None = use only
+    # the defaults; empty list = explicitly no extra skills.
+    skills: Optional[list] = None
+    model_override: Optional[str] = None
     # Per-task override for the consecutive-failure circuit breaker.
     # The value is the failure count at which the breaker trips — e.g.
     # ``max_retries=1`` blocks on the first failure (zero retries),
@@ -793,7 +816,7 @@ class Task:
     # ``None`` (the common case) falls through to the dispatcher-level
     # ``kanban.failure_limit`` config, and then to ``DEFAULT_FAILURE_LIMIT``.
     # Name matches the ``--max-retries`` CLI flag on ``kanban create``.
-    max_retries: int | None = None
+    max_retries: Optional[int] = None
     # When True, the dispatched worker runs in a Ralph-style goal loop
     # (the same engine behind the ``/goal`` slash command): after each
     # turn an auxiliary judge model evaluates the worker's response
@@ -806,19 +829,19 @@ class Task:
     goal_mode: bool = False
     # Goal-loop turn budget for ``goal_mode`` workers. ``None`` falls
     # through to the goals engine default (``goals.DEFAULT_MAX_TURNS``).
-    goal_max_turns: int | None = None
+    goal_max_turns: Optional[int] = None
     # Originating chat/agent session id, when the task was created from
-    # within an agent loop that propagated ``PROSTOR_SESSION_ID``. NULL for
+    # within an agent loop that propagated ``HERMES_SESSION_ID``. NULL for
     # tasks created from the CLI, the dashboard, or any path that doesn't
     # set the env var. Lets clients render a per-session board without
     # relying on tenant + time-window heuristics.
-    session_id: str | None = None
+    session_id: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> Task:
+    def from_row(cls, row: sqlite3.Row) -> "Task":
         keys = set(row.keys())
         # Parse skills JSON blob if present
-        skills_value: list | None = None
+        skills_value: Optional[list] = None
         if "skills" in keys and row["skills"]:
             try:
                 parsed = json.loads(row["skills"])
@@ -904,23 +927,23 @@ class Run:
 
     id: int
     task_id: str
-    profile: str | None
-    step_key: str | None
+    profile: Optional[str]
+    step_key: Optional[str]
     status: str
-    claim_lock: str | None
-    claim_expires: int | None
-    worker_pid: int | None
-    max_runtime_seconds: int | None
-    last_heartbeat_at: int | None
+    claim_lock: Optional[str]
+    claim_expires: Optional[int]
+    worker_pid: Optional[int]
+    max_runtime_seconds: Optional[int]
+    last_heartbeat_at: Optional[int]
     started_at: int
-    ended_at: int | None
-    outcome: str | None
-    summary: str | None
-    metadata: dict | None
-    error: str | None
+    ended_at: Optional[int]
+    outcome: Optional[str]
+    summary: Optional[str]
+    metadata: Optional[dict]
+    error: Optional[str]
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> Run:
+    def from_row(cls, row: sqlite3.Row) -> "Run":
         try:
             meta = json.loads(row["metadata"]) if row["metadata"] else None
         except Exception:
@@ -962,9 +985,9 @@ class Attachment:
     task_id: str
     filename: str
     stored_path: str
-    content_type: str | None
+    content_type: Optional[str]
     size: int
-    uploaded_by: str | None
+    uploaded_by: Optional[str]
     created_at: int
 
 
@@ -973,9 +996,9 @@ class Event:
     id: int
     task_id: str
     kind: str
-    payload: dict | None
+    payload: Optional[dict]
     created_at: int
-    run_id: int | None = None
+    run_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1021,8 +1044,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     workflow_template_id TEXT,
     current_step_key     TEXT,
     -- Force-loaded skills for the worker on this task, stored as JSON.
-    -- Appended to the dispatcher's built-in `--skills kanban-worker`.
-    -- NULL or empty array = no extras.
+    -- Passed to the worker via `--skills`. NULL or empty array = no extras.
     skills               TEXT,
     -- Per-task model override. When set, the dispatcher passes -m <model>
     -- to the worker, overriding the profile's default model. NULL = use
@@ -1045,7 +1067,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     -- goals-engine default.
     goal_max_turns       INTEGER,
     -- Originating chat/agent session id when the task was created from
-    -- inside an agent loop that propagated ``PROSTOR_SESSION_ID``. NULL
+    -- inside an agent loop that propagated ``HERMES_SESSION_ID``. NULL
     -- for tasks created from the CLI, dashboard, or any path that doesn't
     -- set the env var. Indexed so per-session list queries stay cheap on
     -- larger boards.
@@ -1159,6 +1181,14 @@ _INIT_LOCK = threading.RLock()
 _SQLITE_HEADER = b"SQLite format 3\x00"
 DEFAULT_BUSY_TIMEOUT_MS = 120_000
 
+# Bounded acquire for the cross-process init lock (#36644). The original bare
+# blocking flock had no timeout, so a wedged holder blocked the dispatcher's
+# next-tick connect forever. We retry a non-blocking acquire up to this
+# deadline, polling at this interval, then proceed without the cross-process
+# lock (the in-process _INIT_LOCK + idempotent init remain the backstop).
+_INIT_LOCK_TIMEOUT_SECONDS = 10.0
+_INIT_LOCK_POLL_SECONDS = 0.05
+
 
 def _resolve_busy_timeout_ms() -> int:
     """Return the SQLite busy timeout for Kanban connections.
@@ -1167,7 +1197,7 @@ def _resolve_busy_timeout_ms() -> int:
     expected.  A long busy timeout lets SQLite serialize writers via WAL rather
     than surfacing transient ``database is locked`` failures during bursts.
     """
-    raw = os.environ.get("PROSTOR_KANBAN_BUSY_TIMEOUT_MS", "").strip()
+    raw = os.environ.get("HERMES_KANBAN_BUSY_TIMEOUT_MS", "").strip()
     if raw:
         try:
             parsed = int(raw)
@@ -1203,43 +1233,163 @@ def _cross_process_init_lock(path: Path):
     lock keeps header validation, integrity probing, WAL activation, and
     additive migrations single-file/single-writer across the whole host while
     leaving normal post-init DB usage concurrent under SQLite WAL.
+
+    The acquire is **bounded** (issue #36644): the original bare blocking
+    ``flock(LOCK_EX)`` had no timeout, so a single process stalled inside the
+    critical section (or a stale lock held by a wedged worker) blocked every
+    other ``connect()`` — including the long-lived gateway dispatcher's
+    next-tick connect — forever, with no traceback and no recovery short of a
+    restart. We now retry a non-blocking acquire up to a deadline; on timeout
+    we log a WARNING and proceed WITHOUT the cross-process lock. That is safe:
+    the in-process ``_INIT_LOCK`` still serializes same-process threads, and
+    the init work itself is idempotent (``CREATE TABLE IF NOT EXISTS`` +
+    additive migrations), so the worst case of two processes racing first-init
+    is redundant work, not corruption. A bounded "proceed anyway" beats an
+    unbounded hang that silently stops the board.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_name(path.name + ".init.lock")
     handle = lock_path.open("a+b")
+    acquired = False
     try:
+        deadline = time.monotonic() + _INIT_LOCK_TIMEOUT_SECONDS
         if _IS_WINDOWS:
             import msvcrt
 
-            # Lock a single byte in the sidecar file. ``msvcrt.locking`` starts
-            # at the current file position, so seek explicitly before both
-            # lock and unlock.  The file is opened in append/read binary mode so
-            # it always exists but the byte-range lock is the synchronization
-            # primitive; no payload needs to be written.
-            handle.seek(0)
-            locking = msvcrt.locking
-            lock_mode = msvcrt.LK_LOCK
-            locking(handle.fileno(), lock_mode, 1)
+            locking = getattr(msvcrt, "locking")
+            nb_lock = getattr(msvcrt, "LK_NBLCK")
+            while True:
+                try:
+                    handle.seek(0)
+                    locking(handle.fileno(), nb_lock, 1)
+                    acquired = True
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        break
+                    time.sleep(_INIT_LOCK_POLL_SECONDS)
         else:
             import fcntl
 
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                    break
+                except (BlockingIOError, OSError):
+                    if time.monotonic() >= deadline:
+                        break
+                    time.sleep(_INIT_LOCK_POLL_SECONDS)
+        if not acquired:
+            _log.warning(
+                "kanban init lock for %s not acquired within %.0fs — proceeding "
+                "without the cross-process lock (in-process lock + idempotent "
+                "init are the correctness backstop). A stuck holder is no longer "
+                "able to block this connect indefinitely (#36644).",
+                lock_path, _INIT_LOCK_TIMEOUT_SECONDS,
+            )
         yield
     finally:
         try:
-            if _IS_WINDOWS:
+            if acquired:
+                if _IS_WINDOWS:
+                    import msvcrt
+
+                    handle.seek(0)
+                    locking = getattr(msvcrt, "locking")
+                    unlock_mode = getattr(msvcrt, "LK_UNLCK")
+                    locking(handle.fileno(), unlock_mode, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
+@contextlib.contextmanager
+def _dispatch_tick_lock(db_path: Path):
+    """Non-blocking single-writer guard around one dispatcher tick.
+
+    Yields ``True`` when this process holds the board's dispatch lock and
+    may proceed with the tick, or ``False`` when another process already
+    holds it (the caller should skip the tick this round).
+
+    Motivation (issue #35240): a ``hermes gateway run --replace`` /
+    ``gateway restart`` invoked from a shell on a systemd/launchd host can
+    leave an orphan gateway whose dispatcher escapes the service cgroup,
+    survives ``systemctl restart``, and becomes a *second* long-lived
+    writer on the same ``kanban.db``. Two dispatchers that each believe
+    they own the file both pass SQLite ``busy_timeout`` and then race on
+    WAL frames — the documented root cause of multi-writer corruption.
+    The startup guard (``_guard_supervised_gateway_conflict``) blocks the
+    common way an orphan is born, but this lock is the defense-in-depth
+    that prevents two dispatchers from ever writing concurrently
+    *regardless of how the second one got there*.
+
+    The lock is **non-blocking** on purpose: the gateway's async watcher
+    must never stall on a held lock. A losing dispatcher simply skips its
+    tick (the winner is making progress on the same board), and tries
+    again next interval.
+
+    Board-scoped: the lock file is a ``.dispatch.lock`` sibling of the
+    board's ``kanban.db``, so unrelated boards tick independently. On
+    platforms without ``fcntl``/``msvcrt`` the guard degrades to a no-op
+    (yields ``True``) — single-writer enforcement is best-effort and the
+    orphan-dispatcher scenario is specific to POSIX service managers.
+    """
+    lock_path = db_path.with_name(db_path.name + ".dispatch.lock")
+    handle = None
+    acquired = False
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = lock_path.open("a+b")
+        if _IS_WINDOWS:
+            try:
                 import msvcrt
 
                 handle.seek(0)
-                locking = msvcrt.locking
-                unlock_mode = msvcrt.LK_UNLCK
-                locking(handle.fileno(), unlock_mode, 1)
-            else:
+                locking = getattr(msvcrt, "locking")
+                # LK_NBLCK = non-blocking exclusive byte-range lock.
+                nb_lock = getattr(msvcrt, "LK_NBLCK")
+                locking(handle.fileno(), nb_lock, 1)
+                acquired = True
+            except (OSError, AttributeError):
+                acquired = False
+        else:
+            try:
                 import fcntl
 
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            handle.close()
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+            except (BlockingIOError, OSError):
+                acquired = False
+    except OSError:
+        # Could not even open the lock file (permissions, read-only FS).
+        # Degrade to a no-op so a probe failure never blocks dispatch.
+        acquired = True
+        handle = None
+    try:
+        yield acquired
+    finally:
+        if handle is not None:
+            try:
+                if acquired:
+                    if _IS_WINDOWS:
+                        import msvcrt
+
+                        handle.seek(0)
+                        locking = getattr(msvcrt, "locking")
+                        unlock_mode = getattr(msvcrt, "LK_UNLCK")
+                        locking(handle.fileno(), unlock_mode, 1)
+                    else:
+                        import fcntl
+
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            except (OSError, AttributeError):
+                pass
+            finally:
+                handle.close()
 
 
 def _looks_like_tls_record_at(data: bytes, offset: int) -> bool:
@@ -1301,7 +1451,7 @@ class KanbanDbCorruptError(RuntimeError):
     original path and the timestamped backup we made before refusing.
     """
 
-    def __init__(self, db_path: Path, backup_path: Path | None, reason: str):
+    def __init__(self, db_path: Path, backup_path: Optional[Path], reason: str):
         self.db_path = db_path
         self.backup_path = backup_path
         self.reason = reason
@@ -1312,7 +1462,7 @@ class KanbanDbCorruptError(RuntimeError):
         )
 
 
-def _backup_corrupt_db(path: Path) -> Path | None:
+def _backup_corrupt_db(path: Path) -> Optional[Path]:
     """Copy a corrupt DB (and its WAL/SHM sidecars) to a content-addressed backup.
 
     The backup filename is deterministic in the main DB's sha256, so repeated
@@ -1386,7 +1536,7 @@ def _guard_existing_db_is_healthy(path: Path) -> None:
     Path-trust note: ``path`` arrives via :func:`connect`, which itself
     resolves it from an explicit ``db_path`` argument, the
     :func:`kanban_db_path` env-var chain, or the kanban-home default —
-    all sources Prostor treats as user-controlled-but-trusted on the
+    all sources Hermes treats as user-controlled-but-trusted on the
     user's own machine. We additionally resolve the path here and
     confine all filesystem writes to its parent directory so any
     accidental ``..`` segments are collapsed before any I/O happens.
@@ -1404,7 +1554,7 @@ def _guard_existing_db_is_healthy(path: Path) -> None:
         return
     if str(resolved) in _INITIALIZED_PATHS:
         return
-    reason: str | None = None
+    reason: Optional[str] = None
     try:
         probe = _sqlite_connect(resolved)
         try:
@@ -1425,9 +1575,9 @@ def _guard_existing_db_is_healthy(path: Path) -> None:
 
 
 def connect(
-    db_path: Path | None = None,
+    db_path: Optional[Path] = None,
     *,
-    board: str | None = None,
+    board: Optional[str] = None,
 ) -> sqlite3.Connection:
     """Open (and initialize if needed) the kanban DB.
 
@@ -1444,7 +1594,7 @@ def connect(
     * ``db_path`` explicit → used as-is (legacy callers, tests).
     * ``board`` explicit → resolves to that board's DB.
     * Neither → :func:`kanban_db_path` resolves via
-      ``PROSTOR_KANBAN_DB`` env → ``PROSTOR_KANBAN_BOARD`` env →
+      ``HERMES_KANBAN_DB`` env → ``HERMES_KANBAN_BOARD`` env →
       ``<root>/kanban/current`` → ``default``.
     """
     if db_path is not None:
@@ -1452,6 +1602,35 @@ def connect(
     else:
         path = kanban_db_path(board=board)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Fast path: once THIS process has initialized this path, the expensive
+    # first-open work (header validation, integrity probe, schema + additive
+    # migrations) is already done and cached in _INITIALIZED_PATHS. Acquiring
+    # the cross-process init lock on every connect is what let a single stalled
+    # holder (e.g. an external `hermes kanban list` mid-integrity-probe) block
+    # the long-lived gateway dispatcher's next-tick connect() forever — an
+    # unbounded flock with no timeout, no LOCK_NB, no recovery (#36644). On the
+    # steady-state path there is nothing for the cross-process lock to protect
+    # (no schema/migration writes run), so skip it entirely and just open the
+    # connection with WAL/pragmas under the cheap in-process _INIT_LOCK.
+    resolved = str(path.resolve())
+    if resolved in _INITIALIZED_PATHS:
+        conn = _sqlite_connect(path)
+        try:
+            conn.row_factory = sqlite3.Row
+            with _INIT_LOCK:
+                from hermes_state import apply_wal_with_fallback
+                apply_wal_with_fallback(conn, db_label=f"kanban.db ({path.name})")
+                conn.execute("PRAGMA synchronous=FULL")
+                conn.execute("PRAGMA wal_autocheckpoint=100")
+                conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute("PRAGMA secure_delete=ON")
+                conn.execute("PRAGMA cell_size_check=ON")
+        except Exception:
+            conn.close()
+            raise
+        return conn
+
     with _cross_process_init_lock(path):
         # Cheap byte-level check first — catches the #29507 TLS-overwrite shape
         # and other invalid-header cases without opening a sqlite connection.
@@ -1471,8 +1650,8 @@ def connect(
                 # startup threads do not race before _INITIALIZED_PATHS is populated.
                 # WAL doesn't work on network filesystems (NFS/SMB/FUSE). Shared helper
                 # falls back to DELETE with one WARNING so kanban stays usable there.
-                # See prostor_state._WAL_INCOMPAT_MARKERS for detection logic.
-                from prostor_state import apply_wal_with_fallback
+                # See hermes_state._WAL_INCOMPAT_MARKERS for detection logic.
+                from hermes_state import apply_wal_with_fallback
                 apply_wal_with_fallback(conn, db_label=f"kanban.db ({path.name})")
                 # FULL (was NORMAL): fsync before each checkpoint to narrow the
                 # crash window that can leave a b-tree page header torn.
@@ -1503,9 +1682,9 @@ def connect(
 
 @contextlib.contextmanager
 def connect_closing(
-    db_path: Path | None = None,
+    db_path: Optional[Path] = None,
     *,
-    board: str | None = None,
+    board: Optional[str] = None,
 ):
     """Open a kanban DB connection and guarantee it is closed on exit.
 
@@ -1537,13 +1716,13 @@ def connect_closing(
 
 
 def init_db(
-    db_path: Path | None = None,
+    db_path: Optional[Path] = None,
     *,
-    board: str | None = None,
+    board: Optional[str] = None,
 ) -> Path:
     """Create the schema if it doesn't exist; return the path used.
 
-    Kept as a public entry point so CLI ``prostor kanban init`` and the
+    Kept as a public entry point so CLI ``hermes kanban init`` and the
     daemon have something explicit to call. Unlike :func:`connect`'s
     first-time auto-init (which caches by path), ``init_db`` always
     re-runs the migration pass. Callers that know the on-disk schema
@@ -1667,8 +1846,7 @@ def _migrate_add_optional_columns(conn: sqlite3.Connection) -> None:
         )
     if "skills" not in cols:
         # JSON array of skill names the dispatcher force-loads into the
-        # worker (additive to the built-in `kanban-worker`). NULL is fine
-        # for existing rows.
+        # worker via --skills. NULL is fine for existing rows.
         _add_column_if_missing(conn, "tasks", "skills", "skills TEXT")
 
     if "max_retries" not in cols:
@@ -1699,7 +1877,7 @@ def _migrate_add_optional_columns(conn: sqlite3.Connection) -> None:
     if "session_id" not in cols:
         # Originating agent/chat session id, populated when the task is
         # created from within an agent loop that propagated
-        # ``PROSTOR_SESSION_ID`` (e.g. ACP). NULL on legacy rows and on any
+        # ``HERMES_SESSION_ID`` (e.g. ACP). NULL on legacy rows and on any
         # creation path that doesn't set the env var (CLI, dashboard).
         _add_column_if_missing(
             conn, "tasks", "session_id", "session_id TEXT"
@@ -1806,8 +1984,8 @@ def _migrate_add_optional_columns(conn: sqlite3.Connection) -> None:
     # per DB because after the UPDATE no rows match the old kinds.
     _EVENT_RENAMES = (
         # (old, new)
-        ("ready", "promoted"),
-        ("priority", "reprioritized"),
+        ("ready",              "promoted"),
+        ("priority",           "reprioritized"),
         ("spawn_auto_blocked", "gave_up"),
     )
     for old, new in _EVENT_RENAMES:
@@ -2052,11 +2230,11 @@ def _claimer_id() -> str:
 # Task creation / mutation
 # ---------------------------------------------------------------------------
 
-def _canonical_assignee(assignee: str | None) -> str | None:
+def _canonical_assignee(assignee: Optional[str]) -> Optional[str]:
     """Lowercase-assignee normalization for Kanban rows (dashboard/CLI parity)."""
     if assignee is None:
         return None
-    from prostor_cli.profiles import normalize_profile_name
+    from hermes_cli.profiles import normalize_profile_name
 
     return normalize_profile_name(assignee)
 
@@ -2065,25 +2243,25 @@ def create_task(
     conn: sqlite3.Connection,
     *,
     title: str,
-    body: str | None = None,
-    assignee: str | None = None,
-    created_by: str | None = None,
+    body: Optional[str] = None,
+    assignee: Optional[str] = None,
+    created_by: Optional[str] = None,
     workspace_kind: str = "scratch",
-    workspace_path: str | None = None,
-    branch_name: str | None = None,
-    tenant: str | None = None,
+    workspace_path: Optional[str] = None,
+    branch_name: Optional[str] = None,
+    tenant: Optional[str] = None,
     priority: int = 0,
     parents: Iterable[str] = (),
     triage: bool = False,
-    idempotency_key: str | None = None,
-    max_runtime_seconds: int | None = None,
-    skills: Iterable[str] | None = None,
-    max_retries: int | None = None,
+    idempotency_key: Optional[str] = None,
+    max_runtime_seconds: Optional[int] = None,
+    skills: Optional[Iterable[str]] = None,
+    max_retries: Optional[int] = None,
     goal_mode: bool = False,
-    goal_max_turns: int | None = None,
+    goal_max_turns: Optional[int] = None,
     initial_status: str = "running",
-    session_id: str | None = None,
-    board: str | None = None,
+    session_id: Optional[str] = None,
+    board: Optional[str] = None,
 ) -> str:
     """Create a new task and optionally link it under parent tasks.
 
@@ -2104,9 +2282,8 @@ def create_task(
 
     ``skills`` is an optional list of skill names to force-load into
     the worker when dispatched. Stored as JSON; the dispatcher passes
-    each name to ``prostor --skills ...`` alongside the built-in
-    ``kanban-worker``. Use this to pin a task to a specialist skill
-    (e.g. ``skills=["translation"]`` so the worker loads the
+    each name to ``hermes --skills ...``. Use this to pin a task to a
+    specialist skill (e.g. ``skills=["translation"]`` so the worker loads the
     translation skill regardless of the profile's default config).
     """
     assignee = _canonical_assignee(assignee)
@@ -2130,9 +2307,9 @@ def create_task(
     # Normalise + validate skills: strip whitespace, drop empties, dedupe
     # (preserving order). Refuse commas inside a single name so we don't
     # invisibly splatter a comma-joined string into one argv slot — the
-    # `prostor --skills X,Y` comma syntax is handled in the dispatcher,
+    # `hermes --skills X,Y` comma syntax is handled in the dispatcher,
     # not here.
-    skills_list: list[str] | None = None
+    skills_list: Optional[list[str]] = None
     if skills is not None:
         cleaned: list[str] = []
         seen: set[str] = set()
@@ -2167,7 +2344,7 @@ def create_task(
                 f"{quoted} {noun}, not skill name(s). "
                 "Put toolsets in the assignee profile's `toolsets:` config "
                 "instead of per-task skills. Skills are named skill bundles "
-                "(e.g. `kanban-worker`, `blogwatcher`); toolsets are runtime "
+                "(e.g. `blogwatcher`, `github-code-review`); toolsets are runtime "
                 "capabilities (e.g. `web`, `browser`, `terminal`)."
             )
         skills_list = cleaned
@@ -2314,12 +2491,12 @@ def _find_missing_parents(conn: sqlite3.Connection, parents: Iterable[str]) -> l
     return [p for p in parents if p not in present]
 
 
-def get_task(conn: sqlite3.Connection, task_id: str) -> Task | None:
+def get_task(conn: sqlite3.Connection, task_id: str) -> Optional[Task]:
     row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
     return Task.from_row(row) if row else None
 
 
-# Canonical sort-order mappings for ``prostor kanban list --sort``.
+# Canonical sort-order mappings for ``hermes kanban list --sort``.
 # Each value is a raw SQL fragment appended after ``ORDER BY``.
 VALID_SORT_ORDERS: dict[str, str] = {
     "created": "created_at ASC, id ASC",
@@ -2336,15 +2513,15 @@ VALID_SORT_ORDERS: dict[str, str] = {
 def list_tasks(
     conn: sqlite3.Connection,
     *,
-    assignee: str | None = None,
-    status: str | None = None,
-    tenant: str | None = None,
-    session_id: str | None = None,
+    assignee: Optional[str] = None,
+    status: Optional[str] = None,
+    tenant: Optional[str] = None,
+    session_id: Optional[str] = None,
     include_archived: bool = False,
-    limit: int | None = None,
-    order_by: str | None = None,
-    workflow_template_id: str | None = None,
-    current_step_key: str | None = None,
+    limit: Optional[int] = None,
+    order_by: Optional[str] = None,
+    workflow_template_id: Optional[str] = None,
+    current_step_key: Optional[str] = None,
 ) -> list[Task]:
     query = "SELECT * FROM tasks WHERE 1=1"
     params: list[Any] = []
@@ -2385,7 +2562,7 @@ def list_tasks(
     return [Task.from_row(r) for r in rows]
 
 
-def assign_task(conn: sqlite3.Connection, task_id: str, profile: str | None) -> bool:
+def assign_task(conn: sqlite3.Connection, task_id: str, profile: Optional[str]) -> bool:
     """Assign or reassign a task.  Returns True on success.
 
     Refuses to reassign a task that's currently running (claim_lock set).
@@ -2491,7 +2668,7 @@ def unlink_tasks(conn: sqlite3.Connection, parent_id: str, child_id: str) -> boo
         # Dependency edge removed — re-evaluate promotion eligibility for the
         # child immediately.  Matches the contract of complete_task and
         # unblock_task; without this the child stays stuck in todo until the
-        # next dispatcher tick or a manual `prostor kanban recompute` (issue #22459).
+        # next dispatcher tick or a manual `hermes kanban recompute` (issue #22459).
         recompute_ready(conn)
     return removed
 
@@ -2512,7 +2689,7 @@ def child_ids(conn: sqlite3.Connection, task_id: str) -> list[str]:
     return [r["child_id"] for r in rows]
 
 
-def parent_results(conn: sqlite3.Connection, task_id: str) -> list[tuple[str, str | None]]:
+def parent_results(conn: sqlite3.Connection, task_id: str) -> list[tuple[str, Optional[str]]]:
     """Return ``(parent_id, result)`` for every done parent of ``task_id``."""
     rows = conn.execute(
         """
@@ -2580,9 +2757,9 @@ def add_attachment(
     *,
     filename: str,
     stored_path: str,
-    content_type: str | None = None,
+    content_type: Optional[str] = None,
     size: int = 0,
-    uploaded_by: str | None = None,
+    uploaded_by: Optional[str] = None,
 ) -> int:
     """Record a file attachment for a task. Returns the new attachment id.
 
@@ -2643,7 +2820,7 @@ def list_attachments(conn: sqlite3.Connection, task_id: str) -> list[Attachment]
     ]
 
 
-def get_attachment(conn: sqlite3.Connection, attachment_id: int) -> Attachment | None:
+def get_attachment(conn: sqlite3.Connection, attachment_id: int) -> Optional[Attachment]:
     r = conn.execute(
         "SELECT * FROM task_attachments WHERE id = ?", (attachment_id,)
     ).fetchone()
@@ -2661,7 +2838,7 @@ def get_attachment(conn: sqlite3.Connection, attachment_id: int) -> Attachment |
     )
 
 
-def delete_attachment(conn: sqlite3.Connection, attachment_id: int) -> Attachment | None:
+def delete_attachment(conn: sqlite3.Connection, attachment_id: int) -> Optional[Attachment]:
     """Delete an attachment row and its on-disk blob. Returns the removed row.
 
     Returns ``None`` when no row matched. The blob is removed best-effort
@@ -2713,9 +2890,9 @@ def _append_event(
     conn: sqlite3.Connection,
     task_id: str,
     kind: str,
-    payload: dict | None = None,
+    payload: Optional[dict] = None,
     *,
-    run_id: int | None = None,
+    run_id: Optional[int] = None,
 ) -> None:
     """Record an event row.  Called from within an already-open txn.
 
@@ -2738,18 +2915,18 @@ def _end_run(
     task_id: str,
     *,
     outcome: str,
-    summary: str | None = None,
-    error: str | None = None,
-    metadata: dict | None = None,
-    status: str | None = None,
-) -> int | None:
+    summary: Optional[str] = None,
+    error: Optional[str] = None,
+    metadata: Optional[dict] = None,
+    status: Optional[str] = None,
+) -> Optional[int]:
     """Close the currently-active run for ``task_id`` and clear the pointer.
 
     ``outcome`` is the semantic result (completed / blocked / crashed /
     timed_out / spawn_failed / gave_up / reclaimed). ``status`` is the
     run-row status (usually just ``outcome``, but callers can pass it
     explicitly). Returns the closed run_id or ``None`` if no active run
-    existed (e.g. a CLI user calling ``prostor kanban complete`` on a
+    existed (e.g. a CLI user calling ``hermes kanban complete`` on a
     task that was never claimed).
     """
     now = int(time.time())
@@ -2790,7 +2967,7 @@ def _end_run(
     return run_id
 
 
-def _current_run_id(conn: sqlite3.Connection, task_id: str) -> int | None:
+def _current_run_id(conn: sqlite3.Connection, task_id: str) -> Optional[int]:
     row = conn.execute(
         "SELECT current_run_id FROM tasks WHERE id = ?", (task_id,),
     ).fetchone()
@@ -2802,14 +2979,14 @@ def _synthesize_ended_run(
     task_id: str,
     *,
     outcome: str,
-    summary: str | None = None,
-    error: str | None = None,
-    metadata: dict | None = None,
+    summary: Optional[str] = None,
+    error: Optional[str] = None,
+    metadata: Optional[dict] = None,
 ) -> int:
     """Insert a zero-duration, already-closed run row.
 
     Used when a terminal transition happens on a task that was never
-    claimed (CLI user calling ``prostor kanban complete <ready-task>
+    claimed (CLI user calling ``hermes kanban complete <ready-task>
     --summary X``, or dashboard "mark done" on a ready task). Without
     this, the handoff fields (summary / metadata / error) would be
     silently dropped: ``_end_run`` is a no-op because there's no
@@ -2860,7 +3037,7 @@ def _has_sticky_block(conn: sqlite3.Connection, task_id: str) -> bool:
 
     * **Worker- or operator-initiated** — a worker called
       ``kanban_block(reason="review-required: ...")`` (or somebody ran
-      ``prostor kanban block <id>``).  This is a deliberate handoff that
+      ``hermes kanban block <id>``).  This is a deliberate handoff that
       should stay blocked until an operator unblocks it.  The block tool
       emits a ``"blocked"`` event row in ``task_events``.
 
@@ -2985,9 +3162,9 @@ def claim_task(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    ttl_seconds: int | None = None,
-    claimer: str | None = None,
-) -> Task | None:
+    ttl_seconds: Optional[int] = None,
+    claimer: Optional[str] = None,
+) -> Optional[Task]:
     """Atomically transition ``ready -> running``.
 
     Returns the claimed ``Task`` on success, ``None`` if the task was
@@ -3092,16 +3269,24 @@ def claim_task(
             {"lock": lock, "expires": expires, "run_id": run_id},
             run_id=run_id,
         )
-        return get_task(conn, task_id)
+        claimed = get_task(conn, task_id)
+    _fire_kanban_lifecycle_hook(
+        "kanban_task_claimed",
+        task_id,
+        board=get_current_board(),
+        assignee=claimed.assignee if claimed else None,
+        run_id=run_id,
+    )
+    return claimed
 
 
 def claim_review_task(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    ttl_seconds: int | None = None,
-    claimer: str | None = None,
-) -> Task | None:
+    ttl_seconds: Optional[int] = None,
+    claimer: Optional[str] = None,
+) -> Optional[Task]:
     """Atomically transition ``review -> running``.
 
     Returns the claimed ``Task`` on success, ``None`` if the task was
@@ -3174,8 +3359,8 @@ def heartbeat_claim(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    ttl_seconds: int | None = None,
-    claimer: str | None = None,
+    ttl_seconds: Optional[int] = None,
+    claimer: Optional[str] = None,
 ) -> bool:
     """Extend a running claim.  Returns True if we still own it.
 
@@ -3351,7 +3536,7 @@ def reclaim_task(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    reason: str | None = None,
+    reason: Optional[str] = None,
     signal_fn=None,
 ) -> bool:
     """Operator-driven reclaim: release the claim and reset to ``ready``.
@@ -3419,10 +3604,10 @@ def reclaim_task(
 def reassign_task(
     conn: sqlite3.Connection,
     task_id: str,
-    profile: str | None,
+    profile: Optional[str],
     *,
     reclaim_first: bool = False,
-    reason: str | None = None,
+    reason: Optional[str] = None,
 ) -> bool:
     """Reassign a task, optionally reclaiming a stuck running worker first.
 
@@ -3583,16 +3768,16 @@ def complete_task(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    result: str | None = None,
-    summary: str | None = None,
-    metadata: dict | None = None,
-    created_cards: Iterable[str] | None = None,
-    expected_run_id: int | None = None,
+    result: Optional[str] = None,
+    summary: Optional[str] = None,
+    metadata: Optional[dict] = None,
+    created_cards: Optional[Iterable[str]] = None,
+    expected_run_id: Optional[int] = None,
 ) -> bool:
     """Transition ``running|ready -> done`` and record ``result``.
 
     Accepts a task that is merely ``ready`` too, so a manual CLI
-    completion (``prostor kanban complete <id>``) works without requiring
+    completion (``hermes kanban complete <id>``) works without requiring
     a claim/start/complete sequence.
 
     ``summary`` and ``metadata`` are stored on the closing run (if any)
@@ -3758,6 +3943,15 @@ def complete_task(
     recompute_ready(conn)
     # Clean up the scratch workspace and any stale tmux session for the worker.
     _cleanup_workspace(conn, task_id)
+    _done_task = get_task(conn, task_id)
+    _fire_kanban_lifecycle_hook(
+        "kanban_task_completed",
+        task_id,
+        board=get_current_board(),
+        assignee=_done_task.assignee if _done_task else None,
+        run_id=run_id,
+        summary=(summary if summary is not None else result),
+    )
     return True
 
 
@@ -3772,7 +3966,7 @@ def _is_managed_scratch_path(p: Path) -> bool:
     broader kanban home, a board root, or sibling subtrees like ``logs/`` or
     ``boards/<slug>/`` itself. Allowed roots:
 
-    * ``PROSTOR_KANBAN_WORKSPACES_ROOT`` when set (worker-side override
+    * ``HERMES_KANBAN_WORKSPACES_ROOT`` when set (worker-side override
       injected by the dispatcher).
     * ``<kanban_home>/kanban/workspaces`` — legacy default-board scratch root.
     * ``<kanban_home>/kanban/boards/<slug>/workspaces`` for each board slug
@@ -3783,10 +3977,10 @@ def _is_managed_scratch_path(p: Path) -> bool:
     task's scratch dir at once), and a path that resolves to ``<kanban_home>
     /kanban`` itself, ``<kanban_home>/kanban/logs``, or
     ``<kanban_home>/kanban/boards/<slug>`` is rejected because those
-    subtrees hold Prostor' own DB, metadata, and logs, not task workspaces.
+    subtrees hold Hermes' own DB, metadata, and logs, not task workspaces.
 
     Used by :func:`_cleanup_workspace` to refuse to ``shutil.rmtree`` paths
-    outside Prostor-managed storage. A board ``default_workdir`` pointing at a
+    outside Hermes-managed storage. A board ``default_workdir`` pointing at a
     real source tree can otherwise pair with ``workspace_kind='scratch'`` and
     cause task completion to delete user data (#28818).
     """
@@ -3795,7 +3989,7 @@ def _is_managed_scratch_path(p: Path) -> bool:
     except OSError:
         return False
     roots: list[Path] = []
-    override = os.environ.get("PROSTOR_KANBAN_WORKSPACES_ROOT", "").strip()
+    override = os.environ.get("HERMES_KANBAN_WORKSPACES_ROOT", "").strip()
     if override:
         try:
             roots.append(Path(override).expanduser().resolve(strict=False))
@@ -3855,8 +4049,8 @@ def _cleanup_workspace(conn: sqlite3.Connection, task_id: str) -> None:
         ).fetchone()
         if not row:
             return
-        kind: str | None = row["workspace_kind"]
-        path: str | None = row["workspace_path"]
+        kind: Optional[str] = row["workspace_kind"]
+        path: Optional[str] = row["workspace_path"]
         if kind != "scratch" or not path:
             # This task's own workspace isn't a removable scratch dir, but its
             # completion may still unblock a deferred parent scratch cleanup
@@ -3988,7 +4182,7 @@ def _cleanup_worker_tmux(conn: sqlite3.Connection, task_id: str) -> None:
 # we:
 #   1. Log a warning line on the dispatcher logger.
 #   2. Append a ``tip_scratch_workspace`` event on the task so it's visible
-#      via ``prostor kanban show <id>`` and the dashboard.
+#      via ``hermes kanban show <id>`` and the dashboard.
 #   3. Touch a sentinel file under ``kanban_home() / '.scratch_tip_shown'``
 #      so we don't repeat the tip — once you know, you know.
 #
@@ -4036,7 +4230,7 @@ def _mark_scratch_tip_shown() -> None:
 def _maybe_emit_scratch_tip(
     conn: sqlite3.Connection,
     task_id: str,
-    workspace_kind: str | None,
+    workspace_kind: Optional[str],
 ) -> None:
     """Emit the first-use scratch-workspace tip exactly once per install.
 
@@ -4067,8 +4261,8 @@ def edit_completed_task_result(
     task_id: str,
     *,
     result: str,
-    summary: str | None = None,
-    metadata: dict | None = None,
+    summary: Optional[str] = None,
+    metadata: Optional[dict] = None,
 ) -> bool:
     """Backfill the user-visible result for an already completed task."""
     handoff_summary = summary if summary is not None else result
@@ -4133,8 +4327,8 @@ def block_task(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    reason: str | None = None,
-    expected_run_id: int | None = None,
+    reason: Optional[str] = None,
+    expected_run_id: Optional[int] = None,
 ) -> bool:
     """Transition ``running -> blocked``."""
     with write_txn(conn):
@@ -4181,7 +4375,17 @@ def block_task(
                 summary=reason,
             )
         _append_event(conn, task_id, "blocked", {"reason": reason}, run_id=run_id)
-        return True
+        _blocked_task = get_task(conn, task_id)
+    _fire_kanban_lifecycle_hook(
+        "kanban_task_blocked",
+        task_id,
+        board=get_current_board(),
+        assignee=_blocked_task.assignee if _blocked_task else None,
+        run_id=run_id,
+        reason=reason,
+    )
+    return True
+
 
 
 def promote_task(
@@ -4189,10 +4393,10 @@ def promote_task(
     task_id: str,
     *,
     actor: str,
-    reason: str | None = None,
+    reason: Optional[str] = None,
     force: bool = False,
     dry_run: bool = False,
-) -> tuple[bool, str | None]:
+) -> tuple[bool, Optional[str]]:
     """Manually promote a `todo` or `blocked` task to `ready`.
 
     Mirrors the automatic promotion done by ``recompute_ready`` but
@@ -4314,10 +4518,10 @@ def specify_triage_task(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    title: str | None = None,
-    body: str | None = None,
-    assignee: str | None = None,
-    author: str | None = None,
+    title: Optional[str] = None,
+    body: Optional[str] = None,
+    assignee: Optional[str] = None,
+    author: Optional[str] = None,
 ) -> bool:
     """Flesh out a triage task and promote it to ``todo``.
 
@@ -4405,11 +4609,11 @@ def decompose_triage_task(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    root_assignee: str | None,
+    root_assignee: Optional[str],
     children: list[dict],
-    author: str | None = None,
+    author: Optional[str] = None,
     auto_promote: bool = True,
-) -> list[str] | None:
+) -> Optional[list[str]]:
     """Fan a triage task out into child tasks and promote the root to ``todo``.
 
     The root task stays alive and becomes the parent of every child —
@@ -4703,7 +4907,226 @@ def delete_task(conn: sqlite3.Connection, task_id: str) -> bool:
 # Workspace resolution
 # ---------------------------------------------------------------------------
 
-def resolve_workspace(task: Task, *, board: str | None = None) -> Path:
+def _git_toplevel(path: Path) -> Optional[Path]:
+    """Return the git toplevel containing ``path``, or ``None`` if not in a repo."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    out = (result.stdout or "").strip()
+    if not out:
+        return None
+    try:
+        return Path(out).expanduser().resolve()
+    except Exception:
+        return Path(out).expanduser()
+
+
+def _git_branch_exists(repo_root: Path, branch_name: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "show-ref", "--verify", f"refs/heads/{branch_name}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception:
+        return False
+    return result.returncode == 0
+
+
+def _git_common_dir(path: Path) -> Optional[Path]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    out = (result.stdout or "").strip()
+    if not out:
+        return None
+    return Path(out).expanduser().resolve(strict=False)
+
+
+def _git_dir(path: Path) -> Optional[Path]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--path-format=absolute", "--git-dir"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    out = (result.stdout or "").strip()
+    if not out:
+        return None
+    return Path(out).expanduser().resolve(strict=False)
+
+
+def _git_current_branch(path: Path) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    branch = (result.stdout or "").strip()
+    return branch or None
+
+
+def _is_linked_worktree_checkout(path: Path) -> bool:
+    git_dir = _git_dir(path)
+    common_dir = _git_common_dir(path)
+    if git_dir is None or common_dir is None:
+        return False
+    return git_dir != common_dir
+
+
+def _nearest_existing_path(path: Path) -> Path:
+    current = path
+    while not current.exists() and current != current.parent:
+        current = current.parent
+    return current
+
+
+def _repo_root_for_worktree_target(path: Path) -> Optional[Path]:
+    current = _nearest_existing_path(path).resolve(strict=False)
+    while True:
+        repo_root = _git_toplevel(current)
+        if repo_root is not None:
+            return repo_root
+        if current == current.parent:
+            return None
+        current = current.parent
+
+
+def _ensure_git_worktree(repo_root: Path, target: Path, branch_name: str) -> None:
+    """Materialize ``target`` as a linked git worktree under ``repo_root``."""
+    target = target.expanduser()
+    repo_common = _git_common_dir(repo_root)
+    if target.exists() and repo_common is not None:
+        target_common = _git_common_dir(target)
+        if target_common == repo_common:
+            return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if _git_branch_exists(repo_root, branch_name):
+        cmd = ["git", "-C", str(repo_root), "worktree", "add", str(target), branch_name]
+    else:
+        cmd = [
+            "git", "-C", str(repo_root), "worktree", "add", "-b", branch_name,
+            str(target), "HEAD",
+        ]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(
+            f"git worktree add failed for {target} on branch {branch_name}: {stderr}"
+        )
+
+
+def _resolve_worktree_workspace(
+    task: Task, *, board: Optional[str] = None
+) -> tuple[Path, str]:
+    """Resolve + materialize a linked git worktree for ``task``.
+
+    When ``task.workspace_path`` is unset, the anchor is the board's
+    ``default_workdir`` (a persistent project checkout). This keeps every
+    worktree task under a meaningful, board-owned repo — ``<repo>/.worktrees/
+    <task-id>`` — instead of silently landing under the dispatcher's current
+    working directory (which is whatever directory the gateway happened to be
+    launched from, e.g. the Hermes checkout). If no anchor is configured
+    anywhere, we fail loudly rather than guess.
+    """
+    branch_name = (task.branch_name or "").strip() or f"wt/{task.id}"
+    if not task.workspace_path:
+        # Anchor on the board's configured default_workdir, not Path.cwd().
+        # The dispatcher's CWD is incidental (gateway launch dir) and using it
+        # scatters worktrees under whatever repo the gateway started in.
+        board_slug = board if board else get_current_board()
+        board_default = (read_board_metadata(board_slug).get("default_workdir") or "").strip()
+        if not board_default:
+            raise ValueError(
+                f"task {task.id} has workspace_kind=worktree but no workspace_path, "
+                f"and board {board_slug!r} has no default_workdir set. Set a board "
+                "default workdir (a git repo) or create the task with "
+                "--workspace worktree:<absolute-repo-path>."
+            )
+        anchor = Path(board_default).expanduser()
+        if not anchor.is_absolute():
+            raise ValueError(
+                f"board {board_slug!r} default_workdir {board_default!r} is not "
+                "absolute; use an absolute path to a git repo"
+            )
+        repo_root = _git_toplevel(anchor)
+        if repo_root is None:
+            raise ValueError(
+                f"task {task.id} has workspace_kind=worktree but board "
+                f"{board_slug!r} default_workdir {board_default!r} is not inside a git repo"
+            )
+        target = repo_root / ".worktrees" / task.id
+        _ensure_git_worktree(repo_root, target, branch_name)
+        return target, branch_name
+
+    requested = Path(task.workspace_path).expanduser()
+    if not requested.is_absolute():
+        raise ValueError(
+            f"task {task.id} has non-absolute worktree path "
+            f"{task.workspace_path!r}; use an absolute path"
+        )
+    requested_resolved = requested.resolve(strict=False)
+
+    if requested.exists() and _is_linked_worktree_checkout(requested):
+        actual_branch = _git_current_branch(requested)
+        return requested_resolved, actual_branch or branch_name
+
+    repo_root = _git_toplevel(requested)
+    if repo_root is not None and requested_resolved == repo_root:
+        target = repo_root / ".worktrees" / task.id
+        _ensure_git_worktree(repo_root, target, branch_name)
+        return target, branch_name
+
+    repo_root = _repo_root_for_worktree_target(requested.parent)
+    if repo_root is None:
+        raise ValueError(
+            f"task {task.id} worktree path {task.workspace_path!r} is not inside a git repo "
+            "and does not point at a git repo root"
+        )
+    _ensure_git_worktree(repo_root, requested, branch_name)
+    return requested, branch_name
+
+
+def resolve_workspace(task: Task, *, board: Optional[str] = None) -> Path:
     """Resolve (and create if needed) the workspace for a task.
 
     - ``scratch``: a fresh dir under ``<board-root>/workspaces/<id>/``,
@@ -4716,9 +5139,15 @@ def resolve_workspace(task: Task, *, board: str | None = None) -> Path:
       resolves against the dispatcher's CWD instead of a meaningful
       root.  Users who want a kanban-root-relative workspace should
       compute the absolute path themselves.
-    - ``worktree``: a git worktree at ``workspace_path``.  Not created
-      automatically in v1 -- the kanban-worker skill documents
-      ``git worktree add`` as a worker-side step.  Returns the intended path.
+    - ``worktree``: a real linked git worktree. If ``workspace_path`` names
+      a repo root, Hermes treats it as an anchor and materializes a linked
+      worktree at ``<repo>/.worktrees/<task-id>``. If ``workspace_path`` names
+      a concrete target path, Hermes creates/reuses that linked worktree. With
+      no ``workspace_path``, Hermes anchors on the board's ``default_workdir``
+      and materializes ``<repo>/.worktrees/<task-id>`` per task; if no
+      ``default_workdir`` is configured it raises rather than guessing from the
+      dispatcher's CWD. When ``branch_name`` is empty, Hermes uses
+      ``wt/<task-id>``.
 
     Persist the resolved path back to the task row via ``set_workspace_path``
     so subsequent runs reuse the same directory.
@@ -4754,15 +5183,7 @@ def resolve_workspace(task: Task, *, board: str | None = None) -> Path:
         p.mkdir(parents=True, exist_ok=True)
         return p
     if kind == "worktree":
-        if not task.workspace_path:
-            # Default: .worktrees/<id>/ under CWD.  Worker skill creates it.
-            return Path.cwd() / ".worktrees" / task.id
-        p = Path(task.workspace_path).expanduser()
-        if not p.is_absolute():
-            raise ValueError(
-                f"task {task.id} has non-absolute worktree path "
-                f"{task.workspace_path!r}; use an absolute path"
-            )
+        p, _branch_name = _resolve_worktree_workspace(task, board=board)
         return p
     raise ValueError(f"unknown workspace_kind: {kind}")
 
@@ -4777,13 +5198,23 @@ def set_workspace_path(
         )
 
 
+def set_branch_name(
+    conn: sqlite3.Connection, task_id: str, branch_name: str
+) -> None:
+    with write_txn(conn):
+        conn.execute(
+            "UPDATE tasks SET branch_name = ? WHERE id = ?",
+            (str(branch_name), task_id),
+        )
+
+
 # ---------------------------------------------------------------------------
 def schedule_task(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    reason: str | None = None,
-    expected_run_id: int | None = None,
+    reason: Optional[str] = None,
+    expected_run_id: Optional[int] = None,
 ) -> bool:
     """Park a task in ``scheduled`` so it is waiting on time, not human input.
 
@@ -4865,7 +5296,7 @@ _RESPAWN_GUARD_SUCCESS_WINDOW = 3600  # 1 hour
 # would be re-spawned on the very next tick and immediately bounce off the
 # same quota wall, burning a worker slot every tick for hours. The cooldown
 # spaces retries out so the board keeps cheaply probing whether quota is back
-# without thrashing. Overridable via ``PROSTOR_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS``
+# without thrashing. Overridable via ``HERMES_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS``
 # for operators who want a tighter/looser probe cadence.
 DEFAULT_RATE_LIMIT_COOLDOWN_SECONDS = 300  # 5 minutes
 
@@ -4898,7 +5329,7 @@ class DispatchResult:
     rather than on explicit per-task assignments."""
     skipped_nonspawnable: list[str] = field(default_factory=list)
     """Ready task ids skipped because their assignee names a control-plane
-    lane (a Claude Code terminal like ``orion-cc``) rather than a Prostor
+    lane (a Claude Code terminal like ``orion-cc``) rather than a Hermes
     profile. Expected steady-state on multi-lane setups; NOT an
     operator-actionable failure. Tracked separately so health telemetry
     can distinguish "real stuck" (nothing spawned but spawnable work
@@ -4931,6 +5362,12 @@ class DispatchResult:
     (EX_TEMPFAIL sentinel exit) and were released back to ``ready`` WITHOUT
     counting a failure. These never trip the circuit breaker — a long quota
     window just makes the task bounce cheaply until the window clears."""
+    skipped_locked: bool = False
+    """True when this tick was skipped because another process already held
+    the board's dispatch lock (issue #35240). A losing dispatcher does no
+    DB writes this tick — the lock holder is making progress on the same
+    board. This is the steady-state signal that a single-writer guard is
+    actively preventing two dispatchers from racing on ``kanban.db``."""
 
 
 # Bounded registry of recently-reaped worker child exits, populated by the
@@ -4943,7 +5380,7 @@ class DispatchResult:
 # belt-and-braces against unbounded growth on exotic platforms).
 _RECENT_WORKER_EXIT_TTL_SECONDS = 600
 _RECENT_WORKER_EXITS_MAX = 4096
-_recent_worker_exits: dict[int, tuple[int, float]] = {}
+_recent_worker_exits: "dict[int, tuple[int, float]]" = {}
 
 
 def _record_worker_exit(pid: int, raw_status: int) -> None:
@@ -4969,7 +5406,7 @@ def _record_worker_exit(pid: int, raw_status: int) -> None:
             _recent_worker_exits.pop(_pid, None)
 
 
-def _classify_worker_exit(pid: int) -> tuple[str, int | None]:
+def _classify_worker_exit(pid: int) -> "tuple[str, Optional[int]]":
     """Classify a recently-reaped worker by pid.
 
     Returns ``(kind, code)`` where ``kind`` is one of:
@@ -5012,13 +5449,13 @@ def _classify_worker_exit(pid: int) -> tuple[str, int | None]:
     return ("unknown", None)
 
 
-def reap_worker_zombies() -> list[int]:
+def reap_worker_zombies() -> "list[int]":
     """Reap all zombie children of this process without blocking.
 
     Returns the list of reaped PIDs. Safe to call when there are no
     children (returns []). No-op on Windows.
     """
-    reaped: list[int] = []
+    reaped: "list[int]" = []
     if os.name != "nt":
         try:
             while True:
@@ -5035,7 +5472,7 @@ def reap_worker_zombies() -> list[int]:
     return reaped
 
 
-def _pid_alive(pid: int | None) -> bool:
+def _pid_alive(pid: Optional[int]) -> bool:
     """Return True if ``pid`` is still running on this host.
 
     Cross-platform: uses ``OpenProcess`` + ``WaitForSingleObject`` on
@@ -5067,7 +5504,7 @@ def _pid_alive(pid: int | None) -> bool:
     # where we have a cheap, deterministic process-state probe.
     if sys.platform == "linux":
         try:
-            with open(f"/proc/{int(pid)}/status", encoding="utf-8") as f:
+            with open(f"/proc/{int(pid)}/status", "r", encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("State:"):
                         # "State:\tZ (zombie)" → dead
@@ -5100,8 +5537,8 @@ def _pid_alive(pid: int | None) -> bool:
 
 
 def _terminate_reclaimed_worker(
-    pid: int | None,
-    claim_lock: str | None,
+    pid: Optional[int],
+    claim_lock: Optional[str],
     *,
     signal_fn=None,
 ) -> dict[str, Any]:
@@ -5180,7 +5617,7 @@ def _worker_survived_termination(termination: dict) -> bool:
 def _defer_reclaim_for_live_worker(
     conn: sqlite3.Connection,
     task_id: str,
-    claim_lock: str | None,
+    claim_lock: Optional[str],
     now: int,
     termination: dict,
     *,
@@ -5190,7 +5627,7 @@ def _defer_reclaim_for_live_worker(
 
     Extends ``claim_expires`` by ``RECLAIM_DEFER_GRACE_SECONDS`` so the task
     stays ``running`` (no duplicate spawn) and records a ``reclaim_deferred``
-    event so the hold is visible in ``prostor kanban tail``. The next dispatch
+    event so the hold is visible in ``hermes kanban tail``. The next dispatch
     tick retries the kill; this is self-correcting because not spawning a
     duplicate is what lets the throttled worker finally die.
     """
@@ -5222,8 +5659,8 @@ def heartbeat_worker(
     conn: sqlite3.Connection,
     task_id: str,
     *,
-    note: str | None = None,
-    expected_run_id: int | None = None,
+    note: Optional[str] = None,
+    expected_run_id: Optional[int] = None,
 ) -> bool:
     """Record a ``heartbeat`` event + touch ``last_heartbeat_at``.
 
@@ -5345,8 +5782,9 @@ def enforce_max_runtime(
                 "UPDATE tasks SET status = 'ready', claim_lock = NULL, "
                 "claim_expires = NULL, worker_pid = NULL, "
                 "last_heartbeat_at = NULL "
-                "WHERE id = ? AND status = 'running'",
-                (tid,),
+                "WHERE id = ? AND status = 'running' "
+                "  AND worker_pid = ? AND claim_lock IS ?",
+                (tid, pid, row["claim_lock"]),
             )
             if cur.rowcount == 1:
                 payload = {
@@ -5420,8 +5858,9 @@ def detect_stale_running(
     if stale_timeout_seconds <= 0:
         return []
 
+
     now = int(time.time())
-    f"{_claimer_id().split(':', 1)[0]}:"
+    host_prefix = f"{_claimer_id().split(':', 1)[0]}:"
     reclaimed: list[str] = []
 
     rows = conn.execute(
@@ -5469,8 +5908,9 @@ def detect_stale_running(
                 "UPDATE tasks SET status = 'ready', claim_lock = NULL, "
                 "claim_expires = NULL, worker_pid = NULL, "
                 "last_heartbeat_at = NULL "
-                "WHERE id = ? AND status = 'running'",
-                (tid,),
+                "WHERE id = ? AND status = 'running' "
+                "  AND claim_lock IS ?",
+                (tid, row["claim_lock"]),
             )
             if cur.rowcount != 1:
                 continue
@@ -5642,8 +6082,9 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
             cur = conn.execute(
                 "UPDATE tasks SET status = 'ready', claim_lock = NULL, "
                 "claim_expires = NULL, worker_pid = NULL "
-                "WHERE id = ? AND status = 'running'",
-                (row["id"],),
+                "WHERE id = ? AND status = 'running' "
+                "  AND worker_pid = ? AND claim_lock IS ?",
+                (row["id"], pid, row["claim_lock"]),
             )
             if cur.rowcount == 1:
                 # Rate-limited requeues are a clean release, not a crash —
@@ -5732,7 +6173,7 @@ def _record_task_failure(
     failure_limit: int = None,
     release_claim: bool = False,
     end_run: bool = False,
-    event_payload_extra: dict | None = None,
+    event_payload_extra: Optional[dict] = None,
 ) -> bool:
     """Record a non-success outcome (spawn_failed / crashed / timed_out)
     and maybe trip the circuit breaker.
@@ -5779,7 +6220,7 @@ def _record_task_failure(
         if row is None:
             return False
         failures = int(row["consecutive_failures"]) + 1
-        row["status"]
+        cur_status = row["status"]
 
         # Per-task override wins over both caller-supplied and default
         # thresholds. None (the common case) falls through.
@@ -5898,7 +6339,7 @@ def _record_spawn_failure(
 def _set_worker_pid(conn: sqlite3.Connection, task_id: str, pid: int) -> None:
     """Record the spawned child's pid + emit a ``spawned`` event.
 
-    The event's payload carries the pid so a human reading ``prostor kanban
+    The event's payload carries the pid so a human reading ``hermes kanban
     tail`` can correlate log lines with OS-level traces without opening
     the drawer.
     """
@@ -5938,7 +6379,7 @@ def _clear_failure_counter(conn: sqlite3.Connection, task_id: str) -> None:
 _clear_spawn_failures = _clear_failure_counter
 
 
-def check_respawn_guard(conn: sqlite3.Connection, task_id: str) -> str | None:
+def check_respawn_guard(conn: sqlite3.Connection, task_id: str) -> Optional[str]:
     """Return a guard reason if ``task_id`` should NOT be re-spawned, else None.
 
     Called per ready task in ``dispatch_once`` before any claim attempt.
@@ -6057,7 +6498,7 @@ def check_respawn_guard(conn: sqlite3.Connection, task_id: str) -> str | None:
 
 def has_spawnable_ready(conn: sqlite3.Connection) -> bool:
     """Return True iff there is at least one ready+assigned+unclaimed task
-    whose assignee maps to a real Prostor profile.
+    whose assignee maps to a real Hermes profile.
 
     Used by the gateway- and CLI-embedded dispatchers' health telemetry to
     decide whether ``0 spawned`` is a "stuck" condition (real spawnable
@@ -6077,7 +6518,7 @@ def has_spawnable_ready(conn: sqlite3.Connection) -> bool:
     if not rows:
         return False
     try:
-        from prostor_cli.profiles import profile_exists  # local import: avoids cycle
+        from hermes_cli.profiles import profile_exists  # local import: avoids cycle
     except Exception:
         # Can't introspect — assume spawnable, preserve legacy behavior.
         return True
@@ -6089,7 +6530,7 @@ def has_spawnable_ready(conn: sqlite3.Connection) -> bool:
 
 def has_spawnable_review(conn: sqlite3.Connection) -> bool:
     """Return True iff there is at least one review+assigned+unclaimed task
-    whose assignee maps to a real Prostor profile.
+    whose assignee maps to a real Hermes profile.
 
     Mirror of :func:`has_spawnable_ready` for the review column —
     used by the health telemetry to decide whether the dispatcher
@@ -6103,7 +6544,7 @@ def has_spawnable_review(conn: sqlite3.Connection) -> bool:
     if not rows:
         return False
     try:
-        from prostor_cli.profiles import profile_exists  # local import: avoids cycle
+        from hermes_cli.profiles import profile_exists  # local import: avoids cycle
     except Exception:
         return True
     for row in rows:
@@ -6116,15 +6557,81 @@ def dispatch_once(
     conn: sqlite3.Connection,
     *,
     spawn_fn=None,
-    ttl_seconds: int | None = None,
+    ttl_seconds: Optional[int] = None,
     dry_run: bool = False,
-    max_spawn: int | None = None,
-    max_in_progress: int | None = None,
+    max_spawn: Optional[int] = None,
+    max_in_progress: Optional[int] = None,
     failure_limit: int = DEFAULT_SPAWN_FAILURE_LIMIT,
     stale_timeout_seconds: int = 0,
-    board: str | None = None,
-    default_assignee: str | None = None,
-    max_in_progress_per_profile: int | None = None,
+    board: Optional[str] = None,
+    default_assignee: Optional[str] = None,
+    max_in_progress_per_profile: Optional[int] = None,
+) -> DispatchResult:
+    """Run one dispatcher tick under the board's single-writer lock.
+
+    Thin wrapper around :func:`_dispatch_once_locked`. It acquires a
+    non-blocking, board-scoped dispatch lock (issue #35240) so that two
+    dispatchers pointed at the same ``kanban.db`` — e.g. the service-
+    managed gateway and a shell-spawned orphan that escaped the service
+    cgroup — can never run a reclaim/spawn/write tick concurrently and
+    race on WAL frames. The losing dispatcher returns an empty
+    ``DispatchResult`` with ``skipped_locked=True`` and does no DB writes;
+    the holder is already making progress on the same board.
+
+    The lock is keyed off the board's resolved DB path, so unrelated
+    boards tick in parallel. See :func:`_dispatch_tick_lock` for the
+    cross-process / cross-platform mechanics.
+    """
+    try:
+        db_path = kanban_db_path(board=board)
+    except Exception:
+        # Path resolution should never fail, but if it somehow does we
+        # must not lose the tick — fall through to an unguarded dispatch
+        # rather than dropping work.
+        return _dispatch_once_locked(
+            conn,
+            spawn_fn=spawn_fn,
+            ttl_seconds=ttl_seconds,
+            dry_run=dry_run,
+            max_spawn=max_spawn,
+            max_in_progress=max_in_progress,
+            failure_limit=failure_limit,
+            stale_timeout_seconds=stale_timeout_seconds,
+            board=board,
+            default_assignee=default_assignee,
+            max_in_progress_per_profile=max_in_progress_per_profile,
+        )
+    with _dispatch_tick_lock(db_path) as held:
+        if not held:
+            return DispatchResult(skipped_locked=True)
+        return _dispatch_once_locked(
+            conn,
+            spawn_fn=spawn_fn,
+            ttl_seconds=ttl_seconds,
+            dry_run=dry_run,
+            max_spawn=max_spawn,
+            max_in_progress=max_in_progress,
+            failure_limit=failure_limit,
+            stale_timeout_seconds=stale_timeout_seconds,
+            board=board,
+            default_assignee=default_assignee,
+            max_in_progress_per_profile=max_in_progress_per_profile,
+        )
+
+
+def _dispatch_once_locked(
+    conn: sqlite3.Connection,
+    *,
+    spawn_fn=None,
+    ttl_seconds: Optional[int] = None,
+    dry_run: bool = False,
+    max_spawn: Optional[int] = None,
+    max_in_progress: Optional[int] = None,
+    failure_limit: int = DEFAULT_SPAWN_FAILURE_LIMIT,
+    stale_timeout_seconds: int = 0,
+    board: Optional[str] = None,
+    default_assignee: Optional[str] = None,
+    max_in_progress_per_profile: Optional[int] = None,
 ) -> DispatchResult:
     """Run one dispatcher tick.
 
@@ -6245,7 +6752,7 @@ def dispatch_once(
     _default_assignee_resolved = False
     if _default_assignee:
         try:
-            from prostor_cli.profiles import profile_exists as _pe
+            from hermes_cli.profiles import profile_exists as _pe
             _default_assignee_resolved = bool(_pe(_default_assignee))
         except Exception:
             # Profiles module not importable (test stubs, exotic envs).
@@ -6301,18 +6808,18 @@ def dispatch_once(
             else:
                 result.skipped_unassigned.append(row["id"])
                 continue
-        # Skip ready tasks whose assignee is not a real Prostor profile.
-        # `_default_spawn` invokes ``prostor -p <assignee>`` which fails
+        # Skip ready tasks whose assignee is not a real Hermes profile.
+        # `_default_spawn` invokes ``hermes -p <assignee>`` which fails
         # with "Profile 'X' does not exist" when the assignee names a
         # control-plane lane (e.g. an interactive Claude Code terminal
-        # like ``orion-cc`` / ``orion-research``) rather than a Prostor
+        # like ``orion-cc`` / ``orion-research``) rather than a Hermes
         # profile. Those task lanes are pulled by terminals via
         # ``claim_task`` directly and should NEVER auto-spawn — the
         # subprocess would crash on startup, get reaped as a zombie,
         # the task would loop back to ``ready`` on next tick, and we'd
         # burn CPU forever (#kanban-dispatcher-crash-loop 2026-05-05).
         try:
-            from prostor_cli.profiles import profile_exists  # local import: avoids cycle
+            from hermes_cli.profiles import profile_exists  # local import: avoids cycle
         except Exception:
             profile_exists = None  # type: ignore[assignment]
         if profile_exists is not None and not profile_exists(row_assignee):
@@ -6349,7 +6856,7 @@ def dispatch_once(
         if guard_reason is not None:
             result.respawn_guarded.append((row["id"], guard_reason))
             # Emit an event so operators can see why the task was
-            # skipped when reading `prostor kanban tail` — without
+            # skipped when reading `hermes kanban tail` — without
             # this the task appears stuck in ready with no diagnosis.
             if not dry_run:
                 with write_txn(conn):
@@ -6373,7 +6880,11 @@ def dispatch_once(
         if claimed is None:
             continue
         try:
-            workspace = resolve_workspace(claimed, board=board)
+            resolved_branch_name = None
+            if claimed.workspace_kind == "worktree":
+                workspace, resolved_branch_name = _resolve_worktree_workspace(claimed, board=board)
+            else:
+                workspace = resolve_workspace(claimed, board=board)
         except Exception as exc:
             auto = _record_spawn_failure(
                 conn, claimed.id, f"workspace: {exc}",
@@ -6384,6 +6895,8 @@ def dispatch_once(
             continue
         # Persist the resolved workspace path so the worker can cd there.
         set_workspace_path(conn, claimed.id, str(workspace))
+        if claimed.workspace_kind == "worktree":
+            set_branch_name(conn, claimed.id, resolved_branch_name or (claimed.branch_name or "").strip() or f"wt/{claimed.id}")
         _maybe_emit_scratch_tip(conn, claimed.id, claimed.workspace_kind)
         _spawn = spawn_fn if spawn_fn is not None else _default_spawn
         try:
@@ -6446,7 +6959,7 @@ def dispatch_once(
             result.skipped_unassigned.append(row["id"])
             continue
         try:
-            from prostor_cli.profiles import profile_exists
+            from hermes_cli.profiles import profile_exists
         except Exception:
             profile_exists = None  # type: ignore[assignment]
         if profile_exists is not None and not profile_exists(row["assignee"]):
@@ -6459,7 +6972,11 @@ def dispatch_once(
         if claimed is None:
             continue
         try:
-            workspace = resolve_workspace(claimed, board=board)
+            resolved_branch_name = None
+            if claimed.workspace_kind == "worktree":
+                workspace, resolved_branch_name = _resolve_worktree_workspace(claimed, board=board)
+            else:
+                workspace = resolve_workspace(claimed, board=board)
         except Exception as exc:
             auto = _record_spawn_failure(
                 conn, claimed.id, f"workspace: {exc}",
@@ -6470,12 +6987,14 @@ def dispatch_once(
             continue
         # Persist the resolved workspace path so the worker can cd there.
         set_workspace_path(conn, claimed.id, str(workspace))
+        if claimed.workspace_kind == "worktree":
+            set_branch_name(conn, claimed.id, resolved_branch_name or (claimed.branch_name or "").strip() or f"wt/{claimed.id}")
         _maybe_emit_scratch_tip(conn, claimed.id, claimed.workspace_kind)
-        # Force-load sdlc-review skill for review agents.  The
-        # _default_spawn function already auto-loads kanban-worker, and
-        # appends task.skills via --skills.  Setting task.skills here
-        # means the review agent gets both kanban-worker (lifecycle)
-        # and sdlc-review (review logic: AC verification, merge, etc.).
+        # Force-load the sdlc-review skill for review agents — it carries
+        # the review logic (AC verification, merge, etc.). The mandatory
+        # kanban lifecycle is already injected into every worker's system
+        # prompt via KANBAN_GUIDANCE, so this is the only extra skill the
+        # review agent needs.
         claimed.skills = ["sdlc-review"]
         _spawn = spawn_fn if spawn_fn is not None else _default_spawn
         try:
@@ -6510,7 +7029,7 @@ def _positive_int(value: Any, default: int, *, minimum: int = 1) -> int:
     return parsed if parsed >= minimum else default
 
 
-def worker_log_rotation_config(kanban_cfg: dict | None = None) -> tuple[int, int]:
+def worker_log_rotation_config(kanban_cfg: Optional[dict] = None) -> tuple[int, int]:
     """Return ``(rotate_bytes, backup_count)`` for worker log rotation.
 
     Defaults preserve the historical behavior: rotate at 2 MiB and keep one
@@ -6519,7 +7038,7 @@ def worker_log_rotation_config(kanban_cfg: dict | None = None) -> tuple[int, int
     """
     if kanban_cfg is None:
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
 
             kanban_cfg = (load_config().get("kanban") or {})
         except Exception:
@@ -6584,16 +7103,16 @@ def _rotate_worker_log(
         pass
 
 
-def _module_prostor_argv() -> list[str]:
-    """Return the interpreter-bound Prostor CLI invocation."""
-    # ``prostor_cli.main`` is the console-script target declared in
-    # pyproject.toml, NOT a top-level ``prostor`` package — there is no
-    # ``prostor`` package to import.
-    return [sys.executable, "-m", "prostor_cli.main"]
+def _module_hermes_argv() -> list[str]:
+    """Return the interpreter-bound Hermes CLI invocation."""
+    # ``hermes_cli.main`` is the console-script target declared in
+    # pyproject.toml, NOT a top-level ``hermes`` package — there is no
+    # ``hermes`` package to import.
+    return [sys.executable, "-m", "hermes_cli.main"]
 
 
-def _absolute_prostor_path(path: str) -> str:
-    """Return an absolute filesystem path for a resolved Prostor shim."""
+def _absolute_hermes_path(path: str) -> str:
+    """Return an absolute filesystem path for a resolved Hermes shim."""
     expanded = os.path.expanduser(path)
     return expanded if os.path.isabs(expanded) else os.path.abspath(expanded)
 
@@ -6624,7 +7143,7 @@ def _path_search_names(command: str) -> list[str]:
     return [command + ext for ext in exts]
 
 
-def _safe_which_no_cwd(command: str) -> str | None:
+def _safe_which_no_cwd(command: str) -> Optional[str]:
     """Resolve a bare command from PATH without implicit current-dir search.
 
     ``shutil.which`` follows platform search behavior. On Windows that can
@@ -6646,8 +7165,8 @@ def _safe_which_no_cwd(command: str) -> str | None:
     return None
 
 
-def _prostor_path_argv(path: str) -> list[str]:
-    """Return argv for a resolved Prostor executable path.
+def _hermes_path_argv(path: str) -> list[str]:
+    """Return argv for a resolved Hermes executable path.
 
     Windows batch shims (`.cmd` / `.bat`) are not safe as argv[0] for
     worker launches because the argument vector includes task-derived
@@ -6655,90 +7174,55 @@ def _prostor_path_argv(path: str) -> list[str]:
     executable is only a shell shim.
     """
     if _IS_WINDOWS and _is_windows_batch_shim(path):
-        return _module_prostor_argv()
-    return [_absolute_prostor_path(path)]
+        return _module_hermes_argv()
+    return [_absolute_hermes_path(path)]
 
 
-def _resolve_prostor_argv() -> list[str]:
-    """Resolve the ``prostor`` invocation as argv parts for ``Popen``.
+def _resolve_hermes_argv() -> list[str]:
+    """Resolve the ``hermes`` invocation as argv parts for ``Popen``.
 
     Tries in order:
 
-    1. ``$PROSTOR_BIN`` — explicit operator override. Path-like values are
+    1. ``$HERMES_BIN`` — explicit operator override. Path-like values are
        normalized to absolute paths; bare command names keep normal PATH
        semantics and never prefer a same-directory file before ``PATH``.
-    2. ``shutil.which("prostor")`` — the console-script shim, normalized to
+    2. ``shutil.which("hermes")`` — the console-script shim, normalized to
        an absolute path. On Windows, ``which`` can return a relative
-       ``.\\prostor.CMD`` when the current directory is on ``PATH``; directly
+       ``.\\hermes.CMD`` when the current directory is on ``PATH``; directly
        launching batch shims is also unsafe with task-derived argv. The
        dispatcher therefore falls back to the interpreter-bound module form
        for implicit ``.cmd`` / ``.bat`` shims.
-    3. ``sys.executable -m prostor_cli.main`` — fallback for setups where
-       Prostor is launched from a venv and the ``prostor`` shim is not on
+    3. ``sys.executable -m hermes_cli.main`` — fallback for setups where
+       Hermes is launched from a venv and the ``hermes`` shim is not on
        the dispatcher's ``$PATH`` (cron, systemd ``User=`` services,
        launchd jobs, detached processes, etc.). Goes through the running
        interpreter so the result is independent of ``$PATH``.
 
-    Mirrors ``gateway.run._resolve_prostor_bin`` for the same reason. Kept
-    local (not imported from gateway) because ``prostor_cli`` sits below
+    Mirrors ``gateway.run._resolve_hermes_bin`` for the same reason. Kept
+    local (not imported from gateway) because ``hermes_cli`` sits below
     ``gateway`` in the dependency order.
     """
     import shutil
 
-    env_bin = os.environ.get("PROSTOR_BIN", "").strip()
+    env_bin = os.environ.get("HERMES_BIN", "").strip()
     if env_bin:
         if _looks_like_path(env_bin):
-            return _prostor_path_argv(env_bin)
+            return _hermes_path_argv(env_bin)
         resolved_env_bin = _safe_which_no_cwd(env_bin)
         if resolved_env_bin:
-            return _prostor_path_argv(resolved_env_bin)
-        return _module_prostor_argv()
+            return _hermes_path_argv(resolved_env_bin)
+        return _module_hermes_argv()
 
-    prostor_bin = _safe_which_no_cwd("prostor") if _IS_WINDOWS else shutil.which("prostor")
-    if prostor_bin:
-        return _prostor_path_argv(prostor_bin)
-    return _module_prostor_argv()
-
-
-def _kanban_worker_skill_available(prostor_home: str | None) -> bool:
-    """True if the bundled ``kanban-worker`` skill resolves for the home the
-    spawned worker will run under.
-
-    The dispatcher injects ``--skills kanban-worker`` into every worker. When
-    the worker activates a profile (``prostor -p <name>``), its ``SKILLS_DIR``
-    becomes ``<profile_home>/skills`` — which on many profiles does NOT contain
-    the bundled skill (it ships in the *default* root home, not every
-    profile-scoped skills dir). Preloading a missing skill is fatal at CLI
-    startup (``ValueError: Unknown skill(s): kanban-worker``), aborting the
-    worker before the agent loop runs. Gate the flag on actual resolvability;
-    the kanban lifecycle contract is still injected via ``KANBAN_GUIDANCE``, so
-    omitting the flag only drops the supplementary pattern library.
-    """
-    from pathlib import Path as _Path
-
-    # An unset PROSTOR_HOME means the worker falls back to the default root
-    # home (``~/.prostor``), which ships the bundled skill.
-    base = _Path(prostor_home) if prostor_home else (_Path.home() / ".prostor")
-    skills_root = base / "skills"
-    if not skills_root.is_dir():
-        return False
-    # Canonical bundled location first (cheap), then a bounded scan for
-    # profiles that have it nested elsewhere.
-    if (skills_root / "devops" / "kanban-worker" / "SKILL.md").is_file():
-        return True
-    try:
-        for skill_md in skills_root.rglob("kanban-worker/SKILL.md"):
-            if skill_md.is_file():
-                return True
-    except OSError:
-        pass
-    return False
+    hermes_bin = _safe_which_no_cwd("hermes") if _IS_WINDOWS else shutil.which("hermes")
+    if hermes_bin:
+        return _hermes_path_argv(hermes_bin)
+    return _module_hermes_argv()
 
 
 def _worker_terminal_timeout_env(
-    max_runtime_seconds: int | None,
-    current_timeout: str | None,
-) -> str | None:
+    max_runtime_seconds: Optional[int],
+    current_timeout: Optional[str],
+) -> Optional[str]:
     """Return a worker-scoped TERMINAL_TIMEOUT override, if needed.
 
     Kanban's ``max_runtime_seconds`` bounds the whole worker attempt. The
@@ -6765,7 +7249,7 @@ def _worker_terminal_timeout_env(
     return str(desired)
 
 
-def _resolve_worker_cli_toolsets(prostor_home: str | None) -> list[str] | None:
+def _resolve_worker_cli_toolsets(hermes_home: Optional[str]) -> Optional[list[str]]:
     """Return the assigned profile's effective CLI toolsets for a worker.
 
     Dispatcher-spawned workers are launched from a long-lived gateway process,
@@ -6774,26 +7258,26 @@ def _resolve_worker_cli_toolsets(prostor_home: str | None) -> list[str] | None:
     explicit ``--toolsets`` pin so worker startup cannot fall back to a stale
     root/active-profile config or a profile whose top-level ``toolsets`` entry
     is only the kanban orchestrator surface. ``model_tools`` still appends the
-    task-scoped kanban lifecycle tools when ``PROSTOR_KANBAN_TASK`` is set.
+    task-scoped kanban lifecycle tools when ``HERMES_KANBAN_TASK`` is set.
     """
-    if not prostor_home:
+    if not hermes_home:
         return None
     try:
-        from prostor_cli.config import load_config
-        from prostor_cli.tools_config import _get_platform_tools
-        from prostor_constants import reset_prostor_home_override, set_prostor_home_override
+        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+        from hermes_cli.config import load_config
+        from hermes_cli.tools_config import _get_platform_tools
 
-        token = set_prostor_home_override(prostor_home)
+        token = set_hermes_home_override(hermes_home)
         try:
             cfg = load_config()
             toolsets = sorted(_get_platform_tools(cfg, "cli"))
         finally:
-            reset_prostor_home_override(token)
+            reset_hermes_home_override(token)
         return toolsets or None
     except Exception as exc:
         _log.debug(
-            "kanban worker: could not resolve CLI toolsets for PROSTOR_HOME=%r (%s)",
-            prostor_home,
+            "kanban worker: could not resolve CLI toolsets for HERMES_HOME=%r (%s)",
+            hermes_home,
             exc,
         )
         return None
@@ -6803,9 +7287,9 @@ def _default_spawn(
     task: Task,
     workspace: str,
     *,
-    board: str | None = None,
-) -> int | None:
-    """Fire-and-forget ``prostor -p <profile> chat -q ...`` subprocess.
+    board: Optional[str] = None,
+) -> Optional[int]:
+    """Fire-and-forget ``hermes -p <profile> chat -q ...`` subprocess.
 
     Returns the spawned child's PID so the dispatcher can detect crashes
     before the claim TTL expires. The child's completion is still observed
@@ -6813,7 +7297,7 @@ def _default_spawn(
     the PID check is a safety net for crashes, OOM kills, and Ctrl+C.
 
     ``board`` pins the child's kanban context to that board: the child's
-    ``PROSTOR_KANBAN_DB`` / ``PROSTOR_KANBAN_BOARD`` / workspaces_root env
+    ``HERMES_KANBAN_DB`` / ``HERMES_KANBAN_BOARD`` / workspaces_root env
     vars all resolve to the same board the dispatcher claimed the task
     from. Workers cannot accidentally see other boards.
     """
@@ -6821,48 +7305,62 @@ def _default_spawn(
     if not task.assignee:
         raise ValueError(f"task {task.id} has no assignee")
 
-    from prostor_cli.profiles import normalize_profile_name
+    from hermes_cli.profiles import normalize_profile_name
 
     profile_arg = normalize_profile_name(task.assignee)
 
     prompt = f"work kanban task {task.id}"
     env = dict(os.environ)
 
-    # Inject PROSTOR_HOME so the worker reads the profile-scoped config.yaml
+    # Inject HERMES_HOME so the worker reads the profile-scoped config.yaml
     # (fallback_providers, toolsets, agent settings, etc.) instead of the root
     # config.  Without this, `env = dict(os.environ)` copies only the parent's
-    # env, and when the child process starts `prostor -p <name>` the
-    # _apply_profile_override() runs *before* prostor_constants is imported.
-    # If PROSTOR_HOME is absent from the child's env, get_prostor_home() falls
-    # back to Path.home() / ".prostor" (the DEFAULT profile root), ignoring the
+    # env, and when the child process starts `hermes -p <name>` the
+    # _apply_profile_override() runs *before* hermes_constants is imported.
+    # If HERMES_HOME is absent from the child's env, get_hermes_home() falls
+    # back to Path.home() / ".hermes" (the DEFAULT profile root), ignoring the
     # profile-specific config entirely.  Fixes profile-scoped fallback_providers
     # being invisible to kanban workers.
-    from prostor_cli.profiles import resolve_profile_env
+    from hermes_cli.profiles import resolve_profile_env
     try:
-        env["PROSTOR_HOME"] = resolve_profile_env(profile_arg)
+        env["HERMES_HOME"] = resolve_profile_env(profile_arg)
     except FileNotFoundError:
         # Profile dir doesn't exist — defer resolution to the CLI's
-        # _apply_profile_override() via PROSTOR_PROFILE (set below).
+        # _apply_profile_override() via HERMES_PROFILE (set below).
         # This only happens in test fixtures where the isolated
-        # PROSTOR_HOME never had profiles created.
+        # HERMES_HOME never had profiles created.
         pass
     if task.tenant:
-        env["PROSTOR_TENANT"] = task.tenant
-    env["PROSTOR_KANBAN_TASK"] = task.id
-    env["PROSTOR_KANBAN_WORKSPACE"] = workspace
+        env["HERMES_TENANT"] = task.tenant
+    env["HERMES_KANBAN_TASK"] = task.id
+    env["HERMES_KANBAN_WORKSPACE"] = workspace
+    # Pin TERMINAL_CWD to the task's workspace so the worker's file tools and
+    # context-file loader anchor on the workspace, not whatever cwd the
+    # dispatching gateway happened to export. The worker subprocess is already
+    # launched with cwd=workspace, but TERMINAL_CWD takes precedence over the
+    # process cwd in both file_tools._resolve_base_dir (#41312 — relative
+    # write_file paths were landing in the gateway user's home) and
+    # build_context_files_prompt (#34619 — workers loaded the dispatching
+    # gateway's AGENTS.md instead of the task's). Setting it to the workspace
+    # fixes both: the workspace is where the task's work actually happens.
+    # Only pin a real, absolute directory — file_tools rejects relative /
+    # sentinel TERMINAL_CWD values, so a non-dir workspace must NOT be set
+    # here (leave the inherited value rather than write a meaningless one).
+    if workspace and os.path.isabs(workspace) and os.path.isdir(workspace):
+        env["TERMINAL_CWD"] = workspace
     if task.branch_name:
-        env["PROSTOR_KANBAN_BRANCH"] = task.branch_name
+        env["HERMES_KANBAN_BRANCH"] = task.branch_name
     if task.current_run_id is not None:
-        env["PROSTOR_KANBAN_RUN_ID"] = str(task.current_run_id)
+        env["HERMES_KANBAN_RUN_ID"] = str(task.current_run_id)
     if task.claim_lock:
-        env["PROSTOR_KANBAN_CLAIM_LOCK"] = task.claim_lock
+        env["HERMES_KANBAN_CLAIM_LOCK"] = task.claim_lock
     # Goal-loop mode: the worker reads these and wraps its run in the
     # Ralph-style /goal judge loop (see cli.py quiet-mode path). Only set
     # when enabled so non-goal tasks keep a clean env.
     if task.goal_mode:
-        env["PROSTOR_KANBAN_GOAL_MODE"] = "1"
+        env["HERMES_KANBAN_GOAL_MODE"] = "1"
         if task.goal_max_turns is not None:
-            env["PROSTOR_KANBAN_GOAL_MAX_TURNS"] = str(int(task.goal_max_turns))
+            env["HERMES_KANBAN_GOAL_MAX_TURNS"] = str(int(task.goal_max_turns))
     terminal_timeout = _worker_terminal_timeout_env(
         task.max_runtime_seconds,
         env.get("TERMINAL_TIMEOUT"),
@@ -6876,63 +7374,45 @@ def _default_spawn(
     if foreground_timeout is not None:
         env["TERMINAL_MAX_FOREGROUND_TIMEOUT"] = foreground_timeout
     # Pin the shared board + workspaces root the dispatcher resolved, so
-    # that even when the worker activates a profile (`prostor -p <name>`
-    # rewrites PROSTOR_HOME), its kanban paths still match the
-    # dispatcher's. Belt-and-braces with the `get_default_prostor_root()`
+    # that even when the worker activates a profile (`hermes -p <name>`
+    # rewrites HERMES_HOME), its kanban paths still match the
+    # dispatcher's. Belt-and-braces with the `get_default_hermes_root()`
     # resolution in `kanban_home()` — symmetric resolution is the norm,
     # but unusual symlink / Docker layouts are caught here too.
-    env["PROSTOR_KANBAN_DB"] = str(kanban_db_path(board=board))
-    env["PROSTOR_KANBAN_WORKSPACES_ROOT"] = str(workspaces_root(board=board))
+    env["HERMES_KANBAN_DB"] = str(kanban_db_path(board=board))
+    env["HERMES_KANBAN_WORKSPACES_ROOT"] = str(workspaces_root(board=board))
     # Board slug — the final defense-in-depth pin. If the worker ever
     # resolves kanban paths without the DB / workspaces env vars, the
     # board slug still forces it to the right directory.
     resolved_board = _normalize_board_slug(board) or get_current_board()
-    env["PROSTOR_KANBAN_BOARD"] = resolved_board
-    # PROSTOR_PROFILE is the author the kanban_comment tool defaults to.
-    # `prostor -p <assignee>` activates the profile, but the env var is
+    env["HERMES_KANBAN_BOARD"] = resolved_board
+    # HERMES_PROFILE is the author the kanban_comment tool defaults to.
+    # `hermes -p <assignee>` activates the profile, but the env var is
     # what the tool reads — set it explicitly here so comments are
     # attributed correctly regardless of how the child loads config.
-    env["PROSTOR_PROFILE"] = profile_arg
+    env["HERMES_PROFILE"] = profile_arg
 
     cmd = [
-        *_resolve_prostor_argv(),
+        *_resolve_hermes_argv(),
         "-p", profile_arg,
-        # Worker subprocesses switch to a profile-scoped PROSTOR_HOME above,
+        # Worker subprocesses switch to a profile-scoped HERMES_HOME above,
         # so they see that profile's shell-hook allowlist instead of the
         # dispatcher's root allowlist. Pass --accept-hooks explicitly so
         # profile-local worker sessions still register configured hooks.
         "--accept-hooks",
     ]
-    # Auto-load the kanban-worker skill so every dispatched worker
-    # has the pattern library (good summary/metadata shapes, retry
-    # diagnostics, block-reason examples) in its context, even if
-    # the profile hasn't wired it into skills config. The MANDATORY
-    # lifecycle is already in the system prompt via KANBAN_GUIDANCE;
-    # this skill is the deeper reference. Users can point a profile
-    # at a different/additional skill via config if they want —
-    # --skills is additive to the profile's default skill set.
-    #
-    # Only add the flag when the skill actually resolves for the home
-    # the worker runs under: the bundled skill is absent from many
-    # profile-scoped skills dirs, and preloading a missing skill is
-    # fatal at CLI startup. Omitting it is safe — the lifecycle
-    # contract still ships via KANBAN_GUIDANCE.
-    if _kanban_worker_skill_available(env.get("PROSTOR_HOME")):
-        cmd.extend(["--skills", "kanban-worker"])
     # Per-task force-loaded skills. Each name goes in its own
     # `--skills X` pair rather than a single comma-joined arg: the CLI
     # accepts both forms (action='append' + comma-split), but
     # per-name pairs are easier to read in `ps` output and avoid any
     # quoting ambiguity if a skill name ever contains unusual chars.
-    # Dedupe against the built-in so we don't double-load kanban-worker
-    # if a task author asks for it explicitly.
     if task.skills:
         for sk in task.skills:
-            if sk and sk != "kanban-worker":
+            if sk:
                 cmd.extend(["--skills", sk])
     if task.model_override:
         cmd.extend(["-m", task.model_override])
-    worker_toolsets = _resolve_worker_cli_toolsets(env.get("PROSTOR_HOME"))
+    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
     if worker_toolsets:
         cmd.extend(["--toolsets", ",".join(worker_toolsets)])
     cmd.extend([
@@ -6941,7 +7421,7 @@ def _default_spawn(
     ])
     # Redirect output to a per-task log under <board-root>/logs/.
     # Anchored at the board root (not the shared kanban root), so
-    # `prostor kanban log` on a specific board reads its own file and
+    # `hermes kanban log` on a specific board reads its own file and
     # logs don't collide across boards that happen to share task ids.
     log_dir = worker_logs_dir(board=board)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -6965,8 +7445,8 @@ def _default_spawn(
     except FileNotFoundError:
         log_f.close()
         raise RuntimeError(
-            "`prostor` executable not found on PATH. "
-            "Install Prostor Agent or activate its venv before running the kanban dispatcher."
+            "`hermes` executable not found on PATH. "
+            "Install Hermes Agent or activate its venv before running the kanban dispatcher."
         )
     # NOTE: we intentionally do NOT close log_f here — we want Popen's
     # child process to keep writing after this function returns.  The
@@ -6983,7 +7463,7 @@ def _default_spawn(
 def run_daemon(
     *,
     interval: float = 60.0,
-    max_spawn: int | None = None,
+    max_spawn: Optional[int] = None,
     failure_limit: int = DEFAULT_SPAWN_FAILURE_LIMIT,
     stop_event=None,
     on_tick=None,
@@ -6991,7 +7471,7 @@ def run_daemon(
     """Run the dispatcher in a loop until interrupted.
 
     Calls :func:`dispatch_once` every ``interval`` seconds. Exits cleanly
-    on SIGINT / SIGTERM so ``prostor kanban daemon`` is systemd-friendly.
+    on SIGINT / SIGTERM so ``hermes kanban daemon`` is systemd-friendly.
     ``stop_event`` (a :class:`threading.Event`) and ``on_tick`` (a
     callable receiving the :class:`DispatchResult`) are test hooks.
     """
@@ -7066,7 +7546,7 @@ def build_worker_context(conn: sqlite3.Connection, task_id: str) -> str:
     if not task:
         raise ValueError(f"unknown task {task_id}")
 
-    def _cap(s: str | None, limit: int = _CTX_MAX_FIELD_BYTES) -> str:
+    def _cap(s: Optional[str], limit: int = _CTX_MAX_FIELD_BYTES) -> str:
         """Truncate a string to `limit` chars with a visible ellipsis."""
         if not s:
             return ""
@@ -7247,7 +7727,7 @@ def build_worker_context(conn: sqlite3.Connection, task_id: str) -> str:
         for c in shown_c:
             ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(c.created_at))
             # Render author with explicit "comment from worker" framing so
-            # operator-controlled PROSTOR_PROFILE values like "prostor-system"
+            # operator-controlled HERMES_PROFILE values like "hermes-system"
             # or "operator" can't be misread by the next worker as a system
             # directive above the (attacker-influenceable) comment body.
             # Defense-in-depth — the LLM-controlled author-forgery surface
@@ -7300,7 +7780,7 @@ def board_stats(conn: sqlite3.Connection) -> dict:
     }
 
 
-def _to_epoch(val) -> int | None:
+def _to_epoch(val) -> Optional[int]:
     """Normalise a timestamp to unix epoch seconds.
 
     Accepts ints (pass-through), numeric strings, and ISO-8601 strings.
@@ -7356,9 +7836,9 @@ def add_notify_sub(
     task_id: str,
     platform: str,
     chat_id: str,
-    thread_id: str | None = None,
-    user_id: str | None = None,
-    notifier_profile: str | None = None,
+    thread_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    notifier_profile: Optional[str] = None,
 ) -> None:
     """Register a gateway source that wants terminal-state notifications
     for ``task_id``. Idempotent on (task, platform, chat, thread)."""
@@ -7387,7 +7867,7 @@ def add_notify_sub(
 
 
 def list_notify_subs(
-    conn: sqlite3.Connection, task_id: str | None = None,
+    conn: sqlite3.Connection, task_id: Optional[str] = None,
 ) -> list[dict]:
     if task_id is not None:
         rows = conn.execute(
@@ -7404,7 +7884,7 @@ def remove_notify_sub(
     task_id: str,
     platform: str,
     chat_id: str,
-    thread_id: str | None = None,
+    thread_id: Optional[str] = None,
 ) -> bool:
     with write_txn(conn):
         cur = conn.execute(
@@ -7421,8 +7901,8 @@ def unseen_events_for_sub(
     task_id: str,
     platform: str,
     chat_id: str,
-    thread_id: str | None = None,
-    kinds: Iterable[str] | None = None,
+    thread_id: Optional[str] = None,
+    kinds: Optional[Iterable[str]] = None,
 ) -> tuple[int, list[Event]]:
     """Return ``(new_cursor, events)`` for a given subscription.
 
@@ -7470,8 +7950,8 @@ def claim_unseen_events_for_sub(
     task_id: str,
     platform: str,
     chat_id: str,
-    thread_id: str | None = None,
-    kinds: Iterable[str] | None = None,
+    thread_id: Optional[str] = None,
+    kinds: Optional[Iterable[str]] = None,
 ) -> tuple[int, int, list[Event]]:
     """Atomically claim unseen notification events for one subscription.
 
@@ -7521,7 +8001,7 @@ def advance_notify_cursor(
     task_id: str,
     platform: str,
     chat_id: str,
-    thread_id: str | None = None,
+    thread_id: Optional[str] = None,
     new_cursor: int,
 ) -> None:
     with write_txn(conn):
@@ -7538,7 +8018,7 @@ def rewind_notify_cursor(
     task_id: str,
     platform: str,
     chat_id: str,
-    thread_id: str | None = None,
+    thread_id: Optional[str] = None,
     claimed_cursor: int,
     old_cursor: int,
 ) -> bool:
@@ -7584,7 +8064,7 @@ def gc_events(
 
 def gc_worker_logs(
     *, older_than_seconds: int = 30 * 24 * 3600,
-    board: str | None = None,
+    board: Optional[str] = None,
 ) -> int:
     """Delete worker log files older than ``older_than_seconds``. Returns
     the number of files removed. Kept separate from ``gc_events`` because
@@ -7610,7 +8090,7 @@ def gc_worker_logs(
 # Worker log accessor
 # ---------------------------------------------------------------------------
 
-def worker_log_path(task_id: str, *, board: str | None = None) -> Path:
+def worker_log_path(task_id: str, *, board: Optional[str] = None) -> Path:
     """Return the path to a worker's log file. The file may not exist
     (task never spawned, or log already GC'd).
 
@@ -7622,9 +8102,9 @@ def worker_log_path(task_id: str, *, board: str | None = None) -> Path:
 
 
 def read_worker_log(
-    task_id: str, *, tail_bytes: int | None = None,
-    board: str | None = None,
-) -> str | None:
+    task_id: str, *, tail_bytes: Optional[int] = None,
+    board: Optional[str] = None,
+) -> Optional[str]:
     """Read the worker log for ``task_id``. Returns None if the file
     doesn't exist. If ``tail_bytes`` is set, only the last N bytes are
     returned (useful for the dashboard drawer which shouldn't page megabytes)."""
@@ -7661,15 +8141,15 @@ def list_profiles_on_disk() -> list[str]:
 
     Includes:
     - named profiles under ``<default-root>/profiles/<name>/config.yaml``
-    - the implicit ``default`` profile when the default Prostor root exists
+    - the implicit ``default`` profile when the default Hermes root exists
 
     Reads profile paths directly so this module has no import dependency on
-    ``prostor_cli.profiles`` (which pulls in a large chunk of the CLI startup
+    ``hermes_cli.profiles`` (which pulls in a large chunk of the CLI startup
     path).
     """
     try:
-        from prostor_constants import get_default_prostor_root
-        default_root = get_default_prostor_root()
+        from hermes_constants import get_default_hermes_root
+        default_root = get_default_hermes_root()
         profiles_dir = default_root / "profiles"
     except Exception:
         return []
@@ -7698,7 +8178,7 @@ def known_assignees(conn: sqlite3.Connection) -> list[dict]:
     A name is included when it's a configured profile on disk OR when
     any non-archived task has it as the assignee. Used by:
 
-    - ``prostor kanban assignees`` for the terminal.
+    - ``hermes kanban assignees`` for the terminal.
     - The dashboard assignee dropdown (so a fresh profile appears in
       the picker even before it's been given any task).
     - Router-profile heuristics ("who's overloaded?") without scanning
@@ -7735,8 +8215,8 @@ def list_runs(
     task_id: str,
     *,
     include_active: bool = True,
-    state_type: str | None = None,
-    state_name: str | None = None,
+    state_type: Optional[str] = None,
+    state_name: Optional[str] = None,
 ) -> list[Run]:
     """Return all runs for ``task_id`` in start order.
 
@@ -7765,14 +8245,14 @@ def list_runs(
     return [Run.from_row(r) for r in rows]
 
 
-def get_run(conn: sqlite3.Connection, run_id: int) -> Run | None:
+def get_run(conn: sqlite3.Connection, run_id: int) -> Optional[Run]:
     row = conn.execute(
         "SELECT * FROM task_runs WHERE id = ?", (int(run_id),),
     ).fetchone()
     return Run.from_row(row) if row else None
 
 
-def latest_run(conn: sqlite3.Connection, task_id: str) -> Run | None:
+def latest_run(conn: sqlite3.Connection, task_id: str) -> Optional[Run]:
     """Return the most recent run regardless of outcome (active or closed)."""
     row = conn.execute(
         "SELECT * FROM task_runs WHERE task_id = ? "
@@ -7782,10 +8262,10 @@ def latest_run(conn: sqlite3.Connection, task_id: str) -> Run | None:
     return Run.from_row(row) if row else None
 
 
-def latest_summary(conn: sqlite3.Connection, task_id: str) -> str | None:
+def latest_summary(conn: sqlite3.Connection, task_id: str) -> Optional[str]:
     """Return the latest non-null ``task_runs.summary`` for ``task_id``.
 
-    The kanban-worker skill writes its handoff to ``task_runs.summary``
+    The worker writes its handoff to ``task_runs.summary``
     via ``complete_task(summary=...)``; ``tasks.result`` is left empty
     unless the caller passes ``result=`` explicitly. Dashboards and CLI
     "show" views need this value to surface what a worker actually did

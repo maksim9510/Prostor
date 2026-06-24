@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -13,9 +13,9 @@ import yaml
 
 
 def _write_auth_store(tmp_path, payload: dict) -> None:
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    (prostor_home / "auth.json").write_text(json.dumps(payload, indent=2))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    (hermes_home / "auth.json").write_text(json.dumps(payload, indent=2))
 
 
 def _jwt_with_email(email: str) -> str:
@@ -70,12 +70,12 @@ def _clear_provider_env(monkeypatch):
 
 
 def test_auth_add_api_key_persists_manual_entry(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "openrouter"
@@ -85,7 +85,7 @@ def test_auth_add_api_key_persists_manual_entry(tmp_path, monkeypatch):
 
     auth_add_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     entries = payload["credential_pool"]["openrouter"]
     entry = next(item for item in entries if item["source"] == "manual")
     assert entry["label"] == "personal"
@@ -95,14 +95,14 @@ def test_auth_add_api_key_persists_manual_entry(tmp_path, monkeypatch):
 
 
 def test_auth_add_anthropic_oauth_persists_pool_entry(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_TOKEN", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     token = _jwt_with_email("claude@example.com")
     monkeypatch.setattr(
-        "agent.anthropic_adapter.run_prostor_oauth_login_pure",
+        "agent.anthropic_adapter.run_hermes_oauth_login_pure",
         lambda: {
             "access_token": token,
             "refresh_token": "refresh-token",
@@ -110,7 +110,7 @@ def test_auth_add_anthropic_oauth_persists_pool_entry(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "anthropic"
@@ -120,68 +120,23 @@ def test_auth_add_anthropic_oauth_persists_pool_entry(tmp_path, monkeypatch):
 
     auth_add_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     entries = payload["credential_pool"]["anthropic"]
-    entry = next(item for item in entries if item["source"] == "manual:prostor_pkce")
+    entry = next(item for item in entries if item["source"] == "manual:hermes_pkce")
     assert entry["label"] == "claude@example.com"
-    assert entry["source"] == "manual:prostor_pkce"
+    assert entry["source"] == "manual:hermes_pkce"
     assert entry["refresh_token"] == "refresh-token"
     assert entry["expires_at_ms"] == 1711234567000
 
 
-def test_auth_add_google_gemini_cli_sets_active_provider(tmp_path, monkeypatch):
-    """prostor auth add google-gemini-cli must set active_provider in auth.json.
-
-    Tokens are managed by agent.google_oauth (written to the Google credential
-    file by start_oauth_flow). The auth.json entry must record active_provider
-    so get_active_provider() and _model_section_has_credentials() detect the
-    provider — without storing tokens that would become stale.
-    """
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
-    _write_auth_store(tmp_path, {"version": 1, "providers": {}})
-    monkeypatch.setattr(
-        "agent.google_oauth.run_gemini_oauth_login_pure",
-        lambda: {
-            "access_token": "ya29.test-token",
-            "refresh_token": "google-refresh",
-            "email": "user@example.com",
-            "expires_at_ms": 9999999999000,
-            "project_id": "my-project",
-        },
-    )
-
-    from prostor_cli.auth_commands import auth_add_command
-
-    class _Args:
-        provider = "google-gemini-cli"
-        auth_type = "oauth"
-        api_key = None
-        label = None
-
-    auth_add_command(_Args())
-
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
-    assert payload["active_provider"] == "google-gemini-cli"
-    state = payload["providers"]["google-gemini-cli"]
-    # Only email stored — no access_token/refresh_token (those live in
-    # the Google OAuth credential file managed by agent.google_oauth).
-    assert state.get("email") == "user@example.com"
-    assert "access_token" not in state
-    assert "refresh_token" not in state
-    # pool entry from pool.add_entry() still present for prostor auth list
-    entries = payload["credential_pool"]["google-gemini-cli"]
-    entry = next(item for item in entries if item["source"] == "manual:google_pkce")
-    assert entry["access_token"] == "ya29.test-token"
-
-
 def test_auth_add_qwen_oauth_sets_active_provider(tmp_path, monkeypatch):
-    """prostor auth add qwen-oauth must set active_provider in auth.json.
+    """hermes auth add qwen-oauth must set active_provider in auth.json.
 
     Tokens are managed by the Qwen CLI credential file via
     resolve_qwen_runtime_credentials(). The auth.json entry must record
     active_provider — without storing tokens that would become stale.
     """
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     _fake_creds = {
         "provider": "qwen-oauth",
@@ -192,7 +147,7 @@ def test_auth_add_qwen_oauth_sets_active_provider(tmp_path, monkeypatch):
         "auth_file": "/home/user/.qwen/oauth_creds.json",
     }
     monkeypatch.setattr(
-        "prostor_cli.auth.resolve_qwen_runtime_credentials",
+        "hermes_cli.auth.resolve_qwen_runtime_credentials",
         lambda **kw: _fake_creds,
     )
     # Prevent _seed_from_singletons from calling the real Qwen CLI file path
@@ -201,7 +156,7 @@ def test_auth_add_qwen_oauth_sets_active_provider(tmp_path, monkeypatch):
         lambda provider, entries: (False, set()),
     )
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "qwen-oauth"
@@ -211,28 +166,28 @@ def test_auth_add_qwen_oauth_sets_active_provider(tmp_path, monkeypatch):
 
     auth_add_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     assert payload["active_provider"] == "qwen-oauth"
     state = payload["providers"]["qwen-oauth"]
     # Only base_url stored — no api_key (that lives in the Qwen CLI file).
     assert state.get("base_url") == "https://portal.qwen.ai/v1"
     assert "api_key" not in state
-    # pool entry from pool.add_entry() still present for prostor auth list
+    # pool entry from pool.add_entry() still present for hermes auth list
     entries = payload["credential_pool"]["qwen-oauth"]
     entry = next(item for item in entries if item["source"] == "manual:qwen_cli")
     assert entry["access_token"] == "qwen-test-token"
 
 
 def test_auth_add_nous_oauth_persists_pool_entry(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     token = _jwt_with_email("nous@example.com")
     monkeypatch.setattr(
-        "prostor_cli.auth._nous_device_code_login",
+        "hermes_cli.auth._nous_device_code_login",
         lambda **kwargs: {
             "portal_base_url": "https://portal.example.com",
             "inference_base_url": "https://inference.example.com/v1",
-            "client_id": "prostor-cli",
+            "client_id": "hermes-cli",
             "scope": "inference:invoke",
             "token_type": "Bearer",
             "access_token": token,
@@ -250,7 +205,7 @@ def test_auth_add_nous_oauth_persists_pool_entry(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "nous"
@@ -268,7 +223,7 @@ def test_auth_add_nous_oauth_persists_pool_entry(tmp_path, monkeypatch):
 
     auth_add_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
 
     # Pool has exactly one canonical `device_code` entry — not a duplicate
     # pair of `manual:device_code` + `device_code` (the latter would be
@@ -284,10 +239,10 @@ def test_auth_add_nous_oauth_persists_pool_entry(tmp_path, monkeypatch):
     assert entry["agent_key"] == token
     assert entry["portal_base_url"] == "https://portal.example.com"
 
-    # `prostor auth add nous` must also populate providers.nous so the
+    # `hermes auth add nous` must also populate providers.nous so the
     # 401-recovery path (resolve_nous_runtime_credentials) can refresh an
     # invoke JWT when the token expires. If this mirror is missing, recovery
-    # raises "Prostor is not logged into Nous Portal" and the agent dies.
+    # raises "Hermes is not logged into Nous Portal" and the agent dies.
     singleton = payload["providers"]["nous"]
     assert singleton["access_token"] == token
     assert singleton["refresh_token"] == "refresh-token"
@@ -297,11 +252,11 @@ def test_auth_add_nous_oauth_persists_pool_entry(tmp_path, monkeypatch):
 
 
 def test_auth_add_minimax_oauth_starts_login_and_persists_pool_entry(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     token = _jwt_with_email("minimax@example.com")
     monkeypatch.setattr(
-        "prostor_cli.auth._minimax_oauth_login",
+        "hermes_cli.auth._minimax_oauth_login",
         lambda **kwargs: {
             "provider": "minimax-oauth",
             "region": "global",
@@ -319,7 +274,7 @@ def test_auth_add_minimax_oauth_starts_login_and_persists_pool_entry(tmp_path, m
         },
     )
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "minimax-oauth"
@@ -331,7 +286,7 @@ def test_auth_add_minimax_oauth_starts_login_and_persists_pool_entry(tmp_path, m
 
     auth_add_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     entries = payload["credential_pool"]["minimax-oauth"]
     entry = next(item for item in entries if item["source"] == "manual:minimax_oauth")
     assert entry["label"] == "minimax@example.com"
@@ -341,19 +296,19 @@ def test_auth_add_minimax_oauth_starts_login_and_persists_pool_entry(tmp_path, m
 
 
 def test_auth_add_nous_oauth_honors_custom_label(tmp_path, monkeypatch):
-    """`prostor auth add nous --type oauth --label <name>` must preserve the
+    """`hermes auth add nous --type oauth --label <name>` must preserve the
     custom label end-to-end — it was silently dropped in the first cut of the
     persist_nous_credentials helper because `--label` wasn't threaded through.
     """
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     token = _jwt_with_email("nous@example.com")
     monkeypatch.setattr(
-        "prostor_cli.auth._nous_device_code_login",
+        "hermes_cli.auth._nous_device_code_login",
         lambda **kwargs: {
             "portal_base_url": "https://portal.example.com",
             "inference_base_url": "https://inference.example.com/v1",
-            "client_id": "prostor-cli",
+            "client_id": "hermes-cli",
             "scope": "inference:invoke",
             "token_type": "Bearer",
             "access_token": token,
@@ -371,7 +326,7 @@ def test_auth_add_nous_oauth_honors_custom_label(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "nous"
@@ -389,7 +344,7 @@ def test_auth_add_nous_oauth_honors_custom_label(tmp_path, monkeypatch):
 
     auth_add_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
 
     # Custom label reaches the pool entry …
     pool_entry = payload["credential_pool"]["nous"][0]
@@ -402,11 +357,11 @@ def test_auth_add_nous_oauth_honors_custom_label(tmp_path, monkeypatch):
 
 
 def test_auth_add_codex_oauth_persists_pool_entry(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     token = _jwt_with_email("codex@example.com")
     monkeypatch.setattr(
-        "prostor_cli.auth._codex_device_code_login",
+        "hermes_cli.auth._codex_device_code_login",
         lambda: {
             "tokens": {
                 "access_token": token,
@@ -417,7 +372,7 @@ def test_auth_add_codex_oauth_persists_pool_entry(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "openai-codex"
@@ -427,7 +382,7 @@ def test_auth_add_codex_oauth_persists_pool_entry(tmp_path, monkeypatch):
 
     auth_add_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     entries = payload["credential_pool"]["openai-codex"]
     # The add path now creates a distinct, self-contained ``manual:device_code``
     # pool entry per account instead of routing through the singleton save path
@@ -444,16 +399,16 @@ def test_auth_add_codex_oauth_persists_pool_entry(tmp_path, monkeypatch):
 
 
 def test_auth_add_codex_oauth_keeps_distinct_pool_accounts(tmp_path, monkeypatch):
-    """Two ``prostor auth add openai-codex`` runs for different ChatGPT
+    """Two ``hermes auth add openai-codex`` runs for different ChatGPT
     accounts must produce two independent pool entries with distinct tokens.
 
     Regression for #39236: the add path used to route through the singleton
     ``_save_codex_tokens`` save, so the second login overwrote the first
     account's singleton-mirrored ``device_code`` entry instead of adding a
-    second independent one. ``prostor auth list`` showed two labels sharing
+    second independent one. ``hermes auth list`` showed two labels sharing
     one token pair, and rotation silently always used the latest account.
     """
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     first_token = _jwt_with_email("first-codex@example.com")
     second_token = _jwt_with_email("second-codex@example.com")
@@ -477,10 +432,10 @@ def test_auth_add_codex_oauth_keeps_distinct_pool_accounts(tmp_path, monkeypatch
             },
         ]
     )
-    monkeypatch.setattr("prostor_cli.auth._codex_device_code_login", lambda: next(logins))
+    monkeypatch.setattr("hermes_cli.auth._codex_device_code_login", lambda: next(logins))
 
+    from hermes_cli.auth_commands import auth_add_command
     from agent.credential_pool import load_pool
-    from prostor_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "openai-codex"
@@ -508,7 +463,7 @@ def test_auth_add_codex_oauth_keeps_distinct_pool_accounts(tmp_path, monkeypatch
         "second-refresh-token",
     ]
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     # No singleton block — the add path is now pool-only.
     assert "openai-codex" not in payload.get("providers", {})
     # First add activated the provider; second add left it as-is.
@@ -516,10 +471,10 @@ def test_auth_add_codex_oauth_keeps_distinct_pool_accounts(tmp_path, monkeypatch
 
 
 def test_codex_auth_status_reports_pool_only_credential(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, _codex_pool_only_store())
 
-    from prostor_cli.auth import get_codex_auth_status
+    from hermes_cli.auth import get_codex_auth_status
 
     status = get_codex_auth_status()
 
@@ -528,10 +483,10 @@ def test_codex_auth_status_reports_pool_only_credential(tmp_path, monkeypatch):
 
 
 def test_codex_auth_status_reports_pool_only_rate_limit(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, _codex_pool_only_store(exhausted=True))
 
-    from prostor_cli.auth import get_codex_auth_status
+    from hermes_cli.auth import get_codex_auth_status
 
     status = get_codex_auth_status()
 
@@ -541,10 +496,10 @@ def test_codex_auth_status_reports_pool_only_rate_limit(tmp_path, monkeypatch):
 
 
 def test_codex_runtime_pool_only_rate_limit_is_not_missing_auth(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, _codex_pool_only_store(exhausted=True))
 
-    from prostor_cli.auth import CODEX_RATE_LIMITED_CODE, AuthError, resolve_codex_runtime_credentials
+    from hermes_cli.auth import AuthError, CODEX_RATE_LIMITED_CODE, resolve_codex_runtime_credentials
 
     with pytest.raises(AuthError) as exc_info:
         resolve_codex_runtime_credentials()
@@ -554,18 +509,18 @@ def test_codex_runtime_pool_only_rate_limit_is_not_missing_auth(tmp_path, monkey
 
 
 def test_auth_add_xai_oauth_sets_active_provider(tmp_path, monkeypatch):
-    """prostor auth add xai-oauth must write providers singleton and set active_provider.
+    """hermes auth add xai-oauth must write providers singleton and set active_provider.
 
     Previously pool.add_entry() was called directly, which wrote only the
     credential-pool entry without setting active_provider. _model_section_has_credentials()
     checks get_active_provider() first; with it unset, the setup wizard would
     report "No inference provider configured" after a successful OAuth login.
     """
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     access_token = "xai-test-access-token"
     monkeypatch.setattr(
-        "prostor_cli.auth._xai_oauth_loopback_login",
+        "hermes_cli.auth._xai_oauth_loopback_login",
         lambda **kwargs: {
             "tokens": {
                 "access_token": access_token,
@@ -581,7 +536,7 @@ def test_auth_add_xai_oauth_sets_active_provider(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "xai-oauth"
@@ -594,7 +549,7 @@ def test_auth_add_xai_oauth_sets_active_provider(tmp_path, monkeypatch):
 
     auth_add_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     # active_provider must be set — the core of this regression
     assert payload["active_provider"] == "xai-oauth"
     # providers singleton written by _save_xai_oauth_tokens
@@ -606,7 +561,7 @@ def test_auth_add_xai_oauth_sets_active_provider(tmp_path, monkeypatch):
 
 
 def test_auth_remove_reindexes_priorities(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     # Prevent pool auto-seeding from host env vars and file-backed sources
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_TOKEN", raising=False)
@@ -642,7 +597,7 @@ def test_auth_remove_reindexes_priorities(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
 
     class _Args:
         provider = "anthropic"
@@ -650,7 +605,7 @@ def test_auth_remove_reindexes_priorities(tmp_path, monkeypatch):
 
     auth_remove_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     entries = payload["credential_pool"]["anthropic"]
     assert len(entries) == 1
     assert entries[0]["label"] == "secondary"
@@ -658,7 +613,7 @@ def test_auth_remove_reindexes_priorities(tmp_path, monkeypatch):
 
 
 def test_auth_remove_accepts_label_target(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.setattr(
         "agent.credential_pool._seed_from_singletons",
         lambda provider, entries: (False, set()),
@@ -690,7 +645,7 @@ def test_auth_remove_accepts_label_target(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
 
     class _Args:
         provider = "openai-codex"
@@ -698,14 +653,14 @@ def test_auth_remove_accepts_label_target(tmp_path, monkeypatch):
 
     auth_remove_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     entries = payload["credential_pool"]["openai-codex"]
     assert len(entries) == 1
     assert entries[0]["label"] == "work-account"
 
 
 def test_auth_remove_prefers_exact_numeric_label_over_index(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.setattr(
         "agent.credential_pool._seed_from_singletons",
         lambda provider, entries: (False, set()),
@@ -745,7 +700,7 @@ def test_auth_remove_prefers_exact_numeric_label_over_index(tmp_path, monkeypatc
         },
     )
 
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
 
     class _Args:
         provider = "openai-codex"
@@ -753,13 +708,13 @@ def test_auth_remove_prefers_exact_numeric_label_over_index(tmp_path, monkeypatc
 
     auth_remove_command(_Args())
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     labels = [entry["label"] for entry in payload["credential_pool"]["openai-codex"]]
     assert labels == ["first", "third"]
 
 
 def test_auth_reset_clears_provider_statuses(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(
         tmp_path,
         {
@@ -782,7 +737,7 @@ def test_auth_reset_clears_provider_statuses(tmp_path, monkeypatch, capsys):
         },
     )
 
-    from prostor_cli.auth_commands import auth_reset_command
+    from hermes_cli.auth_commands import auth_reset_command
 
     class _Args:
         provider = "anthropic"
@@ -792,7 +747,7 @@ def test_auth_reset_clears_provider_statuses(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Reset status" in out
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     entry = payload["credential_pool"]["anthropic"][0]
     assert entry["last_status"] is None
     assert entry["last_status_at"] is None
@@ -800,7 +755,7 @@ def test_auth_reset_clears_provider_statuses(tmp_path, monkeypatch, capsys):
 
 
 def test_clear_provider_auth_removes_provider_pool_entries(tmp_path, monkeypatch):
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(
         tmp_path,
         {
@@ -816,7 +771,7 @@ def test_clear_provider_auth_removes_provider_pool_entries(tmp_path, monkeypatch
                         "label": "primary",
                         "auth_type": "oauth",
                         "priority": 0,
-                        "source": "manual:prostor_pkce",
+                        "source": "manual:hermes_pkce",
                         "access_token": "pool-token",
                     }
                 ],
@@ -834,11 +789,11 @@ def test_clear_provider_auth_removes_provider_pool_entries(tmp_path, monkeypatch
         },
     )
 
-    from prostor_cli.auth import clear_provider_auth
+    from hermes_cli.auth import clear_provider_auth
 
     assert clear_provider_auth("anthropic") is True
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     assert payload["active_provider"] is None
     assert "anthropic" not in payload.get("providers", {})
     assert "anthropic" not in payload.get("credential_pool", {})
@@ -846,16 +801,16 @@ def test_clear_provider_auth_removes_provider_pool_entries(tmp_path, monkeypatch
 
 
 def test_logout_resets_codex_config_when_auth_state_already_cleared(tmp_path, monkeypatch, capsys):
-    """`prostor logout --provider openai-codex` must still clear model.provider.
+    """`hermes logout --provider openai-codex` must still clear model.provider.
 
     Users can end up with auth.json already cleared but config.yaml still set to
     openai-codex.  Previously logout reported no auth state and left the agent
     pinned to the Codex provider.
     """
-    prostor_home = tmp_path / "prostor"
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}, "credential_pool": {}})
-    (prostor_home / "config.yaml").write_text(
+    (hermes_home / "config.yaml").write_text(
         "model:\n"
         "  default: gpt-5.3-codex\n"
         "  provider: openai-codex\n"
@@ -863,24 +818,23 @@ def test_logout_resets_codex_config_when_auth_state_already_cleared(tmp_path, mo
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth import logout_command
+    from hermes_cli.auth import logout_command
 
     logout_command(SimpleNamespace(provider="openai-codex"))
 
     out = capsys.readouterr().out
     assert "Logged out of OpenAI Codex." in out
-    config_text = (prostor_home / "config.yaml").read_text()
+    config_text = (hermes_home / "config.yaml").read_text()
     assert "provider: auto" in config_text
     assert "base_url: https://openrouter.ai/api/v1" in config_text
 
 
 def test_logout_defaults_to_configured_codex_when_no_active_provider(tmp_path, monkeypatch, capsys):
-    """Bare `prostor logout` should target configured Codex if auth has no active provider."""
-    prostor_home = tmp_path / "prostor"
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    """Bare `hermes logout` should target configured Codex if auth has no active provider."""
+    hermes_home = tmp_path / "hermes"
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     _write_auth_store(tmp_path, {"version": 1, "providers": {}, "credential_pool": {}})
-    (prostor_home / "config.yaml").write_text(
+    (hermes_home / "config.yaml").write_text(
         "model:\n"
         "  default: gpt-5.3-codex\n"
         "  provider: openai-codex\n"
@@ -888,21 +842,20 @@ def test_logout_defaults_to_configured_codex_when_no_active_provider(tmp_path, m
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth import logout_command
+    from hermes_cli.auth import logout_command
 
     logout_command(SimpleNamespace(provider=None))
 
     out = capsys.readouterr().out
     assert "Logged out of OpenAI Codex." in out
-    config_text = (prostor_home / "config.yaml").read_text()
+    config_text = (hermes_home / "config.yaml").read_text()
     assert "provider: auto" in config_text
 
 
 def test_logout_clears_stale_active_codex_without_provider_credentials(tmp_path, monkeypatch, capsys):
     """Logout must clear active_provider even when provider credential payloads are gone."""
-    prostor_home = tmp_path / "prostor"
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     _write_auth_store(
         tmp_path,
         {
@@ -912,7 +865,7 @@ def test_logout_clears_stale_active_codex_without_provider_credentials(tmp_path,
             "credential_pool": {},
         },
     )
-    (prostor_home / "config.yaml").write_text(
+    (hermes_home / "config.yaml").write_text(
         "model:\n"
         "  default: gpt-5.3-codex\n"
         "  provider: openai-codex\n"
@@ -920,25 +873,24 @@ def test_logout_clears_stale_active_codex_without_provider_credentials(tmp_path,
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth import logout_command
+    from hermes_cli.auth import logout_command
 
     logout_command(SimpleNamespace(provider=None))
 
     out = capsys.readouterr().out
     assert "Logged out of OpenAI Codex." in out
-    auth_payload = json.loads((prostor_home / "auth.json").read_text())
+    auth_payload = json.loads((hermes_home / "auth.json").read_text())
     assert auth_payload.get("active_provider") is None
-    config_text = (prostor_home / "config.yaml").read_text()
+    config_text = (hermes_home / "config.yaml").read_text()
     assert "provider: auto" in config_text
 
 
 def test_reset_config_provider_uses_atomic_yaml_write(tmp_path, monkeypatch):
     """Logout config reset should delegate the YAML write atomically."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
-    config_path = prostor_home / "config.yaml"
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    config_path = hermes_home / "config.yaml"
     original = {
         "model": {
             "default": "gpt-5.3-codex",
@@ -949,7 +901,7 @@ def test_reset_config_provider_uses_atomic_yaml_write(tmp_path, monkeypatch):
     config_path.write_text(yaml.safe_dump(original, sort_keys=False), encoding="utf-8")
     original_text = config_path.read_text(encoding="utf-8")
 
-    from prostor_cli.auth import _reset_config_provider
+    from hermes_cli.auth import _reset_config_provider
 
     def _boom(path, data, **kwargs):
         assert path == config_path
@@ -958,7 +910,7 @@ def test_reset_config_provider_uses_atomic_yaml_write(tmp_path, monkeypatch):
         assert kwargs["sort_keys"] is False
         raise OSError("simulated atomic write failure")
 
-    with patch("prostor_cli.auth.atomic_yaml_write", side_effect=_boom) as mock_write:
+    with patch("hermes_cli.auth.atomic_yaml_write", side_effect=_boom) as mock_write:
         with pytest.raises(OSError, match="simulated atomic write failure"):
             _reset_config_provider()
 
@@ -967,12 +919,12 @@ def test_reset_config_provider_uses_atomic_yaml_write(tmp_path, monkeypatch):
 
 
 def test_auth_list_does_not_call_mutating_select(monkeypatch, capsys):
-    from prostor_cli.auth_commands import auth_list_command
+    from hermes_cli.auth_commands import auth_list_command
 
     class _Entry:
         id = "cred-1"
         label = "primary"
-        auth_type = "***"
+        auth_type="***"
         source = "manual"
         last_status = None
         last_error_code = None
@@ -989,7 +941,7 @@ def test_auth_list_does_not_call_mutating_select(monkeypatch, capsys):
             raise AssertionError("auth_list_command should not call select()")
 
     monkeypatch.setattr(
-        "prostor_cli.auth_commands.load_pool",
+        "hermes_cli.auth_commands.load_pool",
         lambda provider: _Pool() if provider == "openrouter" else type("_EmptyPool", (), {"entries": lambda self: []})(),
     )
 
@@ -1004,7 +956,7 @@ def test_auth_list_does_not_call_mutating_select(monkeypatch, capsys):
 
 
 def test_auth_list_shows_exhausted_cooldown(monkeypatch, capsys):
-    from prostor_cli.auth_commands import auth_list_command
+    from hermes_cli.auth_commands import auth_list_command
 
     class _Entry:
         id = "cred-1"
@@ -1022,8 +974,8 @@ def test_auth_list_shows_exhausted_cooldown(monkeypatch, capsys):
         def peek(self):
             return None
 
-    monkeypatch.setattr("prostor_cli.auth_commands.load_pool", lambda provider: _Pool())
-    monkeypatch.setattr("prostor_cli.auth_commands.time.time", lambda: 1030.0)
+    monkeypatch.setattr("hermes_cli.auth_commands.load_pool", lambda provider: _Pool())
+    monkeypatch.setattr("hermes_cli.auth_commands.time.time", lambda: 1030.0)
 
     class _Args:
         provider = "openrouter"
@@ -1036,7 +988,7 @@ def test_auth_list_shows_exhausted_cooldown(monkeypatch, capsys):
 
 
 def test_auth_list_shows_auth_failure_when_exhausted_entry_is_unauthorized(monkeypatch, capsys):
-    from prostor_cli.auth_commands import auth_list_command
+    from hermes_cli.auth_commands import auth_list_command
 
     class _Entry:
         id = "cred-1"
@@ -1056,8 +1008,8 @@ def test_auth_list_shows_auth_failure_when_exhausted_entry_is_unauthorized(monke
         def peek(self):
             return None
 
-    monkeypatch.setattr("prostor_cli.auth_commands.load_pool", lambda provider: _Pool())
-    monkeypatch.setattr("prostor_cli.auth_commands.time.time", lambda: 1030.0)
+    monkeypatch.setattr("hermes_cli.auth_commands.load_pool", lambda provider: _Pool())
+    monkeypatch.setattr("hermes_cli.auth_commands.time.time", lambda: 1030.0)
 
     class _Args:
         provider = "openai-codex"
@@ -1071,7 +1023,7 @@ def test_auth_list_shows_auth_failure_when_exhausted_entry_is_unauthorized(monke
 
 
 def test_auth_list_prefers_explicit_reset_time(monkeypatch, capsys):
-    from prostor_cli.auth_commands import auth_list_command
+    from hermes_cli.auth_commands import auth_list_command
 
     class _Entry:
         id = "cred-1"
@@ -1092,10 +1044,10 @@ def test_auth_list_prefers_explicit_reset_time(monkeypatch, capsys):
         def peek(self):
             return None
 
-    monkeypatch.setattr("prostor_cli.auth_commands.load_pool", lambda provider: _Pool())
+    monkeypatch.setattr("hermes_cli.auth_commands.load_pool", lambda provider: _Pool())
     monkeypatch.setattr(
-        "prostor_cli.auth_commands.time.time",
-        lambda: datetime(2026, 4, 5, 10, 30, tzinfo=UTC).timestamp(),
+        "hermes_cli.auth_commands.time.time",
+        lambda: datetime(2026, 4, 5, 10, 30, tzinfo=timezone.utc).timestamp(),
     )
 
     class _Args:
@@ -1111,12 +1063,12 @@ def test_auth_list_prefers_explicit_reset_time(monkeypatch, capsys):
 def test_auth_remove_env_seeded_clears_env_var(tmp_path, monkeypatch):
     """Removing an env-seeded credential should also clear the env var from .env
     so the entry doesn't get re-seeded on the next load_pool() call."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     # Write a .env with an OpenRouter key
-    env_path = prostor_home / ".env"
+    env_path = hermes_home / ".env"
     env_path.write_text("OPENROUTER_API_KEY=sk-or-test-key-12345\nOTHER_KEY=keep-me\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key-12345")
 
@@ -1140,7 +1092,7 @@ def test_auth_remove_env_seeded_clears_env_var(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
 
     class _Args:
         provider = "openrouter"
@@ -1161,12 +1113,12 @@ def test_auth_remove_env_seeded_clears_env_var(tmp_path, monkeypatch):
 
 def test_auth_remove_env_seeded_does_not_resurrect(tmp_path, monkeypatch):
     """After removing an env-seeded credential, load_pool should NOT re-create it."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     # Write .env with an OpenRouter key
-    env_path = prostor_home / ".env"
+    env_path = hermes_home / ".env"
     env_path.write_text("OPENROUTER_API_KEY=sk-or-test-key-12345\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key-12345")
 
@@ -1189,7 +1141,7 @@ def test_auth_remove_env_seeded_does_not_resurrect(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
 
     class _Args:
         provider = "openrouter"
@@ -1205,12 +1157,12 @@ def test_auth_remove_env_seeded_does_not_resurrect(tmp_path, monkeypatch):
 
 def test_auth_remove_manual_entry_does_not_touch_env(tmp_path, monkeypatch):
     """Removing a manually-added credential should NOT touch .env."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
-    env_path = prostor_home / ".env"
+    env_path = hermes_home / ".env"
     env_path.write_text("SOME_KEY=some-value\n")
 
     _write_auth_store(
@@ -1232,7 +1184,7 @@ def test_auth_remove_manual_entry_does_not_touch_env(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
 
     class _Args:
         provider = "openrouter"
@@ -1246,7 +1198,7 @@ def test_auth_remove_manual_entry_does_not_touch_env(tmp_path, monkeypatch):
 
 def test_auth_remove_claude_code_suppresses_reseed(tmp_path, monkeypatch):
     """Removing a claude_code credential must prevent it from being re-seeded."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_TOKEN", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
@@ -1254,8 +1206,8 @@ def test_auth_remove_claude_code_suppresses_reseed(tmp_path, monkeypatch):
         "agent.credential_pool._seed_from_singletons",
         lambda provider, entries: (False, {"claude_code"}),
     )
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
 
     auth_store = {
         "version": 1,
@@ -1270,14 +1222,13 @@ def test_auth_remove_claude_code_suppresses_reseed(tmp_path, monkeypatch):
             }]
         },
     }
-    (prostor_home / "auth.json").write_text(json.dumps(auth_store))
+    (hermes_home / "auth.json").write_text(json.dumps(auth_store))
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
     auth_remove_command(SimpleNamespace(provider="anthropic", target="1"))
 
-    updated = json.loads((prostor_home / "auth.json").read_text())
+    updated = json.loads((hermes_home / "auth.json").read_text())
     suppressed = updated.get("suppressed_sources", {})
     assert "anthropic" in suppressed
     assert "claude_code" in suppressed["anthropic"]
@@ -1285,10 +1236,10 @@ def test_auth_remove_claude_code_suppresses_reseed(tmp_path, monkeypatch):
 
 def test_unsuppress_credential_source_clears_marker(tmp_path, monkeypatch):
     """unsuppress_credential_source() removes a previously-set marker."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1})
 
-    from prostor_cli.auth import is_source_suppressed, suppress_credential_source, unsuppress_credential_source
+    from hermes_cli.auth import suppress_credential_source, unsuppress_credential_source, is_source_suppressed
 
     suppress_credential_source("openai-codex", "device_code")
     assert is_source_suppressed("openai-codex", "device_code") is True
@@ -1297,17 +1248,17 @@ def test_unsuppress_credential_source_clears_marker(tmp_path, monkeypatch):
     assert cleared is True
     assert is_source_suppressed("openai-codex", "device_code") is False
 
-    payload = json.loads((tmp_path / "prostor" / "auth.json").read_text())
+    payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
     # Empty suppressed_sources dict should be cleaned up entirely
     assert "suppressed_sources" not in payload
 
 
 def test_unsuppress_credential_source_returns_false_when_absent(tmp_path, monkeypatch):
     """unsuppress_credential_source() returns False if no marker exists."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1})
 
-    from prostor_cli.auth import unsuppress_credential_source
+    from hermes_cli.auth import unsuppress_credential_source
 
     assert unsuppress_credential_source("openai-codex", "device_code") is False
     assert unsuppress_credential_source("nonexistent", "whatever") is False
@@ -1315,13 +1266,13 @@ def test_unsuppress_credential_source_returns_false_when_absent(tmp_path, monkey
 
 def test_unsuppress_credential_source_preserves_other_markers(tmp_path, monkeypatch):
     """Clearing one marker must not affect unrelated markers."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     _write_auth_store(tmp_path, {"version": 1})
 
-    from prostor_cli.auth import (
-        is_source_suppressed,
+    from hermes_cli.auth import (
         suppress_credential_source,
         unsuppress_credential_source,
+        is_source_suppressed,
     )
 
     suppress_credential_source("openai-codex", "device_code")
@@ -1333,13 +1284,13 @@ def test_unsuppress_credential_source_preserves_other_markers(tmp_path, monkeypa
 
 def test_auth_remove_codex_device_code_suppresses_reseed(tmp_path, monkeypatch):
     """Removing an auto-seeded openai-codex credential must mark the source as suppressed."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.setattr(
         "agent.credential_pool._seed_from_singletons",
         lambda provider, entries: (False, {"device_code"}),
     )
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
 
     auth_store = {
         "version": 1,
@@ -1363,15 +1314,14 @@ def test_auth_remove_codex_device_code_suppresses_reseed(tmp_path, monkeypatch):
             }]
         },
     }
-    (prostor_home / "auth.json").write_text(json.dumps(auth_store))
+    (hermes_home / "auth.json").write_text(json.dumps(auth_store))
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
 
     auth_remove_command(SimpleNamespace(provider="openai-codex", target="1"))
 
-    updated = json.loads((prostor_home / "auth.json").read_text())
+    updated = json.loads((hermes_home / "auth.json").read_text())
     suppressed = updated.get("suppressed_sources", {})
     assert "openai-codex" in suppressed
     assert "device_code" in suppressed["openai-codex"]
@@ -1381,13 +1331,13 @@ def test_auth_remove_codex_device_code_suppresses_reseed(tmp_path, monkeypatch):
 
 def test_auth_remove_codex_manual_source_suppresses_reseed(tmp_path, monkeypatch):
     """Removing a manually-added (`manual:device_code`) openai-codex credential must also suppress."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.setattr(
         "agent.credential_pool._seed_from_singletons",
         lambda provider, entries: (False, set()),
     )
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
 
     auth_store = {
         "version": 1,
@@ -1411,15 +1361,14 @@ def test_auth_remove_codex_manual_source_suppresses_reseed(tmp_path, monkeypatch
             }]
         },
     }
-    (prostor_home / "auth.json").write_text(json.dumps(auth_store))
+    (hermes_home / "auth.json").write_text(json.dumps(auth_store))
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
 
     auth_remove_command(SimpleNamespace(provider="openai-codex", target="1"))
 
-    updated = json.loads((prostor_home / "auth.json").read_text())
+    updated = json.loads((hermes_home / "auth.json").read_text())
     suppressed = updated.get("suppressed_sources", {})
     # Critical: manual:device_code source must also trigger the suppression path
     assert "openai-codex" in suppressed
@@ -1428,13 +1377,13 @@ def test_auth_remove_codex_manual_source_suppresses_reseed(tmp_path, monkeypatch
 
 
 def test_auth_add_codex_clears_suppression_marker(tmp_path, monkeypatch):
-    """Re-linking codex via `prostor auth add openai-codex` must clear any suppression marker."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
+    """Re-linking codex via `hermes auth add openai-codex` must clear any suppression marker."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
 
-    # Pre-existing suppression (simulating a prior `prostor auth remove`)
-    (prostor_home / "auth.json").write_text(json.dumps({
+    # Pre-existing suppression (simulating a prior `hermes auth remove`)
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
         "suppressed_sources": {"openai-codex": ["device_code"]},
@@ -1442,7 +1391,7 @@ def test_auth_add_codex_clears_suppression_marker(tmp_path, monkeypatch):
 
     token = _jwt_with_email("codex@example.com")
     monkeypatch.setattr(
-        "prostor_cli.auth._codex_device_code_login",
+        "hermes_cli.auth._codex_device_code_login",
         lambda: {
             "tokens": {
                 "access_token": token,
@@ -1453,7 +1402,7 @@ def test_auth_add_codex_clears_suppression_marker(tmp_path, monkeypatch):
         },
     )
 
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth_commands import auth_add_command
 
     class _Args:
         provider = "openai-codex"
@@ -1463,7 +1412,7 @@ def test_auth_add_codex_clears_suppression_marker(tmp_path, monkeypatch):
 
     auth_add_command(_Args())
 
-    payload = json.loads((prostor_home / "auth.json").read_text())
+    payload = json.loads((hermes_home / "auth.json").read_text())
     # Suppression marker must be cleared
     assert "openai-codex" not in payload.get("suppressed_sources", {})
     # New pool entry must be present (distinct manual:device_code entry — #39236)
@@ -1474,12 +1423,12 @@ def test_auth_add_codex_clears_suppression_marker(tmp_path, monkeypatch):
 
 def test_seed_from_singletons_respects_codex_suppression(tmp_path, monkeypatch):
     """_seed_from_singletons() for openai-codex must skip auto-import when suppressed."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / "prostor"))
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
 
     # Suppression marker in place
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
         "suppressed_sources": {"openai-codex": ["device_code"]},
@@ -1493,7 +1442,7 @@ def test_seed_from_singletons_respects_codex_suppression(tmp_path, monkeypatch):
             "refresh_token": "would-be-reimported",
         }
 
-    monkeypatch.setattr("prostor_cli.auth._import_codex_cli_tokens", _fake_import)
+    monkeypatch.setattr("hermes_cli.auth._import_codex_cli_tokens", _fake_import)
 
     from agent.credential_pool import _seed_from_singletons
 
@@ -1506,23 +1455,23 @@ def test_seed_from_singletons_respects_codex_suppression(tmp_path, monkeypatch):
     assert active_sources == set()
 
     # Verify the auth store was NOT modified (no auto-import happened)
-    after = json.loads((prostor_home / "auth.json").read_text())
+    after = json.loads((hermes_home / "auth.json").read_text())
     assert "openai-codex" not in after.get("providers", {})
 
 
 def test_auth_remove_env_seeded_suppresses_shell_exported_var(tmp_path, monkeypatch, capsys):
-    """`prostor auth remove xai 1` must stick even when the env var is exported
-    by the shell (not written into ~/.prostor/.env).  Before PR for #13371 the
+    """`hermes auth remove xai 1` must stick even when the env var is exported
+    by the shell (not written into ~/.hermes/.env).  Before PR for #13371 the
     removal silently restored on next load_pool() because _seed_from_env()
     re-read os.environ.  Now env:<VAR> is suppressed in auth.json.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     # Simulate shell export (NOT written to .env)
     monkeypatch.setenv("XAI_API_KEY", "sk-xai-shell-export")
-    (prostor_home / ".env").write_text("")
+    (hermes_home / ".env").write_text("")
 
     _write_auth_store(
         tmp_path,
@@ -1543,12 +1492,11 @@ def test_auth_remove_env_seeded_suppresses_shell_exported_var(tmp_path, monkeypa
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
     auth_remove_command(SimpleNamespace(provider="xai", target="1"))
 
     # Suppression marker written
-    after = json.loads((prostor_home / "auth.json").read_text())
+    after = json.loads((hermes_home / "auth.json").read_text())
     assert "env:XAI_API_KEY" in after.get("suppressed_sources", {}).get("xai", [])
 
     # Diagnostic printed pointing at the shell
@@ -1564,17 +1512,17 @@ def test_auth_remove_env_seeded_suppresses_shell_exported_var(tmp_path, monkeypa
 
 
 def test_auth_remove_env_seeded_dotenv_only_no_shell_hint(tmp_path, monkeypatch, capsys):
-    """When the env var lives only in ~/.prostor/.env (not the shell), the
+    """When the env var lives only in ~/.hermes/.env (not the shell), the
     shell-hint should NOT be printed — avoid scaring the user about a
     non-existent shell export.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     # Key ONLY in .env, shell must not have it
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    (prostor_home / ".env").write_text("DEEPSEEK_API_KEY=sk-ds-only\n")
+    (hermes_home / ".env").write_text("DEEPSEEK_API_KEY=sk-ds-only\n")
     # Mimic load_env() populating os.environ
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-only")
 
@@ -1596,24 +1544,23 @@ def test_auth_remove_env_seeded_dotenv_only_no_shell_hint(tmp_path, monkeypatch,
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth_commands import auth_remove_command
     auth_remove_command(SimpleNamespace(provider="deepseek", target="1"))
 
     out = capsys.readouterr().out
     assert "Cleared DEEPSEEK_API_KEY from .env" in out
     assert "still set in your shell environment" not in out
-    assert (prostor_home / ".env").read_text().strip() == ""
+    assert (hermes_home / ".env").read_text().strip() == ""
 
 
 def test_auth_add_clears_env_suppression_for_provider(tmp_path, monkeypatch):
-    """Re-adding a credential via `prostor auth add <provider>` clears any
+    """Re-adding a credential via `hermes auth add <provider>` clears any
     env:<VAR> suppression marker — strong signal the user wants auth back.
     Matches the Codex device_code re-link behaviour.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.delenv("XAI_API_KEY", raising=False)
 
     _write_auth_store(
@@ -1626,9 +1573,8 @@ def test_auth_add_clears_env_suppression_for_provider(tmp_path, monkeypatch):
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth import is_source_suppressed
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth import is_source_suppressed
+    from hermes_cli.auth_commands import auth_add_command
 
     assert is_source_suppressed("xai", "env:XAI_API_KEY") is True
     auth_add_command(SimpleNamespace(
@@ -1640,15 +1586,15 @@ def test_auth_add_clears_env_suppression_for_provider(tmp_path, monkeypatch):
 
 def test_seed_from_env_respects_env_suppression(tmp_path, monkeypatch):
     """_seed_from_env() must skip env:<VAR> sources that the user suppressed
-    via `prostor auth remove`.  This is the gate that prevents shell-exported
+    via `hermes auth remove`.  This is the gate that prevents shell-exported
     keys from resurrecting removed credentials.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.setenv("XAI_API_KEY", "sk-xai-shell-export")
 
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
         "suppressed_sources": {"xai": ["env:XAI_API_KEY"]},
@@ -1667,12 +1613,12 @@ def test_seed_from_env_respects_openrouter_suppression(tmp_path, monkeypatch):
     """OpenRouter is the special-case branch in _seed_from_env; verify it
     honours suppression too.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-shell-export")
 
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
         "suppressed_sources": {"openrouter": ["env:OPENROUTER_API_KEY"]},
@@ -1688,7 +1634,7 @@ def test_seed_from_env_respects_openrouter_suppression(tmp_path, monkeypatch):
 
 
 # =============================================================================
-# Unified credential-source stickiness — every source Prostor reads from has a
+# Unified credential-source stickiness — every source Hermes reads from has a
 # registered RemovalStep in agent.credential_sources, and every seeding path
 # gates on is_source_suppressed.  Below: one test per source proving remove
 # sticks across a fresh load_pool() call.
@@ -1697,11 +1643,11 @@ def test_seed_from_env_respects_openrouter_suppression(tmp_path, monkeypatch):
 
 def test_seed_from_singletons_respects_nous_suppression(tmp_path, monkeypatch):
     """nous device_code must not re-seed from auth.json when suppressed."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {"nous": {"access_token": "tok", "refresh_token": "r", "expires_at": 9999999999}},
         "suppressed_sources": {"nous": ["device_code"]},
@@ -1717,18 +1663,18 @@ def test_seed_from_singletons_respects_nous_suppression(tmp_path, monkeypatch):
 
 def test_seed_from_singletons_respects_copilot_suppression(tmp_path, monkeypatch):
     """copilot gh_cli must not re-seed when suppressed."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
         "suppressed_sources": {"copilot": ["gh_cli"]},
     }))
 
     # Stub resolve_copilot_token to return a live token
-    import prostor_cli.copilot_auth as ca
+    import hermes_cli.copilot_auth as ca
     monkeypatch.setattr(ca, "resolve_copilot_token", lambda: ("ghp_fake", "gh auth token"))
 
     from agent.credential_pool import _seed_from_singletons
@@ -1741,17 +1687,17 @@ def test_seed_from_singletons_respects_copilot_suppression(tmp_path, monkeypatch
 
 def test_seed_from_singletons_respects_qwen_suppression(tmp_path, monkeypatch):
     """qwen-oauth qwen-cli must not re-seed from ~/.qwen/oauth_creds.json when suppressed."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
         "suppressed_sources": {"qwen-oauth": ["qwen-cli"]},
     }))
 
-    import prostor_cli.auth as ha
+    import hermes_cli.auth as ha
     monkeypatch.setattr(ha, "resolve_qwen_runtime_credentials", lambda **kw: {
         "api_key": "tok", "source": "qwen-cli", "base_url": "https://q",
     })
@@ -1764,23 +1710,23 @@ def test_seed_from_singletons_respects_qwen_suppression(tmp_path, monkeypatch):
     assert active == set()
 
 
-def test_seed_from_singletons_respects_prostor_pkce_suppression(tmp_path, monkeypatch):
-    """anthropic prostor_pkce must not re-seed from ~/.prostor/.anthropic_oauth.json when suppressed."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+def test_seed_from_singletons_respects_hermes_pkce_suppression(tmp_path, monkeypatch):
+    """anthropic hermes_pkce must not re-seed from ~/.hermes/.anthropic_oauth.json when suppressed."""
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     import yaml
-    (prostor_home / "config.yaml").write_text(yaml.dump({"model": {"provider": "anthropic", "model": "claude"}}))
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "config.yaml").write_text(yaml.dump({"model": {"provider": "anthropic", "model": "claude"}}))
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
-        "suppressed_sources": {"anthropic": ["prostor_pkce"]},
+        "suppressed_sources": {"anthropic": ["hermes_pkce"]},
     }))
 
-    # Stub the readers so only prostor_pkce is "available"; claude_code returns None
+    # Stub the readers so only hermes_pkce is "available"; claude_code returns None
     import agent.anthropic_adapter as aa
-    monkeypatch.setattr(aa, "read_prostor_oauth_credentials", lambda: {
+    monkeypatch.setattr(aa, "read_hermes_oauth_credentials", lambda: {
         "accessToken": "tok", "refreshToken": "r", "expiresAt": 9999999999000,
     })
     monkeypatch.setattr(aa, "read_claude_code_credentials", lambda: None)
@@ -1788,19 +1734,19 @@ def test_seed_from_singletons_respects_prostor_pkce_suppression(tmp_path, monkey
     from agent.credential_pool import _seed_from_singletons
     entries = []
     changed, active = _seed_from_singletons("anthropic", entries)
-    # prostor_pkce suppressed, claude_code returns None → nothing should be seeded
+    # hermes_pkce suppressed, claude_code returns None → nothing should be seeded
     assert entries == []
-    assert "prostor_pkce" not in active
+    assert "hermes_pkce" not in active
 
 
 def test_seed_custom_pool_respects_config_suppression(tmp_path, monkeypatch):
     """Custom provider config:<name> source must not re-seed when suppressed."""
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     import yaml
-    (prostor_home / "config.yaml").write_text(yaml.dump({
+    (hermes_home / "config.yaml").write_text(yaml.dump({
         "model": {},
         "custom_providers": [
             {"name": "my", "base_url": "https://c.example.com", "api_key": "sk-custom"},
@@ -1810,7 +1756,7 @@ def test_seed_custom_pool_respects_config_suppression(tmp_path, monkeypatch):
     from agent.credential_pool import _seed_custom_pool, get_custom_provider_pool_key
     pool_key = get_custom_provider_pool_key("https://c.example.com")
 
-    (prostor_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
         "suppressed_sources": {pool_key: ["config:my"]},
@@ -1847,7 +1793,7 @@ def test_credential_sources_registry_has_expected_steps():
         "gh auth token / COPILOT_GITHUB_TOKEN / GH_TOKEN",
         "Any env-seeded credential (XAI_API_KEY, DEEPSEEK_API_KEY, etc.)",
         "~/.claude/.credentials.json",
-        "~/.prostor/.anthropic_oauth.json",
+        "~/.hermes/.anthropic_oauth.json",
         "auth.json providers.nous",
         "auth.json providers.openai-codex + ~/.codex/auth.json",
         "auth.json providers.minimax-oauth",
@@ -1887,9 +1833,9 @@ def test_auth_remove_copilot_suppresses_all_variants(tmp_path, monkeypatch):
     """Removing any copilot source must suppress gh_cli + all env:* variants
     so the duplicate-seed paths don't resurrect the credential.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     # The copilot pool entry is no longer persisted directly in auth.json —
     # `(copilot, gh_cli)` is borrowed and stripped by
@@ -1905,15 +1851,14 @@ def test_auth_remove_copilot_suppresses_all_variants(tmp_path, monkeypatch):
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth import is_source_suppressed
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth import is_source_suppressed
+    from hermes_cli.auth_commands import auth_remove_command
 
     with patch(
-        "prostor_cli.copilot_auth.resolve_copilot_token",
+        "hermes_cli.copilot_auth.resolve_copilot_token",
         return_value=("ghp_fake", "gh"),
     ), patch(
-        "prostor_cli.copilot_auth.get_copilot_api_token",
+        "hermes_cli.copilot_auth.get_copilot_api_token",
         return_value="ghu_fake_api",
     ):
         auth_remove_command(SimpleNamespace(provider="copilot", target="1"))
@@ -1925,13 +1870,13 @@ def test_auth_remove_copilot_suppresses_all_variants(tmp_path, monkeypatch):
 
 
 def test_auth_add_clears_all_suppressions_including_non_env(tmp_path, monkeypatch):
-    """Re-adding a credential via `prostor auth add <provider>` clears ALL
+    """Re-adding a credential via `hermes auth add <provider>` clears ALL
     suppression markers for the provider, not just env:*.  This matches
     the single "re-engage" semantic — the user wants auth back, period.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _write_auth_store(
         tmp_path,
@@ -1945,9 +1890,8 @@ def test_auth_add_clears_all_suppressions_including_non_env(tmp_path, monkeypatc
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth import is_source_suppressed
-    from prostor_cli.auth_commands import auth_add_command
+    from hermes_cli.auth import is_source_suppressed
+    from hermes_cli.auth_commands import auth_add_command
 
     auth_add_command(SimpleNamespace(
         provider="copilot", auth_type="api_key",
@@ -1960,13 +1904,13 @@ def test_auth_add_clears_all_suppressions_including_non_env(tmp_path, monkeypatc
 
 
 def test_auth_remove_codex_manual_device_code_suppresses_canonical(tmp_path, monkeypatch):
-    """Removing a manual:device_code entry (from `prostor auth add openai-codex`)
+    """Removing a manual:device_code entry (from `hermes auth add openai-codex`)
     must suppress the canonical ``device_code`` key, not ``manual:device_code``.
     The re-seed gate in _seed_from_singletons checks ``device_code``.
     """
-    prostor_home = tmp_path / "prostor"
-    prostor_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(prostor_home))
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _write_auth_store(
         tmp_path,
@@ -1987,9 +1931,8 @@ def test_auth_remove_codex_manual_device_code_suppresses_canonical(tmp_path, mon
     )
 
     from types import SimpleNamespace
-
-    from prostor_cli.auth import is_source_suppressed
-    from prostor_cli.auth_commands import auth_remove_command
+    from hermes_cli.auth import is_source_suppressed
+    from hermes_cli.auth_commands import auth_remove_command
 
     auth_remove_command(SimpleNamespace(provider="openai-codex", target="1"))
     assert is_source_suppressed("openai-codex", "device_code")

@@ -16,13 +16,13 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Dict, Optional, Any, Tuple, List
 
 try:
-    import aiohttp
-    from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
     from slack_bolt.async_app import AsyncApp
+    from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
     from slack_sdk.web.async_client import AsyncWebClient
+    import aiohttp
 
     SLACK_AVAILABLE = True
 except ImportError:
@@ -34,24 +34,26 @@ except ImportError:
 import sys
 from pathlib import Path as _Path
 
-sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
 from gateway.config import Platform, PlatformConfig
+from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
-    SUPPORTED_DOCUMENT_TYPES,
-    SUPPORTED_VIDEO_TYPES,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     ProcessingOutcome,
     SendResult,
-    cache_document_from_bytes,
-    cache_video_from_bytes,
+    SUPPORTED_DOCUMENT_TYPES,
+    SUPPORTED_VIDEO_TYPES,
+    _TEXT_INJECT_EXTENSIONS,
     is_host_excluded_by_no_proxy,
     resolve_proxy_url,
     safe_url_for_log,
+    cache_document_from_bytes,
+    cache_video_from_bytes,
 )
-from gateway.platforms.helpers import MessageDeduplicator
+
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ logger = logging.getLogger(__name__)
 # channel concurrently.  ContextVars propagate to child asyncio.Tasks
 # (Python 3.7+), so the value set in _handle_slash_command's task is
 # visible in _process_message_background's child task.
-_slash_user_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+_slash_user_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "_slash_user_id",
     default=None,
 )
@@ -87,10 +89,10 @@ def check_slack_requirements() -> bool:
         return True
 
     def _import():
-        import aiohttp
-        from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
         from slack_bolt.async_app import AsyncApp
+        from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
         from slack_sdk.web.async_client import AsyncWebClient
+        import aiohttp
 
         return {
             "AsyncApp": AsyncApp,
@@ -267,7 +269,7 @@ def _serialize_slack_blocks_for_agent(blocks: list, max_chars: int = 6000) -> st
     return f"[Slack Block Kit payload for this message]\n```json\n{payload}\n```"
 
 
-def _apply_slack_proxy(client: Any, proxy_url: str | None) -> None:
+def _apply_slack_proxy(client: Any, proxy_url: Optional[str]) -> None:
     """Apply a resolved proxy to a Slack SDK client or clear it explicitly."""
     if hasattr(client, "proxy"):
         client.proxy = proxy_url
@@ -280,7 +282,7 @@ _SLACK_PROXY_HOSTS = (
 )
 
 
-def _resolve_slack_proxy_url() -> str | None:
+def _resolve_slack_proxy_url() -> Optional[str]:
     """Resolve a proxy URL that Slack SDK clients can safely use."""
     proxy_url = resolve_proxy_url()
     if not proxy_url:
@@ -301,6 +303,100 @@ def _resolve_slack_proxy_url() -> str | None:
     return proxy_url
 
 
+# Map Slack audio mimetypes to the file extension that matches the actual
+# container bytes.  Critically, Slack's in-app "record a clip" voice messages
+# arrive as MP4/AAC containers (``audio/mp4``, filename ``audio_message*.mp4``),
+# NOT Ogg — so the extension we cache them under must be one a downstream STT
+# backend (OpenAI Whisper / gpt-4o-transcribe) will accept for that container.
+# OpenAI sniffs the container from the FILENAME extension, so a wrong extension
+# (e.g. caching MP4 bytes as ``.ogg``) makes transcription fail outright.
+# Mirrors the proven map in gateway/platforms/bluebubbles.py.
+_SLACK_AUDIO_MIME_TO_EXT = {
+    "audio/ogg": ".ogg",
+    "audio/opus": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/webm": ".webm",
+    "audio/mp4": ".m4a",
+    "audio/x-m4a": ".m4a",
+    "audio/m4a": ".m4a",
+    "audio/aac": ".m4a",
+    "audio/flac": ".flac",
+    "audio/x-flac": ".flac",
+}
+
+# Extensions OpenAI/Whisper-family STT backends accept (kept in sync with
+# tools/transcription_tools.SUPPORTED_FORMATS).
+_SLACK_STT_SUPPORTED_EXTS = frozenset(
+    {".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".ogg", ".aac", ".flac"}
+)
+
+# Cached-extension → reported ``audio/*`` mimetype. Used when re-routing a
+# ``video/mp4``-mislabeled voice clip onto the audio path so the reported
+# media_type stays coherent with the bytes we actually cached (the gateway's
+# STT gate keys on the ``audio/`` prefix + the cached filename extension, but a
+# matching mimetype avoids surprising any consumer that inspects it). Anything
+# unmapped falls back to ``audio/mp4`` — Slack voice clips are MP4/AAC.
+_SLACK_EXT_TO_AUDIO_MIME = {
+    ".mp4": "audio/mp4",
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".mpeg": "audio/mpeg",
+    ".mpga": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".webm": "audio/webm",
+    ".ogg": "audio/ogg",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+}
+
+
+def _resolve_slack_audio_ext(file_obj: Dict[str, Any], mimetype: str) -> str:
+    """Pick the cache extension that matches an inbound Slack audio file's bytes.
+
+    Resolution order (mirrors the video branch + bluebubbles.py):
+
+    1. The real extension from the uploaded filename, when it's a format a
+       Whisper-family STT backend accepts (so ``audio_message.mp4`` →
+       ``.mp4``, ``clip.m4a`` → ``.m4a``).
+    2. A mimetype → extension lookup (so ``audio/mp4`` → ``.m4a``).
+    3. ``.m4a`` as a last resort — never ``.ogg``, which was the original bug:
+       MP4/AAC voice messages cached as ``.ogg`` are rejected by OpenAI because
+       the bytes don't match the container the extension claims.
+    """
+    name = (file_obj.get("name") or "").strip()
+    _, name_ext = os.path.splitext(name)
+    name_ext = name_ext.lower()
+    if name_ext in _SLACK_STT_SUPPORTED_EXTS:
+        return name_ext
+
+    mime_key = (mimetype or "").split(";", 1)[0].strip().lower()
+    if mime_key in _SLACK_AUDIO_MIME_TO_EXT:
+        return _SLACK_AUDIO_MIME_TO_EXT[mime_key]
+
+    return ".m4a"
+
+
+def _is_slack_voice_clip(file_obj: Dict[str, Any]) -> bool:
+    """Return True when a Slack file is an audio-only voice clip.
+
+    Slack's in-app voice recordings are audio-only MP4 containers, but Slack
+    sometimes reports them with a ``video/mp4`` mimetype, which would otherwise
+    route them to video understanding instead of speech-to-text. Detect them by
+    Slack's stable markers — the ``slack_audio`` subtype and the
+    ``audio_message*`` filename pattern — so genuine videos are left untouched.
+    """
+    subtype = (file_obj.get("subtype") or "").strip().lower()
+    if subtype == "slack_audio":
+        # slack_audio is always audio-only. (slack_video clips carry a real
+        # video track, so they are deliberately NOT matched here.)
+        return True
+    name = (file_obj.get("name") or "").strip().lower()
+    return name.startswith("audio_message")
+
+
 class SlackAdapter(BasePlatformAdapter):
     """
     Slack bot adapter using Socket Mode.
@@ -313,12 +409,13 @@ class SlackAdapter(BasePlatformAdapter):
       - DMs and channel messages (mention-gated in channels)
       - Thread support
       - File/image/audio attachments
-      - Slash commands (/prostor)
+      - Slash commands (/hermes)
       - Typing indicators (not natively supported by Slack bots)
     """
 
     MAX_MESSAGE_LENGTH = 39000  # Slack API allows 40,000 chars; leave margin
     supports_code_blocks = True  # Slack mrkdwn renders fenced code blocks
+    splits_long_messages = True  # send() chunks via truncate_message(MAX_MESSAGE_LENGTH)
     # Slack blocks typed native slash commands inside threads ("/approve is
     # not supported in threads. Sorry!").  The adapter rewrites a leading
     # "!" to "/" for known commands (see _handle_slack_message), so "!" is
@@ -327,21 +424,21 @@ class SlackAdapter(BasePlatformAdapter):
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.SLACK)
-        self._app: Any | None = None
-        self._handler: Any | None = None
-        self._bot_user_id: str | None = None
-        self._user_name_cache: dict[str, str] = {}  # user_id → display name
-        self._socket_mode_task: asyncio.Task | None = None
+        self._app: Optional[Any] = None
+        self._handler: Optional[Any] = None
+        self._bot_user_id: Optional[str] = None
+        self._user_name_cache: Dict[str, str] = {}  # user_id → display name
+        self._socket_mode_task: Optional[asyncio.Task] = None
         # Multi-workspace support
-        self._team_clients: dict[str, Any] = {}  # team_id → WebClient
-        self._team_bot_user_ids: dict[str, str] = {}  # team_id → bot_user_id
-        self._channel_team: dict[str, str] = {}  # channel_id → team_id
+        self._team_clients: Dict[str, Any] = {}  # team_id → WebClient
+        self._team_bot_user_ids: Dict[str, str] = {}  # team_id → bot_user_id
+        self._channel_team: Dict[str, str] = {}  # channel_id → team_id
         # Dedup cache: prevents duplicate bot responses when Socket Mode
         # reconnects redeliver events.
         self._dedup = MessageDeduplicator()
         # Track pending approval message_ts → resolved flag to prevent
         # double-clicks on approval buttons.
-        self._approval_resolved: dict[str, bool] = {}
+        self._approval_resolved: Dict[str, bool] = {}
         # Track timestamps of messages sent by the bot so we can respond
         # to thread replies even without an explicit @mention.
         self._bot_message_ts: set = set()
@@ -354,26 +451,26 @@ class SlackAdapter(BasePlatformAdapter):
         # AI Assistant lifecycle events can arrive before/alongside message
         # events, and they carry the user/thread identity needed for stable
         # session + memory scoping.
-        self._assistant_threads: dict[tuple[str, str], dict[str, str]] = {}
+        self._assistant_threads: Dict[Tuple[str, str], Dict[str, str]] = {}
         self._ASSISTANT_THREADS_MAX = 5000
         # Cache for _fetch_thread_context results: cache_key → _ThreadContextCache
-        self._thread_context_cache: dict[str, _ThreadContextCache] = {}
+        self._thread_context_cache: Dict[str, _ThreadContextCache] = {}
         self._THREAD_CACHE_TTL = 60.0
         # Track message IDs that should get reaction lifecycle (DMs / @mentions).
         self._reacting_message_ids: set = set()
         # Track active assistant thread status indicators so stop_typing can
         # clear them (chat_id → thread_ts).
-        self._active_status_threads: dict[str, str] = {}
+        self._active_status_threads: Dict[str, str] = {}
         # Slash-command contexts: stash response_url + user_id so send()
         # can route the first reply ephemerally.  Keyed by
         # (channel_id, user_id) to avoid cross-user collisions.
         # Each value: {"response_url": str, "ts": float}
-        self._slash_command_contexts: dict[tuple[str, str], dict[str, Any]] = {}
+        self._slash_command_contexts: Dict[Tuple[str, str], Dict[str, Any]] = {}
         # Socket Mode resilience: track runtime connection state so we can
         # self-heal when Slack silently drops the websocket.
-        self._app_token: str | None = None
-        self._proxy_url: str | None = None
-        self._socket_watchdog_task: asyncio.Task | None = None
+        self._app_token: Optional[str] = None
+        self._proxy_url: Optional[str] = None
+        self._socket_watchdog_task: Optional[asyncio.Task] = None
         self._socket_reconnect_lock = asyncio.Lock()
         self._socket_watchdog_interval_s = 15.0
 
@@ -419,7 +516,7 @@ class SlackAdapter(BasePlatformAdapter):
                     "[Slack] Socket Mode task failed while stopping", exc_info=True
                 )
 
-    async def _socket_transport_connected(self) -> bool | None:
+    async def _socket_transport_connected(self) -> Optional[bool]:
         """Best-effort check of current Socket Mode transport state."""
         client = getattr(self._handler, "client", None)
         if client is None:
@@ -551,8 +648,8 @@ class SlackAdapter(BasePlatformAdapter):
         loop.create_task(self._restart_socket_mode("socket task exited"))
 
     def _describe_slack_api_error(
-        self, response: Any, *, file_obj: dict[str, Any] | None = None
-    ) -> str | None:
+        self, response: Any, *, file_obj: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
         """Convert Slack API auth/permission failures into actionable user-facing text."""
         if response is None or not hasattr(response, "get"):
             return None
@@ -593,8 +690,8 @@ class SlackAdapter(BasePlatformAdapter):
         return None
 
     def _describe_slack_download_failure(
-        self, exc: Exception, *, file_obj: dict[str, Any] | None = None
-    ) -> str | None:
+        self, exc: Exception, *, file_obj: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
         """Translate Slack download exceptions into user-facing attachment diagnostics."""
         file_label = str(
             (file_obj or {}).get("name")
@@ -643,7 +740,7 @@ class SlackAdapter(BasePlatformAdapter):
     def _pop_slash_context(
         self,
         chat_id: str,
-    ) -> dict[str, Any] | None:
+    ) -> Optional[Dict[str, Any]]:
         """Return and remove the slash-command context for *chat_id*, if fresh.
 
         Contexts older than ``_SLASH_CTX_TTL`` seconds are silently discarded.
@@ -683,7 +780,7 @@ class SlackAdapter(BasePlatformAdapter):
 
     async def _send_slash_ephemeral(
         self,
-        ctx: dict[str, Any],
+        ctx: Dict[str, Any],
         content: str,
     ) -> "SendResult":
         """Replace the initial ephemeral ack via ``response_url``.
@@ -761,9 +858,9 @@ class SlackAdapter(BasePlatformAdapter):
         bot_tokens = [t.strip() for t in raw_token.split(",") if t.strip()]
 
         # Also load tokens from OAuth token file
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
 
-        tokens_file = get_prostor_home() / "slack_tokens.json"
+        tokens_file = get_hermes_home() / "slack_tokens.json"
         if tokens_file.exists():
             try:
                 saved = json.loads(tokens_file.read_text(encoding="utf-8"))
@@ -892,7 +989,7 @@ class SlackAdapter(BasePlatformAdapter):
                 pass
 
             # Reactions are useful lightweight acknowledgements in Slack, but
-            # Prostor does not currently need to route them into the agent loop.
+            # Hermes does not currently need to route them into the agent loop.
             # Ack the events explicitly so high-traffic channels do not fill
             # gateway.error.log with Slack Bolt "Unhandled request" warnings.
             @self._app.event("reaction_added")
@@ -915,18 +1012,17 @@ class SlackAdapter(BasePlatformAdapter):
             #
             # Every gateway command from COMMAND_REGISTRY is a native Slack
             # slash, matching Discord and Telegram's model (e.g. /btw, /stop,
-            # /model work directly without /prostor prefix). A single regex
+            # /model work directly without /hermes prefix). A single regex
             # matcher dispatches all of them to one handler so we don't need
             # N identical @app.command() decorators.
             #
             # The slash commands must ALSO be declared in the Slack app
-            # manifest (see `prostor slack manifest`). In Socket Mode, Slack
+            # manifest (see `hermes slack manifest`). In Socket Mode, Slack
             # routes the command event through the socket regardless of the
             # manifest's request URL, but it will not deliver an event for
             # a slash command the manifest doesn't declare.
+            from hermes_cli.commands import slack_native_slashes
             import re as _re
-
-            from prostor_cli.commands import slack_native_slashes
 
             _slash_names = [name for name, _d, _h in slack_native_slashes()]
             if _slash_names:
@@ -934,10 +1030,10 @@ class SlackAdapter(BasePlatformAdapter):
                     r"^/(?:" + "|".join(_re.escape(n) for n in _slash_names) + r")$"
                 )
             else:  # pragma: no cover - registry always non-empty
-                _slash_pattern = _re.compile(r"^/prostor$")
+                _slash_pattern = _re.compile(r"^/hermes$")
 
             @self._app.command(_slash_pattern)
-            async def handle_prostor_command(ack, command):
+            async def handle_hermes_command(ack, command):
                 slash = (command.get("command") or "").lstrip("/")
                 await ack(
                     response_type="ephemeral",
@@ -947,19 +1043,19 @@ class SlackAdapter(BasePlatformAdapter):
 
             # Register Block Kit action handlers for approval buttons
             for _action_id in (
-                "prostor_approve_once",
-                "prostor_approve_session",
-                "prostor_approve_always",
-                "prostor_deny",
+                "hermes_approve_once",
+                "hermes_approve_session",
+                "hermes_approve_always",
+                "hermes_deny",
             ):
                 self._app.action(_action_id)(self._handle_approval_action)
 
             # Register Block Kit action handlers for slash-confirm buttons
             # (generic three-option prompts; see tools/slash_confirm.py).
             for _action_id in (
-                "prostor_confirm_once",
-                "prostor_confirm_always",
-                "prostor_confirm_cancel",
+                "hermes_confirm_once",
+                "hermes_confirm_always",
+                "hermes_confirm_cancel",
             ):
                 self._app.action(_action_id)(self._handle_slash_confirm_action)
 
@@ -974,7 +1070,7 @@ class SlackAdapter(BasePlatformAdapter):
             # down the gateway: any exception inside the plugin handler is
             # caught and logged, and slack_bolt still sees a clean ack.
             try:
-                from prostor_cli.plugins import get_plugin_manager
+                from hermes_cli.plugins import get_plugin_manager
                 _plugin_handlers = get_plugin_manager().get_slack_action_handlers()
             except Exception as e:  # pragma: no cover - defensive
                 logger.warning(
@@ -1052,7 +1148,7 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         parent_chat_id: str,
         name: str,
-    ) -> str | None:
+    ) -> Optional[str]:
         """Create a Slack thread anchor for a session handoff.
 
         Slack threads are anchored to a parent message (``thread_ts``), not
@@ -1069,7 +1165,7 @@ class SlackAdapter(BasePlatformAdapter):
             if client is None:
                 return None
             seed_text = (
-                f":thread: Prostor handoff — *{(name or 'session').strip()[:80]}*"
+                f":thread: Hermes handoff — *{(name or 'session').strip()[:80]}*"
             )
             result = await client.chat_postMessage(
                 channel=parent_chat_id,
@@ -1131,8 +1227,8 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a message to a Slack channel or DM."""
         if not self._app:
@@ -1210,8 +1306,8 @@ class SlackAdapter(BasePlatformAdapter):
         chat_id: str,
         user_id: str,
         content: str,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a Slack ephemeral message visible only to one user."""
         if not self._app:
@@ -1321,7 +1417,7 @@ class SlackAdapter(BasePlatformAdapter):
         """Whether top-level Slack DMs get per-message session threads.
 
         Defaults to ``True`` so each visible DM reply thread is isolated as its
-        own Prostor session — matching the per-thread behavior channels already
+        own Hermes session — matching the per-thread behavior channels already
         have.  Set ``platforms.slack.extra.dm_top_level_threads_as_sessions``
         to ``false`` in config.yaml to revert to the legacy behavior where all
         top-level DMs share one continuous session.
@@ -1333,9 +1429,9 @@ class SlackAdapter(BasePlatformAdapter):
 
     def _resolve_thread_ts(
         self,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> str | None:
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
         """Resolve the correct thread_ts for a Slack API call.
 
         Prefers metadata thread_id (the thread parent's ts, set by the
@@ -1373,9 +1469,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Upload a local file to Slack."""
         if not self._app:
@@ -1414,8 +1510,8 @@ class SlackAdapter(BasePlatformAdapter):
     async def send_multiple_images(
         self,
         chat_id: str,
-        images: list[tuple[str, str]],
-        metadata: dict[str, Any] | None = None,
+        images: List[Tuple[str, str]],
+        metadata: Optional[Dict[str, Any]] = None,
         human_delay: float = 0.0,
     ) -> None:
         """Send a batch of images as a single Slack message with multiple file uploads.
@@ -1433,10 +1529,8 @@ class SlackAdapter(BasePlatformAdapter):
             return
 
         try:
-            from urllib.parse import unquote as _unquote
-
             import httpx as _httpx
-
+            from urllib.parse import unquote as _unquote
             from tools.url_safety import is_safe_url as _is_safe_url
         except Exception:
             await super().send_multiple_images(chat_id, images, metadata, human_delay)
@@ -1451,8 +1545,8 @@ class SlackAdapter(BasePlatformAdapter):
             if human_delay > 0 and chunk_idx > 0:
                 await asyncio.sleep(human_delay)
 
-            file_uploads: list[dict[str, Any]] = []
-            initial_comment_parts: list[str] = []
+            file_uploads: List[Dict[str, Any]] = []
+            initial_comment_parts: List[str] = []
             try:
                 async with _httpx.AsyncClient(
                     timeout=30.0, follow_redirects=True
@@ -1538,7 +1632,7 @@ class SlackAdapter(BasePlatformAdapter):
                 )
 
     def _record_uploaded_file_thread(
-        self, chat_id: str, thread_ts: str | None
+        self, chat_id: str, thread_ts: Optional[str]
     ) -> None:
         """Treat successful file uploads as bot participation in a thread."""
         if not thread_ts:
@@ -1785,9 +1879,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a local image file to Slack by uploading it."""
         try:
@@ -1815,9 +1909,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send an image to Slack by uploading the URL as a file."""
         if not self._app:
@@ -1882,9 +1976,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> SendResult:
         """Send an audio file to Slack."""
@@ -1909,9 +2003,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a video file to Slack."""
         if not self._app:
@@ -1967,10 +2061,10 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: str | None = None,
-        file_name: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        file_name: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a document/file attachment to Slack."""
         if not self._app:
@@ -2022,7 +2116,7 @@ class SlackAdapter(BasePlatformAdapter):
                 text = f"{caption}\n{text}"
             return await self.send(chat_id, text, reply_to=reply_to, metadata=metadata)
 
-    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Get information about a Slack channel."""
         if not self._app:
             return {"name": chat_id, "type": "unknown"}
@@ -2048,13 +2142,13 @@ class SlackAdapter(BasePlatformAdapter):
 
     def _assistant_thread_key(
         self, channel_id: str, thread_ts: str
-    ) -> tuple[str, str] | None:
+    ) -> Optional[Tuple[str, str]]:
         """Return a stable cache key for Slack assistant thread metadata."""
         if not channel_id or not thread_ts:
             return None
         return (str(channel_id), str(thread_ts))
 
-    def _extract_assistant_thread_metadata(self, event: dict) -> dict[str, str]:
+    def _extract_assistant_thread_metadata(self, event: dict) -> Dict[str, str]:
         """Extract Slack Assistant thread identity data from an event payload."""
         assistant_thread = event.get("assistant_thread") or {}
         context = assistant_thread.get("context") or event.get("context") or {}
@@ -2093,7 +2187,7 @@ class SlackAdapter(BasePlatformAdapter):
             "context_channel_id": str(context_channel_id) if context_channel_id else "",
         }
 
-    def _cache_assistant_thread_metadata(self, metadata: dict[str, str]) -> None:
+    def _cache_assistant_thread_metadata(self, metadata: Dict[str, str]) -> None:
         """Remember assistant thread identity data for later message events."""
         channel_id = metadata.get("channel_id", "")
         thread_ts = metadata.get("thread_ts", "")
@@ -2121,7 +2215,7 @@ class SlackAdapter(BasePlatformAdapter):
         event: dict,
         channel_id: str = "",
         thread_ts: str = "",
-    ) -> dict[str, str]:
+    ) -> Dict[str, str]:
         """Load cached assistant-thread metadata that matches the current event."""
         metadata = self._extract_assistant_thread_metadata(event)
         if channel_id and not metadata.get("channel_id"):
@@ -2140,7 +2234,7 @@ class SlackAdapter(BasePlatformAdapter):
             return merged
         return metadata
 
-    def _seed_assistant_thread_session(self, metadata: dict[str, str]) -> None:
+    def _seed_assistant_thread_session(self, metadata: Dict[str, str]) -> None:
         """Prime the session store so assistant threads get stable user scoping."""
         session_store = getattr(self, "_session_store", None)
         if not session_store:
@@ -2299,11 +2393,11 @@ class SlackAdapter(BasePlatformAdapter):
         # so casual messages like "!nice work" pass through unchanged.
         if original_text.startswith("!"):
             try:
-                from prostor_cli.commands import is_gateway_known_command
+                from hermes_cli.commands import is_gateway_known_command
 
                 first_token = original_text[1:].split(maxsplit=1)[0]
                 # Strip "@suffix" the same way get_command() does, so
-                # forms like ``!stop@prostor`` still resolve.
+                # forms like ``!stop@hermes`` still resolve.
                 cmd_name = first_token.split("@", 1)[0].lower()
                 if (
                     cmd_name
@@ -2485,7 +2579,10 @@ class SlackAdapter(BasePlatformAdapter):
         #   4. There's an existing session for this thread (survives restarts)
         bot_uid = self._team_bot_user_ids.get(team_id, self._bot_user_id)
         routing_text = original_text or ""
-        is_mentioned = bot_uid and f"<@{bot_uid}>" in routing_text
+        is_mentioned = bool(
+            (bot_uid and f"<@{bot_uid}>" in routing_text)
+            or self._slack_message_matches_mention_patterns(routing_text)
+        )
         event_thread_ts = event.get("thread_ts")
         is_thread_reply = bool(event_thread_ts and event_thread_ts != ts)
 
@@ -2564,7 +2661,7 @@ class SlackAdapter(BasePlatformAdapter):
         # Handle file attachments
         media_urls = []
         media_types = []
-        attachment_notices: list[str] = []
+        attachment_notices: List[str] = []
         files = event.get("files", [])
         for f in files:
             # Slack Connect channels return stub file objects with
@@ -2634,9 +2731,7 @@ class SlackAdapter(BasePlatformAdapter):
                         )
             elif mimetype.startswith("audio/") and url:
                 try:
-                    ext = "." + mimetype.split("/")[-1].split(";")[0]
-                    if ext not in {".ogg", ".mp3", ".wav", ".webm", ".m4a"}:
-                        ext = ".ogg"
+                    ext = _resolve_slack_audio_ext(f, mimetype)
                     cached = await self._download_slack_file(
                         url, ext, audio=True, team_id=team_id
                     )
@@ -2650,6 +2745,41 @@ class SlackAdapter(BasePlatformAdapter):
                     else:
                         logger.warning(
                             "[Slack] Failed to cache audio from %s: %s",
+                            url,
+                            e,
+                            exc_info=True,
+                        )
+            elif mimetype.startswith("video/") and url and _is_slack_voice_clip(f):
+                # Slack in-app voice clips are audio-only MP4 containers that
+                # Slack sometimes mislabels with a ``video/mp4`` mimetype.
+                # Cache them as audio and report an ``audio/*`` type so the
+                # gateway routes them to speech-to-text instead of video
+                # understanding. Without this, voice messages recorded in Slack
+                # never get transcribed.
+                try:
+                    ext = _resolve_slack_audio_ext(f, mimetype)
+                    cached = await self._download_slack_file(
+                        url, ext, audio=True, team_id=team_id
+                    )
+                    media_urls.append(cached)
+                    # Report a coherent audio mimetype matching the cached
+                    # extension so downstream STT routing recognizes it.
+                    media_types.append(
+                        _SLACK_EXT_TO_AUDIO_MIME.get(ext, "audio/mp4")
+                    )
+                    logger.debug(
+                        "[Slack] Cached voice clip (mislabeled %s) as audio: %s",
+                        mimetype,
+                        cached,
+                    )
+                except Exception as e:  # pragma: no cover - defensive logging
+                    detail = self._describe_slack_download_failure(e, file_obj=f)
+                    if detail:
+                        attachment_notices.append(detail)
+                        logger.warning("[Slack] %s", detail)
+                    else:
+                        logger.warning(
+                            "[Slack] Failed to cache voice clip from %s: %s",
                             url,
                             e,
                             exc_info=True,
@@ -2700,8 +2830,12 @@ class SlackAdapter(BasePlatformAdapter):
                         }
                         ext = mime_to_ext.get(mimetype, "")
 
-                    if ext not in SUPPORTED_DOCUMENT_TYPES:
-                        continue  # Skip unsupported file types silently
+                    # Any file type is accepted — authorization to message the
+                    # agent is the gate, not the file extension. Known types keep
+                    # their precise MIME; unknown types fall back to the source
+                    # mimetype or octet-stream so the agent reaches for terminal
+                    # tools.
+                    in_allowlist = ext in SUPPORTED_DOCUMENT_TYPES
 
                     # Check file size (Slack limit: 20 MB for bots)
                     file_size = f.get("size", 0)
@@ -2717,36 +2851,28 @@ class SlackAdapter(BasePlatformAdapter):
                         url, team_id=team_id
                     )
                     cached_path = cache_document_from_bytes(
-                        raw_bytes, original_filename or f"document{ext}"
+                        raw_bytes, original_filename or f"document{ext or '.bin'}"
                     )
-                    doc_mime = SUPPORTED_DOCUMENT_TYPES[ext]
+                    if in_allowlist:
+                        doc_mime = SUPPORTED_DOCUMENT_TYPES[ext]
+                    else:
+                        doc_mime = mimetype or "application/octet-stream"
                     media_urls.append(cached_path)
                     media_types.append(doc_mime)
-                    logger.debug("[Slack] Cached user document: %s", cached_path)
+                    logger.debug("[Slack] Cached user document: %s (%s)", cached_path, doc_mime)
 
                     # Inject small text-ish files directly into the prompt so
-                    # snippets like JSON/YAML/configs are actually visible to the agent.
+                    # snippets like JSON/YAML/configs are actually visible to the
+                    # agent. Gate on a text-like extension/MIME — NOT a blind
+                    # UTF-8 decode, since binary formats (PDF/zip/docx) can have
+                    # decodable ASCII headers. Binary files are surfaced as a
+                    # cached path only (run.py emits a path-pointing note).
                     MAX_TEXT_INJECT_BYTES = 100 * 1024
-                    TEXT_INJECT_EXTENSIONS = {
-                        ".md",
-                        ".txt",
-                        ".csv",
-                        ".log",
-                        ".json",
-                        ".xml",
-                        ".yaml",
-                        ".yml",
-                        ".toml",
-                        ".ini",
-                        ".cfg",
-                    }
-                    if (
-                        ext in TEXT_INJECT_EXTENSIONS
-                        and len(raw_bytes) <= MAX_TEXT_INJECT_BYTES
-                    ):
+                    _is_text = ext in _TEXT_INJECT_EXTENSIONS or (mimetype or "").startswith("text/")
+                    if _is_text and len(raw_bytes) <= MAX_TEXT_INJECT_BYTES:
                         try:
                             text_content = raw_bytes.decode("utf-8")
-                            display_name = original_filename or f"document{ext}"
+                            display_name = original_filename or f"document{ext or '.txt'}"
                             display_name = re.sub(r"[^\w.\- ]", "_", display_name)
                             injection = f"[Content of {display_name}]:\n{text_content}"
                             if text:
@@ -2865,7 +2991,7 @@ class SlackAdapter(BasePlatformAdapter):
         command: str,
         session_key: str,
         description: str = "dangerous command",
-        metadata: dict[str, Any] | None = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a Block Kit approval prompt with interactive buttons.
 
@@ -2905,33 +3031,33 @@ class SlackAdapter(BasePlatformAdapter):
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Allow Once"},
                             "style": "primary",
-                            "action_id": "prostor_approve_once",
+                            "action_id": "hermes_approve_once",
                             "value": session_key,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Allow Session"},
-                            "action_id": "prostor_approve_session",
+                            "action_id": "hermes_approve_session",
                             "value": session_key,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Always Allow"},
-                            "action_id": "prostor_approve_always",
+                            "action_id": "hermes_approve_always",
                             "value": session_key,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Deny"},
                             "style": "danger",
-                            "action_id": "prostor_deny",
+                            "action_id": "hermes_deny",
                             "value": session_key,
                         },
                     ],
                 },
             ]
 
-            kwargs: dict[str, Any] = {
+            kwargs: Dict[str, Any] = {
                 "channel": chat_id,
                 "text": f"⚠️ Command approval required: {cmd_preview[:100]}",
                 "blocks": blocks,
@@ -2956,7 +3082,7 @@ class SlackAdapter(BasePlatformAdapter):
         message: str,
         session_key: str,
         confirm_id: str,
-        metadata: dict[str, Any] | None = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a Block Kit three-option slash-command confirmation prompt."""
         if not self._app:
@@ -2989,27 +3115,27 @@ class SlackAdapter(BasePlatformAdapter):
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Approve Once"},
                             "style": "primary",
-                            "action_id": "prostor_confirm_once",
+                            "action_id": "hermes_confirm_once",
                             "value": value,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Always Approve"},
-                            "action_id": "prostor_confirm_always",
+                            "action_id": "hermes_confirm_always",
                             "value": value,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Cancel"},
                             "style": "danger",
-                            "action_id": "prostor_confirm_cancel",
+                            "action_id": "hermes_confirm_cancel",
                             "value": value,
                         },
                     ],
                 },
             ]
 
-            kwargs: dict[str, Any] = {
+            kwargs: Dict[str, Any] = {
                 "channel": chat_id,
                 "text": f"{title or 'Confirm'}: {body[:100]}",
                 "blocks": blocks,
@@ -3030,7 +3156,7 @@ class SlackAdapter(BasePlatformAdapter):
         user_id: str,
         *,
         channel_id: str = "",
-        user_name: str | None = None,
+        user_name: Optional[str] = None,
     ) -> bool:
         """Return whether a Slack interactive caller may perform gated actions."""
         normalized_user_id = str(user_id or "").strip()
@@ -3115,9 +3241,9 @@ class SlackAdapter(BasePlatformAdapter):
         session_key, confirm_id = value.split("|", 1)
 
         choice_map = {
-            "prostor_confirm_once": "once",
-            "prostor_confirm_always": "always",
-            "prostor_confirm_cancel": "cancel",
+            "hermes_confirm_once": "once",
+            "hermes_confirm_always": "always",
+            "hermes_confirm_cancel": "cancel",
         }
         choice = choice_map.get(action_id, "cancel")
 
@@ -3170,7 +3296,7 @@ class SlackAdapter(BasePlatformAdapter):
                 session_key, confirm_id, choice
             )
             if result_text:
-                post_kwargs: dict[str, Any] = {
+                post_kwargs: Dict[str, Any] = {
                     "channel": channel_id,
                     "text": result_text,
                 }
@@ -3231,10 +3357,10 @@ class SlackAdapter(BasePlatformAdapter):
 
         # Map action_id to approval choice
         choice_map = {
-            "prostor_approve_once": "once",
-            "prostor_approve_session": "session",
-            "prostor_approve_always": "always",
-            "prostor_deny": "deny",
+            "hermes_approve_once": "once",
+            "hermes_approve_session": "session",
+            "hermes_approve_always": "always",
+            "hermes_deny": "deny",
         }
         choice = choice_map.get(action_id, "deny")
 
@@ -3497,9 +3623,9 @@ class SlackAdapter(BasePlatformAdapter):
         Discord and Telegram model. The slash name itself is the command;
         any text after it is the argument list.
 
-        The legacy ``/prostor <subcommand> [args]`` form is preserved for
+        The legacy ``/hermes <subcommand> [args]`` form is preserved for
         backward compatibility with older workspace manifests and for users
-        who want a single entry point for free-form questions (``/prostor
+        who want a single entry point for free-form questions (``/hermes
         what's the weather`` — non-slash text is treated as a regular
         message).
         """
@@ -3513,16 +3639,16 @@ class SlackAdapter(BasePlatformAdapter):
         if team_id and channel_id:
             self._channel_team[channel_id] = team_id
 
-        if slash_name in {"prostor", ""}:
-            # Legacy /prostor <subcommand> [args] routing + free-form questions.
+        if slash_name in {"hermes", ""}:
+            # Legacy /hermes <subcommand> [args] routing + free-form questions.
             # Empty slash_name falls into this branch for backward compat
             # with any caller that didn't populate command["command"].
-            from prostor_cli.commands import slack_subcommand_map
+            from hermes_cli.commands import slack_subcommand_map
 
             subcommand_map = slack_subcommand_map()
             subcommand_map["compact"] = "/compress"
             # Guard against whitespace-only text where ``text`` is truthy but
-            # ``text.split()`` returns ``[]`` (e.g. user sends ``/prostor   ``).
+            # ``text.split()`` returns ``[]`` (e.g. user sends ``/hermes   ``).
             parts = text.split() if text else []
             first_word = parts[0] if parts else ""
             if first_word in subcommand_map:
@@ -3563,9 +3689,9 @@ class SlackAdapter(BasePlatformAdapter):
 
         # Stash the Slack response_url so the first reply for this
         # channel+user can be routed ephemerally (replaces the initial
-        # "Running /cmd…" ack shown by handle_prostor_command).
+        # "Running /cmd…" ack shown by handle_hermes_command).
         # Only stash for COMMAND events (text starts with "/") — free-form
-        # questions via "/prostor <question>" must produce public replies so
+        # questions via "/hermes <question>" must produce public replies so
         # the whole channel can see the agent's answer.
         response_url = command.get("response_url", "")
         if response_url and user_id and channel_id and text.startswith("/"):
@@ -3816,6 +3942,60 @@ class SlackAdapter(BasePlatformAdapter):
             return {part.strip() for part in raw.split(",") if part.strip()}
         return set()
 
+    def _slack_mention_patterns(self) -> List["re.Pattern"]:
+        """Compile optional regex wake-word patterns for channel triggers.
+
+        Parity with the other adapters (Telegram, DingTalk, Mattermost,
+        WhatsApp, BlueBubbles, Photon): when ``require_mention`` is on, a
+        channel message matching one of these patterns triggers the bot even
+        without a literal ``<@BOTUID>`` mention. Reads ``slack.mention_patterns``
+        (a list or single string) or ``SLACK_MENTION_PATTERNS`` (a JSON list, or
+        newline/comma-separated values). Compiled patterns are cached on the
+        instance. Previously this documented field was silently dropped.
+        """
+        cached = getattr(self, "_compiled_mention_patterns", None)
+        if cached is not None:
+            return cached
+
+        patterns = self.config.extra.get("mention_patterns") if self.config.extra else None
+        if patterns is None:
+            raw = os.getenv("SLACK_MENTION_PATTERNS", "").strip()
+            if raw:
+                try:
+                    import json as _json
+                    patterns = _json.loads(raw)
+                except Exception:
+                    patterns = [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
+
+        if isinstance(patterns, str):
+            patterns = [patterns]
+
+        compiled: List["re.Pattern"] = []
+        if isinstance(patterns, list):
+            for pat in patterns:
+                if not isinstance(pat, str) or not pat.strip():
+                    continue
+                try:
+                    compiled.append(re.compile(pat, re.IGNORECASE))
+                except re.error as exc:
+                    logger.warning("[Slack] Invalid mention pattern %r: %s", pat, exc)
+        elif patterns is not None:
+            logger.warning(
+                "[Slack] mention_patterns must be a list or string; got %s",
+                type(patterns).__name__,
+            )
+
+        if compiled:
+            logger.info("[Slack] Loaded %d mention pattern(s)", len(compiled))
+        self._compiled_mention_patterns = compiled
+        return compiled
+
+    def _slack_message_matches_mention_patterns(self, text: str) -> bool:
+        """Return True when ``text`` matches a configured wake-word pattern."""
+        if not text:
+            return False
+        return any(pattern.search(text) for pattern in self._slack_mention_patterns())
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # Plugin migration glue (#41112 / #3823)
@@ -3828,7 +4008,7 @@ class SlackAdapter(BasePlatformAdapter):
 # the per-platform core touchpoints (the ``Platform.SLACK`` elif in
 # ``gateway/run.py``, the ``slack_cfg`` YAML→env block in ``gateway/config.py``,
 # the ``_setup_slack`` wizard + ``_PLATFORMS["slack"]`` static dict in
-# ``prostor_cli/{setup,gateway}.py``, and the ``_send_slack`` dispatch in
+# ``hermes_cli/{setup,gateway}.py``, and the ``_send_slack`` dispatch in
 # ``tools/send_message_tool.py``).
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -3874,7 +4054,7 @@ async def _standalone_send(
         return {"error": "aiohttp not installed. Run: pip install aiohttp"}
 
     try:
-        from gateway.platforms.base import proxy_kwargs_for_aiohttp, resolve_proxy_url
+        from gateway.platforms.base import resolve_proxy_url, proxy_kwargs_for_aiohttp
 
         _proxy = resolve_proxy_url()
         _sess_kw, _req_kw = proxy_kwargs_for_aiohttp(_proxy)
@@ -3911,34 +4091,32 @@ def interactive_setup() -> None:
     Mirrors Discord's ``interactive_setup`` shape: lazy-imports CLI helpers so
     the plugin's import surface stays small, generates and writes the Slack app
     manifest, prompts for the bot + app tokens, captures an allowlist, and
-    offers to set a home channel. Replaces ``prostor_cli/setup.py::_setup_slack``.
+    offers to set a home channel. Replaces ``hermes_cli/setup.py::_setup_slack``.
     """
     from pathlib import Path
-
-    from prostor_cli.cli_output import (
+    from hermes_cli.config import get_env_value, save_env_value
+    from hermes_cli.cli_output import (
+        prompt,
+        prompt_yes_no,
         print_header,
         print_info,
         print_success,
         print_warning,
-        prompt,
-        prompt_yes_no,
     )
-    from prostor_cli.config import get_env_value, save_env_value
 
     def _write_slack_manifest_and_instruct() -> None:
-        """Generate the Slack manifest, write it under PROSTOR_HOME, and print
+        """Generate the Slack manifest, write it under HERMES_HOME, and print
         paste-into-Slack instructions. Failures are non-fatal."""
         try:
+            from hermes_cli.slack_cli import _build_full_manifest
+            from hermes_constants import get_hermes_home
             import json as _json
 
-            from prostor_cli.slack_cli import _build_full_manifest
-            from prostor_constants import get_prostor_home
-
             manifest = _build_full_manifest(
-                bot_name="Prostor",
-                bot_description="Your Prostor agent on Slack",
+                bot_name="Hermes",
+                bot_description="Your Hermes agent on Slack",
             )
-            target = Path(get_prostor_home()) / "slack-manifest.json"
+            target = Path(get_hermes_home()) / "slack-manifest.json"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(
                 _json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
@@ -3951,8 +4129,8 @@ def interactive_setup() -> None:
                 "reinstall if scopes or slash commands changed."
             )
             print_info(
-                "   Re-run `prostor slack manifest --write` anytime to refresh after "
-                "Prostor adds new commands."
+                "   Re-run `hermes slack manifest --write` anytime to refresh after "
+                "Hermes adds new commands."
             )
         except Exception as e:
             print_warning(f"Could not write Slack manifest: {e}")
@@ -3966,7 +4144,7 @@ def interactive_setup() -> None:
             # new commands (e.g. /btw, /stop, ...) get registered in Slack.
             if prompt_yes_no(
                 "Regenerate the Slack app manifest with the latest command "
-                "list? (recommended after `prostor update`)",
+                "list? (recommended after `hermes update`)",
                 True,
             ):
                 _write_slack_manifest_and_instruct()
@@ -3980,7 +4158,7 @@ def interactive_setup() -> None:
     print_info("   3. Install to Workspace: Settings → Install App")
     print_info("   4. After installing, invite the bot to channels: /invite @YourBot")
     print()
-    print_info("   Full guide: https://github.com/maksim9510/Prostor/docs/user-guide/messaging/slack/")
+    print_info("   Full guide: https://hermes-agent.nousresearch.com/docs/user-guide/messaging/slack/")
     print()
 
     # Generate and write manifest up-front so the user can paste it into
@@ -4013,7 +4191,7 @@ def interactive_setup() -> None:
         print_info("   Set SLACK_ALLOW_ALL_USERS=true or GATEWAY_ALLOW_ALL_USERS=true only if you intentionally want open workspace access.")
 
     print()
-    print_info("📬 Home Channel: where Prostor delivers cron job results,")
+    print_info("📬 Home Channel: where Hermes delivers cron job results,")
     print_info("   cross-platform messages, and notifications.")
     print_info("   To get a channel ID: open the channel in Slack, then right-click")
     print_info("   the channel name → Copy link — the ID starts with C (e.g. C01ABC2DE3F).")
@@ -4063,12 +4241,12 @@ def _apply_yaml_config(yaml_cfg: dict, slack_cfg: dict) -> dict | None:
 def _is_connected(config) -> bool:
     """Slack is considered connected when SLACK_BOT_TOKEN is set.
 
-    Looks up via ``prostor_cli.gateway.get_env_value`` at call time (not via the
+    Looks up via ``hermes_cli.gateway.get_env_value`` at call time (not via the
     plugin's own bound import) so tests that patch ``gateway_mod.get_env_value``
     can suppress ambient ``SLACK_BOT_TOKEN`` env vars. Matches what the legacy
     ``Platform.SLACK`` connected-check did before this migration.
     """
-    import prostor_cli.gateway as gateway_mod
+    import hermes_cli.gateway as gateway_mod
 
     return bool((gateway_mod.get_env_value("SLACK_BOT_TOKEN") or "").strip())
 
@@ -4079,7 +4257,7 @@ def _build_adapter(config):
 
 
 def register(ctx) -> None:
-    """Plugin entry point — called by the Prostor plugin system."""
+    """Plugin entry point — called by the Hermes plugin system."""
     ctx.register_platform(
         name="slack",
         label="Slack",
@@ -4087,9 +4265,9 @@ def register(ctx) -> None:
         check_fn=check_slack_requirements,
         is_connected=_is_connected,
         required_env=["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"],
-        install_hint="pip install 'prostor-agent[slack]'",
-        # Interactive setup wizard — replaces prostor_cli/setup.py::_setup_slack
-        # and the static _PLATFORMS["slack"] dict in prostor_cli/gateway.py.
+        install_hint="pip install 'hermes-agent[slack]'",
+        # Interactive setup wizard — replaces hermes_cli/setup.py::_setup_slack
+        # and the static _PLATFORMS["slack"] dict in hermes_cli/gateway.py.
         setup_fn=interactive_setup,
         # YAML→env config bridge — owns the translation of config.yaml slack:
         # keys (require_mention, strict_mention, allow_bots,

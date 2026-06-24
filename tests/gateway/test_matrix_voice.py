@@ -6,9 +6,9 @@ import os
 import tempfile
 import types
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Try importing mautrix; skip entire file if not available.
 try:
@@ -20,15 +20,24 @@ except ImportError:
 
 from gateway.platforms.base import MessageType
 
+
 # ---------------------------------------------------------------------------
 # Adapter helpers
 # ---------------------------------------------------------------------------
 
-
 def _make_adapter():
-    """Create a MatrixAdapter with mocked config."""
-    from gateway.config import PlatformConfig
+    """Create a MatrixAdapter with mocked config.
+
+    Pins ``require_mention: False`` so these media-detection tests are NOT
+    gated by the mention requirement. The adapter defaults require_mention to
+    True (falling back to the MATRIX_REQUIRE_MENTION env var), so without this
+    a group-room audio event with no @mention is dropped by
+    _resolve_message_context before dispatch — making the tests pass or fail
+    depending on leaked env state from other tests in the same shard. These
+    tests exercise voice/audio TYPE detection, not mention gating.
+    """
     from plugins.platforms.matrix.adapter import MatrixAdapter
+    from gateway.config import PlatformConfig
 
     config = PlatformConfig(
         enabled=True,
@@ -36,6 +45,7 @@ def _make_adapter():
         extra={
             "homeserver": "https://matrix.example.org",
             "user_id": "@bot:example.org",
+            "require_mention": False,
         },
     )
     adapter = MatrixAdapter(config)

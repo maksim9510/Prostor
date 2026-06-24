@@ -57,12 +57,13 @@ import mimetypes
 import os
 import re
 import time
+from urllib.parse import urlsplit, urlunsplit
 from dataclasses import dataclass, field
+
 from html import escape as _html_escape
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from typing import Any, Dict, Optional, Set
 
 try:
     from mautrix.types import (
@@ -125,8 +126,8 @@ from gateway.platforms.base import (
     MessageType,
     ProcessingOutcome,
     SendResult,
-    proxy_kwargs_for_aiohttp,
     resolve_proxy_url,
+    proxy_kwargs_for_aiohttp,
 )
 from gateway.platforms.helpers import ThreadParticipationTracker
 
@@ -139,10 +140,10 @@ _MATRIX_BANG_COMMAND_RE = re.compile(
 
 
 def _resolve_matrix_bang_command(name: str) -> str | None:
-    """Resolve a ``!command`` token to a dispatchable Prostor command token.
+    """Resolve a ``!command`` token to a dispatchable Hermes command token.
 
     Matrix clients often reserve leading ``/`` for local client commands.
-    Prostor accepts ``!command`` as a Matrix-friendly alias, but only for
+    Hermes accepts ``!command`` as a Matrix-friendly alias, but only for
     commands that the gateway can actually dispatch so ordinary exclamations
     remain normal chat text.
 
@@ -164,7 +165,7 @@ def _resolve_matrix_bang_command(name: str) -> str | None:
         candidates.append(hyphenated)
 
     try:
-        from prostor_cli.commands import is_gateway_known_command
+        from hermes_cli.commands import is_gateway_known_command
 
         for candidate in candidates:
             if is_gateway_known_command(candidate):
@@ -190,7 +191,7 @@ def _resolve_matrix_bang_command(name: str) -> str | None:
 
 
 def _normalize_matrix_bang_command(text: str) -> str:
-    """Convert Matrix ``!command`` aliases to normal Prostor ``/command`` text."""
+    """Convert Matrix ``!command`` aliases to normal Hermes ``/command`` text."""
     if not text or not text.startswith("!"):
         return text
     match = _MATRIX_BANG_COMMAND_RE.match(text)
@@ -340,10 +341,10 @@ class _MatrixModelPickerPrompt:
 MAX_MESSAGE_LENGTH = 4000
 
 # Store directory for E2EE keys and sync state.
-# Uses get_prostor_home() so each profile gets its own Matrix store.
-from prostor_constants import get_prostor_dir as _get_prostor_dir
+# Uses get_hermes_home() so each profile gets its own Matrix store.
+from hermes_constants import get_hermes_dir as _get_hermes_dir
 
-_STORE_DIR = _get_prostor_dir("platforms/matrix/store", "matrix/store")
+_STORE_DIR = _get_hermes_dir("platforms/matrix/store", "matrix/store")
 _CRYPTO_DB_PATH = _STORE_DIR / "crypto.db"
 
 # Grace period: ignore messages older than this many seconds before startup.
@@ -384,7 +385,7 @@ _MATRIX_MODEL_PICKER_REACTIONS = (
     "\U0001f51f",
 )
 
-_MATRIX_CAPABILITIES: dict[str, str] = {
+_MATRIX_CAPABILITIES: Dict[str, str] = {
     "text": "yes",
     "threads": "yes",
     "reactions": "yes",
@@ -401,7 +402,7 @@ _MATRIX_CAPABILITIES: dict[str, str] = {
 }
 
 
-def get_matrix_capabilities() -> dict[str, str]:
+def get_matrix_capabilities() -> Dict[str, str]:
     """Return Matrix gateway capabilities for docs and release checks."""
     return dict(_MATRIX_CAPABILITIES)
 
@@ -497,10 +498,10 @@ def _check_e2ee_deps() -> bool:
     ``No module named 'asyncpg'`` (#31116).
     """
     try:
-        import aiosqlite  # noqa: F401
-        import asyncpg  # noqa: F401
         from mautrix.crypto import OlmMachine  # noqa: F401
         from mautrix.crypto.store.asyncpg import PgCryptoStore  # noqa: F401
+        import asyncpg  # noqa: F401
+        import aiosqlite  # noqa: F401
 
         return True
     except (ImportError, AttributeError):
@@ -517,7 +518,7 @@ def _normalize_e2ee_mode(value: Any) -> str:
     return "off"
 
 
-def _resolve_e2ee_mode(extra: dict[str, Any] | None = None) -> str:
+def _resolve_e2ee_mode(extra: Optional[Dict[str, Any]] = None) -> str:
     """Resolve E2EE mode with MATRIX_ENCRYPTION backwards compatibility."""
     extra = extra or {}
     explicit = extra.get("e2ee_mode") or os.getenv("MATRIX_E2EE_MODE", "")
@@ -538,7 +539,7 @@ def _redact_matrix_value(value: Any) -> str:
     return "***"
 
 
-def _write_matrix_recovery_key_output_file(recovery_key: str) -> Path | None:
+def _write_matrix_recovery_key_output_file(recovery_key: str) -> Optional[Path]:
     """Write a generated Matrix recovery key to an operator-chosen file.
 
     The file is created with mode 0600 and never overwritten. Returns the path
@@ -564,7 +565,7 @@ def _write_matrix_recovery_key_output_file(recovery_key: str) -> Path | None:
     return path
 
 
-def _get_matrix_recovery_key_output_target() -> tuple[Path | None, str]:
+def _get_matrix_recovery_key_output_target() -> tuple[Optional[Path], str]:
     """Return a usable one-time recovery-key output path, or a redacted reason."""
     output_file = os.getenv("MATRIX_RECOVERY_KEY_OUTPUT_FILE", "").strip()
     if not output_file:
@@ -687,7 +688,7 @@ def check_matrix_requirements() -> bool:
     # lookups) and correctly handles ``mautrix[encryption]`` by stripping
     # the extras marker before checking the bare package.
     try:
-        from tools.lazy_deps import ensure_and_bind, feature_missing
+        from tools.lazy_deps import feature_missing, ensure_and_bind
         missing = feature_missing("platform.matrix")
     except Exception as exc:  # pragma: no cover — defensive
         logger.debug("Matrix: lazy_deps lookup failed: %s", exc)
@@ -697,16 +698,9 @@ def check_matrix_requirements() -> bool:
     if missing or ensure_and_bind is None:
         def _import():
             from mautrix.types import (
-                ContentURI,
-                EventID,
-                EventType,
-                PaginationDirection,
-                PresenceState,
-                RoomCreatePreset,
-                RoomID,
-                SyncToken,
-                TrustState,
-                UserID,
+                ContentURI, EventID, EventType, PaginationDirection,
+                PresenceState, RoomCreatePreset, RoomID, SyncToken,
+                TrustState, UserID,
             )
             return {
                 "ContentURI": ContentURI,
@@ -781,9 +775,10 @@ class MatrixAdapter(BasePlatformAdapter):
     """Gateway adapter for Matrix (any homeserver)."""
 
     supports_code_blocks = True  # Matrix renders fenced code blocks (HTML/markdown)
+    splits_long_messages = True  # send() chunks via truncate_message(MAX_MESSAGE_LENGTH)
 
     # Matrix clients commonly reserve typed "/" for client-local commands;
-    # the adapter accepts "!command" as the alias that always reaches Prostor
+    # the adapter accepts "!command" as the alias that always reaches Hermes
     # (see _normalize_matrix_bang_command), so instruction text shows "!".
     typed_command_prefix = "!"
 
@@ -813,7 +808,7 @@ class MatrixAdapter(BasePlatformAdapter):
 
         self._client: Any = None  # mautrix.client.Client
         self._crypto_db: Any = None  # mautrix.util.async_db.Database
-        self._sync_task: asyncio.Task | None = None
+        self._sync_task: Optional[asyncio.Task] = None
         self._closing = False
         self._startup_ts: float = 0.0
         # Clock-skew detection: count grace-check drops that happen well
@@ -830,9 +825,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self._last_sync_ts: float = 0.0
 
         # Cache: room_id → bool (is DM)
-        self._dm_rooms: dict[str, bool] = {}
-        self._room_identities: dict[str, MatrixRoomIdentity] = {}
-        self._room_identity_cached_at: dict[str, float] = {}
+        self._dm_rooms: Dict[str, bool] = {}
+        self._room_identities: Dict[str, MatrixRoomIdentity] = {}
+        self._room_identity_cached_at: Dict[str, float] = {}
         try:
             self._room_identity_ttl_seconds = float(
                 os.getenv("MATRIX_ROOM_IDENTITY_TTL_SECONDS", "60")
@@ -841,7 +836,7 @@ class MatrixAdapter(BasePlatformAdapter):
             self._room_identity_ttl_seconds = 60.0
         self._room_identity_cache_max = 256
         # Set of room IDs we've joined
-        self._joined_rooms: set[str] = set()
+        self._joined_rooms: Set[str] = set()
         # Event deduplication (bounded deque keeps newest entries)
         from collections import deque
 
@@ -861,11 +856,11 @@ class MatrixAdapter(BasePlatformAdapter):
         if free_rooms_raw is None:
             free_rooms_raw = os.getenv("MATRIX_FREE_RESPONSE_ROOMS", "")
         if isinstance(free_rooms_raw, list):
-            self._free_rooms: set[str] = {
+            self._free_rooms: Set[str] = {
                 str(r).strip() for r in free_rooms_raw if str(r).strip()
             }
         else:
-            self._free_rooms: set[str] = {
+            self._free_rooms: Set[str] = {
                 r.strip() for r in str(free_rooms_raw).split(",") if r.strip()
             }
         # If non-empty, bot ONLY responds in these rooms (whitelist); DMs exempt.
@@ -873,11 +868,11 @@ class MatrixAdapter(BasePlatformAdapter):
         if allowed_rooms_raw is None:
             allowed_rooms_raw = os.getenv("MATRIX_ALLOWED_ROOMS", "")
         if isinstance(allowed_rooms_raw, list):
-            self._allowed_rooms: set[str] = {
+            self._allowed_rooms: Set[str] = {
                 str(r).strip() for r in allowed_rooms_raw if str(r).strip()
             }
         else:
-            self._allowed_rooms: set[str] = {
+            self._allowed_rooms: Set[str] = {
                 r.strip() for r in str(allowed_rooms_raw).split(",") if r.strip()
             }
         self._allow_room_mentions: bool = os.getenv(
@@ -912,7 +907,7 @@ class MatrixAdapter(BasePlatformAdapter):
         # errors in some clients.  5s is empirically safe; not user-tunable —
         # if that changes, add a config.yaml entry rather than an env var.
         self._reaction_redaction_delay_seconds = 5.0
-        self._reaction_redaction_tasks: set[asyncio.Task] = set()
+        self._reaction_redaction_tasks: Set[asyncio.Task] = set()
 
         # Proxy support — resolve once at init, reuse for all HTTP traffic.
         self._proxy_url: str | None = resolve_proxy_url(platform_env_var="MATRIX_PROXY")
@@ -926,24 +921,26 @@ class MatrixAdapter(BasePlatformAdapter):
         # Text batching: merge rapid successive messages (Telegram-style).
         # Matrix clients split long messages around 4000 chars.
         self._text_batch_delay_seconds = float(
-            os.getenv("PROSTOR_MATRIX_TEXT_BATCH_DELAY_SECONDS", "0.6")
+            os.getenv("HERMES_MATRIX_TEXT_BATCH_DELAY_SECONDS", "0.6")
         )
         self._text_batch_split_delay_seconds = float(
-            os.getenv("PROSTOR_MATRIX_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0")
+            os.getenv("HERMES_MATRIX_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0")
         )
-        self._pending_text_batches: dict[str, MessageEvent] = {}
-        self._pending_text_batch_tasks: dict[str, asyncio.Task] = {}
+        self._pending_text_batches: Dict[str, MessageEvent] = {}
+        self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
 
         # Matrix reaction-based dangerous command approvals.
         self._approval_reaction_map = {
             "✅": "once",
             "♾️": "always",
             "♾": "always",
+            "\u267e\ufe0f": "always",
+            "\u267e": "always",
             "❌": "deny",
             "❎": "deny",
         }
-        self._approval_prompts_by_event: dict[str, _MatrixApprovalPrompt] = {}
-        self._approval_prompt_by_session: dict[str, str] = {}
+        self._approval_prompts_by_event: Dict[str, _MatrixApprovalPrompt] = {}
+        self._approval_prompt_by_session: Dict[str, str] = {}
         self._approval_require_sender: bool = os.getenv(
             "MATRIX_APPROVAL_REQUIRE_SENDER", "true"
         ).lower() in ("true", "1", "yes")
@@ -953,12 +950,12 @@ class MatrixAdapter(BasePlatformAdapter):
             )
         except ValueError:
             self._approval_timeout_seconds = 300
-        self._model_picker_prompts_by_event: dict[str, _MatrixModelPickerPrompt] = {}
+        self._model_picker_prompts_by_event: Dict[str, _MatrixModelPickerPrompt] = {}
         allowed_users_raw = os.getenv("MATRIX_ALLOWED_USERS", "")
-        self._allowed_user_ids: set[str] = {
+        self._allowed_user_ids: Set[str] = {
             u.strip() for u in allowed_users_raw.split(",") if u.strip()
         }
-        self._allowed_room_ids: set[str] = set(self._allowed_rooms)
+        self._allowed_room_ids: Set[str] = set(self._allowed_rooms)
         ignore_patterns_raw = os.getenv("MATRIX_IGNORE_USER_PATTERNS", "")
         self._ignored_user_patterns: list[re.Pattern[str]] = []
         for pattern in (p.strip() for p in ignore_patterns_raw.split(",") if p.strip()):
@@ -1029,7 +1026,7 @@ class MatrixAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_server_ed25519(device_keys_obj: Any) -> str | None:
+    def _extract_server_ed25519(device_keys_obj: Any) -> Optional[str]:
         """Extract the ed25519 identity key from a DeviceKeys object."""
         for kid, kval in (getattr(device_keys_obj, "keys", {}) or {}).items():
             if str(kid).startswith("ed25519:"):
@@ -1208,7 +1205,7 @@ class MatrixAdapter(BasePlatformAdapter):
                 resp = await client.login(
                     identifier=self._user_id,
                     password=self._password,
-                    device_name="Prostor Agent",
+                    device_name="Hermes Agent",
                     device_id=self._device_id or None,
                 )
                 if resp and hasattr(resp, "device_id"):
@@ -1286,7 +1283,7 @@ class MatrixAdapter(BasePlatformAdapter):
                     await crypto_db.start()
                     self._crypto_db = crypto_db
 
-                    _acct_id = self._user_id or "prostor"
+                    _acct_id = self._user_id or "hermes"
                     _pickle_key = f"{_acct_id}:{self._device_id or 'default'}"
                     crypto_store = PgCryptoStore(
                         account_id=_acct_id,
@@ -1510,8 +1507,8 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a message to a Matrix room."""
 
@@ -1522,7 +1519,7 @@ class MatrixAdapter(BasePlatformAdapter):
         chunks = self.truncate_message(formatted, MAX_MESSAGE_LENGTH)
 
         last_event_id = None
-        for _i, chunk in enumerate(chunks):
+        for i, chunk in enumerate(chunks):
             msg_content = self._build_text_message_content(chunk)
 
             self._apply_relation_metadata(msg_content, reply_to=reply_to, metadata=metadata)
@@ -1570,13 +1567,13 @@ class MatrixAdapter(BasePlatformAdapter):
 
         return SendResult(success=True, message_id=last_event_id)
 
-    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Return room name and type (dm/group)."""
         identity = await self._resolve_room_identity(chat_id)
         chat_type = "dm" if identity.chat_type == "dm" else "group"
         return {"name": identity.display_name, "type": chat_type}
 
-    def get_diagnostics(self) -> dict[str, Any]:
+    def get_diagnostics(self) -> Dict[str, Any]:
         """Return redacted Matrix readiness/status diagnostics."""
         now = time.time()
         token_present = bool(self._access_token)
@@ -1628,7 +1625,7 @@ class MatrixAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     async def send_typing(
-        self, chat_id: str, metadata: dict[str, Any] | None = None
+        self, chat_id: str, metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """Send a typing indicator."""
         if self._client:
@@ -1645,6 +1642,7 @@ class MatrixAdapter(BasePlatformAdapter):
             except Exception:
                 pass
 
+
     async def edit_message(
         self, chat_id: str, message_id: str, content: str, *, finalize: bool = False
     ) -> SendResult:
@@ -1652,7 +1650,7 @@ class MatrixAdapter(BasePlatformAdapter):
 
         formatted = self.format_message(content)
         new_content = self._build_text_message_content(formatted)
-        msg_content: dict[str, Any] = {
+        msg_content: Dict[str, Any] = {
             "msgtype": "m.text",
             "body": f"* {formatted}",
             "m.new_content": new_content,
@@ -1681,9 +1679,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Download an image URL and upload it to Matrix."""
         from tools.url_safety import is_safe_url
@@ -1813,9 +1811,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Upload a local image file to Matrix."""
         return await self._send_local_file(
@@ -1826,7 +1824,7 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         images: list[tuple[str, str]],
-        metadata: dict[str, Any] | None = None,
+        metadata: Optional[Dict[str, Any]] = None,
         human_delay: float = 0.0,
     ) -> None:
         """Send multiple Matrix images as one ordered logical batch."""
@@ -1862,10 +1860,10 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: str | None = None,
-        file_name: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        file_name: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Upload a local file as a document."""
         return await self._send_local_file(
@@ -1876,9 +1874,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Upload an audio file as a voice message (MSC3245 native voice)."""
         return await self._send_local_file(
@@ -1895,9 +1893,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Upload a video file."""
         return await self._send_local_file(
@@ -1910,7 +1908,7 @@ class MatrixAdapter(BasePlatformAdapter):
         command: str,
         session_key: str,
         description: str = "dangerous command",
-        metadata: dict | None = None,
+        metadata: Optional[dict] = None,
     ) -> SendResult:
         """Send a reaction-based exec approval prompt for Matrix."""
         if not self._client:
@@ -1965,7 +1963,7 @@ class MatrixAdapter(BasePlatformAdapter):
         current_provider: str,
         session_key: str,
         on_model_selected,
-        metadata: dict[str, Any] | None = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Send a Matrix reaction-based model picker."""
         if not self._client:
@@ -1996,7 +1994,7 @@ class MatrixAdapter(BasePlatformAdapter):
             )
 
         try:
-            from prostor_cli.providers import get_label
+            from hermes_cli.providers import get_label
             provider_label = get_label(current_provider)
         except Exception:
             provider_label = current_provider
@@ -2055,9 +2053,9 @@ class MatrixAdapter(BasePlatformAdapter):
         filename: str,
         content_type: str,
         msgtype: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         is_voice: bool = False,
     ) -> SendResult:
         """Upload bytes to Matrix and send as a media message."""
@@ -2097,7 +2095,7 @@ class MatrixAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(exc))
 
         # Build media message content.
-        msg_content: dict[str, Any] = {
+        msg_content: Dict[str, Any] = {
             "msgtype": msgtype,
             "body": caption or filename,
             "info": {
@@ -2133,10 +2131,10 @@ class MatrixAdapter(BasePlatformAdapter):
         room_id: str,
         file_path: str,
         msgtype: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        file_name: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        file_name: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         is_voice: bool = False,
     ) -> SendResult:
         """Read a local file and upload it."""
@@ -2245,7 +2243,7 @@ class MatrixAdapter(BasePlatformAdapter):
     # Event callbacks
     # ------------------------------------------------------------------
 
-    async def _dispatch_sync(self, sync_data: dict[str, Any]) -> None:
+    async def _dispatch_sync(self, sync_data: Dict[str, Any]) -> None:
         """Dispatch a sync response through the mautrix event machinery."""
         client = self._client
         if not client or not hasattr(client, "handle_sync"):
@@ -2488,7 +2486,7 @@ class MatrixAdapter(BasePlatformAdapter):
         body: str,
         source_content: dict,
         relates_to: dict,
-    ) -> tuple | None:
+    ) -> Optional[tuple]:
         """Shared mention/thread/DM gating for text and media handlers.
 
         Returns (body, is_dm, chat_type, thread_id, display_name, source)
@@ -2903,7 +2901,7 @@ class MatrixAdapter(BasePlatformAdapter):
             logger.warning("Matrix: error joining %s: %s", room_id, exc)
             return False
 
-    async def _join_pending_invites(self, sync_data: dict[str, Any]) -> None:
+    async def _join_pending_invites(self, sync_data: Dict[str, Any]) -> None:
         """Join rooms still present in rooms.invite after sync processing."""
         rooms = sync_data.get("rooms", {}) if isinstance(sync_data, dict) else {}
         invites = rooms.get("invite", {})
@@ -2924,7 +2922,7 @@ class MatrixAdapter(BasePlatformAdapter):
         room_id: str,
         event_id: str,
         emoji: str,
-    ) -> str | None:
+    ) -> Optional[str]:
         """Send an emoji reaction to a message in a room.
         Returns the reaction event_id on success, None on failure.
         """
@@ -3198,7 +3196,7 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         room_id: str,
         target_event_id: str,
-        prompt: _MatrixApprovalPrompt,
+        prompt: "_MatrixApprovalPrompt",
     ) -> None:
         prompt.resolved = True
         self._approval_prompts_by_event.pop(target_event_id, None)
@@ -3214,7 +3212,7 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         room_id: str,
         target_event_id: str,
-        prompt: _MatrixModelPickerPrompt,
+        prompt: "_MatrixModelPickerPrompt",
     ) -> None:
         prompt.resolved = True
         self._model_picker_prompts_by_event.pop(target_event_id, None)
@@ -3228,7 +3226,7 @@ class MatrixAdapter(BasePlatformAdapter):
     async def _redact_bot_approval_reactions(
         self,
         room_id: str,
-        prompt: _MatrixApprovalPrompt,
+        prompt: "_MatrixApprovalPrompt",
     ) -> None:
         """Redact the bot's seeded approval reactions, leaving only the user's reaction."""
         for emoji, evt_id in prompt.bot_reaction_events.items():
@@ -3238,7 +3236,7 @@ class MatrixAdapter(BasePlatformAdapter):
     async def _redact_bot_model_picker_reactions(
         self,
         room_id: str,
-        prompt: _MatrixModelPickerPrompt,
+        prompt: "_MatrixModelPickerPrompt",
     ) -> None:
         """Redact the bot's seeded model picker reactions."""
         for emoji, evt_id in prompt.bot_reaction_events.items():
@@ -3389,10 +3387,10 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         name: str = "",
         topic: str = "",
-        invite: list | None = None,
+        invite: Optional[list] = None,
         is_direct: bool = False,
         preset: str = "private_chat",
-    ) -> str | None:
+    ) -> Optional[str]:
         """Create a new Matrix room."""
         if not self._client:
             return None
@@ -3554,7 +3552,7 @@ class MatrixAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _state_event_value(event: Any, key: str) -> str | None:
+    def _state_event_value(event: Any, key: str) -> Optional[str]:
         """Extract a simple value from a Matrix state event object or dict."""
         if event is None:
             return None
@@ -3574,24 +3572,32 @@ class MatrixAdapter(BasePlatformAdapter):
             return str(getattr(content, key))
         return None
 
-    async def _get_room_member_count(self, room_id: str) -> int | None:
+    async def _get_room_member_count(self, room_id: str) -> Optional[int]:
+        # Tier 1: state_store (fast, cache-backed).
         state_store = (
             getattr(self._client, "state_store", None) if self._client else None
         )
-        if not state_store:
-            return None
-        try:
-            members = await state_store.get_members(room_id)
-        except Exception:
-            return None
-        if members is None:
-            return None
-        try:
-            return len(members)
-        except TypeError:
-            return None
+        if state_store:
+            try:
+                members = await state_store.get_members(room_id)
+                if members is not None:
+                    return len(members)
+            except Exception:
+                pass
 
-    async def _get_room_name(self, room_id: str) -> str | None:
+        # Tier 2: API fallback (direct server query) when the cache is empty.
+        client = getattr(self, "_client", None)
+        if client is not None and hasattr(client, "joined_members"):
+            try:
+                resp = await client.joined_members(room_id)
+                if getattr(resp, "members", None) is not None:
+                    return len(resp.members)
+            except Exception:
+                pass
+
+        return None
+
+    async def _get_room_name(self, room_id: str) -> Optional[str]:
         if not self._client or not hasattr(self._client, "get_state_event"):
             return None
         try:
@@ -3604,7 +3610,7 @@ class MatrixAdapter(BasePlatformAdapter):
         value = self._state_event_value(event, "name")
         return value.strip() if value and value.strip() else None
 
-    async def _get_room_canonical_alias(self, room_id: str) -> str | None:
+    async def _get_room_canonical_alias(self, room_id: str) -> Optional[str]:
         if not self._client or not hasattr(self._client, "get_state_event"):
             return None
         try:
@@ -3617,7 +3623,7 @@ class MatrixAdapter(BasePlatformAdapter):
         value = self._state_event_value(event, "alias")
         return value.strip() if value and value.strip() else None
 
-    async def _get_room_topic(self, room_id: str) -> str | None:
+    async def _get_room_topic(self, room_id: str) -> Optional[str]:
         if not self._client or not hasattr(self._client, "get_state_event"):
             return None
         try:
@@ -3631,7 +3637,7 @@ class MatrixAdapter(BasePlatformAdapter):
         return value.strip() if value and value.strip() else None
 
     @staticmethod
-    def _room_server_name(room_id: str) -> str | None:
+    def _room_server_name(room_id: str) -> Optional[str]:
         if ":" not in room_id:
             return None
         server = room_id.rsplit(":", 1)[-1].strip()
@@ -3676,8 +3682,23 @@ class MatrixAdapter(BasePlatformAdapter):
         member_count = await self._get_room_member_count(room_id)
         has_explicit_name = bool(room_name)
         is_direct = bool(self._dm_rooms.get(room_id, False))
-        conflict = bool(is_direct and has_explicit_name)
-        chat_type = "dm" if is_direct and not has_explicit_name else "room"
+        # member_count is the primary DM signal: <=2 members means this is
+        # necessarily a 1:1 conversation (or self-DM), regardless of m.direct
+        # or room name. Most Matrix clients auto-name DM rooms (e.g.
+        # "Alice & Bot"), so the old `not has_explicit_name` check
+        # misclassified virtually all client-created DMs as rooms. Falls back
+        # to the m.direct + name heuristic when the count is unavailable (e.g.
+        # state_store and API query both fail). A room that grew to 3+ members
+        # but is still in stale m.direct is correctly classified as a room.
+        is_likely_dm = (member_count is not None and member_count <= 2) or (
+            is_direct and not has_explicit_name
+        )
+        conflict = bool(
+            is_direct
+            and has_explicit_name
+            and (member_count is None or member_count > 2)
+        )
+        chat_type = "dm" if is_likely_dm else "room"
         display_name = room_name or canonical_alias or room_id
 
         identity = MatrixRoomIdentity(
@@ -3705,7 +3726,7 @@ class MatrixAdapter(BasePlatformAdapter):
         if not self._client:
             return
 
-        dm_data: dict | None = None
+        dm_data: Optional[Dict] = None
 
         try:
             resp = await self._client.get_account_data("m.direct")
@@ -3719,8 +3740,8 @@ class MatrixAdapter(BasePlatformAdapter):
         if dm_data is None:
             return
 
-        dm_room_ids: set[str] = set()
-        for _user_id, rooms in dm_data.items():
+        dm_room_ids: Set[str] = set()
+        for user_id, rooms in dm_data.items():
             if isinstance(rooms, list):
                 dm_room_ids.update(str(r) for r in rooms if isinstance(r, str))
 
@@ -3732,9 +3753,9 @@ class MatrixAdapter(BasePlatformAdapter):
     # Mention detection helpers
     # ------------------------------------------------------------------
 
-    def _build_text_message_content(self, text: str, msgtype: str = "m.text") -> dict[str, Any]:
+    def _build_text_message_content(self, text: str, msgtype: str = "m.text") -> Dict[str, Any]:
         """Build Matrix text content with HTML and outbound mention metadata."""
-        msg_content: dict[str, Any] = {"msgtype": msgtype, "body": text}
+        msg_content: Dict[str, Any] = {"msgtype": msgtype, "body": text}
         mention_user_ids = self._extract_outbound_mentions(text)
         room_mentioned = self._allow_room_mentions and self._has_outbound_room_mention(text)
         if mention_user_ids:
@@ -3752,10 +3773,10 @@ class MatrixAdapter(BasePlatformAdapter):
 
     def _apply_relation_metadata(
         self,
-        msg_content: dict[str, Any],
+        msg_content: Dict[str, Any],
         *,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Apply Matrix reply/thread relation metadata to an outbound payload."""
         thread_id = str((metadata or {}).get("thread_id") or "")
@@ -3778,7 +3799,7 @@ class MatrixAdapter(BasePlatformAdapter):
     def _extract_outbound_mentions(self, text: str) -> list[str]:
         """Return unique Matrix user IDs mentioned in outbound text."""
         protected, _ = self._protect_outbound_mention_regions(text)
-        seen: set[str] = set()
+        seen: Set[str] = set()
         mentions: list[str] = []
         for match in _OUTBOUND_MENTION_RE.finditer(protected):
             user_id = match.group(1)
@@ -3839,8 +3860,8 @@ class MatrixAdapter(BasePlatformAdapter):
     def _is_bot_mentioned(
         self,
         body: str,
-        formatted_body: str | None = None,
-        mention_user_ids: list | None = None,
+        formatted_body: Optional[str] = None,
+        mention_user_ids: Optional[list] = None,
     ) -> bool:
         """Return True if the bot is mentioned in the message.
 
@@ -3874,7 +3895,7 @@ class MatrixAdapter(BasePlatformAdapter):
 
         Important: only strip explicit mention tokens (``@user:server`` or
         ``@localpart``). Do NOT strip bare words matching the bot localpart,
-        otherwise normal phrases like "Prostor Agent" become "Agent".
+        otherwise normal phrases like "Hermes Agent" become "Agent".
         """
         if not body:
             return ""
@@ -4000,7 +4021,10 @@ class MatrixAdapter(BasePlatformAdapter):
         result = re.sub(
             r"\[([^\]]+)\]\(([^)]+)\)",
             lambda m: _protect_html(
-                f'<a href="{MatrixAdapter._sanitize_link_url(m.group(2))}">{_html_escape(m.group(1))}</a>'
+                '<a href="{}">{}</a>'.format(
+                    MatrixAdapter._sanitize_link_url(m.group(2)),
+                    _html_escape(m.group(1)),
+                )
             ),
             result,
         )
@@ -4116,7 +4140,7 @@ class MatrixAdapter(BasePlatformAdapter):
 # register(ctx) entry point plus hook implementations that replace the
 # per-platform core touchpoints (the Platform.MATRIX elif in gateway/run.py,
 # the matrix_cfg YAML→env block in gateway/config.py, the _setup_matrix wizard
-# + _PLATFORMS["matrix"] static dict in prostor_cli/{setup,gateway}.py, and the
+# + _PLATFORMS["matrix"] static dict in hermes_cli/{setup,gateway}.py, and the
 # _send_matrix dispatch in tools/send_message_tool.py).  Matrix uses the
 # generic token/api_key connected check, so no is_connected override is needed.
 # ──────────────────────────────────────────────────────────────────────────
@@ -4149,7 +4173,7 @@ async def _standalone_send(
         token = token or os.getenv("MATRIX_ACCESS_TOKEN", "")
         if not homeserver or not token:
             return {"error": "Matrix not configured (MATRIX_HOMESERVER, MATRIX_ACCESS_TOKEN required)"}
-        txn_id = f"prostor_{int(time.time() * 1000)}_{os.urandom(4).hex()}"
+        txn_id = f"hermes_{int(time.time() * 1000)}_{os.urandom(4).hex()}"
         from urllib.parse import quote
         encoded_room = quote(chat_id, safe="")
         url = f"{homeserver}/_matrix/client/v3/rooms/{encoded_room}/send/m.room.message/{txn_id}"
@@ -4177,20 +4201,19 @@ async def _standalone_send(
 
 
 def interactive_setup() -> None:
-    """Configure Matrix credentials. Replaces prostor_cli/setup.py::_setup_matrix
+    """Configure Matrix credentials. Replaces hermes_cli/setup.py::_setup_matrix
     and the static _PLATFORMS["matrix"] dict. CLI helpers are lazy-imported."""
     import shutil
     import sys as _sys
-
-    from prostor_cli.cli_output import (
+    from hermes_cli.config import get_env_value, save_env_value
+    from hermes_cli.cli_output import (
+        prompt,
+        prompt_yes_no,
         print_header,
         print_info,
         print_success,
         print_warning,
-        prompt,
-        prompt_yes_no,
     )
-    from prostor_cli.config import get_env_value, save_env_value
 
     print_header("Matrix")
     existing = get_env_value("MATRIX_ACCESS_TOKEN") or get_env_value("MATRIX_PASSWORD")
@@ -4231,8 +4254,7 @@ def interactive_setup() -> None:
 
         matrix_pkg = "mautrix[encryption]" if want_e2ee else "mautrix"
         try:
-            from tools.lazy_deps import ensure as _lazy_ensure
-            from tools.lazy_deps import feature_missing
+            from tools.lazy_deps import ensure as _lazy_ensure, feature_missing
             _missing_before = feature_missing("platform.matrix")
             if _missing_before:
                 print_info(f"Installing {matrix_pkg} (+ {len(_missing_before)} runtime deps)...")
@@ -4279,7 +4301,7 @@ def interactive_setup() -> None:
         else:
             print_info("⚠️  No allowlist set - anyone who can message the bot can use it!")
 
-        print_info("📬 Home Room: where Prostor delivers cron job results and notifications.")
+        print_info("📬 Home Room: where Hermes delivers cron job results and notifications.")
         print_info("   Room IDs look like !abc123:server (shown in Element room settings)")
         print_info("   You can also set this later by typing /set-home in a Matrix room.")
         home_room = prompt("Home room ID (leave empty to set later with /set-home)")
@@ -4329,7 +4351,7 @@ def _apply_yaml_config(yaml_cfg: dict, matrix_cfg: dict) -> dict | None:
 
 def _is_connected(config) -> bool:
     """Matrix is connected when a homeserver + access token (or password) are
-    configured. Read via prostor_cli.gateway.get_env_value so setup-status
+    configured. Read via hermes_cli.gateway.get_env_value so setup-status
     callers that patch get_env_value observe the same value, and PlatformConfig
     extras (homeserver) are honored too. As a built-in, Matrix used the generic
     token check; as a plugin it needs an explicit is_connected so
@@ -4337,7 +4359,7 @@ def _is_connected(config) -> bool:
     rather than mere SDK presence. #41112.
     """
     extra = getattr(config, "extra", {}) or {}
-    import prostor_cli.gateway as gateway_mod
+    import hermes_cli.gateway as gateway_mod
     homeserver = extra.get("homeserver") or gateway_mod.get_env_value("MATRIX_HOMESERVER") or ""
     token = (
         getattr(config, "token", None)
@@ -4354,7 +4376,7 @@ def _build_adapter(config):
 
 
 def register(ctx) -> None:
-    """Plugin entry point — called by the Prostor plugin system."""
+    """Plugin entry point — called by the Hermes plugin system."""
     ctx.register_platform(
         name="matrix",
         label="Matrix",

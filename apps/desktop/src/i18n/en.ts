@@ -43,25 +43,25 @@ export const en: Translations = {
   },
 
   boot: {
-    ready: 'Prostor Desktop is ready',
+    ready: 'Hermes Desktop is ready',
     desktopBootFailedWithMessage: message => `Desktop boot failed: ${message}`,
     steps: {
       connectingGateway: 'Connecting live desktop gateway',
-      loadingSettings: 'Loading Prostor settings',
+      loadingSettings: 'Loading Hermes settings',
       loadingSessions: 'Loading recent sessions',
       startingDesktopConnection: 'Starting desktop connection',
-      startingProstorDesktop: 'Starting Prostor Desktop…'
+      startingHermesDesktop: 'Starting Hermes Desktop…'
     },
     errors: {
-      backgroundExited: 'Prostor background process exited.',
-      backgroundExitedDuringStartup: 'Prostor background process exited during startup.',
+      backgroundExited: 'Hermes background process exited.',
+      backgroundExitedDuringStartup: 'Hermes background process exited during startup.',
       backendStopped: 'Backend stopped',
       desktopBootFailed: 'Desktop boot failed',
       gatewaySignInRequired: 'Gateway sign-in required',
       ipcBridgeUnavailable: 'Desktop IPC bridge is unavailable.'
     },
     failure: {
-      title: "Prostor couldn't start",
+      title: "Hermes couldn't start",
       description:
         "The background gateway didn't come up. Try one of the recovery steps below. Nothing here deletes your chats or settings.",
       remoteTitle: 'Remote gateway sign-in required',
@@ -98,8 +98,8 @@ export const en: Translations = {
     copyDetailFailed: 'Could not copy notification detail',
     backendOutOfDateTitle: 'Backend out of date',
     backendOutOfDateMessage:
-      'Your Prostor backend is older than this desktop build and may not work correctly. Update to align them.',
-    updateProstor: 'Update Prostor',
+      'Your Hermes backend is older than this desktop build and may not work correctly. Update to align them.',
+    updateHermes: 'Update Hermes',
     updateReadyTitle: 'Update ready',
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
     seeWhatsNew: "See what's new",
@@ -107,7 +107,7 @@ export const en: Translations = {
       elevenLabsNeedsKey: 'ElevenLabs STT needs ELEVENLABS_API_KEY.',
       elevenLabsRejectedKey: 'ElevenLabs rejected the API key (401).',
       methodNotAllowed:
-        'The desktop backend rejected that request (405 Method Not Allowed). Try restarting Prostor Desktop.',
+        'The desktop backend rejected that request (405 Method Not Allowed). Try restarting Hermes Desktop.',
       microphonePermission: 'Microphone permission was denied.',
       openaiRejectedApiKey: 'OpenAI rejected the API key.',
       openaiRejectedApiKeyWithStatus: status => `OpenAI rejected the API key (${status} invalid_api_key).`,
@@ -137,8 +137,8 @@ export const en: Translations = {
       approveAction: 'Approve',
       rejectAction: 'Reject',
       inputTitle: 'Input needed',
-      inputBody: 'Prostor is waiting for your response.',
-      turnDoneTitle: 'Prostor finished',
+      inputBody: 'Hermes is waiting for your response.',
+      turnDoneTitle: 'Hermes finished',
       turnDoneBody: 'The response is ready.',
       turnErrorTitle: 'Turn failed',
       backgroundDoneTitle: 'Background task finished',
@@ -269,7 +269,7 @@ export const en: Translations = {
     exportConfig: 'Export config',
     importConfig: 'Import config',
     resetToDefaults: 'Reset to defaults',
-    resetConfirm: 'Reset all settings to Prostor defaults?',
+    resetConfirm: 'Reset all settings to Hermes defaults?',
     exportFailed: 'Export failed',
     resetFailed: 'Reset failed',
     nav: {
@@ -291,7 +291,7 @@ export const en: Translations = {
         'Native desktop notifications, separate from in-app toasts. These are device-local — each computer keeps its own settings.',
       enableAll: 'Enable notifications',
       enableAllDesc: 'Master switch. Turn this off to silence every notification below.',
-      focusedHint: 'Completion alerts only fire while Prostor is in the background.',
+      focusedHint: 'Completion alerts only fire while Hermes is in the background.',
       kinds: {
         approval: {
           label: 'Approval needed',
@@ -299,11 +299,11 @@ export const en: Translations = {
         },
         input: {
           label: 'Input needed',
-          description: 'Prostor asked a question or needs a password or secret.'
+          description: 'Hermes asked a question or needs a password or secret.'
         },
         turnDone: {
           label: 'Response ready',
-          description: 'A turn finished while Prostor was in the background.'
+          description: 'A turn finished while Hermes was in the background.'
         },
         turnError: {
           label: 'Turn failed',
@@ -315,7 +315,7 @@ export const en: Translations = {
         }
       },
       test: 'Send test notification',
-      testTitle: 'Prostor',
+      testTitle: 'Hermes',
       testBody: 'Notifications are working.',
       testSent: 'Test sent. If nothing appears, check your OS notification permissions and Focus/Do Not Disturb.',
       testUnsupported: 'This system does not support native notifications.',
@@ -334,7 +334,7 @@ export const en: Translations = {
       advanced: 'Advanced'
     },
     searchPlaceholder: {
-      about: 'About Prostor Desktop',
+      about: 'About Hermes Desktop',
       config: 'Search settings...',
       gateway: 'Gateway connection...',
       keys: 'Search API keys...',
@@ -351,7 +351,7 @@ export const en: Translations = {
       intro:
         'These are desktop-only display preferences. Mode controls brightness; theme controls the accent palette and chat surface styling.',
       colorMode: 'Color Mode',
-      colorModeDesc: 'Pick a fixed mode or let Prostor follow your system setting.',
+      colorModeDesc: 'Pick a fixed mode or let Hermes follow your system setting.',
       toolViewTitle: 'Tool Call Display',
       toolViewDesc: 'Product hides raw tool payloads; Technical shows full input/output.',
       translucencyTitle: 'Window Translucency',
@@ -372,18 +372,44 @@ export const en: Translations = {
       installError: 'Could not install that theme.',
       installed: name => `Installed “${name}”.`,
       removeTheme: 'Remove theme',
-      importedBadge: 'Imported'
+      importedBadge: 'Imported',
+      pet: {
+        title: 'Pet',
+        intro:
+          'Adopt an animated petdex mascot that floats over the app and reacts to what Hermes is doing — running while tools execute, celebrating on success, sulking on errors.',
+        restartHint:
+          'Pets need a quick restart — the running app started before this feature was added. Quit and reopen Hermes, then come back here.',
+        on: 'On',
+        off: 'Off',
+        scaleTitle: 'Size',
+        scaleDesc: 'Resize the floating mascot. Applies everywhere instantly.',
+        chooseTitle: 'Choose a pet',
+        chooseDesc: 'Picking one installs it (if needed) and makes it active.',
+        searchPlaceholder: 'Search pets…',
+        unreachable: "Couldn't reach the petdex gallery. Check your connection and reopen this page.",
+        noMatch: query => `No pets match "${query}".`,
+        installedTag: 'installed',
+        countCapped: (cap, total) => `Showing ${cap} of ${total} — type to narrow it down.`,
+        count: n => `${n} pet${n === 1 ? '' : 's'}.`,
+        uninstall: name => `Uninstall ${name}`,
+        adoptFailed: slug => `Could not adopt ${slug}`,
+        uninstallFailed: slug => `Could not uninstall ${slug}`,
+        noneAvailable: 'No pets available to turn on right now.',
+        turnOnFailed: 'Could not turn the pet on.',
+        turnOffFailed: 'Could not turn the pet off.'
+      }
     },
     fieldLabels: FIELD_LABELS,
     fieldDescriptions: FIELD_DESCRIPTIONS,
     about: {
-      heading: 'Prostor Desktop',
+      heading: 'Hermes Desktop',
       version: value => `Version ${value}`,
       versionUnavailable: 'Version unavailable',
       updates: 'Updates',
       checkNow: 'Check now',
       checking: 'Checking…',
       seeWhatsNew: "See what's new",
+      updateNow: 'Update now',
       releaseNotes: 'Release notes',
       onLatest: "You're on the latest version.",
       installing: 'An update is currently installing.',
@@ -395,7 +421,7 @@ export const en: Translations = {
       justNowSuffix: ' · just now',
       automaticUpdates: 'Automatic updates',
       automaticUpdatesDesc:
-        'Prostor checks for updates automatically in the background and lets you know when one is ready.',
+        'Hermes checks for updates automatically in the background and lets you know when one is ready.',
       branchCommit: (branch, commit) => `Branch ${branch} · Commit ${commit}`,
       never: 'never',
       justNow: 'just now',
@@ -408,7 +434,7 @@ export const en: Translations = {
       noneParen: '(none)',
       notSet: 'Not set',
       commaSeparated: 'comma-separated values',
-      loading: 'Loading Prostor configuration...',
+      loading: 'Loading Hermes configuration...',
       emptyTitle: 'Nothing to configure',
       emptyDesc: 'This section has no adjustable settings.',
       failedLoad: 'Settings failed to load',
@@ -445,7 +471,7 @@ export const en: Translations = {
       title: 'Gateway Connection',
       envOverride: 'env override',
       intro:
-        'Prostor Desktop starts its own local gateway by default. Use a remote gateway when you want this app to control an already-running Prostor backend on another machine or behind a trusted proxy. Pick a profile below to give it its own remote host.',
+        'Hermes Desktop starts its own local gateway by default. Use a remote gateway when you want this app to control an already-running Hermes backend on another machine or behind a trusted proxy. Pick a profile below to give it its own remote host.',
       appliesTo: 'Applies to',
       allProfiles: 'All profiles',
       defaultConnection: 'Default connection for every profile that has no override of its own.',
@@ -453,14 +479,14 @@ export const en: Translations = {
         `Connection used only when “${profile}” is the active profile. Set it to Local to inherit the default.`,
       envOverrideTitle: 'Environment variables are controlling this desktop session.',
       envOverrideDesc:
-        'Unset PROSTOR_DESKTOP_REMOTE_URL and PROSTOR_DESKTOP_REMOTE_TOKEN to use the saved setting below.',
+        'Unset HERMES_DESKTOP_REMOTE_URL and HERMES_DESKTOP_REMOTE_TOKEN to use the saved setting below.',
       localTitle: 'Local gateway',
-      localDesc: 'Start a private Prostor backend on localhost. This is the default and works offline.',
+      localDesc: 'Start a private Hermes backend on localhost. This is the default and works offline.',
       remoteTitle: 'Remote gateway',
       remoteDesc:
-        'Connect this desktop shell to a remote Prostor backend. Hosted gateways use OAuth or a username and password; self-hosted ones may use a session token.',
+        'Connect this desktop shell to a remote Hermes backend. Hosted gateways use OAuth or a username and password; self-hosted ones may use a session token.',
       remoteUrlTitle: 'Remote URL',
-      remoteUrlDesc: 'Base URL for the remote dashboard backend. Path prefixes are supported, for example /prostor.',
+      remoteUrlDesc: 'Base URL for the remote dashboard backend. Path prefixes are supported, for example /hermes.',
       probing: 'Checking how this gateway authenticates…',
       probeError: 'Could not reach this gateway yet. Check the URL — the auth method will appear once it responds.',
       signedIn: 'Signed in',
@@ -492,9 +518,9 @@ export const en: Translations = {
       enterUrlFirst: 'Enter a remote URL first.',
       restartingTitle: 'Gateway connection restarting',
       savedTitle: 'Gateway settings saved',
-      restartingMessage: 'Prostor Desktop will reconnect using the saved settings.',
+      restartingMessage: 'Hermes Desktop will reconnect using the saved settings.',
       savedMessage: 'Saved for the next restart.',
-      connectedTo: (baseUrl, version) => `Connected to ${baseUrl}${version ? ` · Prostor ${version}` : ''}`,
+      connectedTo: (baseUrl, version) => `Connected to ${baseUrl}${version ? ` · Hermes ${version}` : ''}`,
       reachableTitle: 'Remote gateway reachable',
       signedOutTitle: 'Signed out',
       signedOutMessage: 'Cleared the remote gateway session.',
@@ -570,7 +596,7 @@ export const en: Translations = {
       connectAccount: 'Connect an account',
       haveApiKey: 'Have an API key instead?',
       intro:
-        'Sign in with a subscription — no API key to copy. Prostor runs the browser sign-in for you, right here in the app.',
+        'Sign in with a subscription — no API key to copy. Hermes runs the browser sign-in for you, right here in the app.',
       connected: 'Connected',
       collapse: 'Collapse',
       connectAnother: 'Connect another provider',
@@ -722,8 +748,22 @@ export const en: Translations = {
     commandCenter: 'Command Center',
     appearance: 'Appearance',
     settings: 'Settings',
-    changeTheme: 'Change theme...',
+    changeTheme: 'Change theme',
     changeColorMode: 'Change color mode...',
+    pets: {
+      title: 'Pets',
+      placeholder: 'Search pets…',
+      loading: 'Loading petdex gallery…',
+      error: 'Could not reach the petdex gallery.',
+      staleBackend: 'Restart Hermes to use pets — the backend predates this feature.',
+      empty: 'No matching pets.',
+      turnOff: 'Turn off',
+      turnOn: 'Turn on',
+      installed: 'Installed',
+      adoptFailed: 'Could not adopt that pet.',
+      toggleFailed: 'Could not toggle the pet.',
+      noneAvailable: 'No pets available — pick one below to install.'
+    },
     installTheme: {
       title: 'Install theme...',
       placeholder: 'Search the VS Code Marketplace...',
@@ -746,7 +786,7 @@ export const en: Translations = {
     },
     nav: {
       newChat: { title: 'New session', detail: 'Start a fresh session' },
-      settings: { title: 'Settings', detail: 'Configure Prostor desktop' },
+      settings: { title: 'Settings', detail: 'Configure Hermes desktop' },
       skills: { title: 'Skills & Tools', detail: 'Enable skills, toolsets, and providers' },
       messaging: { title: 'Messaging', detail: 'Set up Telegram, Slack, Discord, and more' },
       artifacts: { title: 'Artifacts', detail: 'Browse generated outputs' }
@@ -768,10 +808,10 @@ export const en: Translations = {
     noSessions: 'No sessions yet.',
     gatewayRunning: 'Messaging gateway running',
     gatewayStopped: 'Messaging gateway stopped',
-    prostorActiveSessions: (version, count) => `Prostor ${version} · Active sessions ${count}`,
+    hermesActiveSessions: (version, count) => `Hermes ${version} · Active sessions ${count}`,
     restartGateway: 'Restart gateway',
     gatewayRestartFailed: 'Gateway restart failed.',
-    updateProstor: 'Update Prostor',
+    updateHermes: 'Update Hermes',
     actionRunning: 'running',
     actionDone: 'done',
     actionFailed: 'failed',
@@ -907,7 +947,7 @@ export const en: Translations = {
       },
       MATRIX_HOMESERVER: { label: 'Homeserver URL', placeholder: 'https://matrix.org' },
       MATRIX_ACCESS_TOKEN: { label: 'Access token' },
-      MATRIX_USER_ID: { label: 'Bot user ID', placeholder: '@prostor:example.org' },
+      MATRIX_USER_ID: { label: 'Bot user ID', placeholder: '@hermes:example.org' },
       MATRIX_ALLOWED_USERS: {
         label: 'Allowed Matrix user IDs',
         help: 'Recommended. Comma-separated user IDs in @user:server format.'
@@ -977,7 +1017,7 @@ export const en: Translations = {
     deleteDescMid: ' and remove its ',
     deleteDescSuffix: ' directory. This cannot be undone.',
     deleting: 'Deleting...',
-    createDesc: 'Profiles are independent Prostor environments: separate config, skills, and SOUL.md.',
+    createDesc: 'Profiles are independent Hermes environments: separate config, skills, and SOUL.md.',
     nameLabel: 'Name',
     cloneFrom: 'Clone from',
     cloneFromNone: 'None (blank)',
@@ -1064,7 +1104,7 @@ export const en: Translations = {
     everyHourAt: minute => `Every hour at :${minute}`,
     newCron: 'New cron',
     emptyDescNew:
-      'Schedule a prompt to run on a cron expression. Prostor will run it and deliver results to the destination you pick.',
+      'Schedule a prompt to run on a cron expression. Hermes will run it and deliver results to the destination you pick.',
     emptyDescSearch: 'Try a broader search query.',
     emptyTitleNew: 'No scheduled jobs yet',
     emptyTitleSearch: 'No matches',
@@ -1210,12 +1250,12 @@ export const en: Translations = {
   composer: {
     message: 'Message',
     wakingProfile: profile => `Waking up ${profile}…`,
-    placeholderStarting: 'Starting Prostor...',
-    placeholderReconnecting: 'Reconnecting to Prostor…',
+    placeholderStarting: 'Starting Hermes...',
+    placeholderReconnecting: 'Reconnecting to Hermes…',
     placeholderFollowUp: 'Send follow-up',
     newSessionPlaceholders: [
       'What are we building?',
-      'Give Prostor a task',
+      'Give Hermes a task',
       "What's on your mind?",
       'Describe what you need',
       'What should we tackle?',
@@ -1263,7 +1303,7 @@ export const en: Translations = {
       '/resume': 'resume a prior session',
       '/details': 'control transcript detail level',
       '/copy': 'copy selection or last assistant message',
-      '/quit': 'exit prostor'
+      '/quit': 'exit hermes'
     },
     hotkeyDescs: {
       'composer.mention': 'reference files, folders, urls, git',
@@ -1276,7 +1316,7 @@ export const en: Translations = {
       'composer.history': 'cycle popover / history'
     },
     attachUrlTitle: 'Attach a URL',
-    attachUrlDesc: 'Prostor will fetch the page and include it as context for this turn.',
+    attachUrlDesc: 'Hermes will fetch the page and include it as context for this turn.',
     urlPlaceholder: 'https://example.com/post',
     urlHintPre: 'Include the full URL, e.g. ',
     attach: 'Attach',
@@ -1354,37 +1394,45 @@ export const en: Translations = {
       fetch: 'Downloading…',
       pull: 'Almost there…',
       pydeps: 'Finishing up…',
-      restart: 'Restarting Prostor…',
+      update: 'Updating Hermes…',
+      rebuild: 'Rebuilding the desktop app…',
+      restart: 'Restarting Hermes…',
+      done: 'Update complete',
       manual: 'Update from your terminal',
+      guiSkew: 'Update the desktop app',
       error: 'Update paused'
     },
     checking: 'Looking for updates…',
     checkFailedTitle: 'Couldn’t check for updates',
     tryAgain: 'Try again',
     notAvailableTitle: 'Update not available',
-    unsupportedMessage: 'This version of Prostor can’t update itself from inside the app.',
+    unsupportedMessage: 'This version of Hermes can’t update itself from inside the app.',
     connectionRetry: 'Check your connection and try again.',
     latestBody: 'You’re running the latest version.',
     latestBodyBackend: 'The backend is running the latest version.',
     allSetTitle: 'You’re all set',
     availableTitle: 'New update available',
-    availableBody: 'A new version of Prostor is ready to install.',
+    availableBody: 'A new version of Hermes is ready to install.',
     availableTitleBackend: 'Backend update available',
-    availableBodyBackend: 'A newer version of the connected Prostor backend is ready to install.',
+    availableBodyBackend: 'A newer version of the connected Hermes backend is ready to install.',
     availableBodyNoChangelog: 'A newer version is ready. Release notes aren’t available for this install type.',
     updateNow: 'Update now',
     maybeLater: 'Maybe later',
     moreChanges: count => `+ ${count} more change${count === 1 ? '' : 's'} included.`,
     manualTitle: 'Update from your terminal',
-    manualBody: 'You installed Prostor from the command line, so updates run there too. Paste this into your terminal:',
-    manualPickedUp: 'Prostor will pick up the new version next time you launch it.',
+    manualBody: 'You installed Hermes from the command line, so updates run there too. Paste this into your terminal:',
+    manualPickedUp: 'Hermes will pick up the new version next time you launch it.',
+    guiSkewTitle: 'Update the desktop app',
+    guiSkewBody:
+      'The backend was updated, but this desktop app package wasn’t changed. Update or reinstall the Hermes desktop app (your AppImage / .deb / .rpm) to match.',
     copy: 'Copy',
     copied: 'Copied',
     done: 'Done',
-    applyingBody: 'The Prostor updater will take over in its own window and reopen Prostor when it’s done.',
+    applyingBody:
+      'The Hermes updater takes over in its own window and reopens Hermes automatically when it’s done. Please don’t reopen Hermes yourself while it’s updating.',
     applyingBodyBackend:
-      'The remote backend is applying the update and will restart. Prostor reconnects automatically when it’s back.',
-    applyingClose: 'Prostor will close to apply the update.',
+      'The remote backend is applying the update and will restart. Hermes reconnects automatically when it’s back.',
+    applyingClose: 'This window will close while the update runs, then Hermes reopens on its own.',
     errorTitle: 'Update didn’t finish',
     errorBody: 'No worries — nothing was lost. You can try again now.',
     notNow: 'Not now',
@@ -1406,7 +1454,7 @@ export const en: Translations = {
       skipped: 'Skipped',
       failed: 'Failed'
     },
-    oneTimeTitle: 'Prostor needs a one-time install',
+    oneTimeTitle: 'Hermes needs a one-time install',
     unsupportedDesc: platform =>
       `Automated first-launch install isn’t available on ${platform} yet. Open Terminal and run the command below, then relaunch this app. Subsequent launches will skip this step.`,
     installCommand: 'Install command',
@@ -1415,12 +1463,12 @@ export const en: Translations = {
     installTo: 'Will install to',
     retryAfterRun: 'I’ve run it -- retry',
     failedTitle: 'Installation failed',
-    settingUpTitle: 'Setting up Prostor Agent',
+    settingUpTitle: 'Setting up Hermes Agent',
     finishingTitle: 'Finishing up',
     failedDesc:
-      'One of the install steps failed. On Windows, this can happen if another Prostor CLI or desktop instance is running. Stop any running Prostor instances, then retry. Check the details below or the desktop log for the full transcript.',
+      'One of the install steps failed. On Windows, this can happen if another Hermes CLI or desktop instance is running. Stop any running Hermes instances, then retry. Check the details below or the desktop log for the full transcript.',
     activeDesc:
-      'This is a one-time setup. The Prostor installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
+      'This is a one-time setup. The Hermes installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
     progress: (completed, total) => `${completed} of ${total} steps complete`,
     currentStage: stage => ` -- now: ${stage}`,
     fetchingManifest: 'Fetching installer manifest...',
@@ -1438,10 +1486,10 @@ export const en: Translations = {
   },
 
   onboarding: {
-    headerTitle: "Let's get you setup with Prostor Agent",
+    headerTitle: "Let's get you setup with Hermes Agent",
     headerDesc: 'Connect a model provider to start chatting. Most options take one click.',
-    preparingInstall: 'Prostor is finishing install. This usually takes under a minute on first run.',
-    starting: 'Starting Prostor…',
+    preparingInstall: 'Hermes is finishing install. This usually takes under a minute on first run.',
+    starting: 'Starting Hermes…',
     lookingUpProviders: 'Looking up providers...',
     collapse: 'Collapse',
     otherProviders: 'Other providers',
@@ -1449,7 +1497,7 @@ export const en: Translations = {
     chooseLater: "I'll choose a provider later",
     recommended: 'Recommended',
     connected: 'Connected',
-    featuredPitch: 'One subscription, 300+ frontier models — the recommended way to run Prostor',
+    featuredPitch: 'One subscription, 300+ frontier models — the recommended way to run Hermes',
     openRouterPitch: 'One key, hundreds of models — a solid default',
     apiKeyOptions: {
       openrouter: {
@@ -1461,7 +1509,7 @@ export const en: Translations = {
       xai: { short: 'Grok models', description: 'Direct access to xAI Grok models.' },
       local: {
         short: 'self-hosted',
-        description: 'Point Prostor at a local or self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama, etc).'
+        description: 'Point Hermes at a local or self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama, etc).'
       }
     },
     backToSignIn: 'Back to sign in',
@@ -1474,8 +1522,8 @@ export const en: Translations = {
     update: 'Update',
     flowSubtitles: {
       pkce: 'Opens your browser to sign in, then continues here',
-      device_code: 'Opens a verification page in your browser — Prostor connects automatically',
-      loopback: 'Opens your browser to sign in — Prostor connects automatically',
+      device_code: 'Opens a verification page in your browser — Hermes connects automatically',
+      loopback: 'Opens your browser to sign in — Hermes connects automatically',
       external: 'Sign in once in your terminal, then come back to chat'
     },
     startingSignIn: provider => `Starting sign-in for ${provider}...`,
@@ -1486,12 +1534,12 @@ export const en: Translations = {
     pickDifferentProvider: 'Pick a different provider',
     signInWith: provider => `Sign in with ${provider}`,
     openedBrowser: provider => `We opened ${provider} in your browser.`,
-    authorizeThere: 'Authorize Prostor there.',
+    authorizeThere: 'Authorize Hermes there.',
     copyAuthCode: 'Copy the authorization code and paste it below.',
     pasteAuthCode: 'Paste authorization code',
     reopenAuthPage: 'Re-open authorization page',
     autoBrowser: provider =>
-      `We opened ${provider} in your browser. Authorize Prostor there and you'll be connected automatically — nothing to copy or paste.`,
+      `We opened ${provider} in your browser. Authorize Hermes there and you'll be connected automatically — nothing to copy or paste.`,
     reopenSignInPage: 'Re-open sign-in page',
     waitingAuthorize: 'Waiting for you to authorize...',
     externalPending: provider =>
@@ -1580,7 +1628,7 @@ export const en: Translations = {
       update: 'update',
       updateInProgress: 'Update in progress',
       commitsBehind: (count, branch) => `${count} commit${count === 1 ? '' : 's'} behind ${branch}`,
-      desktopVersion: version => `Prostor Desktop v${version}`,
+      desktopVersion: version => `Hermes Desktop v${version}`,
       backendVersion: version => `Backend v${version}`,
       clientLabel: version => `client v${version}`,
       backendLabel: version => `backend v${version}`,
@@ -1597,7 +1645,7 @@ export const en: Translations = {
       gatewayConnecting: 'connecting',
       gatewayOffline: 'offline',
       gatewayRestarting: 'restarting…',
-      gatewayTitle: 'Prostor inference gateway status',
+      gatewayTitle: 'Hermes inference gateway status',
       agents: 'Agents',
       closeAgents: 'Close agents',
       openAgents: 'Open agents',
@@ -1662,6 +1710,7 @@ export const en: Translations = {
     opening: 'Opening...',
     hide: 'Hide',
     openPreview: 'Open preview',
+    openInBrowser: 'Open in browser',
     sourceLineTitle: 'Click to select · shift-click to extend · drag to composer',
     source: 'SOURCE',
     renderedPreview: 'PREVIEW',
@@ -1669,7 +1718,7 @@ export const en: Translations = {
     binaryTitle: 'This looks like a binary file',
     binaryBody: label => `Previewing ${label} may show unreadable text.`,
     largeTitle: 'This file is large',
-    largeBody: (label, size) => `${label} is ${size}. Prostor will only show the first 512 KB.`,
+    largeBody: (label, size) => `${label} is ${size}. Hermes will only show the first 512 KB.`,
     previewAnyway: 'Preview anyway',
     truncated: 'Showing first 512 KB.',
     noInlineTitle: 'No inline preview',
@@ -1699,26 +1748,26 @@ export const en: Translations = {
       serverNotFound: 'Server not found',
       failedToLoad: 'Preview failed to load',
       tryAgain: 'Try again',
-      restarting: 'Prostor is restarting...',
-      askRestart: 'Ask Prostor to restart the server',
-      lookingRestart: taskId => `Prostor is looking for a preview server to restart (${taskId})`,
+      restarting: 'Hermes is restarting...',
+      askRestart: 'Ask Hermes to restart the server',
+      lookingRestart: taskId => `Hermes is looking for a preview server to restart (${taskId})`,
       restartingTitle: 'Restarting preview server',
-      restartingMessage: 'Prostor is working in the background. Watch the preview console for progress.',
+      restartingMessage: 'Hermes is working in the background. Watch the preview console for progress.',
       startRestartFailed: message => `Could not start server restart: ${message}`,
       restartFailed: 'Server restart failed',
       hideConsole: 'Hide preview console',
       showConsole: 'Show preview console',
       hideDevTools: 'Hide preview DevTools',
       openDevTools: 'Open preview DevTools',
-      finishedRestarting: message => `Prostor finished restarting the preview server${message ? `: ${message}` : ''}`,
+      finishedRestarting: message => `Hermes finished restarting the preview server${message ? `: ${message}` : ''}`,
       failedRestarting: message => `Server restart failed: ${message}`,
       unknownError: 'unknown error',
       restartedTitle: 'Preview server restarted',
       reloadingNow: 'Reloading the preview now.',
       restartFailedTitle: 'Preview restart failed',
-      restartFailedMessage: 'Prostor could not restart the server.',
+      restartFailedMessage: 'Hermes could not restart the server.',
       stillWorking:
-        'Prostor is still working, but no restart result has arrived yet. The server command may be running in the foreground.',
+        'Hermes is still working, but no restart result has arrived yet. The server command may be running in the foreground.',
       workspaceReloading: 'Workspace changed, reloading preview',
       fileChanged: url => `File changed, reloading preview: ${url}`,
       filesChanged: (count, url) => `${count} file changes, reloading preview: ${url}`,
@@ -1736,7 +1785,7 @@ export const en: Translations = {
     thread: {
       loadingSession: 'Loading session',
       showEarlier: 'Show earlier messages',
-      loadingResponse: 'Prostor is loading a response',
+      loadingResponse: 'Hermes is loading a response',
       thinking: 'Thinking',
       today: time => `Today, ${time}`,
       yesterday: time => `Yesterday, ${time}`,
@@ -1764,7 +1813,7 @@ export const en: Translations = {
       attachingFile: 'Attaching…'
     },
     approval: {
-      gatewayDisconnected: 'Prostor gateway is not connected',
+      gatewayDisconnected: 'Hermes gateway is not connected',
       sendFailed: 'Could not send approval response',
       run: 'Run',
       command: 'Command',
@@ -1775,12 +1824,12 @@ export const en: Translations = {
       reject: 'Reject',
       alwaysTitle: 'Always allow this command?',
       alwaysDescription: pattern =>
-        `This adds the “${pattern}” pattern to your permanent allowlist (~/.prostor/config.yaml). Prostor won’t ask again for commands like this — in this session or any future one.`,
+        `This adds the “${pattern}” pattern to your permanent allowlist (~/.hermes/config.yaml). Hermes won’t ask again for commands like this — in this session or any future one.`,
       alwaysAllow: 'Always allow'
     },
     clarify: {
       notReady: 'Clarify request is not ready yet',
-      gatewayDisconnected: 'Prostor gateway is not connected',
+      gatewayDisconnected: 'Hermes gateway is not connected',
       sendFailed: 'Could not send clarify response',
       loadingQuestion: 'Loading question…',
       other: 'Other (type your answer)',
@@ -1817,14 +1866,14 @@ export const en: Translations = {
   },
 
   prompts: {
-    gatewayDisconnected: 'Prostor gateway is not connected',
+    gatewayDisconnected: 'Hermes gateway is not connected',
     sudoSendFailed: 'Could not send sudo password',
     secretSendFailed: 'Could not send secret',
     sudoTitle: 'Administrator password',
-    sudoDesc: 'Prostor needs your sudo password to run a privileged command. It is sent only to your local agent.',
+    sudoDesc: 'Hermes needs your sudo password to run a privileged command. It is sent only to your local agent.',
     sudoPlaceholder: 'sudo password',
     secretTitle: 'Secret required',
-    secretDesc: 'Prostor needs a credential to continue.',
+    secretDesc: 'Hermes needs a credential to continue.',
     secretPlaceholder: 'secret value'
   },
 
@@ -1875,8 +1924,8 @@ export const en: Translations = {
     sessionExportFailed: 'Could not export session',
     imageSaved: 'Image saved',
     downloadStarted: 'Download started',
-    restartToUseSaveImage: 'Restart Prostor Desktop to use Save Image.',
-    restartToSaveImages: 'Restart Prostor Desktop to save images',
+    restartToUseSaveImage: 'Restart Hermes Desktop to use Save Image.',
+    restartToSaveImages: 'Restart Hermes Desktop to save images',
     imageDownloadFailed: 'Image download failed',
     openImage: 'Open image',
     downloadImage: 'Download image',
@@ -1895,7 +1944,7 @@ export const en: Translations = {
       success: platform => `Handed off to ${platform}. Resume here anytime.`,
       systemNote: platform => `↻ Handed off to ${platform} — resume here anytime.`,
       failed: error => `Handoff failed: ${error}`,
-      timedOut: 'Timed out waiting for the gateway. Is `prostor gateway` running?'
+      timedOut: 'Timed out waiting for the gateway. Is `hermes gateway` running?'
     }
   },
 

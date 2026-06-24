@@ -1,22 +1,22 @@
 //! Update orchestration.
 //!
-//! Driven when the installer is launched as `Prostor-Setup.exe --update` (see
+//! Driven when the installer is launched as `Hermes-Setup.exe --update` (see
 //! `AppMode` in lib.rs). The desktop app hands off to us — it exits, then we:
 //!
-//!   1. wait for the old Prostor desktop process to fully exit (so both the
-//!      venv shim and packaged app.asar are free; otherwise `prostor update`
+//!   1. wait for the old Hermes desktop process to fully exit (so both the
+//!      venv shim and packaged app.asar are free; otherwise `hermes update`
 //!      or repair bootstrap can race locked files),
-//!   2. run `prostor update --yes --gateway` (Python/repo update; this does NOT
-//!      rebuild apps/desktop by design — see cmd_update in prostor_cli/main.py),
-//!   3. run `prostor desktop --build-only` (the rebuild step update skips),
+//!   2. run `hermes update --yes --gateway` (Python/repo update; this does NOT
+//!      rebuild apps/desktop by design — see cmd_update in hermes_cli/main.py),
+//!   3. run `hermes desktop --build-only` (the rebuild step update skips),
 //!   4. launch the freshly-built desktop (reuses bootstrap::launch logic).
 //!
 //! We reuse the `BootstrapEvent` channel + the existing progress UI by
 //! emitting a synthetic two-stage manifest ("update", "rebuild"). To the
 //! frontend an update looks like a short bootstrap.
 //!
-//! Cross-platform note: `prostor update` already handles macOS/Linux (git/pip).
-//! The only OS-specific bits here are the venv shim path (resolve_prostor) and
+//! Cross-platform note: `hermes update` already handles macOS/Linux (git/pip).
+//! The only OS-specific bits here are the venv shim path (resolve_hermes) and
 //! the no-window creation flag — both already cfg-gated. Keep new logic
 //! OS-agnostic so the mac/linux port stays "fill in the paths".
 
@@ -34,13 +34,13 @@ use tokio::process::Command;
 
 use crate::events::{BootstrapEvent, LogStream, StageInfo, StageState};
 
-/// `prostor update` exit code meaning "another prostor process is holding the
+/// `hermes update` exit code meaning "another hermes process is holding the
 /// venv shim open / dirty precondition" — see _cmd_update_impl in
-/// prostor_cli/main.py (sys.exit(2)). We surface a targeted message for this.
+/// hermes_cli/main.py (sys.exit(2)). We surface a targeted message for this.
 const UPDATE_EXIT_CONCURRENT: i32 = 2;
 
 /// How long to wait for the old desktop process to release files under the
-/// install tree before giving up and letting `prostor update`'s own guard decide.
+/// install tree before giving up and letting `hermes update`'s own guard decide.
 const DESKTOP_EXIT_WAIT: Duration = Duration::from_secs(20);
 const DESKTOP_EXIT_POLL: Duration = Duration::from_millis(500);
 
@@ -71,7 +71,7 @@ pub async fn start_update(app: AppHandle) -> Result<(), String> {
             None
         };
         let mut stages = vec![
-            stage_info("update", "Updating Prostor"),
+            stage_info("update", "Updating Hermes"),
             stage_info("rebuild", "Rebuilding the desktop app"),
         ];
         if cfg!(target_os = "macos") && target_app.is_some() {
@@ -103,9 +103,61 @@ pub async fn start_update(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// RAII guard that owns the "update in progress" marker (see
+/// `paths::update_in_progress_marker`). Created at the top of `run_update`;
+/// its `Drop` removes the marker on EVERY exit path — success, early
+/// `return Err`, or a panic that unwinds through `run_update` — so a crashed
+/// or aborted updater can never permanently strand the marker and block
+/// future desktop launches. The marker payload is `{pid}\n{started_at_unix}`
+/// so the desktop's launch gate can detect a stale marker (dead PID / past a
+/// hard ceiling) and self-heal rather than wait forever.
+struct UpdateMarkerGuard {
+    path: PathBuf,
+}
+
+impl UpdateMarkerGuard {
+    /// Write the marker. Best-effort: a write failure must NOT abort the
+    /// update (the gate degrades to "no marker => proceed", i.e. exactly the
+    /// pre-fix behavior), so we log and carry on with a guard that still
+    /// attempts cleanup of whatever may exist at the path.
+    fn acquire(path: PathBuf) -> Self {
+        let pid = std::process::id();
+        let started_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(err) = std::fs::write(&path, format!("{pid}\n{started_at}")) {
+            tracing::warn!(?path, %err, "could not write update-in-progress marker");
+        }
+        Self { path }
+    }
+}
+
+impl Drop for UpdateMarkerGuard {
+    fn drop(&mut self) {
+        if let Err(err) = std::fs::remove_file(&self.path) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(path = ?self.path, %err, "could not remove update-in-progress marker");
+            }
+        }
+    }
+}
+
 async fn run_update(app: AppHandle) -> Result<()> {
     let hermes_home = crate::paths::hermes_home();
-    let install_root = hermes_home.join("prostor-agent");
+    let install_root = hermes_home.join("hermes-agent");
+
+    // Mutual exclusion (#50238): publish an "update in progress" marker for the
+    // entire duration of this update. A desktop instance the user relaunches
+    // mid-update consults this before spawning its own local backend — without
+    // it, that backend re-locks the venv shim, our `force_kill_other_hermes`
+    // straggler-cleanup kills it, and the relaunch/kill cycle loops. The guard
+    // removes the marker on every exit path (incl. early returns / panics).
+    let _update_marker = UpdateMarkerGuard::acquire(crate::paths::update_in_progress_marker());
+
     let update_branch = update_branch_from_args(std::env::args().skip(1))
         .or_else(|| option_env_string("BUILD_PIN_BRANCH"))
         .unwrap_or_else(|| "main".to_string());
@@ -115,9 +167,9 @@ async fn run_update(app: AppHandle) -> Result<()> {
         None
     };
 
-    let hermes = resolve_prostor(&install_root).ok_or_else(|| {
+    let hermes = resolve_hermes(&install_root).ok_or_else(|| {
         let msg = format!(
-            "Could not find the Prostor CLI under {}. Is Prostor installed? \
+            "Could not find the hermes CLI under {}. Is Hermes installed? \
              Re-run the installer to repair the install.",
             install_root.display()
         );
@@ -133,7 +185,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
 
     // Synthetic manifest so the existing progress UI renders our two stages.
     let mut stages = vec![
-        stage_info("update", "Updating Prostor"),
+        stage_info("update", "Updating Hermes"),
         stage_info("rebuild", "Rebuilding the desktop app"),
     ];
     if cfg!(target_os = "macos") && target_app.is_some() {
@@ -150,17 +202,17 @@ async fn run_update(app: AppHandle) -> Result<()> {
 
     // ---- pre-step: wait for the old desktop to die -----------------------
     // The desktop exec'd us then called app.exit(), but process teardown is
-    // async on Windows. If it still holds the venv shim, `prostor update`
+    // async on Windows. If it still holds the venv shim, `hermes update`
     // aborts with exit 2. If it still holds the packaged app.asar,
     // install.ps1's repair/re-clone path cannot move/remove the install tree.
     // Give both handles a bounded window to clear.
     wait_for_install_locks_free(&install_root, &app, "update").await;
 
-    // ---- stage 1: prostor update -----------------------------------------
-    // Pass --branch so `prostor update` targets the branch this installer was
+    // ---- stage 1: hermes update -----------------------------------------
+    // Pass --branch so `hermes update` targets the branch this installer was
     // built/pinned against (BUILD_PIN_BRANCH), NOT its built-in default of
     // `main`. The install was a detached-HEAD checkout of a specific commit;
-    // without --branch, `prostor update` switches the checkout to `main` (a
+    // without --branch, `hermes update` switches the checkout to `main` (a
     // divergent branch that may not even have the desktop CLI command), then
     // reports "already up to date" against the wrong branch. The desktop
     // detected the update against this same branch, so we must update against
@@ -174,12 +226,12 @@ async fn run_update(app: AppHandle) -> Result<()> {
     let child_env = update_child_env(&install_root);
     let mut update_args: Vec<String> =
         vec!["update".into(), "--yes".into(), "--gateway".into()];
-    // --force skips `prostor update`'s Windows running-exe guard (which would
+    // --force skips `hermes update`'s Windows running-exe guard (which would
     // `sys.exit(2)` and dead-end the handoff). By contract the desktop has
     // already exited and waited for the install locks to clear before launching
     // us, and wait_for_install_locks_free below force-kills any straggler — so by the
-    // time `prostor update` runs there is no legitimate prostor.exe to protect,
-    // and the guard would only produce a false "Prostor is still running" stop.
+    // time `hermes update` runs there is no legitimate hermes.exe to protect,
+    // and the guard would only produce a false "Hermes is still running" stop.
     update_args.push("--force".into());
     update_args.push("--branch".into());
     update_args.push(update_branch);
@@ -196,7 +248,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
     )
     .await?;
 
-    // Retry-once for the update-boundary crash. `prostor update` lazily imports
+    // Retry-once for the update-boundary crash. `hermes update` lazily imports
     // the FRESHLY PULLED modules, but the dependency-install step still runs the
     // already-in-memory pre-pull code for one invocation. A release that changed
     // an updater-path contract across that boundary (e.g. #39780's `_UvResult`,
@@ -204,10 +256,10 @@ async fn run_update(app: AppHandle) -> Result<()> {
     // `list2cmdline` with `TypeError: sequence item 1: expected str instance,
     // bool found`, fixed in #39820) therefore kills the FIRST update on the
     // parked population — even though the fix is already on disk by then. A
-    // second `prostor update` runs clean because the now-current module is loaded
+    // second `hermes update` runs clean because the now-current module is loaded
     // from the start. Rather than make the parked user click Update twice (and
     // stare at a scary crash first), retry once automatically. Skip the retry
-    // for the concurrent-instance guard (exit 2) — that's a "close Prostor" state
+    // for the concurrent-instance guard (exit 2) — that's a "close Hermes" state
     // a retry can't fix.
     if !matches!(update.exit_code, Some(0) | Some(UPDATE_EXIT_CONCURRENT)) {
         emit_log(
@@ -234,7 +286,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
             emit_stage(&app, "update", StageState::Succeeded, Some(update_ms), None);
         }
         Some(code) if code == UPDATE_EXIT_CONCURRENT => {
-            let msg = "Prostor is still running. Close all Prostor windows and try \
+            let msg = "Hermes is still running. Close all Hermes windows and try \
                        the update again."
                 .to_string();
             emit_stage(
@@ -255,7 +307,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
         }
         other => {
             let msg = format!(
-                "prostor update failed (exit {:?}). See {} for details.",
+                "hermes update failed (exit {:?}). See {} for details.",
                 other,
                 crate::paths::hermes_home()
                     .join("logs")
@@ -280,8 +332,8 @@ async fn run_update(app: AppHandle) -> Result<()> {
         }
     }
 
-    // ---- stage 2: prostor desktop --build-only ----------------------------
-    // `prostor update` deliberately does NOT build apps/desktop (it installs
+    // ---- stage 2: hermes desktop --build-only ----------------------------
+    // `hermes update` deliberately does NOT build apps/desktop (it installs
     // repo-root deps with --workspaces=false). This is the rebuild it skips.
     emit_stage(&app, "rebuild", StageState::Running, None, None);
     let started = Instant::now();
@@ -302,7 +354,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
     // (the content-hash stamp makes it a near-no-op when the first actually
     // succeeded). Without this the updater bails here and never reaches the
     // relaunch below — the app updates but doesn't restart. Matches the
-    // retry-once `prostor update` already does above, and `prostor update`'s own
+    // retry-once `hermes update` already does above, and `hermes update`'s own
     // desktop rebuild in cmd_update.
     if rebuild_needs_retry(rebuild.exit_code) {
         emit_log(
@@ -327,7 +379,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
     if rebuild.exit_code != Some(0) {
         let msg = format!(
             "Rebuilding the desktop app failed (exit {:?}). The update was \
-             applied but the app could not be rebuilt; run `prostor desktop` \
+             applied but the app could not be rebuilt; run `hermes desktop` \
              from a terminal to see the error.",
             rebuild.exit_code
         );
@@ -401,11 +453,11 @@ async fn run_update(app: AppHandle) -> Result<()> {
                 &app,
                 None,
                 LogStream::Stderr,
-                &format!("[update] could not auto-launch desktop: {err}. Launch Prostor manually."),
+                &format!("[update] could not auto-launch desktop: {err}. Launch Hermes manually."),
             );
         }
     } else if let Err(err) =
-        crate::bootstrap::launch_prostor_desktop(app.clone(), install_root.to_string_lossy().into_owned()).await
+        crate::bootstrap::launch_hermes_desktop(app.clone(), install_root.to_string_lossy().into_owned()).await
     {
         // Launch failed: don't hard-fail the update (it succeeded); surface a
         // log line so the success screen can still tell the user to launch
@@ -414,7 +466,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
             &app,
             None,
             LogStream::Stdout,
-            &format!("[update] could not auto-launch desktop: {err}. Launch Prostor manually."),
+            &format!("[update] could not auto-launch desktop: {err}. Launch Hermes manually."),
         );
     }
 
@@ -428,7 +480,7 @@ pub(crate) async fn wait_for_install_locks_free(install_root: &Path, app: &AppHa
     let lock_targets = install_lock_probe_paths(install_root);
     let deadline = Instant::now() + DESKTOP_EXIT_WAIT;
 
-    emit_log(app, Some(stage), LogStream::Stdout, "[handoff] waiting for Prostor to exit…");
+    emit_log(app, Some(stage), LogStream::Stdout, "[handoff] waiting for Hermes to exit…");
 
     loop {
         let locked = locked_paths(&lock_targets);
@@ -436,24 +488,24 @@ pub(crate) async fn wait_for_install_locks_free(install_root: &Path, app: &AppHa
             return;
         }
         if Instant::now() >= deadline {
-            // Last resort: a backend prostor.exe (or the desktop Prostor.exe
+            // Last resort: a backend hermes.exe (or the desktop Hermes.exe
             // itself) is still holding one of the update-sensitive files. The
             // desktop should have reaped its tree before handing off, but
             // SIGTERM races / detached grandchildren / AV handles can leave a
             // straggler. Rather than "proceed anyway" straight into uv's
             // "Access is denied" or install.ps1's locked app.asar failure,
-            // force-kill every Prostor.exe except ourselves, then give the OS a
+            // force-kill every Hermes.exe except ourselves, then give the OS a
             // beat to unload the image.
             emit_log(
                 app,
                 Some(stage),
                 LogStream::Stdout,
                 &format!(
-                    "[handoff] Prostor still holding install files ({}); force-killing stragglers…",
+                    "[handoff] Hermes still holding install files ({}); force-killing stragglers…",
                     format_locked_paths(&locked)
                 ),
             );
-            force_kill_other_prostor();
+            force_kill_other_hermes();
             tokio::time::sleep(Duration::from_millis(800)).await;
             let locked_after_kill = locked_paths(&lock_targets);
             if locked_after_kill.is_empty() {
@@ -481,7 +533,7 @@ pub(crate) async fn wait_for_install_locks_free(install_root: &Path, app: &AppHa
 }
 
 fn install_lock_probe_paths(install_root: &Path) -> Vec<PathBuf> {
-    let mut paths = vec![venv_prostor(install_root)];
+    let mut paths = vec![venv_hermes(install_root)];
     paths.extend(desktop_app_payload_paths(install_root));
     paths
 }
@@ -495,8 +547,8 @@ fn desktop_app_payload_paths(install_root: &Path) -> Vec<PathBuf> {
         ]
     } else if cfg!(target_os = "macos") {
         vec![
-            release.join("mac").join("Prostor.app").join("Contents").join("Resources").join("app.asar"),
-            release.join("mac-arm64").join("Prostor.app").join("Contents").join("Resources").join("app.asar"),
+            release.join("mac").join("Hermes.app").join("Contents").join("Resources").join("app.asar"),
+            release.join("mac-arm64").join("Hermes.app").join("Contents").join("Resources").join("app.asar"),
         ]
     } else {
         vec![release.join("linux-unpacked").join("resources").join("app.asar")]
@@ -511,19 +563,21 @@ fn format_locked_paths(paths: &[PathBuf]) -> String {
     paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
 }
 
-/// Force-kill any `prostor.exe` other than this process. Windows-only; a no-op
+/// Force-kill any `hermes.exe` other than this process. Windows-only; a no-op
 /// elsewhere (POSIX has no mandatory-lock contention). We can't selectively
 /// target "the backend" by PID here — the desktop already exited and we never
-/// knew its children — so we kill the whole `prostor.exe` image tree via
+/// knew its children — so we kill the whole `hermes.exe` image tree via
 /// taskkill, excluding our own PID.
 ///
 /// Safe w.r.t. our own update child: this runs inside the install-lock wait,
-/// which completes BEFORE we spawn `venv\Scripts\prostor.exe update`. At this
-/// point no update-driven prostor.exe exists yet, so the only prostor.exe images
-/// are stragglers from the old desktop — exactly what we want gone. (`/FI PID
-/// ne <self>` also spares this Tauri process, though it isn't named
-/// prostor.exe.)
-fn force_kill_other_prostor() {
+/// which completes BEFORE we spawn `venv\Scripts\hermes.exe update`. And a
+/// desktop the user relaunches mid-update will NOT have spawned a backend —
+/// `startHermes()` in the desktop gates local-backend startup on our
+/// update-in-progress marker and parks until we finish (#50238). So the only
+/// hermes.exe images here are stragglers from the old desktop — exactly what
+/// we want gone. (`/FI PID ne <self>` also spares this Tauri process, though it
+/// isn't named hermes.exe.)
+fn force_kill_other_hermes() {
     if !cfg!(target_os = "windows") {
         return;
     }
@@ -536,7 +590,7 @@ fn force_kill_other_prostor() {
                 "/F",
                 "/T",
                 "/IM",
-                "prostor.exe",
+                "hermes.exe",
                 "/FI",
                 &format!("PID ne {my_pid}"),
             ])
@@ -568,7 +622,7 @@ fn rebuild_needs_retry(exit_code: Option<i32>) -> bool {
     exit_code != Some(0)
 }
 
-/// Spawn `prostor <args>` from `cwd`, stream stdout/stderr as Log events on the
+/// Spawn `hermes <args>` from `cwd`, stream stdout/stderr as Log events on the
 /// bootstrap channel, and return the exit code. Mirrors powershell::run_script
 /// but for an arbitrary command (no install.ps1 -File wrapping).
 async fn run_streamed(
@@ -637,24 +691,24 @@ struct CmdResult {
     exit_code: Option<i32>,
 }
 
-/// Path to the venv Prostor shim under an install root, regardless of existence.
-fn venv_prostor(install_root: &Path) -> PathBuf {
+/// Path to the venv hermes shim under an install root, regardless of existence.
+fn venv_hermes(install_root: &Path) -> PathBuf {
     if cfg!(target_os = "windows") {
-        install_root.join("venv").join("Scripts").join("prostor.exe")
+        install_root.join("venv").join("Scripts").join("hermes.exe")
     } else {
-        install_root.join("venv").join("bin").join("prostor")
+        install_root.join("venv").join("bin").join("hermes")
     }
 }
 
-/// Resolve the Prostor CLI to drive. Prefer the venv shim in the install we
-/// just updated; fall back to `prostor` on PATH.
-fn resolve_prostor(install_root: &Path) -> Option<PathBuf> {
-    let shim = venv_prostor(install_root);
+/// Resolve the hermes CLI to drive. Prefer the venv shim in the install we
+/// just updated; fall back to `hermes` on PATH.
+fn resolve_hermes(install_root: &Path) -> Option<PathBuf> {
+    let shim = venv_hermes(install_root);
     if shim.exists() {
         return Some(shim);
     }
     // PATH fallback. which-style probe via env, kept dependency-free.
-    let exe = if cfg!(target_os = "windows") { "prostor.exe" } else { "prostor" };
+    let exe = if cfg!(target_os = "windows") { "hermes.exe" } else { "hermes" };
     if let Ok(path) = std::env::var("PATH") {
         let sep = if cfg!(target_os = "windows") { ';' } else { ':' };
         for dir in path.split(sep) {
@@ -670,7 +724,7 @@ fn resolve_prostor(install_root: &Path) -> Option<PathBuf> {
 fn update_child_env(install_root: &Path) -> Vec<(String, OsString)> {
     let hermes_home = crate::paths::hermes_home();
     let mut envs = vec![(
-        "PROSTOR_HOME".to_string(),
+        "HERMES_HOME".to_string(),
         hermes_home.as_os_str().to_os_string(),
     )];
     if let Some(path) = path_with_prepended_entries(&[
@@ -748,9 +802,9 @@ async fn install_macos_app_update(
         ));
     }
 
-    let rebuilt_app = crate::bootstrap::resolve_prostor_desktop_app(install_root).ok_or_else(|| {
+    let rebuilt_app = crate::bootstrap::resolve_hermes_desktop_app(install_root).ok_or_else(|| {
         anyhow!(
-            "desktop rebuild succeeded but no Prostor.app was found under {}",
+            "desktop rebuild succeeded but no Hermes.app was found under {}",
             install_root.join("apps").join("desktop").join("release").display()
         )
     })?;
@@ -786,8 +840,8 @@ async fn install_macos_app_update(
     if let Some(parent) = target_app.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let tmp = PathBuf::from(format!("{}.prostor-update-new", target_app.display()));
-    let old = PathBuf::from(format!("{}.prostor-update-old", target_app.display()));
+    let tmp = PathBuf::from(format!("{}.hermes-update-new", target_app.display()));
+    let old = PathBuf::from(format!("{}.hermes-update-old", target_app.display()));
     remove_dir_if_exists(&tmp).await;
     remove_dir_if_exists(&old).await;
 
@@ -957,9 +1011,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn venv_prostor_is_under_install_root() {
-        let root = Path::new("/x/prostor-agent");
-        let shim = venv_prostor(root);
+    fn venv_hermes_is_under_install_root() {
+        let root = Path::new("/x/hermes-agent");
+        let shim = venv_hermes(root);
         assert!(shim.starts_with(root));
         assert!(shim.to_string_lossy().contains("venv"));
     }
@@ -971,11 +1025,11 @@ mod tests {
 
     #[test]
     fn lock_probe_paths_include_desktop_app_payload() {
-        let root = Path::new("/x/prostor-agent");
+        let root = Path::new("/x/hermes-agent");
         let probes = install_lock_probe_paths(root);
 
         assert!(
-            probes.iter().any(|p| p == &venv_prostor(root)),
+            probes.iter().any(|p| p == &venv_hermes(root)),
             "venv shim remains part of the update lock probe"
         );
         assert!(
@@ -986,10 +1040,52 @@ mod tests {
 
     #[test]
     fn locked_paths_ignores_missing_payloads() {
-        let root = Path::new("/nonexistent/prostor-agent");
+        let root = Path::new("/nonexistent/hermes-agent");
         let probes = install_lock_probe_paths(root);
 
         assert!(locked_paths(&probes).is_empty());
+    }
+
+    #[test]
+    fn update_marker_guard_writes_then_removes_on_drop() {
+        let dir = unique_tmp_dir("marker-guard");
+        std::fs::create_dir_all(&dir).unwrap();
+        let marker = dir.join(".hermes-update-in-progress");
+
+        {
+            let _g = UpdateMarkerGuard::acquire(marker.clone());
+            assert!(marker.exists(), "marker must exist while the guard is held");
+            let body = std::fs::read_to_string(&marker).unwrap();
+            let pid_line = body.lines().next().unwrap();
+            assert_eq!(
+                pid_line.trim().parse::<u32>().unwrap(),
+                std::process::id(),
+                "marker records our pid so the desktop can probe liveness"
+            );
+            assert_eq!(body.lines().count(), 2, "marker is pid + started_at lines");
+        }
+
+        assert!(
+            !marker.exists(),
+            "Drop must remove the marker on every exit path (incl. early return / panic unwind)"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn update_marker_guard_drop_is_quiet_when_already_gone() {
+        let dir = unique_tmp_dir("marker-guard-gone");
+        std::fs::create_dir_all(&dir).unwrap();
+        let marker = dir.join(".hermes-update-in-progress");
+
+        let guard = UpdateMarkerGuard::acquire(marker.clone());
+        // Simulate an external cleanup (e.g. the desktop pruned a marker it
+        // judged stale) before our guard drops — Drop must not panic.
+        std::fs::remove_file(&marker).unwrap();
+        drop(guard);
+
+        assert!(!marker.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1018,8 +1114,8 @@ mod tests {
     #[test]
     fn parses_only_app_targets() {
         assert_eq!(
-            target_app_from_args(["--update", "--target-app", "/Applications/Prostor.app"]),
-            Some(PathBuf::from("/Applications/Prostor.app"))
+            target_app_from_args(["--update", "--target-app", "/Applications/Hermes.app"]),
+            Some(PathBuf::from("/Applications/Hermes.app"))
         );
         assert_eq!(target_app_from_args(["--target-app", "/tmp/not-an-app"]), None);
     }
@@ -1027,7 +1123,7 @@ mod tests {
     // Helpers for the swap tests: make a throwaway dir tree we can rename.
     fn unique_tmp_dir(tag: &str) -> PathBuf {
         let base = std::env::temp_dir().join(format!(
-            "prostor-swap-test-{tag}-{}-{}",
+            "hermes-swap-test-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1046,9 +1142,9 @@ mod tests {
     #[tokio::test]
     async fn swap_installs_new_bundle_and_cleans_up() {
         let base = unique_tmp_dir("ok");
-        let target = base.join("Prostor.app");
-        let tmp = base.join("Prostor.app.prostor-update-new");
-        let old = base.join("Prostor.app.prostor-update-old");
+        let target = base.join("Hermes.app");
+        let tmp = base.join("Hermes.app.hermes-update-new");
+        let old = base.join("Hermes.app.hermes-update-old");
         write_marker(&target, "OLD");
         write_marker(&tmp, "NEW");
 
@@ -1076,9 +1172,9 @@ mod tests {
         //  - `old` is a NON-EMPTY dir  -> rename(target, old) fails
         //  - `tmp` does not exist       -> rename(tmp, target) fails
         let base = unique_tmp_dir("fail");
-        let target = base.join("Prostor.app");
-        let tmp = base.join("Prostor.app.prostor-update-new"); // intentionally absent
-        let old = base.join("Prostor.app.prostor-update-old");
+        let target = base.join("Hermes.app");
+        let tmp = base.join("Hermes.app.hermes-update-new"); // intentionally absent
+        let old = base.join("Hermes.app.hermes-update-old");
         write_marker(&target, "OLD");
         write_marker(&old, "OCCUPIED"); // non-empty => rename(target,old) fails
 
@@ -1099,9 +1195,9 @@ mod tests {
         // Move-aside succeeds but installing the staged bundle fails (tmp
         // absent). The original must be rolled back from `old` to `target`.
         let base = unique_tmp_dir("rollback");
-        let target = base.join("Prostor.app");
-        let tmp = base.join("Prostor.app.prostor-update-new"); // absent
-        let old = base.join("Prostor.app.prostor-update-old");
+        let target = base.join("Hermes.app");
+        let tmp = base.join("Hermes.app.hermes-update-new"); // absent
+        let old = base.join("Hermes.app.hermes-update-old");
         write_marker(&target, "OLD");
 
         let result = swap_in_new_bundle(&tmp, &target, &old).await;

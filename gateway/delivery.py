@@ -11,17 +11,22 @@ Routes messages to the appropriate destination based on:
 import logging
 import os
 import re
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from typing import Any
+from datetime import datetime
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Any
 
-from prostor_core import get_prostor_home
+from hermes_cli.config import get_hermes_home
 
 logger = logging.getLogger(__name__)
 
+# Cap before gateway-level truncation of cron output for non-chunking platform
+# delivery.  Telegram's hard API limit is 4096; the headroom covers the "full
+# output saved to …" footer appended on truncation.  Adapters that split long
+# messages natively (BasePlatformAdapter.splits_long_messages) bypass this
+# entirely — the adapter chunks in its own send() and the full output is
+# preserved.
 MAX_PLATFORM_OUTPUT = 4000
-TRUNCATED_VISIBLE = 3800
 
 # Matches strings that are *only* a "silence" narration with optional markdown
 # wrappers. Covers: *(silent)*, _silent_, `silent`, ~silent~, (silent), silent,
@@ -35,7 +40,7 @@ _SILENCE_NARRATION = re.compile(
 )
 
 
-def _is_silence_narration(content: str | None) -> bool:
+def _is_silence_narration(content: Optional[str]) -> bool:
     """Return True when ``content`` is *only* a silence-narration token.
 
     Length-guarded (real messages are longer) and anchored to the whole string
@@ -49,12 +54,11 @@ def _is_silence_narration(content: str | None) -> bool:
         return False
     return bool(_SILENCE_NARRATION.match(stripped))
 
-
-from .config import GatewayConfig, Platform
+from .config import Platform, GatewayConfig
 from .session import SessionSource
 
 
-def _looks_like_telegram_private_chat_id(chat_id: str | None) -> bool:
+def _looks_like_telegram_private_chat_id(chat_id: Optional[str]) -> bool:
     if chat_id is None:
         return False
     try:
@@ -63,7 +67,7 @@ def _looks_like_telegram_private_chat_id(chat_id: str | None) -> bool:
         return False
 
 
-def _looks_like_int(value: str | None) -> bool:
+def _looks_like_int(value: Optional[str]) -> bool:
     if value is None:
         return False
     try:
@@ -79,7 +83,7 @@ def _send_result_failed(result: Any) -> bool:
     return getattr(result, "success", True) is False
 
 
-def _send_result_error(result: Any) -> str | None:
+def _send_result_error(result: Any) -> Optional[str]:
     if isinstance(result, dict):
         error = result.get("error")
     else:
@@ -96,7 +100,7 @@ def _is_thread_not_found_delivery_error(result: Any) -> bool:
 class DeliveryTarget:
     """
     A single delivery target.
-
+    
     Represents where a message should be sent:
     - "origin" → back to source
     - "local" → save to local files
@@ -104,16 +108,16 @@ class DeliveryTarget:
     - "telegram:123456" → specific Telegram chat
     """
     platform: Platform
-    chat_id: str | None = None  # None means use home channel
-    thread_id: str | None = None
+    chat_id: Optional[str] = None  # None means use home channel
+    thread_id: Optional[str] = None
     is_origin: bool = False
     is_explicit: bool = False  # True if chat_id was explicitly specified
-
+    
     @classmethod
-    def parse(cls, target: str, origin: SessionSource | None = None) -> "DeliveryTarget":
+    def parse(cls, target: str, origin: Optional[SessionSource] = None) -> "DeliveryTarget":
         """
         Parse a delivery target string.
-
+        
         Formats:
         - "origin" → back to source
         - "local" → local files only
@@ -122,7 +126,7 @@ class DeliveryTarget:
         """
         target_stripped = target.strip()
         target_lower = target_stripped.lower()
-
+        
         if target_lower == "origin":
             if origin:
                 return cls(
@@ -134,10 +138,10 @@ class DeliveryTarget:
             else:
                 # Fallback to local if no origin
                 return cls(platform=Platform.LOCAL, is_origin=True)
-
+        
         if target_lower == "local":
             return cls(platform=Platform.LOCAL)
-
+        
         # Check for platform:chat_id or platform:chat_id:thread_id format
         # Use the original case for chat_id/thread_id to preserve case-sensitive IDs
         if ":" in target_stripped:
@@ -151,7 +155,7 @@ class DeliveryTarget:
             except ValueError:
                 # Unknown platform, treat as local
                 return cls(platform=Platform.LOCAL)
-
+        
         # Just a platform name (use home channel)
         try:
             platform = Platform(target_lower)
@@ -159,7 +163,7 @@ class DeliveryTarget:
         except ValueError:
             # Unknown platform, treat as local
             return cls(platform=Platform.LOCAL)
-
+    
     def to_string(self) -> str:
         """Convert back to string format."""
         if self.is_origin:
@@ -176,53 +180,53 @@ class DeliveryTarget:
 class DeliveryRouter:
     """
     Routes messages to appropriate destinations.
-
+    
     Handles the logic of resolving delivery targets and dispatching
     messages to the right platform adapters.
     """
-
-    def __init__(self, config: GatewayConfig, adapters: dict[Platform, Any] = None):
+    
+    def __init__(self, config: GatewayConfig, adapters: Dict[Platform, Any] = None):
         """
         Initialize the delivery router.
-
+        
         Args:
             config: Gateway configuration
             adapters: Dict mapping platforms to their adapter instances
         """
         self.config = config
         self.adapters = adapters or {}
-        self.output_dir = get_prostor_home() / "cron" / "output"
-
+        self.output_dir = get_hermes_home() / "cron" / "output"
+    
     async def deliver(
         self,
         content: str,
-        targets: list[DeliveryTarget],
-        job_id: str | None = None,
-        job_name: str | None = None,
-        metadata: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+        targets: List[DeliveryTarget],
+        job_id: Optional[str] = None,
+        job_name: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Deliver content to all specified targets.
-
+        
         Args:
             content: The message/output to deliver
             targets: List of delivery targets
             job_id: Optional job ID (for cron jobs)
             job_name: Optional job name
             metadata: Additional metadata to include
-
+        
         Returns:
             Dict with delivery results per target
         """
         results = {}
-
+        
         for target in targets:
             try:
                 if target.platform == Platform.LOCAL:
                     result = self._deliver_local(content, job_id, job_name, metadata)
                 else:
                     result = await self._deliver_to_platform(target, content, metadata)
-
+                
                 results[target.to_string()] = {
                     "success": True,
                     "result": result
@@ -232,59 +236,59 @@ class DeliveryRouter:
                     "success": False,
                     "error": str(e)
                 }
-
+        
         return results
-
+    
     def _deliver_local(
         self,
         content: str,
-        job_id: str | None,
-        job_name: str | None,
-        metadata: dict[str, Any] | None
-    ) -> dict[str, Any]:
+        job_id: Optional[str],
+        job_name: Optional[str],
+        metadata: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Save content to local files."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
+        
         if job_id:
             output_path = self.output_dir / job_id / f"{timestamp}.md"
         else:
             output_path = self.output_dir / "misc" / f"{timestamp}.md"
-
+        
         output_path.parent.mkdir(parents=True, exist_ok=True)
-
+        
         # Build the output document
         lines = []
         if job_name:
             lines.append(f"# {job_name}")
         else:
             lines.append("# Delivery Output")
-
+        
         lines.append("")
         lines.append(f"**Timestamp:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
+        
         if job_id:
             lines.append(f"**Job ID:** {job_id}")
-
+        
         if metadata:
             for key, value in metadata.items():
                 lines.append(f"**{key}:** {value}")
-
+        
         lines.append("")
         lines.append("---")
         lines.append("")
         lines.append(content)
-
+        
         output_path.write_text("\n".join(lines))
-
+        
         return {
             "path": str(output_path),
             "timestamp": timestamp
         }
-
+    
     def _save_full_output(self, content: str, job_id: str) -> Path:
         """Save full cron output to disk and return the file path."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_dir = get_prostor_home() / "cron" / "output"
+        out_dir = get_hermes_home() / "cron" / "output"
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"{job_id}_{timestamp}.txt"
         path.write_text(content)
@@ -293,11 +297,11 @@ class DeliveryRouter:
     def _filter_silence_narration_enabled(self) -> bool:
         """Whether the outbound silence-narration filter is active.
 
-        ``PROSTOR_FILTER_SILENCE_NARRATION`` env var overrides config when set;
+        ``HERMES_FILTER_SILENCE_NARRATION`` env var overrides config when set;
         otherwise the ``gateway.filter_silence_narration`` config flag wins
         (default True).
         """
-        env = os.getenv("PROSTOR_FILTER_SILENCE_NARRATION")
+        env = os.getenv("HERMES_FILTER_SILENCE_NARRATION")
         if env is not None:
             return env.strip().lower() in ("1", "true", "yes", "on")
         return bool(getattr(self.config, "filter_silence_narration", True))
@@ -306,27 +310,67 @@ class DeliveryRouter:
         self,
         target: DeliveryTarget,
         content: str,
-        metadata: dict[str, Any] | None
-    ) -> dict[str, Any]:
+        metadata: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Deliver content to a messaging platform."""
         adapter = self.adapters.get(target.platform)
-
+        
         if not adapter:
             raise ValueError(f"No adapter configured for {target.platform.value}")
-
+        
         if not target.chat_id:
             raise ValueError(f"No chat ID for {target.platform.value} delivery")
+        
+        # Guard: handle oversized cron output.
+        #
+        # Two independent decisions:
+        #   1. AUDIT SAVE — when content exceeds MAX_PLATFORM_OUTPUT, the full
+        #      output is always written to disk as a recoverable audit trail.
+        #      This fires regardless of adapter capability (best-effort).
+        #   2. TRUNCATION — for non-chunking adapters, content above the cap is
+        #      truncated with a footer pointing to the saved file.  Chunking-
+        #      capable adapters (splits_long_messages=True) receive the full
+        #      payload and split natively in their send().
+        job_id = (metadata or {}).get("job_id", "unknown")
+        saved_path: Optional[Path] = None
 
-        # Guard: truncate oversized cron output to stay within platform limits
         if len(content) > MAX_PLATFORM_OUTPUT:
-            job_id = (metadata or {}).get("job_id", "unknown")
-            saved_path = self._save_full_output(content, job_id)
-            logger.info("Cron output truncated (%d chars) — full output: %s", len(content), saved_path)
-            content = (
-                content[:TRUNCATED_VISIBLE]
-                + f"\n\n... [truncated, full output saved to {saved_path}]"
-            )
+            # Step 1 — audit save (best-effort).  The save is a side-effect
+            # audit trail, not essential to delivery.  If it fails (full disk,
+            # permissions), delivery proceeds — the content reaches the adapter
+            # regardless.
+            try:
+                saved_path = self._save_full_output(content, job_id)
+            except OSError as exc:
+                logger.warning(
+                    "Audit save failed for cron output (%d chars, job=%s): %s — "
+                    "delivery proceeds without audit copy",
+                    len(content), job_id, exc,
+                )
 
+            # Step 2 — truncation (only for non-chunking adapters).
+            if getattr(adapter, "splits_long_messages", False):
+                # Adapter chunks natively — deliver full payload.
+                if saved_path:
+                    logger.info(
+                        "Cron output preserved for chunking adapter (%d chars) — "
+                        "full output saved to %s",
+                        len(content), saved_path,
+                    )
+            else:
+                # Non-chunking adapter — truncate with footer.  The footer
+                # needs a valid path, so if the best-effort save above failed,
+                # retry it here (a failure now is a real delivery problem).
+                if saved_path is None:
+                    saved_path = self._save_full_output(content, job_id)
+                footer = f"\n\n... [truncated, full output saved to {saved_path}]"
+                visible = max(0, MAX_PLATFORM_OUTPUT - len(footer))
+                logger.info(
+                    "Cron output truncated (%d chars) — full output: %s",
+                    len(content), saved_path,
+                )
+                content = content[:visible] + footer
+        
         # Substrate-level anti-loop guard: drop hallucinated "silence narration"
         # (*(silent)*, 🔇, a bare ".", etc.) before it ever reaches the adapter.
         # In bot-to-bot channels these tokens mirror back and forth until a
@@ -350,7 +394,7 @@ class DeliveryRouter:
 
         send_metadata = dict(metadata or {})
         is_named_telegram_private_topic = False
-        named_telegram_private_topic_name: str | None = None
+        named_telegram_private_topic_name: Optional[str] = None
         if target.thread_id:
             has_explicit_direct_topic = (
                 "direct_messages_topic_id" in send_metadata
@@ -428,3 +472,7 @@ class DeliveryRouter:
             if _send_result_failed(result):
                 raise RuntimeError(_send_result_error(result) or f"{target.platform.value} delivery failed")
         return result
+
+
+
+

@@ -1,7 +1,7 @@
 """Core-functionality tests for the kanban kernel + CLI additions.
 
-Complements tests/prostor_cli/test_kanban_db.py (schema + CAS atomicity)
-and tests/prostor_cli/test_kanban_cli.py (end-to-end run_slash).  The
+Complements tests/hermes_cli/test_kanban_db.py (schema + CAS atomicity)
+and tests/hermes_cli/test_kanban_cli.py (end-to-end run_slash).  The
 tests here exercise the pieces added as part of the kanban hardening
 pass: circuit breaker, crash detection, daemon loop, idempotency,
 retention/gc, stats, notify subscriptions, worker log accessor, run_slash
@@ -21,22 +21,22 @@ from types import SimpleNamespace
 
 import pytest
 
-from prostor_cli import kanban_db as kb
-from prostor_cli.kanban import run_slash
+from hermes_cli import kanban_db as kb
+from hermes_cli.kanban import run_slash
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
 @pytest.fixture
 def kanban_home(tmp_path, monkeypatch):
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     # Existing crash-detection tests pre-date the grace window; pin to 0
     # so they keep their immediate-reclaim semantics.
-    monkeypatch.setenv("PROSTOR_KANBAN_CRASH_GRACE_SECONDS", "0")
+    monkeypatch.setenv("HERMES_KANBAN_CRASH_GRACE_SECONDS", "0")
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     # Disable the detect_crashed_workers grace period for legacy tests in
     # this file that claim a task and immediately expect
@@ -45,8 +45,8 @@ def kanban_home(tmp_path, monkeypatch):
     # multi-dispatcher reap race in production; setting it to 0 here
     # restores the pre-fix instant-reclaim semantics these tests were
     # written against. The grace-period itself is covered by dedicated
-    # tests in tests/prostor_cli/test_kanban_db.py.
-    monkeypatch.setenv("PROSTOR_KANBAN_CRASH_GRACE_SECONDS", "0")
+    # tests in tests/hermes_cli/test_kanban_db.py.
+    monkeypatch.setenv("HERMES_KANBAN_CRASH_GRACE_SECONDS", "0")
     kb.init_db()
     return home
 
@@ -129,7 +129,6 @@ def test_successful_spawn_does_not_reset_failure_counter(kanban_home, all_assign
     complete_task reset for the replacement point.)
     """
     calls = [0]
-
     def _flaky_spawn(task, ws):
         calls[0] += 1
         if calls[0] <= 2:
@@ -207,7 +206,7 @@ def test_per_task_max_retries_overrides_dispatcher_limit(kanban_home, all_assign
 
     Three-tier resolution order:
       1. ``task.max_retries`` (set via ``create_task(max_retries=N)`` /
-         ``prostor kanban create --max-retries N``)
+         ``hermes kanban create --max-retries N``)
       2. ``failure_limit`` kwarg passed by the caller (gateway threads
          this from ``kanban.failure_limit`` config)
       3. ``DEFAULT_FAILURE_LIMIT``
@@ -407,14 +406,14 @@ def test_detect_crashed_workers_reclaims(kanban_home):
     conn = kb.connect()
     try:
         tid = kb.create_task(conn, title="x", assignee="worker")
-        kb.dispatch_once(conn, spawn_fn=_spawn_pid_that_exits)
+        res = kb.dispatch_once(conn, spawn_fn=_spawn_pid_that_exits)
         # Brief sleep to make sure the child's pid has been reaped; on
         # busy CI the pid may be reused by another process, which would
         # fool _pid_alive. If that happens we accept the test still
         # passing as long as the dispatcher ran without error.
         time.sleep(0.2)
         res2 = kb.dispatch_once(conn)
-        kb.get_task(conn, tid)
+        task = kb.get_task(conn, tid)
         # Either crashed was detected (preferred) or the TTL reclaim path
         # will eventually fire; we accept either outcome but the worker_pid
         # should no longer be set.
@@ -467,7 +466,6 @@ def test_daemon_keeps_going_after_tick_exception(kanban_home, monkeypatch):
     monkeypatch.setattr(kb, "dispatch_once", _boom)
 
     stop = threading.Event()
-
     def _runner():
         kb.run_daemon(interval=0.05, stop_event=stop)
 
@@ -488,7 +486,7 @@ def test_board_stats(kanban_home):
     conn = kb.connect()
     try:
         a = kb.create_task(conn, title="a", assignee="x")
-        kb.create_task(conn, title="b", assignee="y")
+        b = kb.create_task(conn, title="b", assignee="y")
         kb.complete_task(conn, a, result="done")
         stats = kb.board_stats(conn)
         assert stats["by_status"]["ready"] == 1
@@ -941,12 +939,11 @@ def test_max_runtime_terminates_overrun_worker(kanban_home):
     """A running task whose elapsed time exceeds max_runtime_seconds gets
     SIGTERM'd, emits a ``timed_out`` event, and goes back to ready."""
     killed = []
-
     def _signal_fn(pid, sig):
         killed.append((pid, sig))
 
     # We bypass _pid_alive by stubbing it so the grace-poll exits fast.
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
     original_alive = _kb._pid_alive
     _kb._pid_alive = lambda pid: False  # pretend SIGTERM worked immediately
 
@@ -979,7 +976,7 @@ def test_max_runtime_terminates_overrun_worker(kanban_home):
             assert killed and killed[0][0] == os.getpid()
 
             task = kb.get_task(conn, tid)
-            assert task.status == "ready", f"timed-out task should reset to ready, got {task.status}"
+            assert task.status == "ready",                 f"timed-out task should reset to ready, got {task.status}"
             assert task.worker_pid is None
             assert task.last_heartbeat_at is None
 
@@ -996,7 +993,7 @@ def test_max_runtime_terminates_overrun_worker(kanban_home):
 
 def test_repeated_timeouts_auto_block_at_default_limit(kanban_home):
     """Two timed_out outcomes on the same task/profile trip the retry guard."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
     original_alive = _kb._pid_alive
     _kb._pid_alive = lambda pid: False
 
@@ -1072,15 +1069,13 @@ def test_enforce_max_runtime_integrates_with_dispatch(kanban_home, monkeypatch):
     """enforce_max_runtime + dispatch_once integrate cleanly — a timed-out
     task goes through ``timed_out`` → ``ready`` and dispatch_once can then
     re-spawn it without re-reporting the timeout."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
     # Leave _pid_alive=True so the crash detector doesn't steal the task
     # before timeout enforcement runs. After SIGTERM in enforce_max_runtime,
     # pretend the worker died so the grace wait exits fast.
     state = {"sent_term": False}
-
     def _alive(pid):
         return not state["sent_term"]
-
     def _signal(pid, sig):
         import signal as _sig
         if sig == _sig.SIGTERM:
@@ -1116,7 +1111,7 @@ def test_enforce_max_runtime_integrates_with_dispatch(kanban_home, monkeypatch):
 
         # Now a second dispatch_once run should be a no-op on this task
         # (already released). Confirm the loop doesn't re-report it.
-        kb.dispatch_once(conn, spawn_fn=lambda t, ws: None)
+        res = kb.dispatch_once(conn, spawn_fn=lambda t, ws: None)
         task = kb.get_task(conn, tid)
         # After timeout, task is back in 'ready' and will be re-spawned
         # by the same pass. That's the intended behaviour.
@@ -1238,9 +1233,9 @@ def test_spawned_event_emitted_with_pid(kanban_home, all_assignees_spawnable):
 def test_migration_renames_legacy_event_kinds(tmp_path, monkeypatch):
     """A DB created with the old vocab must have its event rows renamed
     in place on init_db()."""
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     # Init fresh.
     kb.init_db()
@@ -1278,10 +1273,10 @@ def test_migration_renames_legacy_event_kinds(tmp_path, monkeypatch):
 
 def test_list_profiles_on_disk(tmp_path, monkeypatch):
     """list_profiles_on_disk returns the implicit default profile plus
-    named profiles under ~/.prostor/profiles/ that contain a config.yaml."""
+    named profiles under ~/.hermes/profiles/ that contain a config.yaml."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    monkeypatch.delenv("PROSTOR_HOME", raising=False)
-    profiles = tmp_path / ".prostor" / "profiles"
+    monkeypatch.delenv("HERMES_HOME", raising=False)
+    profiles = tmp_path / ".hermes" / "profiles"
     profiles.mkdir(parents=True)
     for name in ("researcher", "writer"):
         d = profiles / name
@@ -1296,8 +1291,8 @@ def test_list_profiles_on_disk(tmp_path, monkeypatch):
 
 
 def test_list_profiles_on_disk_custom_root(tmp_path, monkeypatch):
-    """list_profiles_on_disk respects a custom PROSTOR_HOME root."""
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path))
+    """list_profiles_on_disk respects a custom HERMES_HOME root."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     profiles = tmp_path / "profiles"
     profiles.mkdir(parents=True)
     for name in ("researcher", "writer"):
@@ -1313,9 +1308,9 @@ def test_known_assignees_merges_disk_and_board(tmp_path, monkeypatch):
     """known_assignees unions profiles on disk with currently-assigned
     names, and reports per-status counts."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    profiles = tmp_path / ".prostor" / "profiles"
+    profiles = tmp_path / ".hermes" / "profiles"
     profiles.mkdir(parents=True)
-    monkeypatch.setenv("PROSTOR_HOME", str(tmp_path / ".prostor"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
 
     for name in ("researcher", "writer"):
         d = profiles / name
@@ -1360,7 +1355,7 @@ def test_cli_assignees_json(kanban_home):
 # ---------------------------------------------------------------------------
 
 def test_parse_duration_accepts_formats():
-    from prostor_cli.kanban import _parse_duration
+    from hermes_cli.kanban import _parse_duration
     assert _parse_duration(None) is None
     assert _parse_duration("") is None
     assert _parse_duration("42") == 42
@@ -1372,9 +1367,8 @@ def test_parse_duration_accepts_formats():
 
 
 def test_parse_duration_rejects_garbage():
+    from hermes_cli.kanban import _parse_duration
     import pytest as _p
-
-    from prostor_cli.kanban import _parse_duration
     with _p.raises(ValueError):
         _parse_duration("tenminutes")
     with _p.raises(ValueError):
@@ -1382,7 +1376,7 @@ def test_parse_duration_rejects_garbage():
 
 
 def test_cli_create_max_runtime_via_duration(kanban_home):
-    """`prostor kanban create --max-runtime 2h` should persist 7200 seconds."""
+    """`hermes kanban create --max-runtime 2h` should persist 7200 seconds."""
     out = run_slash("create 'long task' --max-runtime 2h --json")
     data = json.loads(out)
     tid = data["id"]
@@ -1477,7 +1471,7 @@ def test_run_summary_falls_back_to_result(kanban_home):
 def test_multiple_attempts_preserved_as_runs(kanban_home):
     """Crash / retry / complete flow produces one run per attempt, all
     visible in list_runs in chronological order."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
     conn = kb.connect()
     try:
         tid = kb.create_task(conn, title="x", assignee="worker")
@@ -1521,7 +1515,7 @@ def test_multiple_attempts_preserved_as_runs(kanban_home):
 
 def test_stale_run_cannot_complete_new_attempt(kanban_home, monkeypatch):
     """A worker from an earlier attempt cannot close a later retry."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     conn = kb.connect()
     try:
@@ -1562,7 +1556,7 @@ def test_stale_run_cannot_complete_new_attempt(kanban_home, monkeypatch):
 
 def test_stale_run_cannot_block_or_heartbeat_new_attempt(kanban_home, monkeypatch):
     """Stale retry attempts cannot mutate the active run lifecycle."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     conn = kb.connect()
     try:
@@ -1973,15 +1967,14 @@ def test_cli_bulk_complete_with_summary_rejects(kanban_home):
     finally:
         conn.close()
     # Bulk + summary is refused (stderr message, no mutation).
-    # Note: prostor_cli.main doesn't propagate sub-command exit codes
+    # Note: hermes_cli.main doesn't propagate sub-command exit codes
     # (args.func(args) discards the return value), so we check the side
     # effects instead.
-    import os
-    import sys
     from subprocess import run as _run
+    import os, sys
     env = os.environ.copy()
     r = _run(
-        [sys.executable, "-m", "prostor_cli.main", "kanban",
+        [sys.executable, "-m", "hermes_cli.main", "kanban",
          "complete", a, b, "--summary", "oops"],
         capture_output=True, text=True, env=env,
     )
@@ -2200,20 +2193,20 @@ def test_claim_task_recovers_from_invariant_leak(kanban_home):
 # -------------------------------------------------------------------------
 
 def test_cli_create_on_fresh_home_auto_inits(tmp_path, monkeypatch):
-    """First CLI action on an empty PROSTOR_HOME must not error with
+    """First CLI action on an empty HERMES_HOME must not error with
     'no such table: tasks' — init_db auto-runs now."""
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     # Sanity: kanban.db does NOT exist yet.
     import subprocess as _sp
     import sys as _sys
     worktree_root = Path(__file__).resolve().parents[2]
-    env = {**os.environ, "PROSTOR_HOME": str(home),
+    env = {**os.environ, "HERMES_HOME": str(home),
            "PYTHONPATH": str(worktree_root)}
     r = _sp.run(
-        [_sys.executable, "-m", "prostor_cli.main", "kanban",
+        [_sys.executable, "-m", "hermes_cli.main", "kanban",
          "create", "smoke", "--assignee", "worker", "--json"],
         capture_output=True, text=True, env=env,
     )
@@ -2226,11 +2219,11 @@ def test_cli_create_on_fresh_home_auto_inits(tmp_path, monkeypatch):
 
 
 def test_connect_auto_inits_fresh_db(tmp_path, monkeypatch):
-    """Calling connect() on a fresh PROSTOR_HOME must create the
+    """Calling connect() on a fresh HERMES_HOME must create the
     schema. Previously callers had to remember kb.init_db() first."""
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     # Flush the module-level cache so this path looks fresh.
     kb._INITIALIZED_PATHS.clear()
@@ -2246,7 +2239,7 @@ def test_connect_auto_inits_fresh_db(tmp_path, monkeypatch):
 
 
 def test_cli_show_json_carries_runs(kanban_home):
-    """prostor kanban show --json must include runs[] so scripts that
+    """hermes kanban show --json must include runs[] so scripts that
     inspect attempt history don't need a separate 'runs' call."""
     conn = kb.connect()
     try:
@@ -2338,9 +2331,9 @@ def test_migration_backfill_idempotent_under_re_run(tmp_path, monkeypatch):
     """init_db must be safe to re-run repeatedly. Each call should leave
     at most one run row per in-flight task, even if called while a
     dispatcher is simultaneously claiming."""
-    home = tmp_path / ".prostor"
+    home = tmp_path / ".hermes"
     home.mkdir()
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     # Fresh DB, one task left in 'running' with a claim but no run row.
@@ -2378,7 +2371,7 @@ def test_build_worker_context_includes_role_history(kanban_home):
     conn = kb.connect()
     try:
         # Three completed tasks for 'reviewer'
-        for _i, (title, summary) in enumerate([
+        for i, (title, summary) in enumerate([
             ("Review security PR #1", "approved, focus on CSRF"),
             ("Review security PR #2", "requested changes: SQL injection vector"),
             ("Review security PR #3", "approved, rate-limit added"),
@@ -2638,19 +2631,19 @@ def test_build_worker_context_caps_prior_attempts(kanban_home):
 
 def test_build_worker_context_renders_author_with_safe_framing(kanban_home):
     """Author rendering wraps the operator-controlled author in code fences
-    + "comment from worker" prefix so a misleading PROSTOR_PROFILE name
-    (e.g. "prostor-system", "operator") can't be misread as a system
+    + "comment from worker" prefix so a misleading HERMES_PROFILE name
+    (e.g. "hermes-system", "operator") can't be misread as a system
     directive above the comment body. Defense-in-depth — see #22452."""
     conn = kb.connect()
     try:
         tid = kb.create_task(conn, title="t", assignee="worker")
-        kb.add_comment(conn, tid, author="prostor-system", body="some note")
+        kb.add_comment(conn, tid, author="hermes-system", body="some note")
         ctx = kb.build_worker_context(conn, tid)
 
         # No bold-author rendering anywhere in the context.
-        assert "**prostor-system**" not in ctx
+        assert "**hermes-system**" not in ctx
         # Explicit provenance prefix is present.
-        assert "comment from worker `prostor-system` at " in ctx
+        assert "comment from worker `hermes-system` at " in ctx
         # The body still renders.
         assert "some note" in ctx
     finally:
@@ -2710,20 +2703,17 @@ def test_build_worker_context_caps_huge_summary(kanban_home):
         conn.close()
 
 
-def test_default_spawn_auto_loads_kanban_worker_skill(kanban_home, monkeypatch):
-    """The dispatcher's _default_spawn must include --skills kanban-worker
-    in its argv so every worker loads the skill automatically, even if
-    the profile hasn't wired it into its default skills config.
+def test_default_spawn_does_not_auto_load_any_skill(kanban_home, monkeypatch):
+    """The dispatcher no longer auto-loads a bundled kanban skill.
+
+    The kanban lifecycle (formerly the kanban-worker/kanban-orchestrator
+    skills) is now injected into every worker's system prompt via
+    KANBAN_GUIDANCE, so _default_spawn must NOT append a `--skills` flag
+    when the task carries no per-task skills.
 
     We intercept Popen to capture the argv without actually spawning a
-    prostor subprocess (which would hang trying to call an LLM).
+    hermes subprocess (which would hang trying to call an LLM).
     """
-    # Pretend the bundled kanban-worker skill resolves for this isolated
-    # PROSTOR_HOME — the fixture creates an empty tmpdir without the
-    # devops/kanban-worker tree, and _default_spawn gates the --skills
-    # flag on actual resolvability.
-    monkeypatch.setattr(kb, "_kanban_worker_skill_available", lambda _h: True)
-
     captured = {}
 
     class FakeProc:
@@ -2749,10 +2739,8 @@ def test_default_spawn_auto_loads_kanban_worker_skill(kanban_home, monkeypatch):
         conn.close()
 
     cmd = captured["cmd"]
-    assert "--skills" in cmd, f"spawn argv missing --skills: {cmd}"
-    idx = cmd.index("--skills")
-    assert cmd[idx + 1] == "kanban-worker", (
-        f"expected 'kanban-worker', got {cmd[idx + 1]!r}"
+    assert "--skills" not in cmd, (
+        f"spawn argv should not auto-load any skill: {cmd}"
     )
     assert "--accept-hooks" in cmd, f"spawn argv missing --accept-hooks: {cmd}"
     assert cmd.index("--accept-hooks") < cmd.index("chat"), (
@@ -2761,8 +2749,8 @@ def test_default_spawn_auto_loads_kanban_worker_skill(kanban_home, monkeypatch):
     # Assignee + task env are still present
     assert "some-profile" in cmd
     env = captured["env"]
-    assert env.get("PROSTOR_KANBAN_TASK") == tid
-    assert env.get("PROSTOR_PROFILE") == "some-profile"
+    assert env.get("HERMES_KANBAN_TASK") == tid
+    assert env.get("HERMES_PROFILE") == "some-profile"
 
 
 def test_default_spawn_raises_terminal_timeout_to_task_runtime(kanban_home, monkeypatch):
@@ -2883,6 +2871,7 @@ def test_build_worker_context_includes_runtime_timeout_budget(kanban_home, monke
     assert "Terminal timeout: 3570s" in ctx
 
 
+
 # ---------------------------------------------------------------------------
 # Per-task force-loaded skills
 # ---------------------------------------------------------------------------
@@ -2991,8 +2980,7 @@ def test_create_task_skills_lists_all_toolset_typos(kanban_home):
 
 def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     """Dispatcher argv must carry one `--skills X` pair per task skill,
-    in addition to the built-in kanban-worker."""
-    monkeypatch.setattr(kb, "_kanban_worker_skill_available", lambda _h: True)
+    in declared order. No skill is auto-loaded anymore."""
     captured = {}
 
     class FakeProc:
@@ -3025,10 +3013,8 @@ def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     for i, tok in enumerate(cmd):
         if tok == "--skills" and i + 1 < len(cmd):
             skill_names.append(cmd[i + 1])
-    # kanban-worker first (built-in), then per-task extras in order.
-    assert skill_names[0] == "kanban-worker", skill_names
-    assert "translation" in skill_names
-    assert "github-code-review" in skill_names
+    # Only the per-task skills, in declared order — nothing auto-loaded.
+    assert skill_names == ["translation", "github-code-review"], skill_names
     # --skills must appear BEFORE the `chat` subcommand so argparse
     # attaches them to the top-level parser, not the subcommand.
     chat_idx = cmd.index("chat")
@@ -3040,9 +3026,9 @@ def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     )
 
 
-def test_default_spawn_dedupes_kanban_worker_from_task_skills(kanban_home, monkeypatch):
-    """If a task explicitly lists 'kanban-worker', we don't double-pass it."""
-    monkeypatch.setattr(kb, "_kanban_worker_skill_available", lambda _h: True)
+def test_default_spawn_passes_task_skills_verbatim(kanban_home, monkeypatch):
+    """Per-task skills are passed through verbatim — there is no built-in
+    kanban skill to dedupe against anymore."""
     captured = {}
 
     class FakeProc:
@@ -3058,7 +3044,7 @@ def test_default_spawn_dedupes_kanban_worker_from_task_skills(kanban_home, monke
     try:
         tid = kb.create_task(
             conn, title="dup", assignee="x",
-            skills=["kanban-worker", "translation"],
+            skills=["translation", "github-code-review"],
         )
         task = kb.get_task(conn, tid)
         workspace = kb.resolve_workspace(task)
@@ -3067,17 +3053,19 @@ def test_default_spawn_dedupes_kanban_worker_from_task_skills(kanban_home, monke
         conn.close()
 
     cmd = captured["cmd"]
-    worker_pairs = [
-        i for i, tok in enumerate(cmd)
-        if tok == "--skills" and i + 1 < len(cmd) and cmd[i + 1] == "kanban-worker"
+    skill_names = [
+        cmd[i + 1]
+        for i, tok in enumerate(cmd)
+        if tok == "--skills" and i + 1 < len(cmd)
     ]
-    assert len(worker_pairs) == 1, (
-        f"kanban-worker appeared {len(worker_pairs)} times in argv: {cmd}"
+    # Exactly the task's skills, once each, in order — no auto-loaded extras.
+    assert skill_names == ["translation", "github-code-review"], (
+        f"unexpected --skills in argv: {cmd}"
     )
 
 
 def test_cli_create_skill_flag_repeatable(kanban_home):
-    """`prostor kanban create --skill a --skill b` persists the list."""
+    """`hermes kanban create --skill a --skill b` persists the list."""
     out = run_slash(
         "create 'multi-skill' --assignee linguist "
         "--skill translation --skill github-code-review --json"
@@ -3099,7 +3087,7 @@ def test_cli_create_without_skill_flag_leaves_none(kanban_home):
 
 
 def test_cli_show_renders_skills(kanban_home):
-    """`prostor kanban show <id>` prints a skills row when present."""
+    """`hermes kanban show <id>` prints a skills row when present."""
     out = run_slash(
         "create 'show-test' --assignee x "
         "--skill translation --json"
@@ -3372,7 +3360,7 @@ def test_config_default_dispatch_in_gateway_is_true():
     """Default config must enable gateway-embedded dispatch out of the box.
     Flipping this default to false is a user-visible behaviour change and
     should require a conscious migration."""
-    from prostor_cli.config import DEFAULT_CONFIG
+    from hermes_cli.config import DEFAULT_CONFIG
     kanban = DEFAULT_CONFIG.get("kanban", {})
     assert kanban.get("dispatch_in_gateway") is True, (
         "kanban.dispatch_in_gateway default should be True; got "
@@ -3385,10 +3373,10 @@ def test_config_default_dispatch_in_gateway_is_true():
 
 
 def test_check_dispatcher_presence_silent_when_gateway_running(monkeypatch):
-    from prostor_cli import kanban as kb_cli
+    from hermes_cli import kanban as kb_cli
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: 12345)
     monkeypatch.setattr(
-        "prostor_cli.config.load_config",
+        "hermes_cli.config.load_config",
         lambda: {"kanban": {"dispatch_in_gateway": True}},
     )
     running, msg = kb_cli._check_dispatcher_presence()
@@ -3398,23 +3386,23 @@ def test_check_dispatcher_presence_silent_when_gateway_running(monkeypatch):
 
 
 def test_check_dispatcher_presence_warns_when_no_gateway(monkeypatch):
-    from prostor_cli import kanban as kb_cli
+    from hermes_cli import kanban as kb_cli
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: None)
     monkeypatch.setattr(
-        "prostor_cli.config.load_config",
+        "hermes_cli.config.load_config",
         lambda: {"kanban": {"dispatch_in_gateway": True}},
     )
     running, msg = kb_cli._check_dispatcher_presence()
     assert running is False
-    assert "prostor gateway start" in msg
+    assert "hermes gateway start" in msg
 
 
 def test_check_dispatcher_presence_warns_when_flag_off(monkeypatch):
     """Gateway is up but dispatch_in_gateway=false -> warning."""
-    from prostor_cli import kanban as kb_cli
+    from hermes_cli import kanban as kb_cli
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: 999)
     monkeypatch.setattr(
-        "prostor_cli.config.load_config",
+        "hermes_cli.config.load_config",
         lambda: {"kanban": {"dispatch_in_gateway": False}},
     )
     running, msg = kb_cli._check_dispatcher_presence()
@@ -3424,8 +3412,7 @@ def test_check_dispatcher_presence_warns_when_flag_off(monkeypatch):
 
 def test_check_dispatcher_presence_silent_on_probe_error(monkeypatch):
     """If the probe itself errors, we stay silent."""
-    from prostor_cli import kanban as kb_cli
-
+    from hermes_cli import kanban as kb_cli
     def _raise():
         raise RuntimeError("boom")
     monkeypatch.setattr("gateway.status.get_running_pid", _raise)
@@ -3450,64 +3437,64 @@ def _make_create_ns(**overrides):
 
 def test_cli_create_warns_when_no_gateway(kanban_home, monkeypatch, capsys):
     """ready+assigned task + no gateway -> warning on stderr."""
-    from prostor_cli import kanban as kb_cli
+    from hermes_cli import kanban as kb_cli
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: None)
     monkeypatch.setattr(
-        "prostor_cli.config.load_config",
+        "hermes_cli.config.load_config",
         lambda: {"kanban": {"dispatch_in_gateway": True}},
     )
     ns = _make_create_ns(title="warn-me", assignee="worker")
     assert kb_cli._cmd_create(ns) == 0
     captured = capsys.readouterr()
     # Stderr has the warning prefix + guidance.
-    assert "prostor gateway start" in captured.err
+    assert "hermes gateway start" in captured.err
 
 
 def test_cli_create_silent_when_gateway_up(kanban_home, monkeypatch, capsys):
     """gateway running + dispatch enabled -> no warning."""
-    from prostor_cli import kanban as kb_cli
+    from hermes_cli import kanban as kb_cli
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: 4242)
     monkeypatch.setattr(
-        "prostor_cli.config.load_config",
+        "hermes_cli.config.load_config",
         lambda: {"kanban": {"dispatch_in_gateway": True}},
     )
     ns = _make_create_ns(title="silent", assignee="worker")
     assert kb_cli._cmd_create(ns) == 0
     captured = capsys.readouterr()
-    assert "prostor gateway start" not in captured.err
+    assert "hermes gateway start" not in captured.err
 
 
 def test_cli_create_no_warn_on_triage(kanban_home, monkeypatch, capsys):
     """Triage tasks can't be dispatched -> no warning."""
-    from prostor_cli import kanban as kb_cli
+    from hermes_cli import kanban as kb_cli
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: None)
     monkeypatch.setattr(
-        "prostor_cli.config.load_config",
+        "hermes_cli.config.load_config",
         lambda: {"kanban": {"dispatch_in_gateway": True}},
     )
     ns = _make_create_ns(title="triage-task", assignee=None, triage=True)
     assert kb_cli._cmd_create(ns) == 0
     err = capsys.readouterr().err
-    assert "prostor gateway start" not in err
+    assert "hermes gateway start" not in err
 
 
 def test_cli_create_no_warn_unassigned(kanban_home, monkeypatch, capsys):
     """Unassigned tasks can't be dispatched -> no warning."""
-    from prostor_cli import kanban as kb_cli
+    from hermes_cli import kanban as kb_cli
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: None)
     monkeypatch.setattr(
-        "prostor_cli.config.load_config",
+        "hermes_cli.config.load_config",
         lambda: {"kanban": {"dispatch_in_gateway": True}},
     )
     ns = _make_create_ns(title="nobody", assignee=None)
     assert kb_cli._cmd_create(ns) == 0
     err = capsys.readouterr().err
-    assert "prostor gateway start" not in err
+    assert "hermes gateway start" not in err
 
 
 def test_cli_daemon_without_force_prints_deprecation_exits_2(kanban_home, capsys):
-    """`prostor kanban daemon` (no --force) is a deprecation stub."""
-    from prostor_cli import kanban as kb_cli
+    """`hermes kanban daemon` (no --force) is a deprecation stub."""
+    from hermes_cli import kanban as kb_cli
     ns = argparse.Namespace(
         force=False, interval=60.0, max=None, failure_limit=3,
         pidfile=None, verbose=False,
@@ -3516,15 +3503,14 @@ def test_cli_daemon_without_force_prints_deprecation_exits_2(kanban_home, capsys
     assert rc == 2
     err = capsys.readouterr().err
     assert "DEPRECATED" in err
-    assert "prostor gateway start" in err
+    assert "hermes gateway start" in err
 
 
 def test_cli_daemon_help_marks_deprecated():
     """The argparse help string on `daemon` mentions deprecation so users
     scanning `--help` see the migration before running the stub."""
     import argparse as _ap
-
-    from prostor_cli import kanban as kb_cli
+    from hermes_cli import kanban as kb_cli
     root = _ap.ArgumentParser()
     subs = root.add_subparsers()
     kb_cli.build_parser(subs)
@@ -3550,7 +3536,7 @@ def test_cli_daemon_help_marks_deprecated():
                     break
     assert found_deprecation, (
         "daemon subparser help should be marked DEPRECATED so users see "
-        "the migration guidance in `prostor kanban --help` output"
+        "the migration guidance in `hermes kanban --help` output"
     )
 
 
@@ -3561,9 +3547,8 @@ def test_cli_daemon_help_marks_deprecated():
 def test_gateway_dispatcher_watcher_respects_config_flag_off(monkeypatch):
     """dispatch_in_gateway=false -> watcher exits fast, no loop."""
     import asyncio
-
-    import prostor_cli.config as _cfg_mod
     from gateway.run import GatewayRunner
+    import hermes_cli.config as _cfg_mod
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -3581,11 +3566,10 @@ def test_gateway_dispatcher_watcher_respects_config_flag_off(monkeypatch):
 
 
 def test_gateway_dispatcher_watcher_respects_env_override(monkeypatch):
-    """PROSTOR_KANBAN_DISPATCH_IN_GATEWAY=0 disables without touching config."""
+    """HERMES_KANBAN_DISPATCH_IN_GATEWAY=0 disables without touching config."""
     import asyncio
-
     from gateway.run import GatewayRunner
-    monkeypatch.setenv("PROSTOR_KANBAN_DISPATCH_IN_GATEWAY", "0")
+    monkeypatch.setenv("HERMES_KANBAN_DISPATCH_IN_GATEWAY", "0")
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -3602,11 +3586,10 @@ def test_gateway_dispatcher_watcher_env_truthy_uses_config(monkeypatch):
     (We only treat explicit falses as an override; unset or truthy
     defers to config.)"""
     import asyncio
-
-    import prostor_cli.config as _cfg_mod
     from gateway.run import GatewayRunner
+    import hermes_cli.config as _cfg_mod
 
-    monkeypatch.setenv("PROSTOR_KANBAN_DISPATCH_IN_GATEWAY", "yes")
+    monkeypatch.setenv("HERMES_KANBAN_DISPATCH_IN_GATEWAY", "yes")
     monkeypatch.setattr(
         _cfg_mod, "load_config",
         lambda: {"kanban": {"dispatch_in_gateway": False}},
@@ -3633,9 +3616,9 @@ def test_gateway_dispatcher_disables_corrupt_board_without_traceback(
     import logging
     import sqlite3
 
-    import prostor_cli.config as _cfg_mod
-    import prostor_cli.kanban_db as _kb
     from gateway.run import GatewayRunner
+    import hermes_cli.config as _cfg_mod
+    import hermes_cli.kanban_db as _kb
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -3727,9 +3710,9 @@ def test_gateway_dispatcher_retries_corrupt_board_after_quarantine(
     import logging
     import sqlite3
 
-    import prostor_cli.config as _cfg_mod
-    import prostor_cli.kanban_db as _kb
     from gateway.run import GatewayRunner
+    import hermes_cli.config as _cfg_mod
+    import hermes_cli.kanban_db as _kb
 
     runner = object.__new__(GatewayRunner)
     runner._running = True
@@ -4064,11 +4047,10 @@ def test_complete_prose_scan_ignores_existing_ids(kanban_home):
 def test_reclaim_task_resets_running_to_ready(kanban_home, monkeypatch):
     """Manual reclaim releases the claim, resets status, and emits a
     ``reclaimed`` event even when claim_expires has not passed."""
-    import secrets
     import signal
     import time
-
-    import prostor_cli.kanban_db as _kb
+    import secrets
+    import hermes_cli.kanban_db as _kb
     conn = kb.connect()
     try:
         t = kb.create_task(conn, title="stuck", assignee="broken")
@@ -4165,8 +4147,8 @@ def test_reassign_task_refuses_running_without_reclaim_first(kanban_home):
 def test_reassign_task_with_reclaim_first_switches_profile(kanban_home):
     """With ``reclaim_first=True``, a running task is reclaimed and
     reassigned in one operation."""
-    import secrets
     import time
+    import secrets
     conn = kb.connect()
     try:
         t = kb.create_task(conn, title="switch me", assignee="orig")
@@ -4209,12 +4191,10 @@ def test_reassign_task_with_reclaim_first_switches_profile(kanban_home):
 def test_enforce_max_runtime_increments_consecutive_failures(kanban_home, monkeypatch):
     """A single timeout increments consecutive_failures by 1 (was the
     infinite-respawn gap before unification)."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
     state = {"sent_term": False}
-
     def _alive(pid):
         return not state["sent_term"]
-
     def _signal(pid, sig):
         import signal as _sig
         if sig == _sig.SIGTERM:
@@ -4264,12 +4244,10 @@ def test_repeated_timeouts_trip_the_circuit_breaker(kanban_home, monkeypatch):
     hit the failure_limit threshold and auto-block the task. This closes
     the Forbidden-Seeds-reported gap where timeout loops never capped.
     """
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
     state = {"sent_term": False}
-
     def _alive(pid):
         return not state["sent_term"]
-
     def _signal(pid, sig):
         import signal as _sig
         if sig == _sig.SIGTERM:
@@ -4369,7 +4347,7 @@ def test_detect_crashed_workers_protocol_violation_auto_blocks(kanban_home):
     against small local models (gemma4-e2b q4) where the model writes
     the answer as plain text and the CLI exits rc=0 cleanly.
     """
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
     conn = kb.connect()
     try:
         tid = kb.create_task(conn, title="quiet", assignee="worker")
@@ -4421,7 +4399,7 @@ def test_detect_crashed_workers_nonzero_exit_uses_default_limit(kanban_home):
     """A worker that exited non-zero (real error / crash) uses the
     normal counter path — one failure doesn't trip the breaker.
     """
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
     conn = kb.connect()
     try:
         tid = kb.create_task(conn, title="crashy", assignee="worker")
@@ -4492,7 +4470,7 @@ def test_reclaim_task_clears_failure_counter(kanban_home):
 
 def test_dispatch_once_integrates_stale_detection(kanban_home, monkeypatch):
     """dispatch_once with stale_timeout_seconds reclaims stale running tasks."""
-    import prostor_cli.kanban_db as _kb
+    import hermes_cli.kanban_db as _kb
 
     monkeypatch.setattr(_kb, "_pid_alive", lambda _pid: False)
 

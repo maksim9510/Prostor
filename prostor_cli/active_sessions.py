@@ -14,14 +14,14 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 
 
-def coerce_max_concurrent_sessions(value: Any, key: str = "max_concurrent_sessions") -> int | None:
+def coerce_max_concurrent_sessions(value: Any, key: str = "max_concurrent_sessions") -> Optional[int]:
     """Return a positive integer cap, or None when disabled/invalid."""
     if value is None:
         return None
@@ -53,7 +53,7 @@ def coerce_max_concurrent_sessions(value: Any, key: str = "max_concurrent_sessio
     return parsed
 
 
-def resolve_max_concurrent_sessions(config: Any) -> int | None:
+def resolve_max_concurrent_sessions(config: Any) -> Optional[int]:
     """Resolve top-level max_concurrent_sessions with gateway.* fallback."""
     raw: Any = None
     key = "max_concurrent_sessions"
@@ -72,13 +72,13 @@ def resolve_max_concurrent_sessions(config: Any) -> int | None:
 
 def active_session_limit_message(active_count: int, max_sessions: int) -> str:
     return (
-        f"Prostor is at the active session limit ({active_count}/{max_sessions}). "
+        f"Hermes is at the active session limit ({active_count}/{max_sessions}). "
         "Try again when another session finishes."
     )
 
 
 def _state_dir() -> Path:
-    return get_prostor_home() / "runtime"
+    return Path(get_hermes_home()) / "runtime"
 
 
 def _state_path() -> Path:
@@ -144,7 +144,7 @@ class _FileLock:
 
 def _read_entries(path: Path) -> list[dict[str, Any]]:
     try:
-        with open(path, encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
     except FileNotFoundError:
         return []
@@ -165,7 +165,7 @@ def _write_entries(path: Path, entries: list[dict[str, Any]]) -> None:
     os.replace(tmp, path)
 
 
-def _process_start_time(pid: int) -> float | None:
+def _process_start_time(pid: int) -> Optional[float]:
     # Pair pid with process create_time when psutil can read it, so a recycled
     # pid does not keep a stale lease alive indefinitely.
     try:
@@ -176,7 +176,7 @@ def _process_start_time(pid: int) -> float | None:
         return None
 
 
-def _optional_float(value: Any) -> float | None:
+def _optional_float(value: Any) -> Optional[float]:
     if value is None or value == "":
         return None
     try:
@@ -236,8 +236,8 @@ def try_acquire_active_session(
     session_id: str,
     surface: str,
     config: Any,
-    metadata: dict[str, Any] | None = None,
-) -> tuple[ActiveSessionLease | None, str | None]:
+    metadata: Optional[dict[str, Any]] = None,
+) -> tuple[Optional[ActiveSessionLease], Optional[str]]:
     """Acquire an active-session slot.
 
     Returns ``(lease, None)`` on success.  When the cap is disabled, the lease is
@@ -309,6 +309,43 @@ def release_active_session(lease: ActiveSessionLease) -> None:
                 _write_entries(state_path, kept)
     finally:
         lease.released = True
+
+
+def transfer_active_session(
+    lease: ActiveSessionLease,
+    *,
+    session_id: str,
+    metadata: Optional[dict[str, Any]] = None,
+) -> bool:
+    """Move an existing lease to a new session id without dropping the slot."""
+    new_session_id = str(session_id or "")
+    if not new_session_id:
+        return False
+    if lease.released:
+        return False
+    if not lease.enabled:
+        lease.session_id = new_session_id
+        return True
+
+    state_path = _state_path()
+    with _FileLock(_lock_path()):
+        entries = _prune_dead(_read_entries(state_path))
+        updated = False
+        for entry in entries:
+            if str(entry.get("lease_id") or "") != lease.lease_id:
+                continue
+            entry["session_id"] = new_session_id
+            entry["updated_at"] = time.time()
+            if metadata:
+                entry["metadata"] = {
+                    str(k): v for k, v in metadata.items() if isinstance(k, str)
+                }
+            updated = True
+            break
+        if updated:
+            _write_entries(state_path, entries)
+            lease.session_id = new_session_id
+        return updated
 
 
 def active_session_registry_snapshot() -> list[dict[str, Any]]:

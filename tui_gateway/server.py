@@ -17,13 +17,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from prostor_constants import (
-    get_prostor_home,
-    get_prostor_home_override,
-    reset_prostor_home_override,
-    set_prostor_home_override,
+from hermes_constants import (
+    get_hermes_home,
+    get_hermes_home_override,
+    reset_hermes_home_override,
+    set_hermes_home_override,
 )
-from prostor_cli.env_loader import load_prostor_dotenv
+from hermes_cli.env_loader import load_hermes_dotenv
 from utils import is_truthy_value
 from tui_gateway.transport import (
     StdioTransport,
@@ -35,9 +35,9 @@ from tui_gateway.transport import (
 
 logger = logging.getLogger(__name__)
 
-_prostor_home = get_prostor_home()
-load_prostor_dotenv(
-    prostor_home=_prostor_home, project_env=Path(__file__).parent.parent / ".env"
+_hermes_home = get_hermes_home()
+load_hermes_dotenv(
+    hermes_home=_hermes_home, project_env=Path(__file__).parent.parent / ".env"
 )
 
 
@@ -46,11 +46,11 @@ load_prostor_dotenv(
 # JSON-RPC pipe (TUI side parses it, doesn't log raw), the root logger
 # only catches handled warnings, and the subprocess exits before stderr
 # flushes through the stderr->gateway.stderr event pump. This hook
-# appends every unhandled exception to ~/.prostor/logs/tui_gateway_crash.log
+# appends every unhandled exception to ~/.hermes/logs/tui_gateway_crash.log
 # AND re-emits a one-line summary to stderr so the TUI can surface it in
 # Activity — exactly what was missing when the voice-mode turns started
 # exiting the gateway mid-TTS.
-_CRASH_LOG = os.path.join(_prostor_home, "logs", "tui_gateway_crash.log")
+_CRASH_LOG = os.path.join(_hermes_home, "logs", "tui_gateway_crash.log")
 
 
 def _panic_hook(exc_type, exc_value, exc_tb):
@@ -114,7 +114,7 @@ def _thread_panic_hook(args):
 threading.excepthook = _thread_panic_hook
 
 try:
-    from prostor_cli.banner import prefetch_update_check
+    from hermes_cli.banner import prefetch_update_check
 
     prefetch_update_check()
 except Exception:
@@ -138,7 +138,7 @@ _cfg_mtime: float | None = None
 _cfg_path = None
 _session_resume_lock = threading.Lock()
 try:
-    _slash_timeout = float(os.environ.get("PROSTOR_TUI_SLASH_TIMEOUT_S") or "45")
+    _slash_timeout = float(os.environ.get("HERMES_TUI_SLASH_TIMEOUT_S") or "45")
 except (ValueError, TypeError):
     _slash_timeout = 45.0
 _SLASH_WORKER_TIMEOUT_S = max(5.0, _slash_timeout)
@@ -155,7 +155,7 @@ _SLASH_WORKER_TIMEOUT_S = max(5.0, _slash_timeout)
 # Set to 0 to disable (park forever, pre-fix behaviour).
 try:
     _ws_orphan_reap_grace = float(
-        os.environ.get("PROSTOR_TUI_WS_ORPHAN_REAP_GRACE_S") or "20"
+        os.environ.get("HERMES_TUI_WS_ORPHAN_REAP_GRACE_S") or "20"
     )
 except (ValueError, TypeError):
     _ws_orphan_reap_grace = 20.0
@@ -178,6 +178,14 @@ _LONG_HANDLERS = frozenset(
         "browser.manage",
         "cli.exec",
         "llm.oneshot",
+        # Pet RPCs hit the network (manifest fetch / spritesheet download) or do
+        # per-frame PNG decode/encode (pet.cells): inline they serialize on the
+        # reader thread, so picker previews trickle in one at a time and the
+        # animation poll stutters. On the pool they run concurrently.
+        "pet.cells",
+        "pet.gallery",
+        "pet.select",
+        "pet.thumb",
         "plugins.manage",
         "session.branch",
         "session.compress",
@@ -190,7 +198,7 @@ _LONG_HANDLERS = frozenset(
 
 try:
     _rpc_pool_workers = max(
-        2, int(os.environ.get("PROSTOR_TUI_RPC_POOL_WORKERS") or "4")
+        2, int(os.environ.get("HERMES_TUI_RPC_POOL_WORKERS") or "4")
     )
 except (ValueError, TypeError):
     _rpc_pool_workers = 4
@@ -229,7 +237,7 @@ _detached_ws_transport = _DropTransport()
 
 
 class _SlashWorker:
-    """Persistent ProstorCLI subprocess for slash commands."""
+    """Persistent HermesCLI subprocess for slash commands."""
 
     def __init__(self, session_key: str, model: str):
         self._lock = threading.Lock()
@@ -342,7 +350,7 @@ def _load_busy_input_mode() -> str:
 def _notify_session_boundary(event_type: str, session_id: str | None) -> None:
     """Fire session lifecycle hooks with CLI parity."""
     try:
-        from prostor_cli.plugins import invoke_hook as _invoke_hook
+        from hermes_cli.plugins import invoke_hook as _invoke_hook
 
         _invoke_hook(event_type, session_id=session_id, platform="tui")
     except Exception:
@@ -356,7 +364,7 @@ def _claim_active_session_slot(
     surface: str = "tui",
 ) -> tuple[Any, str | None]:
     try:
-        from prostor_cli.active_sessions import try_acquire_active_session
+        from hermes_cli.active_sessions import try_acquire_active_session
 
         return try_acquire_active_session(
             session_id=session_key,
@@ -379,6 +387,59 @@ def _release_active_session_slot(session: dict | None) -> None:
         lease.release()
     except Exception:
         logger.debug("Failed to release active session slot", exc_info=True)
+
+
+def _transfer_active_session_slot(
+    sid: str,
+    session: dict,
+    *,
+    new_session_id: str,
+) -> bool:
+    if not new_session_id:
+        return False
+    lease = session.get("active_session_lease")
+    if lease is None:
+        return True
+    try:
+        from hermes_cli.active_sessions import transfer_active_session
+
+        if transfer_active_session(
+            lease,
+            session_id=new_session_id,
+            metadata={"live_session_id": sid},
+        ):
+            return True
+    except Exception:
+        logger.debug("Failed to transfer active session slot", exc_info=True)
+
+    # Fallback: the in-place transfer could not move the lease (entry pruned /
+    # pid-check transiently failed). Reserve the new slot BEFORE releasing the
+    # old one, so a concurrent gateway at the session cap cannot grab the freed
+    # slot in a release-then-reacquire window and leave this session with no
+    # lease at all (#49041 review). If the reserve fails, KEEP the old lease.
+    new_lease, limit_message = _claim_active_session_slot(
+        new_session_id,
+        live_session_id=sid,
+    )
+    if new_lease is not None:
+        old_lease = session.pop("active_session_lease", None)
+        if old_lease is not None:
+            try:
+                old_lease.release()
+            except Exception:
+                logger.debug("Failed to release stale active session slot", exc_info=True)
+        session["active_session_lease"] = new_lease
+        return True
+    # Reserve failed — retain the existing lease rather than dropping it.
+    if limit_message:
+        logger.warning(
+            "Compression session lease re-anchor failed (kept old lease): "
+            "sid=%s new_session_id=%s reason=%s",
+            sid,
+            new_session_id,
+            limit_message,
+        )
+    return False
 
 
 def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> None:
@@ -436,7 +497,7 @@ def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> No
     # the user Ctrl‑C's mid‑turn.
     if agent is not None:
         try:
-            from prostor_cli.plugins import invoke_hook
+            from hermes_cli.plugins import invoke_hook
 
             invoke_hook(
                 "on_session_end",
@@ -617,7 +678,7 @@ def _close_sessions_for_transport(
         else:
             # Point detached sessions at the drop sentinel (NOT real stdio) so
             # _ws_session_is_orphaned recognizes them and the grace-reap can
-            # actually fire; a standalone `prostor --tui` keeps real _stdio.
+            # actually fire; a standalone `hermes --tui` keeps real _stdio.
             session["transport"] = _detached_ws_transport
             detached += 1
             try:
@@ -638,7 +699,7 @@ def _shutdown_sessions() -> None:
 # hours-scale because last_active freezes during a long turn and on passive
 # viewing — running/pending/starting/live-transport are hard exemptions instead.
 try:
-    _SESSION_TTL_S = float(os.environ.get("PROSTOR_TUI_SESSION_TTL_S") or 6 * 3600)
+    _SESSION_TTL_S = float(os.environ.get("HERMES_TUI_SESSION_TTL_S") or 6 * 3600)
 except (TypeError, ValueError):
     _SESSION_TTL_S = float(6 * 3600)
 _SESSION_TTL_S = max(0.0, _SESSION_TTL_S)
@@ -648,7 +709,7 @@ _REAPER_SCAN_S = 300.0
 def _transport_is_dead(transport) -> bool:
     # _detached_ws_transport is the post-WS-disconnect drop sentinel; a session
     # parked on it has no live client. _stdio_transport is the REAL transport
-    # for a standalone `prostor --tui`, so it must NOT count as dead here (doing
+    # for a standalone `hermes --tui`, so it must NOT count as dead here (doing
     # so let the idle reaper evict healthy standalone TUI sessions).
     if transport is _detached_ws_transport:
         return True
@@ -700,7 +761,7 @@ _start_idle_reaper()
 def _get_db():
     global _db, _db_error
     if _db is None:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         try:
             _db = SessionDB()
@@ -724,7 +785,7 @@ def _db_unavailable_error(rid, *, code: int):
 # One dashboard normally serves its launch profile. But the desktop's app-global
 # remote mode points every profile at this single backend, so resume/prompt must
 # be able to act on ANOTHER local profile's state.db + home. The desktop passes
-# ``profile`` on those calls; we open that profile's db and bind its PROSTOR_HOME
+# ``profile`` on those calls; we open that profile's db and bind its HERMES_HOME
 # (a ContextVar override) for the duration of the call so config/skills/model and
 # message persistence all resolve to the right profile. Omitted/own profile → the
 # launch profile (unchanged for single-profile and per-profile-remote setups).
@@ -734,15 +795,38 @@ def _profile_home(profile: str | None) -> Path | None:
     if not name:
         return None
     try:
-        from prostor_cli import profiles as profiles_mod
+        from hermes_cli import profiles as profiles_mod
 
         home = Path(profiles_mod.get_profile_dir(name))
     except Exception:
         return None
     # Already the launch profile? No override needed.
-    if home.resolve() == Path(_prostor_home).resolve():
+    if home.resolve() == Path(_hermes_home).resolve():
         return None
     return home if (home / "state.db").exists() or home.exists() else None
+
+
+def _profile_scoped(handler):
+    """Bind ``params['profile']``'s HERMES_HOME around a pet RPC handler.
+
+    Pets are per-profile: ``display.pet.*`` lives in the profile's config.yaml and
+    sprites install under its ``pets/`` dir (both resolve via ``get_hermes_home``).
+    The desktop sends ``profile`` on pet calls so config + pets dir resolve to the
+    focused profile even in app-global remote mode, where one backend serves every
+    profile. No-op for the launch profile (own-profile backends already resolve it).
+    """
+
+    def wrapper(rid, params):
+        home = _profile_home(params.get("profile") if isinstance(params, dict) else None)
+        if home is None:
+            return handler(rid, params)
+        token = set_hermes_home_override(home)
+        try:
+            return handler(rid, params)
+        finally:
+            reset_hermes_home_override(token)
+
+    return wrapper
 
 
 # Placeholder ``terminal.cwd`` values that don't name a real directory — the
@@ -963,7 +1047,7 @@ def _wait_agent(session: dict, rid: str, timeout: float = 30.0) -> dict | None:
 def _start_agent_build(sid: str, session: dict) -> None:
     """Start building the real AIAgent for a TUI session, once.
 
-    Classic `prostor` shows the prompt before constructing AIAgent; the TUI used
+    Classic `hermes` shows the prompt before constructing AIAgent; the TUI used
     to eagerly build it during session.create, making startup feel blocked on
     tool discovery/model metadata even though the composer was visible.  Keep
     the shell responsive by deferring this work until the first prompt (or any
@@ -1005,13 +1089,13 @@ def _start_agent_build(sid: str, session: dict) -> None:
         try:
             tokens = _set_session_context(key)
             # Build against the session's profile (global-remote): bind its
-            # PROSTOR_HOME so config/skills/model resolve to it, and hand the
+            # HERMES_HOME so config/skills/model resolve to it, and hand the
             # agent that profile's db so turns persist to the right state.db.
             session_db = None
             if profile_home:
-                home_token = set_prostor_home_override(profile_home)
+                home_token = set_hermes_home_override(profile_home)
                 try:
-                    from prostor_state import SessionDB
+                    from hermes_state import SessionDB
 
                     session_db = SessionDB(db_path=Path(profile_home) / "state.db")
                 except Exception:
@@ -1094,7 +1178,7 @@ def _start_agent_build(sid: str, session: dict) -> None:
             _emit("error", sid, {"message": f"agent init failed: {e}"})
         finally:
             if home_token is not None:
-                reset_prostor_home_override(home_token)
+                reset_hermes_home_override(home_token)
             # _attach_worker already closed the worker if this session was
             # reaped mid-build; only the late notify registration can still
             # leak (session.close unregistered before _build registered it).
@@ -1260,7 +1344,7 @@ def _ensure_session_db_row(session: dict) -> None:
     # unified list mis-tags it, and resume 404s ("session not found").
     profile_home = session.get("profile_home")
     if profile_home:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         try:
             db = SessionDB(db_path=Path(profile_home) / "state.db")
@@ -1305,7 +1389,7 @@ def _ensure_session_db_row(session: dict) -> None:
     # start (matches _runtime_model_config's normalization).
     if str(model_config.get("provider") or "").strip().lower() == "custom":
         try:
-            from prostor_cli.runtime_provider import canonical_custom_identity
+            from hermes_cli.runtime_provider import canonical_custom_identity
 
             healed = canonical_custom_identity(
                 base_url=model_config.get("base_url") or None
@@ -1350,7 +1434,7 @@ def _session_db(session: dict):
     db, close_db = None, False
     profile_home = session.get("profile_home")
     if profile_home:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         try:
             db, close_db = SessionDB(db_path=Path(profile_home) / "state.db"), True
@@ -1407,10 +1491,10 @@ def _load_cfg() -> dict:
 
         # Honor a per-session profile override (see session.resume) so a resumed
         # remote profile loads ITS config (model, skills, prompt); otherwise the
-        # launch profile's _prostor_home. Cache is keyed on the resolved path, so
+        # launch profile's _hermes_home. Cache is keyed on the resolved path, so
         # profiles don't clobber each other.
-        override = get_prostor_home_override()
-        home = override if isinstance(override, str) and override else _prostor_home
+        override = get_hermes_home_override()
+        home = override if isinstance(override, str) and override else _hermes_home
         p = Path(home) / "config.yaml"
         mtime = p.stat().st_mtime if p.exists() else None
         with _cfg_lock:
@@ -1439,12 +1523,12 @@ def _apply_managed(cfg: dict) -> dict:
     """Overlay administrator-pinned managed-scope values on a config dict.
 
     The TUI/desktop backend builds config independently of
-    prostor_cli.config.load_config, so without this a managed skin / reasoning_effort
+    hermes_cli.config.load_config, so without this a managed skin / reasoning_effort
     / service_tier / provider_routing would be silently ignored here. Read-side
     only — the raw user config is what gets cached and saved. Fail-open.
     """
     try:
-        from prostor_cli import managed_scope
+        from hermes_cli import managed_scope
 
         return managed_scope.apply_managed_overlay(cfg if isinstance(cfg, dict) else {})
     except Exception:
@@ -1455,9 +1539,9 @@ def _save_cfg(cfg: dict):
     global _cfg_cache, _cfg_mtime, _cfg_path
     import yaml
 
-    path = _prostor_home / "config.yaml"
+    path = _hermes_home / "config.yaml"
     with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(cfg, f)
+        yaml.safe_dump(cfg, f, allow_unicode=True)
     with _cfg_lock:
         _cfg_cache = copy.deepcopy(cfg)
         _cfg_path = path
@@ -1516,9 +1600,9 @@ def _clear_session_context(tokens: list) -> None:
 
 def _enable_gateway_prompts() -> None:
     """Route approvals through gateway callbacks instead of CLI input()."""
-    os.environ["PROSTOR_GATEWAY_SESSION"] = "1"
-    os.environ["PROSTOR_EXEC_ASK"] = "1"
-    os.environ["PROSTOR_INTERACTIVE"] = "1"
+    os.environ["HERMES_GATEWAY_SESSION"] = "1"
+    os.environ["HERMES_EXEC_ASK"] = "1"
+    os.environ["HERMES_INTERACTIVE"] = "1"
 
 
 # ── Blocking prompt factory ──────────────────────────────────────────
@@ -1563,7 +1647,7 @@ def _clear_pending(sid: str | None = None) -> None:
 
 def resolve_skin() -> dict:
     try:
-        from prostor_cli.skin_engine import init_skin_from_config, get_active_skin
+        from hermes_cli.skin_engine import init_skin_from_config, get_active_skin
 
         init_skin_from_config(_load_cfg())
         skin = get_active_skin()
@@ -1582,8 +1666,8 @@ def resolve_skin() -> dict:
 
 def _resolve_model() -> str:
     env = (
-        os.environ.get("PROSTOR_MODEL", "")
-        or os.environ.get("PROSTOR_INFERENCE_MODEL", "")
+        os.environ.get("HERMES_MODEL", "")
+        or os.environ.get("HERMES_INFERENCE_MODEL", "")
     ).strip()
     if env:
         return env
@@ -1598,9 +1682,9 @@ def _resolve_model() -> str:
 def _config_model_target() -> tuple[str, str]:
     """(model, provider) currently selected by config (env as fallback).
 
-    config.yaml wins over PROSTOR_MODEL / PROSTOR_INFERENCE_MODEL here, the
+    config.yaml wins over HERMES_MODEL / HERMES_INFERENCE_MODEL here, the
     reverse of `_resolve_model()`'s startup order. Those env vars are a
-    provision-time seed (hosted instances set PROSTOR_INFERENCE_MODEL in the
+    provision-time seed (hosted instances set HERMES_INFERENCE_MODEL in the
     container env); if they outranked config.yaml, the per-turn sync would
     stay pinned to the seed forever and dashboard/CLI model changes would
     never reach an open chat — the exact bug this sync exists to fix.
@@ -1622,19 +1706,19 @@ def _config_model_target() -> tuple[str, str]:
 
 def _resolve_startup_runtime() -> tuple[str, str | None]:
     model = _resolve_model()
-    explicit_provider = os.environ.get("PROSTOR_TUI_PROVIDER", "").strip()
+    explicit_provider = os.environ.get("HERMES_TUI_PROVIDER", "").strip()
     if explicit_provider:
         return model, explicit_provider
 
     explicit_model = (
-        os.environ.get("PROSTOR_MODEL", "")
-        or os.environ.get("PROSTOR_INFERENCE_MODEL", "")
+        os.environ.get("HERMES_MODEL", "")
+        or os.environ.get("HERMES_INFERENCE_MODEL", "")
     ).strip()
     if not explicit_model:
         return model, None
 
     try:
-        from prostor_cli.models import detect_static_provider_for_model
+        from hermes_cli.models import detect_static_provider_for_model
 
         cfg = _load_cfg().get("model") or {}
         current_provider = (
@@ -1643,7 +1727,7 @@ def _resolve_startup_runtime() -> tuple[str, str | None]:
                 if isinstance(cfg, dict)
                 else ""
             )
-            or os.environ.get("PROSTOR_INFERENCE_PROVIDER", "").strip().lower()
+            or os.environ.get("HERMES_INFERENCE_PROVIDER", "").strip().lower()
             or "auto"
         )
         detected = detect_static_provider_for_model(explicit_model, current_provider)
@@ -1716,7 +1800,7 @@ def _stored_session_runtime_overrides(row: dict | None) -> dict:
     if provider.strip().lower() == "custom":
         healed = None
         try:
-            from prostor_cli.runtime_provider import canonical_custom_identity
+            from hermes_cli.runtime_provider import canonical_custom_identity
 
             healed = canonical_custom_identity(base_url=base_url or None)
         except Exception:
@@ -1773,7 +1857,7 @@ def _runtime_model_config(agent, existing: dict | None = None) -> dict:
             # bare "custom" with no base_url was persisted verbatim and routed
             # to OpenRouter with no key on the next resume).
             try:
-                from prostor_cli.runtime_provider import (
+                from hermes_cli.runtime_provider import (
                     canonical_custom_identity,
                 )
 
@@ -1971,7 +2055,7 @@ def _display_mouse_tracking(display: dict) -> str:
 
 
 def _load_reasoning_config() -> dict | None:
-    from prostor_constants import parse_reasoning_effort
+    from hermes_constants import parse_reasoning_effort
 
     effort = str(
         (_load_cfg().get("agent") or {}).get("reasoning_effort", "") or ""
@@ -2027,7 +2111,7 @@ def _load_memory_notifications() -> str:
 
 
 def _load_tool_progress_mode() -> str:
-    env = os.environ.get("PROSTOR_TUI_TOOL_PROGRESS", "").strip().lower()
+    env = os.environ.get("HERMES_TUI_TOOL_PROGRESS", "").strip().lower()
     if env in {"off", "new", "all", "verbose"}:
         return env
     raw = (_load_cfg().get("display") or {}).get("tool_progress", "all")
@@ -2042,15 +2126,15 @@ def _load_tool_progress_mode() -> str:
 def _load_enabled_toolsets() -> list[str] | None:
     explicit = [
         item.strip()
-        for item in os.environ.get("PROSTOR_TUI_TOOLSETS", "").split(",")
+        for item in os.environ.get("HERMES_TUI_TOOLSETS", "").split(",")
         if item.strip()
     ]
     cfg = None
     fallback_notice = None
 
-    # Coding posture (base Prostor): with no explicit pin, collapse to the
+    # Coding posture (base Hermes): with no explicit pin, collapse to the
     # coding toolset (+ enabled MCP servers) when sitting in a code workspace.
-    # The desktop app and `prostor --tui` both land here. See
+    # The desktop app and `hermes --tui` both land here. See
     # agent/coding_context.py. No config is loaded yet at this point, so we let
     # coding_selection() load it lazily (cli.py passes its already-resolved
     # CLI_CONFIG instead, purely to avoid a redundant read).
@@ -2075,7 +2159,7 @@ def _load_enabled_toolsets() -> list[str] | None:
 
         if unresolved:
             try:
-                from prostor_cli.plugins import discover_plugins
+                from hermes_cli.plugins import discover_plugins
 
                 discover_plugins()
                 plugin_valid = [name for name in unresolved if validate_toolset(name)]
@@ -2090,7 +2174,7 @@ def _load_enabled_toolsets() -> list[str] | None:
             ignored = [name for name in explicit if name not in {"all", "*"}]
             if ignored:
                 print(
-                    "[tui] PROSTOR_TUI_TOOLSETS=all enables every toolset; "
+                    "[tui] HERMES_TUI_TOOLSETS=all enables every toolset; "
                     f"ignoring additional entries: {', '.join(ignored)}",
                     file=sys.stderr,
                     flush=True,
@@ -2103,8 +2187,8 @@ def _load_enabled_toolsets() -> list[str] | None:
         mcp_names: set[str] = set()
         mcp_disabled: set[str] = set()
         try:
-            from prostor_cli.config import read_raw_config
-            from prostor_cli.tools_config import _parse_enabled_flag
+            from hermes_cli.config import read_raw_config
+            from hermes_cli.tools_config import _parse_enabled_flag
 
             raw_cfg = read_raw_config()
             mcp_servers = (
@@ -2134,13 +2218,13 @@ def _load_enabled_toolsets() -> list[str] | None:
 
         if unknown:
             print(
-                f"[tui] ignoring unknown PROSTOR_TUI_TOOLSETS entries: {', '.join(unknown)}",
+                f"[tui] ignoring unknown HERMES_TUI_TOOLSETS entries: {', '.join(unknown)}",
                 file=sys.stderr,
                 flush=True,
             )
         if disabled:
             print(
-                "[tui] ignoring disabled MCP servers in PROSTOR_TUI_TOOLSETS "
+                "[tui] ignoring disabled MCP servers in HERMES_TUI_TOOLSETS "
                 "(set enabled: true in config.yaml to use): "
                 f"{', '.join(disabled)}",
                 file=sys.stderr,
@@ -2151,12 +2235,12 @@ def _load_enabled_toolsets() -> list[str] | None:
             return valid
 
         fallback_notice = (
-            "[tui] no valid PROSTOR_TUI_TOOLSETS entries; using configured CLI toolsets"
+            "[tui] no valid HERMES_TUI_TOOLSETS entries; using configured CLI toolsets"
         )
 
     try:
-        from prostor_cli.config import load_config
-        from prostor_cli.tools_config import _get_platform_tools
+        from hermes_cli.config import load_config
+        from hermes_cli.tools_config import _get_platform_tools
 
         cfg = cfg if cfg is not None else load_config()
 
@@ -2175,7 +2259,7 @@ def _load_enabled_toolsets() -> list[str] | None:
     except Exception:
         if fallback_notice is not None:
             print(
-                "[tui] no valid PROSTOR_TUI_TOOLSETS entries and configured CLI toolsets could not be loaded; enabling all toolsets",
+                "[tui] no valid HERMES_TUI_TOOLSETS entries and configured CLI toolsets could not be loaded; enabling all toolsets",
                 file=sys.stderr,
                 flush=True,
             )
@@ -2217,21 +2301,23 @@ def _restart_slash_worker(sid: str, session: dict):
 
 
 def _persist_model_switch(result) -> None:
-    from prostor_cli.config import save_config
+    # Use targeted, atomic key writes (comment/ordering-preserving) instead of
+    # rewriting the whole `model:` block. A full-block rewrite via save_config()
+    # destroys sibling keys the user set under `model:` — `model_slots`,
+    # `model_fallback`, etc. — when switching models from the TUI (#48305).
+    from cli import save_config_value
 
-    cfg = _load_cfg()
-    model_cfg = cfg.get("model")
-    if not isinstance(model_cfg, dict):
-        model_cfg = {}
-        cfg["model"] = model_cfg
-
-    model_cfg["default"] = result.new_model
-    model_cfg["provider"] = result.target_provider
+    save_config_value("model.default", result.new_model)
+    save_config_value("model.provider", result.target_provider)
     if result.base_url:
-        model_cfg["base_url"] = result.base_url
+        save_config_value("model.base_url", result.base_url)
     else:
-        model_cfg.pop("base_url", None)
-    save_config(cfg)
+        # Clear any stale base_url when switching to a provider that doesn't use
+        # one (e.g. custom endpoint -> native provider). Reads coalesce null to
+        # absent (`model_cfg.get("base_url") or ""`), so a null is equivalent to
+        # removal without needing a key-delete. Leaving the old value would
+        # route the new model at the previous custom host (#48305).
+        save_config_value("model.base_url", None)
 
 
 def _apply_model_switch(
@@ -2243,12 +2329,12 @@ def _apply_model_switch(
     pin_session_override: bool = True,
     parsed_flags: tuple[str, str, bool, bool, bool] | None = None,
 ) -> dict:
-    from prostor_cli.model_switch import (
+    from hermes_cli.model_switch import (
         parse_model_flags,
         resolve_persist_behavior,
         switch_model,
     )
-    from prostor_cli.runtime_provider import resolve_runtime_provider
+    from hermes_cli.runtime_provider import resolve_runtime_provider
 
     if parsed_flags is None:
         parsed_flags = parse_model_flags(raw_input)
@@ -2294,7 +2380,7 @@ def _apply_model_switch(
     user_provs = None
     custom_provs = None
     try:
-        from prostor_cli.config import get_compatible_custom_providers, load_config
+        from hermes_cli.config import get_compatible_custom_providers, load_config
 
         cfg = load_config()
         user_provs = cfg.get("providers")
@@ -2318,7 +2404,7 @@ def _apply_model_switch(
 
     if agent:
         try:
-            from prostor_cli.context_switch_guard import merge_preflight_compression_warning
+            from hermes_cli.context_switch_guard import merge_preflight_compression_warning
 
             _cfg_ctx = None
             if isinstance(cfg, dict):
@@ -2337,7 +2423,7 @@ def _apply_model_switch(
 
     if not confirm_expensive_model:
         try:
-            from prostor_cli.model_cost_guard import expensive_model_warning
+            from hermes_cli.model_cost_guard import expensive_model_warning
 
             warning = expensive_model_warning(
                 result.new_model,
@@ -2393,8 +2479,8 @@ def _apply_model_switch(
     # session (e.g. /new via _reset_session_agent, or resume) re-derives the
     # user's chosen model/provider instead of falling back to global config.
     #
-    # We deliberately do NOT write process-global env vars (PROSTOR_MODEL /
-    # PROSTOR_INFERENCE_MODEL / PROSTOR_TUI_PROVIDER / PROSTOR_INFERENCE_PROVIDER)
+    # We deliberately do NOT write process-global env vars (HERMES_MODEL /
+    # HERMES_INFERENCE_MODEL / HERMES_TUI_PROVIDER / HERMES_INFERENCE_PROVIDER)
     # here. The desktop backend hosts every same-profile session in ONE process,
     # so mutating os.environ on a /model switch leaked the new model/provider
     # into every OTHER live session's next agent rebuild — switching the model
@@ -2543,6 +2629,19 @@ def _sync_session_key_after_compress(
     if not new_session_id or new_session_id == old_key:
         return
 
+    lease_reanchored = _transfer_active_session_slot(
+        sid,
+        session,
+        new_session_id=new_session_id,
+    )
+    if not lease_reanchored:
+        logger.warning(
+            "Compression session lease did not re-anchor: sid=%s old_session_id=%s new_session_id=%s",
+            sid,
+            old_key,
+            new_session_id,
+        )
+
     try:
         from tools.approval import (
             disable_session_yolo,
@@ -2640,8 +2739,8 @@ def _get_usage(agent) -> dict:
     except Exception:
         pass
     # Dev-only live credits-spent readout (L0 usage-aware-credits). Gated on
-    # PROSTOR_DEV_CREDITS so the payload stays clean when the flag is off.
-    if is_truthy_value(os.environ.get("PROSTOR_DEV_CREDITS")):
+    # HERMES_DEV_CREDITS so the payload stays clean when the flag is off.
+    if is_truthy_value(os.environ.get("HERMES_DEV_CREDITS")):
         try:
             spent = agent.get_credits_spent_micros()
             if spent is not None:
@@ -2698,7 +2797,7 @@ def _probe_config_health(cfg: dict) -> str:
 
 def _current_profile_name() -> str:
     try:
-        from prostor_cli.profiles import get_active_profile_name
+        from hermes_cli.profiles import get_active_profile_name
 
         return get_active_profile_name() or "default"
     except Exception:
@@ -2776,7 +2875,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
         "profile_name": _current_profile_name(),
     }
     try:
-        from prostor_cli import __version__, __release_date__
+        from hermes_cli import __version__, __release_date__
 
         info["version"] = __version__
         info["release_date"] = __release_date__
@@ -2793,7 +2892,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
     except Exception:
         pass
     try:
-        from prostor_cli.banner import get_available_skills
+        from hermes_cli.banner import get_available_skills
 
         info["skills"] = get_available_skills()
     except Exception:
@@ -2809,8 +2908,8 @@ def _session_info(agent, session: dict | None = None) -> dict:
     except Exception:
         pass
     try:
-        from prostor_cli.banner import get_update_result
-        from prostor_cli.config import recommended_update_command
+        from hermes_cli.banner import get_update_result
+        from hermes_cli.config import recommended_update_command
 
         info["update_behind"] = get_update_result(timeout=0.5)
         info["update_command"] = recommended_update_command()
@@ -3290,7 +3389,7 @@ def _wire_callbacks(sid: str):
                 "skipped": True,
                 "message": "skipped",
             }
-        from prostor_cli.config import save_env_value_secure
+        from hermes_cli.config import save_env_value_secure
 
         return {
             **save_env_value_secure(env_var, val),
@@ -3319,7 +3418,7 @@ def _available_personalities(cfg: dict | None = None) -> dict:
         return (load_cli_config().get("agent") or {}).get("personalities", {}) or {}
     except Exception:
         try:
-            from prostor_cli.config import load_config as _load_full_cfg
+            from hermes_cli.config import load_config as _load_full_cfg
 
             return (_load_full_cfg().get("agent") or {}).get("personalities", {}) or {}
         except Exception:
@@ -3406,7 +3505,7 @@ def _apply_personality_to_session(
 
 def _cfg_max_turns(cfg: dict, default: int) -> int:
     try:
-        env_max = int(os.environ.get("PROSTOR_TUI_MAX_TURNS", "") or 0)
+        env_max = int(os.environ.get("HERMES_TUI_MAX_TURNS", "") or 0)
         if env_max > 0:
             return env_max
     except (TypeError, ValueError):
@@ -3416,7 +3515,7 @@ def _cfg_max_turns(cfg: dict, default: int) -> int:
 
 
 def _parse_tui_skills_env() -> list[str]:
-    raw = os.environ.get("PROSTOR_TUI_SKILLS", "")
+    raw = os.environ.get("HERMES_TUI_SKILLS", "")
     skills: list[str] = []
     seen: set[str] = set()
     for part in raw.replace("\n", ",").split(","):
@@ -3431,12 +3530,12 @@ def _load_fallback_model():
     """Return the configured fallback chain for TUI-created agents.
 
     Delegates to the shared ``get_fallback_chain`` helper so the TUI path
-    stays in parity with ``ProstorCLI.__init__`` and ``gateway/run.py``:
+    stays in parity with ``HermesCLI.__init__`` and ``gateway/run.py``:
     ``fallback_providers`` is the primary source of truth and keeps its
     order, with legacy ``fallback_model`` entries merged in afterwards
     (deduped on provider/model/base_url).
     """
-    from prostor_cli.fallback_config import get_fallback_chain
+    from hermes_cli.fallback_config import get_fallback_chain
 
     return get_fallback_chain(_load_cfg())
 
@@ -3734,16 +3833,16 @@ def _make_agent(
     service_tier_override: str | None = None,
 ):
     from run_agent import AIAgent
-    from prostor_cli.runtime_provider import resolve_runtime_provider
+    from hermes_cli.runtime_provider import resolve_runtime_provider
 
     # MCP tool discovery runs in a background daemon thread at startup so a
     # dead server can't freeze the shell.  The agent snapshots its tool list
     # once here and never re-reads it, so briefly wait for in-flight discovery
     # to land before building — bounded, so a slow/dead server still can't
-    # block. Dashboard /api/ws uses prostor_cli.mcp_startup; TUI stdio keeps
+    # block. Dashboard /api/ws uses hermes_cli.mcp_startup; TUI stdio keeps
     # its existing tui_gateway.entry-owned thread.
     try:
-        from prostor_cli.mcp_startup import wait_for_mcp_discovery
+        from hermes_cli.mcp_startup import wait_for_mcp_discovery
 
         wait_for_mcp_discovery()
     except Exception:
@@ -3794,7 +3893,7 @@ def _make_agent(
             # the entry identity from the persisted base_url, falling back to
             # the configured provider when the override carries no base_url
             # (the recurring Desktop/TUI regression vector).
-            from prostor_cli.runtime_provider import canonical_custom_identity
+            from hermes_cli.runtime_provider import canonical_custom_identity
 
             recovered = canonical_custom_identity(base_url=override_base_url or None)
             if recovered:
@@ -3868,10 +3967,10 @@ def _make_agent(
         session_id=session_id or key,
         session_db=session_db if session_db is not None else _get_db(),
         ephemeral_system_prompt=system_prompt or None,
-        checkpoints_enabled=is_truthy_value(os.environ.get("PROSTOR_TUI_CHECKPOINTS")),
-        pass_session_id=is_truthy_value(os.environ.get("PROSTOR_TUI_PASS_SESSION_ID")),
-        skip_context_files=is_truthy_value(os.environ.get("PROSTOR_IGNORE_RULES")),
-        skip_memory=is_truthy_value(os.environ.get("PROSTOR_IGNORE_RULES")),
+        checkpoints_enabled=is_truthy_value(os.environ.get("HERMES_TUI_CHECKPOINTS")),
+        pass_session_id=is_truthy_value(os.environ.get("HERMES_TUI_PASS_SESSION_ID")),
+        skip_context_files=is_truthy_value(os.environ.get("HERMES_IGNORE_RULES")),
+        skip_memory=is_truthy_value(os.environ.get("HERMES_IGNORE_RULES")),
         fallback_model=_load_fallback_model(),
         **_agent_cbs(sid),
     )
@@ -4331,7 +4430,7 @@ def _(rid, params: dict) -> dict:
     # ``profile`` (app-global remote mode): a new chat started under a non-launch
     # profile must build its agent + persist against THAT profile's home/state.db,
     # not the dashboard's launch profile. Stored on the session so _start_agent_build
-    # and each turn re-bind PROSTOR_HOME. None/own profile → launch (unchanged).
+    # and each turn re-bind HERMES_HOME. None/own profile → launch (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
 
@@ -4349,7 +4448,7 @@ def _(rid, params: dict) -> dict:
     create_reasoning_override = None
     if effort := str(params.get("reasoning_effort") or "").strip():
         try:
-            from prostor_constants import parse_reasoning_effort
+            from hermes_constants import parse_reasoning_effort
 
             create_reasoning_override = parse_reasoning_effort(effort)
         except Exception:
@@ -4461,7 +4560,7 @@ def _(rid, params: dict) -> dict:
         # Resume picker should surface human conversation sessions from every
         # user-facing surface — CLI, TUI, all gateway platforms (including new
         # ones not enumerated here), ACP adapter clients, webhook sessions,
-        # custom `PROSTOR_SESSION_SOURCE` values, and older installs with
+        # custom `HERMES_SESSION_SOURCE` values, and older installs with
         # different source labels. We deny-list only the noisy internal
         # sources (``tool`` sub-agent runs) rather than allow-listing a
         # fixed set of platform names that goes stale whenever a new
@@ -4577,7 +4676,7 @@ def _(rid, params: dict) -> dict:
     # In a profile scope, the agent OWNS a long-lived db handle bound to that
     # profile (do NOT auto-close it here). Otherwise reuse the shared launch db.
     if profile_home is not None:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
 
         db = SessionDB(db_path=profile_home / "state.db")
     else:
@@ -4761,7 +4860,7 @@ def _(rid, params: dict) -> dict:
         return _err(rid, 4090, limit_message)
     _enable_gateway_prompts()
     home_token = (
-        set_prostor_home_override(str(profile_home)) if profile_home is not None else None
+        set_hermes_home_override(str(profile_home)) if profile_home is not None else None
     )
     try:
         db.reopen_session(target)
@@ -4796,7 +4895,7 @@ def _(rid, params: dict) -> dict:
         return _err(rid, 5000, f"resume failed: {e}")
     finally:
         if home_token is not None:
-            reset_prostor_home_override(home_token)
+            reset_hermes_home_override(home_token)
 
     # Double-checked locking: another concurrent resume may have created the
     # live session while we were building. Re-check under the lock; if it won,
@@ -4823,7 +4922,7 @@ def _(rid, params: dict) -> dict:
             return _ok(rid, payload)
         try:
             init_home_token = (
-                set_prostor_home_override(str(profile_home))
+                set_hermes_home_override(str(profile_home))
                 if profile_home is not None
                 else None
             )
@@ -4839,14 +4938,14 @@ def _(rid, params: dict) -> dict:
                 )
             finally:
                 if init_home_token is not None:
-                    reset_prostor_home_override(init_home_token)
+                    reset_hermes_home_override(init_home_token)
             if sid in _sessions:
                 if stored_runtime_overrides.get("model_override") is not None:
                     _sessions[sid]["model_override"] = stored_runtime_overrides[
                         "model_override"
                     ]
                 _sessions[sid]["display_history_prefix"] = display_history_prefix
-                # Remember the profile home so each turn re-binds PROSTOR_HOME (the
+                # Remember the profile home so each turn re-binds HERMES_HOME (the
                 # agent persists to its own db, but mid-turn home reads — memory,
                 # skills — must resolve to the resumed profile too).
                 if profile_home is not None:
@@ -4940,7 +5039,7 @@ def _session_live_title(session: dict, key: str) -> str:
 
 
 def _session_live_item(sid: str, session: dict, current_sid: str = "") -> dict:
-    key = str(session.get("session_key") or sid)
+    key = _session_lookup_key(session, fallback=sid)
     agent = session.get("agent")
     history = list(session.get("history") or [])
     status = _session_live_status(sid, session)
@@ -4964,11 +5063,21 @@ def _session_live_item(sid: str, session: dict, current_sid: str = "") -> dict:
     }
 
 
+def _session_lookup_key(session: dict, *, fallback: str = "") -> str:
+    agent = session.get("agent")
+    return str(
+        getattr(agent, "session_id", None)
+        or session.get("session_key")
+        or fallback
+        or ""
+    )
+
+
 def _find_live_session_by_key(session_key: str) -> tuple[str, dict] | None:
     for sid, session in list(_sessions.items()):
         if session.get("_finalized"):
             continue
-        if str(session.get("session_key") or "") == session_key:
+        if _session_lookup_key(session, fallback=sid) == session_key:
             return sid, session
     return None
 
@@ -5012,7 +5121,7 @@ def _live_session_payload(
         "messages": _history_to_messages(history),
         "running": running,
         "session_id": sid,
-        "session_key": session.get("session_key") or sid,
+        "session_key": _session_lookup_key(session, fallback=sid),
         "started_at": float(session.get("created_at") or time.time()),
         "status": _session_live_status(sid, session),
     }
@@ -5046,7 +5155,7 @@ def _(rid, params: dict) -> dict:
     # filter on ``transport is _detached_ws_transport`` (the WS-detached drop
     # sentinel): a detached session is still attachable via a quick reconnect /
     # session.resume until the grace-reap finalizes it, and a standalone
-    # ``prostor --tui`` session legitimately rides the real stdio transport and
+    # ``hermes --tui`` session legitimately rides the real stdio transport and
     # must stay visible.
     # Keep the natural creation/insertion order from ``_sessions``.  The
     # frontend marks the focused session with ``current``; it should not jump to
@@ -5115,7 +5224,7 @@ def _(rid, params: dict) -> dict:
     active = {s.get("session_key") for s in snapshot if s.get("session_key")}
     if target in active:
         return _err(rid, 4023, "cannot delete an active session")
-    sessions_dir = get_prostor_home() / "sessions"
+    sessions_dir = get_hermes_home() / "sessions"
     try:
         deleted = db.delete_session(target, sessions_dir=sessions_dir)
     except Exception as e:
@@ -5293,7 +5402,7 @@ def _(rid, params: dict) -> dict:
 
     Desktop parity with the CLI ``/handoff`` command: we only write
     ``handoff_state='pending'`` onto the persisted session row. The actual
-    transfer is performed by the separate ``prostor gateway`` process, whose
+    transfer is performed by the separate ``hermes gateway`` process, whose
     ``_handoff_watcher`` claims the row, re-binds the session to the platform's
     home channel, and forges a synthetic turn. The desktop then polls
     ``handoff.state`` for the terminal result.
@@ -5452,6 +5561,399 @@ def _(rid, params: dict) -> dict:
     return _ok(rid, usage)
 
 
+def _pet_frame_counts(spritesheet) -> dict:
+    """Real (padding-trimmed) frame count per state, for the desktop canvas.
+
+    Fail-open: a decode hiccup returns ``{}`` and the canvas falls back to its
+    static ``framesPerState`` rather than breaking the (cosmetic) pet.
+    """
+    try:
+        from agent.pet import render
+
+        return render.state_frame_counts(str(spritesheet))
+    except Exception:  # noqa: BLE001 - cosmetic, never break the surface
+        return {}
+
+
+def _pet_state_rows(spritesheet) -> list[str]:
+    """Row taxonomy for the concrete active pet sheet.
+
+    Hermes has to support both the legacy 8-row petdex atlas and the current
+    Codex/petdex 9-row atlas. The desktop canvas gets this list and indexes it
+    with the same `PetState` names the Python renderer uses.
+    """
+    try:
+        from PIL import Image
+
+        from agent.pet import constants
+
+        with Image.open(spritesheet) as image:
+            row_count = max(1, image.height // constants.FRAME_H)
+        return list(constants.state_rows_for_grid(row_count))
+    except Exception:  # noqa: BLE001 - cosmetic, never break the surface
+        from agent.pet import constants
+
+        return list(constants.STATE_ROWS)
+
+
+@method("pet.info")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Return the active petdex pet for surfaces that render sprites.
+
+    Shared by the desktop (canvas) and the TUI (half-block). Carries the
+    spritesheet bytes (base64) plus the engine's frame geometry + state-row
+    taxonomy so the renderer is a thin, framework-native consumer. The
+    activity→state decision is mirrored from ``agent.pet.state`` client-side.
+
+    Agent-independent (reads config + disk), so it works on any session and
+    before the agent finishes building. Fail-open: returns ``enabled=False``
+    on any error rather than erroring the surface.
+    """
+    import base64
+
+    try:
+        from agent.pet import constants, store
+
+        try:
+            from hermes_cli.config import load_config
+
+            cfg = load_config()
+            display = cfg.get("display", {}) if isinstance(cfg.get("display"), dict) else {}
+            pet_cfg = display.get("pet", {}) if isinstance(display.get("pet"), dict) else {}
+        except Exception:
+            pet_cfg = {}
+
+        enabled = bool(pet_cfg.get("enabled"))
+        configured_slug = str(pet_cfg.get("slug", "") or "")
+        pet = store.resolve_active_pet(configured_slug) if enabled else None
+
+        if not enabled or pet is None or not pet.exists:
+            return _ok(rid, {"enabled": False})
+
+        raw = pet.spritesheet.read_bytes()
+        suffix = pet.spritesheet.suffix.lower()
+        mime = "image/png" if suffix == ".png" else "image/webp"
+        return _ok(
+            rid,
+            {
+                "enabled": True,
+                "slug": pet.slug,
+                "displayName": pet.display_name,
+                "mime": mime,
+                "spritesheetBase64": base64.standard_b64encode(raw).decode("ascii"),
+                "frameW": constants.FRAME_W,
+                "frameH": constants.FRAME_H,
+                "framesPerState": constants.FRAMES_PER_STATE,
+                "framesByState": _pet_frame_counts(pet.spritesheet),
+                "loopMs": constants.LOOP_MS,
+                "scale": float(pet_cfg.get("scale", constants.DEFAULT_SCALE) or constants.DEFAULT_SCALE),
+                "stateRows": _pet_state_rows(pet.spritesheet),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 - cosmetic, never break the surface
+        logger.debug("pet.info failed: %s", exc)
+        return _ok(rid, {"enabled": False})
+
+
+@method("pet.cells")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Return half-block cell frames for one pet state (TUI renderer).
+
+    The TUI can't draw a canvas, so the engine downsamples the spritesheet to
+    a grid of half-block cells and the Ink side paints them with native color
+    props. Each cell is ``[tr,tg,tb,ta, br,bg,bb,ba]`` (top + bottom pixel).
+
+    Params: ``state`` (idle/run/review/failed/wave/jump), ``cols`` (width).
+    Fail-open: ``enabled=False`` on any problem.
+    """
+    try:
+        from agent.pet import constants, render, store
+        from agent.pet.render import PetRenderer
+
+        try:
+            from hermes_cli.config import load_config
+
+            cfg = load_config()
+            display = cfg.get("display", {}) if isinstance(cfg.get("display"), dict) else {}
+            pet_cfg = display.get("pet", {}) if isinstance(display.get("pet"), dict) else {}
+        except Exception:
+            pet_cfg = {}
+
+        if not bool(pet_cfg.get("enabled")):
+            return _ok(rid, {"enabled": False})
+
+        pet = store.resolve_active_pet(str(pet_cfg.get("slug", "") or ""))
+        if pet is None or not pet.exists:
+            return _ok(rid, {"enabled": False})
+
+        state = str(params.get("state") or constants.PetState.IDLE.value)
+        scale = float(pet_cfg.get("scale", constants.DEFAULT_SCALE) or constants.DEFAULT_SCALE)
+        cols = int(params.get("cols") or 0) or constants.resolve_cols(scale, pet_cfg.get("unicode_cols", 0))
+
+        # Graphics path: when the TUI is attached to a real TTY (``graphics``)
+        # and the terminal speaks the kitty protocol, return a Unicode-
+        # placeholder payload for a crisp image instead of half-blocks. Env
+        # detection (KITTY_WINDOW_ID / TERM / TERM_PROGRAM) is shared with the
+        # Ink process since it spawns us; the dashboard PTY (xterm.js) has no
+        # such env, so it falls through to half-blocks automatically. Only
+        # kitty is grid-safe in Ink — iTerm/sixel stay on the fallback.
+        if params.get("graphics"):
+            configured = str(pet_cfg.get("render_mode", "auto") or "auto").lower()
+            gmode = render.detect_terminal_graphics() if configured in ("", "auto") else configured
+            if gmode == "kitty":
+                image_id = render.kitty_image_id(pet.slug)
+                # kitty sizes from scaled pixels (_cell_box), so unicode_cols is moot here.
+                payload = PetRenderer(
+                    str(pet.spritesheet), mode="kitty", scale=scale
+                ).kitty_payload(state, image_id=image_id)
+                if payload:
+                    kcount = len(payload["frames"]) or 1
+                    return _ok(
+                        rid,
+                        {
+                            "enabled": True,
+                            "slug": pet.slug,
+                            "displayName": pet.display_name,
+                            "state": state,
+                            "graphics": "kitty",
+                            "imageId": image_id,
+                            "color": render.kitty_color_hex(image_id),
+                            "cols": payload["cols"],
+                            "rows": payload["rows"],
+                            "placeholder": payload["placeholder"],
+                            "frames": payload["frames"],
+                            "frameMs": constants.LOOP_MS / max(1, kcount),
+                            "scale": scale,
+                        },
+                    )
+
+        renderer = PetRenderer(
+            str(pet.spritesheet),
+            mode="unicode",
+            scale=scale,
+            unicode_cols=cols,
+        )
+        count = renderer.frame_count(state) or 1
+        frames = []
+        for i in range(count):
+            grid = renderer.cells(state, i, cols=cols)
+            frames.append(
+                [[[*top, *bottom] for (top, bottom) in row] for row in grid]
+            )
+
+        return _ok(
+            rid,
+            {
+                "enabled": True,
+                "slug": pet.slug,
+                "displayName": pet.display_name,
+                "state": state,
+                "cols": cols,
+                "frameMs": constants.LOOP_MS / max(1, count),
+                "frames": frames,
+                "scale": scale,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("pet.cells failed: %s", exc)
+        return _ok(rid, {"enabled": False})
+
+
+@method("pet.gallery")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """List adoptable pets for the desktop appearance picker.
+
+    Returns the petdex gallery merged with local install state plus the
+    current config (active slug + enabled). Agent-independent. Fail-open:
+    returns whatever is installed locally if the gallery can't be reached, so
+    the picker still works offline.
+    """
+    try:
+        from agent.pet import store
+
+        try:
+            from hermes_cli.config import load_config
+
+            cfg = load_config()
+            display = cfg.get("display", {}) if isinstance(cfg.get("display"), dict) else {}
+            pet_cfg = display.get("pet", {}) if isinstance(display.get("pet"), dict) else {}
+        except Exception:
+            pet_cfg = {}
+
+        installed = {p.slug: p for p in store.installed_pets()}
+
+        gallery: list[dict] = []
+        seen: set[str] = set()
+        try:
+            from agent.pet.manifest import fetch_manifest
+
+            for entry in fetch_manifest():
+                seen.add(entry.slug)
+                gallery.append(
+                    {
+                        "slug": entry.slug,
+                        "displayName": entry.display_name,
+                        "installed": entry.slug in installed,
+                        "spritesheetUrl": entry.spritesheet_url,
+                        # petdex exposes no popularity metric; "curated" (its
+                        # hand-picked/official set, identified by the asset path)
+                        # is the closest signal, so the picker can surface it first.
+                        "curated": "/curated/" in entry.spritesheet_url,
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001 - offline: fall back to installed
+            logger.debug("pet.gallery manifest fetch failed: %s", exc)
+
+        # Always include locally-installed pets even if the gallery is unreachable.
+        for slug, pet in installed.items():
+            if slug not in seen:
+                gallery.append(
+                    {"slug": slug, "displayName": pet.display_name, "installed": True, "spritesheetUrl": ""}
+                )
+
+        return _ok(
+            rid,
+            {
+                "enabled": bool(pet_cfg.get("enabled")),
+                "active": str(pet_cfg.get("slug", "") or ""),
+                "pets": gallery,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("pet.gallery failed: %s", exc)
+        return _ok(rid, {"enabled": False, "active": "", "pets": []})
+
+
+@method("pet.select")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Adopt a pet from the desktop picker: install (if needed) + activate.
+
+    Params: ``slug`` (required). Writes ``display.pet.*`` to config and returns
+    ``{ok, slug, displayName}``. The surface re-pulls ``pet.info`` to render it.
+    """
+    slug = str(params.get("slug") or "").strip()
+    if not slug:
+        return _err(rid, 4004, "missing slug")
+    try:
+        from agent.pet import store
+        from agent.pet.manifest import ManifestError
+        from hermes_cli.pets import _set_active
+
+        try:
+            pet = store.install_pet(slug)
+        except (store.PetStoreError, ManifestError) as exc:
+            return _err(rid, 5031, f"could not adopt '{slug}': {exc}")
+        _set_active(slug)
+        return _ok(rid, {"ok": True, "slug": slug, "displayName": pet.display_name})
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("pet.select failed: %s", exc)
+        return _err(rid, 5031, f"pet.select failed: {exc}")
+
+
+@method("pet.remove")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Uninstall a pet from the desktop picker (delete its on-disk directory).
+
+    Params: ``slug`` (required). If the removed pet was the active one, the
+    display is turned off so nothing tries to render a now-missing sprite.
+    Returns ``{ok, slug}`` where ``ok`` reflects whether a directory was deleted.
+    """
+    slug = str(params.get("slug") or "").strip()
+    if not slug:
+        return _err(rid, 4004, "missing slug")
+    try:
+        from agent.pet import store
+        from hermes_cli.pets import _clear_active_if
+
+        removed = store.remove_pet(slug)
+
+        # If that was the active pet, stop surfaces pointing at a deleted sprite.
+        try:
+            _clear_active_if(slug)
+        except Exception as exc:  # noqa: BLE001 - removal already succeeded
+            logger.debug("pet.remove config update failed: %s", exc)
+
+        return _ok(rid, {"ok": removed, "slug": slug})
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("pet.remove failed: %s", exc)
+        return _err(rid, 5031, f"pet.remove failed: {exc}")
+
+
+@method("pet.thumb")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Return a small idle-frame PNG (data URI) for one pet — the picker preview.
+
+    Cropped + cached server-side so the renderer gets a same-origin data URL
+    instead of a CDN ``<img>`` (which the desktop CSP / R2 hotlink rules break).
+    Params: ``slug`` (required), ``url`` (optional petdex spritesheet URL used
+    only for not-yet-installed pets). Fail-open: ``{ok: false}`` with no error.
+    """
+    slug = str(params.get("slug") or "").strip()
+    if not slug:
+        return _err(rid, 4004, "missing slug")
+    try:
+        import base64
+
+        from agent.pet import store
+
+        data = store.thumbnail_png(slug, source_url=str(params.get("url") or ""))
+        if not data:
+            return _ok(rid, {"ok": False, "slug": slug})
+
+        return _ok(
+            rid,
+            {
+                "ok": True,
+                "slug": slug,
+                "dataUri": "data:image/png;base64," + base64.standard_b64encode(data).decode("ascii"),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("pet.thumb failed: %s", exc)
+        return _ok(rid, {"ok": False, "slug": slug})
+
+
+@method("pet.disable")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Turn the pet off from the desktop picker (``display.pet.enabled=false``)."""
+    try:
+        from hermes_cli.pets import _set_enabled
+
+        _set_enabled(False)
+        return _ok(rid, {"ok": True})
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("pet.disable failed: %s", exc)
+        return _err(rid, 5031, f"pet.disable failed: {exc}")
+
+
+@method("pet.scale")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Persist ``display.pet.scale`` from the desktop slider. Params: ``scale``.
+
+    Clamped to the engine bounds. The renderer updates its own ``$petInfo`` for
+    instant feedback; this just makes the change durable + visible to the other
+    terminal surfaces on their next read.
+    """
+    try:
+        from hermes_cli.pets import set_pet_scale
+
+        scale, err = set_pet_scale(params.get("scale"))
+        if err:
+            return _err(rid, 4004, err)
+        return _ok(rid, {"ok": True, "scale": scale})
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("pet.scale failed: %s", exc)
+        return _err(rid, 5031, f"pet.scale failed: {exc}")
+
+
 @method("credits.view")
 def _(rid, params: dict) -> dict:
     """Structured Nous credit view for the TUI /credits command.
@@ -5492,12 +5994,12 @@ def _(rid, params: dict) -> dict:
 # Ink side can branch on the typed billing error code (insufficient_scope,
 # rate_limited, no_payment_method, …) to render the right affordance instead of
 # landing in a generic catch. The data-building lives in the shared core
-# (agent/billing_view.py + prostor_cli/nous_billing.py) — same as /credits.
+# (agent/billing_view.py + hermes_cli/nous_billing.py) — same as /credits.
 
 
 def _serialize_billing_error(exc) -> dict:
     """Map a BillingError into the result.error envelope the TUI branches on."""
-    from prostor_cli.nous_billing import (
+    from hermes_cli.nous_billing import (
         BillingRateLimited,
         BillingScopeRequired,
     )
@@ -5596,7 +6098,7 @@ def _(rid, params: dict) -> dict:
     supplied, the server-side core mints a fresh one and returns it so the TUI can
     reuse it on retry of the SAME purchase.
     """
-    from prostor_cli.nous_billing import BillingError, post_charge
+    from hermes_cli.nous_billing import BillingError, post_charge
     from agent.billing_view import new_idempotency_key
 
     amount = params.get("amount_usd")
@@ -5620,7 +6122,7 @@ def _(rid, params: dict) -> dict:
 
     The poll. Caller drives the 2s/5-min cadence; this is a single status read.
     """
-    from prostor_cli.nous_billing import BillingError, get_charge_status
+    from hermes_cli.nous_billing import BillingError, get_charge_status
 
     charge_id = params.get("charge_id")
     if not charge_id:
@@ -5649,7 +6151,7 @@ def _(rid, params: dict) -> dict:
 
     params: {enabled: bool, threshold: number, top_up_amount: number}.
     """
-    from prostor_cli.nous_billing import BillingError, patch_auto_top_up
+    from hermes_cli.nous_billing import BillingError, patch_auto_top_up
 
     try:
         enabled = bool(params.get("enabled"))
@@ -5681,7 +6183,7 @@ def _(rid, params: dict) -> dict:
     """
     sid = params.get("session_id") or ""
     try:
-        from prostor_cli.auth import step_up_nous_billing_scope
+        from hermes_cli.auth import step_up_nous_billing_scope
 
         def _on_verification(url: str, code: str) -> None:
             _emit(
@@ -5704,7 +6206,7 @@ def _(rid, params: dict) -> dict:
     if err:
         return err
 
-    from prostor_constants import display_prostor_home
+    from hermes_constants import display_hermes_home
 
     key = session.get("session_key") or params.get("session_id") or ""
     agent = session.get("agent")
@@ -5735,10 +6237,10 @@ def _(rid, params: dict) -> dict:
     provider = getattr(agent, "provider", None) or "unknown"
     model = getattr(agent, "model", None) or "(unknown)"
     lines = [
-        "Prostor TUI Status",
+        "Hermes TUI Status",
         "",
         f"Session ID: {key}",
-        f"Path: {display_prostor_home()}",
+        f"Path: {display_hermes_home()}",
     ]
     title = (meta.get("title") or "").strip()
     if title:
@@ -5909,17 +6411,17 @@ def _(rid, params: dict) -> dict:
         return err
 
     agent = session["agent"]
-    # Mirror the classic CLI /save: snapshot under the Prostor profile home
-    # (~/.prostor/sessions/saved/) rather than the project/workspace CWD, and
+    # Mirror the classic CLI /save: snapshot under the Hermes profile home
+    # (~/.hermes/sessions/saved/) rather than the project/workspace CWD, and
     # include the system prompt so the export matches the dashboard save.
-    saved_dir = get_prostor_home() / "sessions" / "saved"
+    saved_dir = get_hermes_home() / "sessions" / "saved"
     try:
         saved_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         return _err(rid, 5011, f"failed to create save directory {saved_dir}: {e}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = saved_dir / f"prostor_conversation_{timestamp}.json"
+    path = saved_dir / f"hermes_conversation_{timestamp}.json"
 
     with session["history_lock"]:
         messages = list(session.get("history", []))
@@ -6111,14 +6613,14 @@ def _(rid, params: dict) -> dict:
 # from the event stream).  On turn-complete it posts the final tree here;
 # /replay and /replay-diff fetch past snapshots by session_id + filename.
 #
-# Layout:  $PROSTOR_HOME/spawn-trees/<session_id>/<timestamp>.json
+# Layout:  $HERMES_HOME/spawn-trees/<session_id>/<timestamp>.json
 # Each file contains { session_id, started_at, finished_at, subagents: [...] }.
 
 
 def _spawn_trees_root():
-    from prostor_constants import get_prostor_home
+    from hermes_constants import get_hermes_home
 
-    root = get_prostor_home() / "spawn-trees"
+    root = get_hermes_home() / "spawn-trees"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -6602,7 +7104,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
     def run():
         approval_token = None
         session_tokens = []
-        home_token = None  # per-turn PROSTOR_HOME override for a resumed remote profile
+        home_token = None  # per-turn HERMES_HOME override for a resumed remote profile
         goal_followup = None  # set by the post-turn goal hook below
         try:
             from tools.approval import (
@@ -6614,7 +7116,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             session_tokens = _set_session_context(session["session_key"])
             _profile_home_str = session.get("profile_home")
             if _profile_home_str:
-                home_token = set_prostor_home_override(_profile_home_str)
+                home_token = set_hermes_home_override(_profile_home_str)
             # The sudo password callback is thread-local (tools.terminal_tool
             # _callback_tls), so wiring it on the build thread doesn't reach this
             # turn thread — terminal sudo prompts would fall through to /dev/tty
@@ -6676,7 +7178,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                         _read_main_model,
                         _read_main_provider,
                     )
-                    from prostor_cli.config import load_config as _tui_load_config
+                    from hermes_cli.config import load_config as _tui_load_config
 
                     _cfg = _tui_load_config()
                     _mode = decide_image_input_mode(
@@ -6822,7 +7324,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             # outcome. Mirrors gateway/run._post_turn_goal_continuation.
             if status == "complete" and isinstance(raw, str) and raw.strip():
                 try:
-                    from prostor_cli.goals import GoalManager
+                    from hermes_cli.goals import GoalManager
 
                     sid_key = session.get("session_key") or ""
                     if sid_key:
@@ -6837,7 +7339,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                         )
                         if goal_mgr.is_active():
                             try:
-                                from prostor_cli.goals import gather_background_processes as _gather_bg
+                                from hermes_cli.goals import gather_background_processes as _gather_bg
                                 _bg_procs = _gather_bg()
                             except Exception:
                                 _bg_procs = None
@@ -6916,14 +7418,14 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 and _voice_tts_enabled()
             ):
                 try:
-                    from prostor_cli.voice import speak_text
+                    from hermes_cli.voice import speak_text
 
                     spoken = raw
                     threading.Thread(
                         target=speak_text, args=(spoken,), daemon=True
                     ).start()
                 except ImportError:
-                    logger.warning("voice TTS skipped: prostor_cli.voice unavailable")
+                    logger.warning("voice TTS skipped: hermes_cli.voice unavailable")
                 except Exception as e:
                     logger.warning("voice TTS dispatch failed: %s", e)
         except Exception as e:
@@ -6951,7 +7453,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             except Exception:
                 pass
             if home_token is not None:
-                reset_prostor_home_override(home_token)
+                reset_hermes_home_override(home_token)
             _clear_session_context(session_tokens)
             with session["history_lock"]:
                 session["running"] = False
@@ -7023,12 +7525,12 @@ def _(rid, params: dict) -> dict:
     if err:
         return err
     try:
-        from prostor_cli.clipboard import has_clipboard_image, save_clipboard_image
+        from hermes_cli.clipboard import has_clipboard_image, save_clipboard_image
     except Exception as e:
         return _err(rid, 5027, f"clipboard unavailable: {e}")
 
     session["image_counter"] = session.get("image_counter", 0) + 1
-    img_dir = _prostor_home / "images"
+    img_dir = _hermes_home / "images"
     img_dir.mkdir(parents=True, exist_ok=True)
     img_path = (
         img_dir
@@ -7176,7 +7678,7 @@ def _queue_attached_image(session: dict, img_bytes: bytes, ext: str, *, prefix: 
     the existing native-image-attach pipeline. Returns the written path.
     """
     session["image_counter"] = session.get("image_counter", 0) + 1
-    img_dir = _prostor_home / "images"
+    img_dir = _hermes_home / "images"
     img_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     img_path = img_dir / f"{prefix}_{ts}_{session['image_counter']}{ext}"
@@ -7404,7 +7906,7 @@ def _attachment_ref_path(session: dict, target: Path) -> str:
 
 
 def _desktop_attachment_dir(session: dict) -> Path:
-    root = Path(_session_cwd(session)).resolve() / ".prostor" / "desktop-attachments"
+    root = Path(_session_cwd(session)).resolve() / ".hermes" / "desktop-attachments"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -7484,10 +7986,10 @@ def _stage_session_file_attachment(
       1. The path resolves to a file already INSIDE the session workspace — use
          it as-is (no copy, ``uploaded=False``).
       2. The path resolves to a gateway-visible file OUTSIDE the workspace — copy
-         it into ``.prostor/desktop-attachments/`` so the ``@file:`` ref resolves.
+         it into ``.hermes/desktop-attachments/`` so the ``@file:`` ref resolves.
       3. The path doesn't exist on the gateway (the common remote case: it's a
          path on the CLIENT's disk) — decode the uploaded ``data_url`` bytes and
-         write them into ``.prostor/desktop-attachments/``.
+         write them into ``.hermes/desktop-attachments/``.
 
     Returns ``(stored_path, uploaded)``.
     """
@@ -7704,14 +8206,14 @@ def _(rid, params: dict) -> dict:
                 if has_history
                 else None
             ),
-            "Restart exactly the app intended for the Preview URL, not Prostor Desktop itself.",
+            "Restart exactly the app intended for the Preview URL, not Hermes Desktop itself.",
             "The Preview URL and port are the target. Preserve that target unless you conclude it is impossible.",
             "If the prior conversation shows a specific command that bound this URL/port, prefer re-running THAT exact command (in the same cwd) over guessing a new one.",
-            "First inspect what process, if any, owns the Preview URL port. If a stale server exists, inspect its cwd and prefer that cwd over the Prostor/Desktop process cwd.",
+            "First inspect what process, if any, owns the Preview URL port. If a stale server exists, inspect its cwd and prefer that cwd over the Hermes/Desktop process cwd.",
             "The Current working directory is only a hint. Do not assume it is the preview app root when the port owner or files indicate another root.",
             "If the console shows a module-script MIME error for src/main.tsx or similar, a static server is serving source files. Do not restart python -m http.server or any dumb static server for that app.",
             "For module-script MIME failures, inspect package.json/vite config in the candidate app root and start the real dev server/bundler (for example npm/pnpm/yarn dev) so module transforms happen.",
-            "Before declaring success, verify the Preview URL responds with the intended app, not Prostor Desktop. If it serves Prostor/Desktop UI or another unrelated app, stop that process and report failure.",
+            "Before declaring success, verify the Preview URL responds with the intended app, not Hermes Desktop. If it serves Hermes/Desktop UI or another unrelated app, stop that process and report failure.",
             "Do not modify files. Do not ask the user unless blocked.",
             "Prefer existing project scripts or commands when they are clear.",
             "If a stale process owns the needed port, handle it safely.",
@@ -7870,7 +8372,7 @@ def _(rid, params: dict) -> dict:
                         4009,
                         "session busy — /interrupt the current turn before switching models",
                     )
-                from prostor_cli.model_switch import parse_model_flags
+                from hermes_cli.model_switch import parse_model_flags
 
                 parsed_flags = parse_model_flags(value)
                 _model_input, explicit_provider, _persist_global, _force_refresh, _is_session = parsed_flags
@@ -7938,7 +8440,7 @@ def _(rid, params: dict) -> dict:
 
         overrides = None
         if nv == "fast":
-            from prostor_cli.models import resolve_fast_mode_overrides
+            from hermes_cli.models import resolve_fast_mode_overrides
 
             target_model = (
                 getattr(agent, "model", None) if agent is not None else _resolve_model()
@@ -8073,13 +8575,13 @@ def _(rid, params: dict) -> dict:
                         _session_info(agent, session),
                     )
             else:
-                current = is_truthy_value(os.environ.get("PROSTOR_YOLO_MODE"))
+                current = is_truthy_value(os.environ.get("HERMES_YOLO_MODE"))
                 enable = _resolve_toggle(current)
                 if enable:
-                    os.environ["PROSTOR_YOLO_MODE"] = "1"
+                    os.environ["HERMES_YOLO_MODE"] = "1"
                     nv = "1"
                 else:
-                    os.environ.pop("PROSTOR_YOLO_MODE", None)
+                    os.environ.pop("HERMES_YOLO_MODE", None)
                     nv = "0"
             return _ok(rid, {"key": key, "value": nv, "scope": "session"})
         except Exception as e:
@@ -8087,7 +8589,7 @@ def _(rid, params: dict) -> dict:
 
     if key == "reasoning":
         try:
-            from prostor_constants import parse_reasoning_effort
+            from hermes_constants import parse_reasoning_effort
 
             arg = str(value or "").strip().lower()
             if arg in {"show", "on"}:
@@ -8368,7 +8870,7 @@ def _(rid, params: dict) -> dict:
     key = params.get("key", "")
     if key == "provider":
         try:
-            from prostor_cli.models import list_available_providers, normalize_provider
+            from hermes_cli.models import list_available_providers, normalize_provider
 
             model = _resolve_model()
             parts = model.split("/", 1)
@@ -8385,9 +8887,9 @@ def _(rid, params: dict) -> dict:
         except Exception as e:
             return _err(rid, 5013, str(e))
     if key == "profile":
-        from prostor_constants import display_prostor_home
+        from hermes_constants import display_hermes_home
 
-        return _ok(rid, {"home": str(_prostor_home), "display": display_prostor_home()})
+        return _ok(rid, {"home": str(_hermes_home), "display": display_hermes_home()})
     if key == "project":
         cfg_terminal = _load_cfg().get("terminal") or {}
         raw = str(params.get("cwd", "") or cfg_terminal.get("cwd", "") or "").strip()
@@ -8490,7 +8992,7 @@ def _(rid, params: dict) -> dict:
         display = _load_cfg().get("display")
         return _ok(rid, {"value": _display_mouse_tracking(display)})
     if key == "mtime":
-        cfg_path = _prostor_home / "config.yaml"
+        cfg_path = _hermes_home / "config.yaml"
         try:
             return _ok(
                 rid, {"mtime": cfg_path.stat().st_mtime if cfg_path.exists() else 0}
@@ -8503,7 +9005,7 @@ def _(rid, params: dict) -> dict:
 @method("setup.status")
 def _(rid, params: dict) -> dict:
     try:
-        from prostor_cli.main import _has_any_provider_configured
+        from hermes_cli.main import _has_any_provider_configured
 
         return _ok(rid, {"provider_configured": bool(_has_any_provider_configured())})
     except Exception as e:
@@ -8522,11 +9024,12 @@ def _(rid, params: dict) -> dict:
     surface onboarding before the user submits a doomed prompt.
     """
     try:
-        from prostor_cli.runtime_provider import resolve_runtime_provider
-        from prostor_cli.auth import has_usable_secret
-        from prostor_cli.main import _has_any_provider_configured
+        from hermes_cli.runtime_provider import resolve_runtime_provider
+        from hermes_cli.auth import has_usable_secret
+        from hermes_cli.main import _has_any_provider_configured
 
-        runtime = resolve_runtime_provider(requested=None)
+        requested = str(params.get("provider") or "").strip() or None
+        runtime = resolve_runtime_provider(requested=requested)
         provider_configured = bool(_has_any_provider_configured())
         provider = runtime.get("provider") or "provider"
         source = str(runtime.get("source") or "")
@@ -8541,7 +9044,7 @@ def _(rid, params: dict) -> dict:
                     "provider": provider,
                     "model": runtime.get("model"),
                     "source": source,
-                    "error": "No Prostor provider is configured.",
+                    "error": "No Hermes provider is configured.",
                 },
             )
 
@@ -8658,7 +9161,7 @@ def _(rid, params: dict) -> dict:
         user_confirm = bool(params.get("confirm", False))
         if not user_confirm:
             try:
-                from prostor_cli.config import load_config as _load_config
+                from hermes_cli.config import load_config as _load_config
 
                 _cfg = _load_config()
                 _approvals = _cfg.get("approvals") if isinstance(_cfg, dict) else None
@@ -8735,8 +9238,8 @@ def _(rid, params: dict) -> dict:
 
 @method("reload.env")
 def _(rid, params: dict) -> dict:
-    """Re-read ``~/.prostor/.env`` into the gateway process via
-    ``prostor_cli.config.reload_env``, matching classic CLI's ``/reload``
+    """Re-read ``~/.hermes/.env`` into the gateway process via
+    ``hermes_cli.config.reload_env``, matching classic CLI's ``/reload``
     handler.  Newly added API keys take effect on the next agent call
     without restarting the TUI.
 
@@ -8746,7 +9249,7 @@ def _(rid, params: dict) -> dict:
     should follow with ``/new``.
     """
     try:
-        from prostor_cli.config import reload_env
+        from hermes_cli.config import reload_env
 
         count = reload_env()
         return _ok(rid, {"updated": int(count)})
@@ -8799,7 +9302,7 @@ _WORKER_BLOCKED_COMMANDS: frozenset[str] = frozenset({"snapshot", "snap"})
 def _(rid, params: dict) -> dict:
     """Registry-backed slash metadata for the TUI — categorized, no aliases."""
     try:
-        from prostor_cli.commands import (
+        from hermes_cli.commands import (
             COMMAND_REGISTRY,
             SUBCOMMANDS,
             _build_description,
@@ -8897,22 +9400,22 @@ def _(rid, params: dict) -> dict:
 def _cli_exec_blocked(argv: list[str]) -> str | None:
     """Return user hint if this argv must not run headless in the gateway process."""
     if not argv:
-        return "bare `prostor` is interactive — use `/prostor chat -q …` or run `prostor` in another terminal"
+        return "bare `hermes` is interactive — use `/hermes chat -q …` or run `hermes` in another terminal"
     a0 = argv[0].lower()
     if a0 == "setup":
-        return "`prostor setup` needs a full terminal — run it outside the TUI"
+        return "`hermes setup` needs a full terminal — run it outside the TUI"
     if a0 == "gateway":
-        return "`prostor gateway` is long-running — run it in another terminal"
+        return "`hermes gateway` is long-running — run it in another terminal"
     if a0 == "sessions" and len(argv) > 1 and argv[1].lower() == "browse":
-        return "`prostor sessions browse` is interactive — use /resume here, or run browse in another terminal"
+        return "`hermes sessions browse` is interactive — use /resume here, or run browse in another terminal"
     if a0 == "config" and len(argv) > 1 and argv[1].lower() == "edit":
-        return "`prostor config edit` needs $EDITOR in a real terminal"
+        return "`hermes config edit` needs $EDITOR in a real terminal"
     return None
 
 
 @method("cli.exec")
 def _(rid, params: dict) -> dict:
-    """Run `python -m prostor_cli.main` with argv; capture stdout/stderr (non-interactive only)."""
+    """Run `python -m hermes_cli.main` with argv; capture stdout/stderr (non-interactive only)."""
     argv = params.get("argv", [])
     if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
         return _err(rid, 4003, "argv must be list[str]")
@@ -8921,7 +9424,7 @@ def _(rid, params: dict) -> dict:
         return _ok(rid, {"blocked": True, "hint": hint, "code": -1, "output": ""})
     try:
         r = subprocess.run(
-            [sys.executable, "-m", "prostor_cli.main", *argv],
+            [sys.executable, "-m", "hermes_cli.main", *argv],
             capture_output=True,
             text=True,
             timeout=min(int(params.get("timeout", 240)), 600),
@@ -8943,7 +9446,7 @@ def _(rid, params: dict) -> dict:
 @method("command.resolve")
 def _(rid, params: dict) -> dict:
     try:
-        from prostor_cli.commands import resolve_command
+        from hermes_cli.commands import resolve_command
 
         r = resolve_command(params.get("name", ""))
         if r:
@@ -8962,7 +9465,7 @@ def _(rid, params: dict) -> dict:
 
 def _resolve_name(name: str) -> str:
     try:
-        from prostor_cli.commands import resolve_command
+        from hermes_cli.commands import resolve_command
 
         r = resolve_command(name)
         return r.name if r else name
@@ -9006,7 +9509,7 @@ def _(rid, params: dict) -> dict:
             return _ok(rid, {"type": "alias", "target": qc.get("target", "")})
 
     try:
-        from prostor_cli.plugins import (
+        from hermes_cli.plugins import (
             get_plugin_command_handler,
             resolve_plugin_command_result,
         )
@@ -9050,6 +9553,15 @@ def _(rid, params: dict) -> dict:
         if not arg:
             return _err(rid, 4004, "usage: /queue <prompt>")
         return _ok(rid, {"type": "send", "message": arg})
+
+    if name == "learn":
+        # Open-ended: build the standards-guided prompt and submit it as a
+        # normal agent turn. The live agent gathers whatever the user
+        # described (dirs, URLs, this conversation, pasted text) with its own
+        # tools and authors the skill via skill_manage. Works on any backend.
+        from agent.learn_prompt import build_learn_prompt
+
+        return _ok(rid, {"type": "send", "message": build_learn_prompt(arg)})
 
     if name == "retry":
         if not session:
@@ -9109,7 +9621,7 @@ def _(rid, params: dict) -> dict:
         if not session:
             return _err(rid, 4001, "no active session")
         try:
-            from prostor_cli.goals import GoalManager
+            from hermes_cli.goals import GoalManager
         except Exception as exc:
             return _err(rid, 5030, f"goals unavailable: {exc}")
 
@@ -9309,7 +9821,7 @@ def _(rid, params: dict) -> dict:
 
     _paste_counter += 1
     line_count = text.count("\n") + 1
-    paste_dir = _prostor_home / "pastes"
+    paste_dir = _hermes_home / "pastes"
     paste_dir.mkdir(parents=True, exist_ok=True)
 
     from datetime import datetime
@@ -9729,7 +10241,7 @@ def _(rid, params: dict) -> dict:
         return _ok(rid, {"items": []})
 
     try:
-        from prostor_cli.commands import SlashCommandCompleter
+        from hermes_cli.commands import SlashCommandCompleter
         from prompt_toolkit.document import Document
         from prompt_toolkit.formatted_text import to_plain_text
 
@@ -9804,7 +10316,7 @@ def _(rid, params: dict) -> dict:
 @method("model.options")
 def _(rid, params: dict) -> dict:
     try:
-        from prostor_cli.inventory import build_models_payload, load_picker_context
+        from hermes_cli.inventory import build_models_payload, load_picker_context
 
         session = _sessions.get(params.get("session_id", ""))
         agent = session.get("agent") if session else None
@@ -9853,9 +10365,9 @@ def _(rid, params: dict) -> dict:
     model.options entries) on success.
     """
     try:
-        from prostor_cli.auth import PROVIDER_REGISTRY
-        from prostor_cli.config import is_managed, save_env_value
-        from prostor_cli.inventory import build_models_payload, load_picker_context
+        from hermes_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.config import is_managed, save_env_value
+        from hermes_cli.inventory import build_models_payload, load_picker_context
 
         slug = (params.get("slug") or "").strip()
         api_key = (params.get("api_key") or "").strip()
@@ -9873,12 +10385,12 @@ def _(rid, params: dict) -> dict:
                 rid,
                 4003,
                 f"{pconfig.name} uses {pconfig.auth_type} auth — "
-                f"run `prostor model` to configure",
+                f"run `hermes model` to configure",
             )
         if not pconfig.api_key_env_vars:
             return _err(rid, 4004, f"no env var defined for {pconfig.name}")
 
-        # Save the key to ~/.prostor/.env
+        # Save the key to ~/.hermes/.env
         env_var = pconfig.api_key_env_vars[0]
         save_env_value(env_var, api_key)
         # Also set in current process so the refreshed inventory sees it.
@@ -9933,8 +10445,8 @@ def _(rid, params: dict) -> dict:
     Returns success status and the provider's slug.
     """
     try:
-        from prostor_cli.auth import PROVIDER_REGISTRY, clear_provider_auth
-        from prostor_cli.config import remove_env_value
+        from hermes_cli.auth import PROVIDER_REGISTRY, clear_provider_auth
+        from hermes_cli.config import remove_env_value
 
         slug = (params.get("slug") or "").strip()
         if not slug:
@@ -10122,7 +10634,7 @@ def _(rid, params: dict) -> dict:
     resolve_plugin_command_result = None
     if _cmd_base:
         try:
-            from prostor_cli.plugins import (
+            from hermes_cli.plugins import (
                 get_plugin_command_handler,
                 resolve_plugin_command_result,
             )
@@ -10193,12 +10705,12 @@ def _voice_mode_enabled() -> bool:
     avoids the TUI auto-starting in REC the next time the user opens it
     just because they happened to enable voice in a prior session.
     """
-    return os.environ.get("PROSTOR_VOICE", "").strip() == "1"
+    return os.environ.get("HERMES_VOICE", "").strip() == "1"
 
 
 def _voice_tts_enabled() -> bool:
     """Whether agent replies should be spoken back via TTS (runtime only)."""
-    return os.environ.get("PROSTOR_VOICE_TTS", "").strip() == "1"
+    return os.environ.get("HERMES_VOICE_TTS", "").strip() == "1"
 
 
 def _voice_cfg_dict() -> dict:
@@ -10274,13 +10786,13 @@ def _(rid, params: dict) -> dict:
         # Runtime-only flag (CLI parity) — no _write_config_key, so the
         # next TUI launch starts with voice OFF instead of auto-REC from a
         # persisted stale toggle.
-        os.environ["PROSTOR_VOICE"] = "1" if enabled else "0"
+        os.environ["HERMES_VOICE"] = "1" if enabled else "0"
 
         if not enabled:
             # Disabling the mode must tear the continuous loop down; the
             # loop holds the microphone and would otherwise keep running.
             try:
-                from prostor_cli.voice import stop_continuous
+                from hermes_cli.voice import stop_continuous
 
                 stop_continuous()
             except ImportError:
@@ -10289,7 +10801,7 @@ def _(rid, params: dict) -> dict:
                 logger.warning("voice: stop_continuous failed during toggle off: %s", e)
 
             # Clear TTS so it can be toggled independently after voice is off.
-            os.environ["PROSTOR_VOICE_TTS"] = "0"
+            os.environ["HERMES_VOICE_TTS"] = "0"
 
         return _ok(
             rid,
@@ -10305,7 +10817,7 @@ def _(rid, params: dict) -> dict:
             return _err(rid, 4014, "enable voice mode first: /voice on")
         new_value = not _voice_tts_enabled()
         # Runtime-only flag (CLI parity) — see voice.toggle on/off above.
-        os.environ["PROSTOR_VOICE_TTS"] = "1" if new_value else "0"
+        os.environ["HERMES_VOICE_TTS"] = "1" if new_value else "0"
         # Include ``record_key`` on every branch so a /voice tts toggle
         # doesn't reset the TUI's cached shortcut to the default when a
         # user has a custom binding configured (Copilot review, round 2
@@ -10346,7 +10858,7 @@ def _(rid, params: dict) -> dict:
                 global _voice_event_sid
                 _voice_event_sid = params.get("session_id") or _voice_event_sid
 
-            from prostor_cli.voice import start_continuous
+            from hermes_cli.voice import start_continuous
 
             # Shape-safe lookups: malformed ``voice:`` YAML (bool/scalar/list)
             # must not crash /voice with a 5025 — fall back to VAD defaults.
@@ -10387,7 +10899,7 @@ def _(rid, params: dict) -> dict:
         with _voice_sid_lock:
             _voice_event_sid = params.get("session_id") or _voice_event_sid
 
-        from prostor_cli.voice import stop_continuous
+        from hermes_cli.voice import stop_continuous
 
         stop_continuous(force_transcribe=True)
         return _ok(rid, {"status": "stopped"})
@@ -10405,7 +10917,7 @@ def _(rid, params: dict) -> dict:
     if not text:
         return _err(rid, 4020, "text required")
     try:
-        from prostor_cli.voice import speak_text
+        from hermes_cli.voice import speak_text
 
         threading.Thread(target=speak_text, args=(text,), daemon=True).start()
         return _ok(rid, {"status": "speaking"})
@@ -10571,7 +11083,7 @@ def _resolve_browser_cdp_url() -> str:
     if env_url:
         return env_url
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
 
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {}) if isinstance(cfg, dict) else {}
@@ -10630,7 +11142,7 @@ def _normalize_cdp_url(parsed) -> str:
 
 
 def _failure_messages(url: str, port: int, system: str) -> list[str]:
-    from prostor_cli.browser_connect import manual_chrome_debug_command
+    from hermes_cli.browser_connect import manual_chrome_debug_command
 
     command = manual_chrome_debug_command(port, system)
     hint = (
@@ -10668,7 +11180,7 @@ def _(rid, params: dict) -> dict:
 def _browser_connect(rid, params: dict) -> dict:
     import platform
 
-    from prostor_cli.browser_connect import DEFAULT_BROWSER_CDP_URL
+    from hermes_cli.browser_connect import DEFAULT_BROWSER_CDP_URL
     from tools.browser_tool import cleanup_all_browsers
     from urllib.parse import urlparse
 
@@ -10727,7 +11239,7 @@ def _browser_connect(rid, params: dict) -> dict:
             ok = any(_http_ok(p, timeout=2.0) for p in probes)
 
             if not ok and _is_default_local_cdp(parsed):
-                from prostor_cli.browser_connect import try_launch_chrome_debug
+                from hermes_cli.browser_connect import try_launch_chrome_debug
 
                 announce(
                     "Chromium-family browser isn't running with remote debugging — attempting to launch..."
@@ -10791,7 +11303,7 @@ def _browser_disconnect(rid) -> dict:
 @method("plugins.list")
 def _(rid, params: dict) -> dict:
     try:
-        from prostor_cli.plugins import get_plugin_manager
+        from hermes_cli.plugins import get_plugin_manager
 
         return _ok(
             rid,
@@ -10815,9 +11327,9 @@ def _(rid, params: dict) -> dict:
     try:
         cfg = _load_cfg()
         model = _resolve_model()
-        api_key = os.environ.get("PROSTOR_API_KEY", "") or cfg.get("api_key", "")
+        api_key = os.environ.get("HERMES_API_KEY", "") or cfg.get("api_key", "")
         masked = f"****{api_key[-4:]}" if len(api_key) > 4 else "(not set)"
-        base_url = os.environ.get("PROSTOR_BASE_URL", "") or cfg.get("base_url", "")
+        base_url = os.environ.get("HERMES_BASE_URL", "") or cfg.get("base_url", "")
 
         sections = [
             {
@@ -10840,7 +11352,7 @@ def _(rid, params: dict) -> dict:
                 "title": "Environment",
                 "rows": [
                     ["Working Dir", os.getcwd()],
-                    ["Config File", str(_prostor_home / "config.yaml")],
+                    ["Config File", str(_hermes_home / "config.yaml")],
                 ],
             },
         ]
@@ -10932,8 +11444,8 @@ def _(rid, params: dict) -> dict:
         return _err(rid, 4018, "names required")
 
     try:
-        from prostor_cli.config import load_config, save_config
-        from prostor_cli.tools_config import (
+        from hermes_cli.config import load_config, save_config
+        from hermes_cli.tools_config import (
             CONFIGURABLE_TOOLSETS,
             _apply_mcp_change,
             _apply_toolset_change,
@@ -11075,7 +11587,7 @@ def _(rid, params: dict) -> dict:
     action, query = params.get("action", "list"), params.get("query", "")
     try:
         if action == "list":
-            from prostor_cli.banner import get_available_skills
+            from hermes_cli.banner import get_available_skills
 
             return _ok(rid, {"skills": get_available_skills()})
         if action == "search":
@@ -11103,7 +11615,7 @@ def _(rid, params: dict) -> dict:
                 },
             )
         if action == "install":
-            from prostor_cli.skills_hub import do_install
+            from hermes_cli.skills_hub import do_install
 
             class _Q:
                 def print(self, *a, **k):
@@ -11112,7 +11624,7 @@ def _(rid, params: dict) -> dict:
             do_install(query, skip_confirm=True, console=_Q())
             return _ok(rid, {"installed": True, "name": query})
         if action == "browse":
-            from prostor_cli.skills_hub import browse_skills
+            from hermes_cli.skills_hub import browse_skills
 
             pg = int(params.get("page", 0) or 0) or (
                 int(query) if query.isdigit() else 1
@@ -11121,7 +11633,7 @@ def _(rid, params: dict) -> dict:
                 rid, browse_skills(page=pg, page_size=int(params.get("page_size", 20)))
             )
         if action == "inspect":
-            from prostor_cli.skills_hub import inspect_skill
+            from hermes_cli.skills_hub import inspect_skill
 
             return _ok(rid, {"info": inspect_skill(query) or {}})
         return _err(rid, 4017, f"unknown skills action: {action}")
@@ -11159,7 +11671,7 @@ def _(rid, params: dict) -> dict:
     """List installed plugins with activation state, or toggle one on/off.
 
     Backs the TUI Plugins Hub. Uses the same disk-discovery + enable/disable
-    primitives as ``prostor plugins`` / the dashboard, so the three surfaces
+    primitives as ``hermes plugins`` / the dashboard, so the three surfaces
     agree on what's installed and what's enabled.
 
     Actions:
@@ -11170,7 +11682,7 @@ def _(rid, params: dict) -> dict:
     """
     action = params.get("action", "list")
     try:
-        from prostor_cli.plugins_cmd import (
+        from hermes_cli.plugins_cmd import (
             _discover_all_plugins,
             _get_disabled_set,
             _get_enabled_set,
@@ -11208,7 +11720,7 @@ def _(rid, params: dict) -> dict:
             )
 
         if action == "toggle":
-            from prostor_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
+            from hermes_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
 
             name = (params.get("name") or "").strip()
             if not name:

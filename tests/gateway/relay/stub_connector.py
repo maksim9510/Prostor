@@ -13,7 +13,7 @@ The stub:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from gateway.platforms.base import MessageEvent
 from gateway.relay.descriptor import CapabilityDescriptor
@@ -25,19 +25,20 @@ class StubConnector:
 
     def __init__(self, descriptor: CapabilityDescriptor) -> None:
         self._descriptor = descriptor
-        self._inbound: InboundHandler | None = None
-        self._interrupt_inbound: Any | None = None
+        self._inbound: Optional[InboundHandler] = None
+        self._interrupt_inbound: Optional[Any] = None
+        self._passthrough: Optional[Any] = None
         self.connected = False
-        self.sent: list[dict[str, Any]] = []
-        self.interrupts: list[dict[str, Any]] = []
-        self.follow_ups: list[dict[str, Any]] = []
-        self.chat_info: dict[str, dict[str, Any]] = {}
+        self.sent: List[Dict[str, Any]] = []
+        self.interrupts: List[Dict[str, Any]] = []
+        self.follow_ups: List[Dict[str, Any]] = []
+        self.chat_info: Dict[str, Dict[str, Any]] = {}
         # Canned result for the next send_outbound (override per-test).
-        self.next_send_result: dict[str, Any] = {"success": True, "message_id": "m1"}
+        self.next_send_result: Dict[str, Any] = {"success": True, "message_id": "m1"}
         # Canned result for the next send_follow_up (override per-test). Default
         # mimics a resolved capability egress; set success=False to simulate an
         # absent/expired capability or a tenant mismatch on the connector side.
-        self.next_follow_up_result: dict[str, Any] = {"success": True, "message_id": "f1"}
+        self.next_follow_up_result: Dict[str, Any] = {"success": True, "message_id": "f1"}
 
     async def connect(self) -> bool:
         self.connected = True
@@ -57,19 +58,25 @@ class StubConnector:
         bridge here so connector→gateway interrupt_inbound frames route to it."""
         self._interrupt_inbound = handler
 
-    async def send_outbound(self, action: dict[str, Any]) -> dict[str, Any]:
+    def set_passthrough_handler(self, handler: Any) -> None:
+        """Mirror the real WS transport: the adapter registers its passthrough
+        bridge here so connector→gateway passthrough_forward frames route to it
+        (Phase 5 §5.1)."""
+        self._passthrough = handler
+
+    async def send_outbound(self, action: Dict[str, Any]) -> Dict[str, Any]:
         self.sent.append(action)
         if action.get("op") == "send":
             return dict(self.next_send_result)
         return {"success": True}
 
-    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         return self.chat_info.get(chat_id, {"name": chat_id, "type": "dm"})
 
-    async def send_interrupt(self, session_key: str, reason: str | None = None) -> None:
+    async def send_interrupt(self, session_key: str, reason: Optional[str] = None) -> None:
         self.interrupts.append({"session_key": session_key, "reason": reason})
 
-    async def send_follow_up(self, action: dict[str, Any]) -> dict[str, Any]:
+    async def send_follow_up(self, action: Dict[str, Any]) -> Dict[str, Any]:
         self.follow_ups.append(action)
         return dict(self.next_follow_up_result)
 
@@ -85,3 +92,9 @@ class StubConnector:
         if self._interrupt_inbound is None:
             raise RuntimeError("no interrupt_inbound handler registered (call adapter.connect first)")
         await self._interrupt_inbound(session_key, chat_id)
+
+    async def push_passthrough(self, forward: Any, buffer_id: Optional[str] = None) -> None:
+        """Simulate the connector forwarding a passthrough request over the WS (§5.1)."""
+        if self._passthrough is None:
+            raise RuntimeError("no passthrough handler registered (call adapter.connect first)")
+        await self._passthrough(forward, buffer_id)

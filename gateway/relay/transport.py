@@ -22,14 +22,20 @@ validate it. See docs/relay-connector-contract.md.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Awaitable, Callable, Dict, Optional, Protocol, runtime_checkable
 
 from gateway.platforms.base import MessageEvent
 from gateway.relay.descriptor import CapabilityDescriptor
 
 # Callback the transport invokes for each inbound normalized event.
 InboundHandler = Callable[[MessageEvent], Awaitable[None]]
+
+# Callback the transport invokes for each forwarded passthrough request (§5.1).
+# The first arg is a PassthroughForward (gateway/relay/ws_transport.py) — typed
+# as Any here to keep this protocol module free of a concrete-transport import
+# (ws_transport imports FROM this module). The second is an optional bufferId
+# (Phase 5 §5.3 buffered flip) the handler acks after durable handoff.
+PassthroughHandler = Callable[[Any, Optional[str]], Awaitable[None]]
 
 
 @runtime_checkable
@@ -52,7 +58,19 @@ class RelayTransport(Protocol):
         """Register the callback invoked with each inbound MessageEvent."""
         ...
 
-    async def send_outbound(self, action: dict[str, Any]) -> dict[str, Any]:
+    def set_passthrough_handler(self, handler: "PassthroughHandler") -> None:
+        """Register the callback invoked with each forwarded passthrough request.
+
+        Phase 5 §5.1: the passthrough plane (Discord interactions, Twilio, …)
+        answers the provider's edge ACK at the connector, then forwards the real
+        request to the gateway over this same outbound socket (a hosted gateway
+        has no public inbound port). The transport invokes ``handler(forward,
+        buffer_id)`` for each ``passthrough_forward`` frame. Optional on a
+        transport (an in-memory stub may not implement it).
+        """
+        ...
+
+    async def send_outbound(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Carry an outbound action (send/edit/typing) to the connector.
 
         Returns a result dict; for ``op == "send"`` it carries
@@ -60,11 +78,11 @@ class RelayTransport(Protocol):
         """
         ...
 
-    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Proxy a chat-info lookup to the connector."""
         ...
 
-    async def send_interrupt(self, session_key: str, reason: str | None = None) -> None:
+    async def send_interrupt(self, session_key: str, reason: Optional[str] = None) -> None:
         """Route a mid-turn /stop to the connector for ``session_key``.
 
         The connector forwards it down the socket owned by the gateway
@@ -75,7 +93,20 @@ class RelayTransport(Protocol):
         """
         ...
 
-    async def send_follow_up(self, action: dict[str, Any]) -> dict[str, Any]:
+    async def go_idle(self, timeout_s: float = 10.0) -> bool:
+        """Ask the connector to flip this instance to buffered-only (Phase 5 §5.3).
+
+        Sends ``going_idle`` and awaits the connector's ``going_idle_ack`` — the
+        connector-authoritative confirmation that live delivery stopped and inbound
+        now buffers durably for replay on reconnect (Q-5.3c). Returns True on ack,
+        False on timeout / not-connected (the caller proceeds to close regardless;
+        without §5.3 wiring there is simply no buffering). Optional on a transport
+        (an in-memory stub may not implement it). Emitted as part of the gateway's
+        EXISTING drain transition — not a new idle path.
+        """
+        ...
+
+    async def send_follow_up(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Act on a shared-identity capability bound to a session (A2 outbound).
 
         Some platforms hand the connector a credential that acts on the SHARED

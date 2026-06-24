@@ -1,5 +1,5 @@
 """
-Photon Spectrum (iMessage) platform adapter for Prostor Agent.
+Photon Spectrum (iMessage) platform adapter for Hermes Agent.
 
 Both directions of traffic flow through a small supervised Node sidecar
 (see ``sidecar/index.mjs``) that runs the ``spectrum-ts`` SDK — the SDK is
@@ -35,9 +35,9 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     # Type checkers see ``httpx`` as the always-imported module, so every use
@@ -49,7 +49,7 @@ else:
     try:
         import httpx
         HTTPX_AVAILABLE = True
-    except ImportError:  # pragma: no cover - httpx is already a Prostor dep
+    except ImportError:  # pragma: no cover - httpx is already a Hermes dep
         HTTPX_AVAILABLE = False
         httpx = None
 
@@ -85,13 +85,31 @@ _DEDUP_WINDOW_SECONDS = 48 * 3600
 
 _SIDECAR_DIR = Path(__file__).parent / "sidecar"
 
+# Photon / Envoy / spectrum-ts error substrings that indicate a transient
+# upstream overload rather than a permanent failure.  These are not in the
+# core _RETRYABLE_ERROR_PATTERNS because they are specific to this adapter.
+_PHOTON_RETRYABLE_PATTERNS = (
+    "internal sidecar error",
+    "upstream connect error",
+    "upstream unavailable",
+    "connection dropped",
+    "reset reason: overflow",
+    "upstream_overflow",
+    "upstream_unavailable",
+)
+
+# Minimum seconds between typing-indicator calls for the same chat.
+# iMessage is a personal channel — suppressing rapid repeats reduces
+# upstream gRPC pressure during Photon overflow events.
+_TYPING_COOLDOWN_SECONDS = 5.0
+
 # Group-chat mention wake words. When ``require_mention`` is enabled, group
 # messages are ignored unless they match one of these patterns — same
 # behavior and defaults as the BlueBubbles iMessage channel so the two
 # iMessage adapters gate group chats identically.
 _DEFAULT_MENTION_PATTERNS = [
-    r"(?<![\w@])@?prostor\s+agent\b[,:\-]?",
-    r"(?<![\w@])@?prostor\b[,:\-]?",
+    r"(?<![\w@])@?hermes\s+agent\b[,:\-]?",
+    r"(?<![\w@])@?hermes\b[,:\-]?",
 ]
 
 
@@ -112,9 +130,9 @@ def check_requirements() -> bool:
     if not shutil.which(os.getenv("PHOTON_NODE_BIN") or "node"):
         return False
     if not (_SIDECAR_DIR / "node_modules").exists():
-        # spectrum-ts not installed yet — `prostor photon setup` will
+        # spectrum-ts not installed yet — `hermes photon setup` will
         # install it.  check_fn still returns False so the gateway
-        # surfaces the missing-deps state in `prostor setup` / status.
+        # surfaces the missing-deps state in `hermes setup` / status.
         return False
     return True
 
@@ -134,7 +152,7 @@ def is_connected(cfg: PlatformConfig) -> bool:
     return validate_config(cfg)
 
 
-def _env_enablement() -> dict | None:
+def _env_enablement() -> Optional[dict]:
     """Seed PlatformConfig.extra from env so env-only setups appear in status.
 
     The special ``home_channel`` key is handled by the core plugin hook and
@@ -218,22 +236,26 @@ class PhotonAdapter(BasePlatformAdapter):
         self.supports_code_blocks = _markdown_enabled()
 
         # Runtime state
-        self._sidecar_proc: subprocess.Popen | None = None
-        self._sidecar_supervisor_task: asyncio.Task | None = None
-        self._inbound_task: asyncio.Task | None = None
+        self._sidecar_proc: Optional[subprocess.Popen] = None
+        self._sidecar_supervisor_task: Optional[asyncio.Task] = None
+        self._inbound_task: Optional[asyncio.Task] = None
+        self._sidecar_health_task: Optional[asyncio.Task] = None
         self._inbound_running = False
-        self._http_client: httpx.AsyncClient | None = None
+        self._http_client: Optional["httpx.AsyncClient"] = None
+        self._sidecar_health_interval = 15.0
         # Lightweight in-memory dedup. The gRPC stream is at-least-once, so we
         # may see the same messageId more than once (e.g. after a reconnect).
-        self._seen_messages: dict[str, float] = {}
+        self._seen_messages: Dict[str, float] = {}
         # Ids of messages WE sent (bounded, insertion-order eviction). Inbound
         # reaction events are only routed to the agent when they target one of
         # these — a tapback on a human↔human message is not addressed to us.
-        self._sent_message_ids: dict[str, float] = {}
+        self._sent_message_ids: Dict[str, float] = {}
         # Latest inbound message id per chat (bounded). Lets the agent-facing
         # react action default to "the message that triggered me" without
         # requiring the model to thread message ids through tool calls.
-        self._last_inbound_by_chat: dict[str, str] = {}
+        self._last_inbound_by_chat: Dict[str, str] = {}
+        # Last time we sent a typing indicator per chat, for cooldown gating.
+        self._typing_last_sent: Dict[str, float] = {}
 
         # Group-chat mention gating (parity with BlueBubbles). When enabled,
         # group messages are ignored unless they match a wake word; DMs are
@@ -253,11 +275,11 @@ class PhotonAdapter(BasePlatformAdapter):
     # -- Group-mention gating (parity with BlueBubbles) -------------------
 
     @staticmethod
-    def _compile_mention_patterns(raw: Any) -> list[re.Pattern]:
+    def _compile_mention_patterns(raw: Any) -> "list[re.Pattern]":
         """Compile group-mention wake words from config/env.
 
         ``raw`` is a list (config or env JSON), a string (env var: JSON
-        list, or comma/newline-separated), or None (use Prostor defaults).
+        list, or comma/newline-separated), or None (use Hermes defaults).
         Mirrors the BlueBubbles implementation so both iMessage channels
         accept the same configuration shapes.
         """
@@ -279,7 +301,7 @@ class PhotonAdapter(BasePlatformAdapter):
         else:
             patterns = [raw]
 
-        compiled: list[re.Pattern] = []
+        compiled: "list[re.Pattern]" = []
         for pattern in patterns:
             text = str(pattern).strip()
             if not text:
@@ -322,7 +344,7 @@ class PhotonAdapter(BasePlatformAdapter):
             self._set_fatal_error(
                 "MISSING_CREDENTIALS",
                 "PHOTON_PROJECT_ID and PHOTON_PROJECT_SECRET are required. "
-                "Run: prostor photon setup",
+                "Run: hermes photon setup",
                 retryable=False,
             )
             return False
@@ -354,6 +376,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self._inbound_task = asyncio.get_event_loop().create_task(
             self._inbound_loop()
         )
+        self._sidecar_health_task = asyncio.get_event_loop().create_task(
+            self._monitor_sidecar_health()
+        )
 
         self._mark_connected()
         logger.info(
@@ -364,6 +389,17 @@ class PhotonAdapter(BasePlatformAdapter):
 
     async def disconnect(self) -> None:
         self._inbound_running = False
+        if self._sidecar_health_task is not None:
+            task = self._sidecar_health_task
+            self._sidecar_health_task = None
+            task.cancel()
+            if task is not asyncio.current_task():
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
         if self._inbound_task is not None:
             self._inbound_task.cancel()
             try:
@@ -395,7 +431,7 @@ class PhotonAdapter(BasePlatformAdapter):
         if client is None:
             return
         url = f"http://{self._sidecar_bind}:{self._sidecar_port}/inbound"
-        headers = {"X-Prostor-Sidecar-Token": self._sidecar_token}
+        headers = {"X-Hermes-Sidecar-Token": self._sidecar_token}
         backoff = 1.0
         while self._inbound_running:
             try:
@@ -423,6 +459,49 @@ class PhotonAdapter(BasePlatformAdapter):
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
+
+    async def _monitor_sidecar_health(self) -> None:
+        """Promote degraded upstream Photon stream health into reconnect.
+
+        The sidecar HTTP process can stay alive while spectrum-ts repeatedly
+        fails to maintain the upstream inbound gRPC stream. Polling `/healthz`
+        keeps that from becoming a silent inbound outage.
+        """
+        while self._inbound_running:
+            await asyncio.sleep(self._sidecar_health_interval)
+            if not self._inbound_running:
+                break
+            try:
+                data = await self._sidecar_call("/healthz", {})
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.debug("[photon] sidecar health check failed: %s", exc)
+                continue
+
+            stream = data.get("stream") if isinstance(data, dict) else None
+            if not isinstance(stream, dict) or stream.get("ok") is not False:
+                continue
+
+            state = str(stream.get("state") or "unknown")
+            degraded_for_ms = stream.get("degradedForMs")
+            last_issue = str(stream.get("lastIssue") or "unknown stream issue")
+            message = (
+                "Photon upstream stream degraded"
+                f" (state={state}, degradedForMs={degraded_for_ms}): "
+                f"{last_issue}"
+            )
+            logger.error("[photon] %s", message)
+            self._set_fatal_error(
+                "UPSTREAM_STREAM_DEGRADED",
+                message,
+                retryable=True,
+            )
+            try:
+                await self._notify_fatal_error()
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("[photon] fatal-error notification failed: %s", exc)
+            break
 
     async def _on_inbound_line(self, line: str) -> None:
         try:
@@ -455,7 +534,7 @@ class PhotonAdapter(BasePlatformAdapter):
                 del seen[old]
         return False
 
-    async def _dispatch_inbound(self, event: dict[str, Any]) -> None:
+    async def _dispatch_inbound(self, event: Dict[str, Any]) -> None:
         """Normalize a sidecar inbound event and dispatch it to the gateway.
 
         Event shape (from ``sidecar/index.mjs``)::
@@ -498,19 +577,19 @@ class PhotonAdapter(BasePlatformAdapter):
             timestamp = (
                 datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                 if ts_str
-                else datetime.now(tz=UTC)
+                else datetime.now(tz=timezone.utc)
             )
         except ValueError:
-            timestamp = datetime.now(tz=UTC)
+            timestamp = datetime.now(tz=timezone.utc)
 
         # Media attachments (local cached paths) handed to the agent via the
         # gateway's image-routing path, exactly like the BlueBubbles channel.
-        media_urls: list[str] = []
-        media_types: list[str] = []
+        media_urls: List[str] = []
+        media_types: List[str] = []
 
         def _normalize_binary_payload(
-            payload: dict[str, Any]
-        ) -> tuple[str, MessageType, list[str], list[str]]:
+            payload: Dict[str, Any]
+        ) -> tuple[str, MessageType, List[str], List[str]]:
             is_voice = payload.get("type") == "voice"
             name = payload.get("name") or ("voice" if is_voice else "(unnamed)")
             mime = payload.get("mimeType") or ""
@@ -585,7 +664,7 @@ class PhotonAdapter(BasePlatformAdapter):
         elif ctype in {"attachment", "voice"}:
             text, mtype, media_urls, media_types = _normalize_binary_payload(content)
         elif ctype == "group":
-            text_parts: list[str] = []
+            text_parts: List[str] = []
             mtype = MessageType.TEXT
             for item in content.get("items") or []:
                 if not isinstance(item, dict):
@@ -656,7 +735,7 @@ class PhotonAdapter(BasePlatformAdapter):
     # -- Sidecar lifecycle -------------------------------------------------
 
     @staticmethod
-    def _find_listener_pids(port: int) -> list[int]:
+    def _find_listener_pids(port: int) -> List[int]:
         """PIDs listening on a local TCP port (empty if none/undeterminable)."""
         try:
             out = subprocess.run(  # noqa: S603, S607
@@ -677,7 +756,7 @@ class PhotonAdapter(BasePlatformAdapter):
             )
         except (OSError, subprocess.TimeoutExpired):
             return False
-        # Checkout-agnostic: any Prostor checkout's sidecar entry point.
+        # Checkout-agnostic: any Hermes checkout's sidecar entry point.
         return "photon/sidecar/index.mjs" in out.stdout
 
     @staticmethod
@@ -705,7 +784,7 @@ class PhotonAdapter(BasePlatformAdapter):
             async with httpx.AsyncClient(timeout=2.0) as client:
                 await client.post(
                     f"http://{self._sidecar_bind}:{self._sidecar_port}/healthz",
-                    headers={"X-Prostor-Sidecar-Token": self._sidecar_token},
+                    headers={"X-Hermes-Sidecar-Token": self._sidecar_token},
                 )
         except httpx.RequestError:
             return  # nothing listening — the normal case
@@ -749,7 +828,7 @@ class PhotonAdapter(BasePlatformAdapter):
         if not (_SIDECAR_DIR / "node_modules").exists():
             raise RuntimeError(
                 f"Photon sidecar deps not installed. Run: "
-                f"cd {_SIDECAR_DIR} && npm install   (or `prostor photon setup`)"
+                f"cd {_SIDECAR_DIR} && npm install   (or `hermes photon setup`)"
             )
         await self._reap_stale_sidecar()
 
@@ -803,7 +882,7 @@ class PhotonAdapter(BasePlatformAdapter):
 
         # Wait for /healthz to come up — give it up to 15s on cold start.
         deadline = time.time() + 15.0
-        last_err: Exception | None = None
+        last_err: Optional[Exception] = None
         async with httpx.AsyncClient(timeout=2.0) as client:
             while time.time() < deadline:
                 if self._sidecar_proc.poll() is not None:
@@ -814,7 +893,7 @@ class PhotonAdapter(BasePlatformAdapter):
                 try:
                     resp = await client.post(
                         f"http://{self._sidecar_bind}:{self._sidecar_port}/healthz",
-                        headers={"X-Prostor-Sidecar-Token": self._sidecar_token},
+                        headers={"X-Hermes-Sidecar-Token": self._sidecar_token},
                     )
                     if resp.status_code == 200:
                         return
@@ -839,6 +918,21 @@ class PhotonAdapter(BasePlatformAdapter):
                 logger.info("[photon-sidecar] %s", line.decode("utf-8", "replace").rstrip())
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("[photon-sidecar] supervisor exited: %s", e)
+        if self._inbound_running:
+            exit_code = proc.poll()
+            logger.error(
+                "[photon] sidecar exited unexpectedly (code %s) — triggering reconnect",
+                exit_code,
+            )
+            self._set_fatal_error(
+                "SIDECAR_CRASHED",
+                f"Photon sidecar exited unexpectedly (code {exit_code})",
+                retryable=True,
+            )
+            try:
+                await self._notify_fatal_error()
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("[photon] fatal-error notification failed: %s", exc)
 
     async def _stop_sidecar(self) -> None:
         proc = self._sidecar_proc
@@ -858,7 +952,7 @@ class PhotonAdapter(BasePlatformAdapter):
                 try:
                     await self._http_client.post(
                         f"http://{self._sidecar_bind}:{self._sidecar_port}/shutdown",
-                        headers={"X-Prostor-Sidecar-Token": self._sidecar_token},
+                        headers={"X-Hermes-Sidecar-Token": self._sidecar_token},
                         timeout=2.0,
                     )
                 except Exception:
@@ -889,8 +983,8 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         return await self._sidecar_send(chat_id, self.format_message(content))
 
@@ -906,9 +1000,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         try:
             from gateway.platforms.base import cache_image_from_url
@@ -925,9 +1019,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> SendResult:
         return await self._sidecar_send_attachment(
@@ -938,9 +1032,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> SendResult:
         return await self._sidecar_send_attachment(
@@ -951,9 +1045,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> SendResult:
         return await self._sidecar_send_attachment(
@@ -964,10 +1058,10 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: str | None = None,
-        file_name: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        file_name: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> SendResult:
         return await self._sidecar_send_attachment(
@@ -978,9 +1072,9 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         animation_url: str,
-        caption: str | None = None,
-        reply_to: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         # iMessage renders GIFs inline as ordinary image attachments.
         return await self.send_image(
@@ -988,6 +1082,10 @@ class PhotonAdapter(BasePlatformAdapter):
         )
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:
+        now = time.time()
+        if now - self._typing_last_sent.get(chat_id, 0.0) < _TYPING_COOLDOWN_SECONDS:
+            return
+        self._typing_last_sent[chat_id] = now
         try:
             await self._sidecar_call(
                 "/typing", {"spaceId": chat_id, "state": "start"}
@@ -996,6 +1094,7 @@ class PhotonAdapter(BasePlatformAdapter):
             logger.debug("[photon] send_typing failed: %s", e)
 
     async def stop_typing(self, chat_id: str) -> None:
+        self._typing_last_sent.pop(chat_id, None)
         try:
             await self._sidecar_call(
                 "/typing", {"spaceId": chat_id, "state": "stop"}
@@ -1012,7 +1111,7 @@ class PhotonAdapter(BasePlatformAdapter):
     _SENT_IDS_MAX = 1000
     _LAST_INBOUND_CHATS_MAX = 200
 
-    def _record_sent_message(self, message_id: str | None) -> None:
+    def _record_sent_message(self, message_id: Optional[str]) -> None:
         if not message_id:
             return
         sent = self._sent_message_ids
@@ -1036,7 +1135,7 @@ class PhotonAdapter(BasePlatformAdapter):
         return match.group(1) if match else chat_id
 
     def _record_last_inbound(
-        self, chat_id: str | None, message_id: str | None
+        self, chat_id: Optional[str], message_id: Optional[str]
     ) -> None:
         if not chat_id or not message_id:
             return
@@ -1096,8 +1195,8 @@ class PhotonAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         emoji: str,
-        message_id: str | None = None,
-    ) -> dict[str, Any]:
+        message_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Tapback ``emoji`` onto a message in ``chat_id``.
 
         Without ``message_id``, targets the chat's most recent inbound
@@ -1123,8 +1222,8 @@ class PhotonAdapter(BasePlatformAdapter):
         return {"success": True, "message_id": target}
 
     async def remove_reaction(
-        self, chat_id: str, message_id: str | None = None
-    ) -> dict[str, Any]:
+        self, chat_id: str, message_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Retract our tapback from a message (best-effort)."""
         target = message_id or self._last_inbound_by_chat.get(
             self._normalize_chat_key(chat_id)
@@ -1173,7 +1272,7 @@ class PhotonAdapter(BasePlatformAdapter):
             await self._add_reaction(chat_id, message_id, "\U0001f44e")
         # CANCELLED: leave the message unreacted.
 
-    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Return whatever we know about a Spectrum space id.
 
         Photon's ``space.id`` is opaque; the inbound event also carries the
@@ -1189,13 +1288,22 @@ class PhotonAdapter(BasePlatformAdapter):
             return content
         return strip_markdown(content)
 
+    @staticmethod
+    def _is_retryable_error(error: Optional[str]) -> bool:
+        if BasePlatformAdapter._is_retryable_error(error):
+            return True
+        if not error:
+            return False
+        lowered = error.lower()
+        return any(pat in lowered for pat in _PHOTON_RETRYABLE_PATTERNS)
+
     async def _send_with_retry(
         self,
         chat_id: str,
         content: str,
-        reply_to: str | None = None,
+        reply_to: Optional[str] = None,
         metadata: Any = None,
-        max_retries: int = 2,
+        max_retries: int = 1,
         base_delay: float = 2.0,
     ) -> SendResult:
         """Retry sends without the generic Markdown banner.
@@ -1266,7 +1374,7 @@ class PhotonAdapter(BasePlatformAdapter):
                 len(text), self.MAX_MESSAGE_LENGTH,
             )
             text = text[: self.MAX_MESSAGE_LENGTH]
-        body: dict[str, Any] = {"spaceId": space_id, "text": text}
+        body: Dict[str, Any] = {"spaceId": space_id, "text": text}
         # Omit the key when disabled so an older sidecar (pre-`format`)
         # keeps accepting the body during a half-upgraded restart.
         if _markdown_enabled():
@@ -1283,9 +1391,9 @@ class PhotonAdapter(BasePlatformAdapter):
         space_id: str,
         path: str,
         *,
-        name: str | None = None,
-        mime_type: str | None = None,
-        caption: str | None = None,
+        name: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        caption: Optional[str] = None,
         kind: str = "attachment",
     ) -> SendResult:
         """POST a local file to the sidecar's ``/send-attachment`` endpoint.
@@ -1294,7 +1402,7 @@ class PhotonAdapter(BasePlatformAdapter):
         to a plain audio attachment on platforms without voice notes),
         otherwise ``"attachment"``. spectrum-ts infers ``name`` and
         ``mimeType`` from the file extension; we only pass overrides when
-        Prostor supplied them.
+        Hermes supplied them.
         """
         # Defense-in-depth: re-validate the path before handing it to the
         # Node sidecar. The gateway already filters MEDIA paths, but
@@ -1309,7 +1417,7 @@ class PhotonAdapter(BasePlatformAdapter):
 
             guessed, _ = mimetypes.guess_type(safe_path)
             mime_type = guessed or None
-        body: dict[str, Any] = {
+        body: Dict[str, Any] = {
             "spaceId": space_id,
             "path": safe_path,
             "kind": "voice" if kind == "voice" else "attachment",
@@ -1327,7 +1435,7 @@ class PhotonAdapter(BasePlatformAdapter):
         self._record_sent_message(data.get("messageId"))
         return SendResult(success=True, message_id=data.get("messageId"))
 
-    async def _sidecar_call(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    async def _sidecar_call(self, path: str, body: Dict[str, Any]) -> Dict[str, Any]:
         # Guard: adapter not yet connected (no sidecar address known).
         if self._http_client is None:
             raise RuntimeError("Photon adapter not connected")
@@ -1337,7 +1445,7 @@ class PhotonAdapter(BasePlatformAdapter):
         # send_message_tool).  The inbound streaming loop continues to use
         # _http_client directly — it always runs on the gateway's loop.
         url = f"http://{self._sidecar_bind}:{self._sidecar_port}{path}"
-        headers = {"X-Prostor-Sidecar-Token": self._sidecar_token}
+        headers = {"X-Hermes-Sidecar-Token": self._sidecar_token}
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(url, json=body, headers=headers)
         if resp.status_code != 200:
@@ -1391,12 +1499,12 @@ _AUDIO_EXT_BY_MIME = {
 
 
 def _cache_inbound_attachment(
-    content: dict[str, Any],
+    content: Dict[str, Any],
     name: str,
     mime: str,
     *,
     force_audio: bool = False,
-) -> str | None:
+) -> Optional[str]:
     """Decode a base64-inlined inbound attachment and cache it locally.
 
     The sidecar inlines the attachment bytes as ``content["data"]`` (base64).
@@ -1455,10 +1563,10 @@ async def _standalone_send(
     chat_id: str,
     message: str,
     *,
-    thread_id: str | None = None,  # noqa: ARG001 — Spectrum has no threads yet
-    media_files: list | None = None,
+    thread_id: Optional[str] = None,  # noqa: ARG001 — Spectrum has no threads yet
+    media_files: Optional[list] = None,
     force_document: bool = False,  # noqa: ARG001 — iMessage auto-detects file kind
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     if not HTTPX_AVAILABLE:
         return {"error": "httpx not installed"}
     port = _coerce_port(
@@ -1475,13 +1583,13 @@ async def _standalone_send(
             )
         }
     base = f"http://{_DEFAULT_SIDECAR_BIND}:{port}"
-    headers = {"X-Prostor-Sidecar-Token": token}
-    last_message_id: str | None = None
+    headers = {"X-Hermes-Sidecar-Token": token}
+    last_message_id: Optional[str] = None
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             # 1. Text body first (if any), so it leads the conversation.
             if message:
-                send_body: dict[str, Any] = {
+                send_body: Dict[str, Any] = {
                     "spaceId": chat_id,
                     "text": message[:_MAX_MESSAGE_LENGTH],
                 }
@@ -1508,7 +1616,7 @@ async def _standalone_send(
                     logger.warning("[photon] standalone send skipping unsafe path")
                     continue
                 guessed, _ = mimetypes.guess_type(safe_path)
-                att_body: dict[str, Any] = {
+                att_body: Dict[str, Any] = {
                     "spaceId": chat_id,
                     "path": safe_path,
                     "kind": "voice" if is_voice else "attachment",
@@ -1534,9 +1642,9 @@ async def _standalone_send(
 # Plugin entry point
 
 def register(ctx) -> None:
-    """Called by the Prostor plugin loader at startup."""
+    """Called by the Hermes plugin loader at startup."""
     # Local import to avoid argparse work at module load; reused for both the
-    # gateway-setup hook and the `prostor photon` CLI command below.
+    # gateway-setup hook and the `hermes photon` CLI command below.
     from . import cli as _cli
 
     ctx.register_platform(
@@ -1548,11 +1656,11 @@ def register(ctx) -> None:
         is_connected=is_connected,
         required_env=["PHOTON_PROJECT_ID", "PHOTON_PROJECT_SECRET"],
         install_hint=(
-            "Run: prostor photon setup  (logs in via device flow, creates a "
+            "Run: hermes photon setup  (logs in via device flow, creates a "
             "Spectrum project, links your phone number, installs the "
             "spectrum-ts sidecar)."
         ),
-        # Surfaces Photon in `prostor gateway setup` alongside every other
+        # Surfaces Photon in `hermes gateway setup` alongside every other
         # channel — same unified onboarding wizard, no Photon-only detour.
         setup_fn=_cli.gateway_setup,
         env_enablement_fn=_env_enablement,
@@ -1577,7 +1685,7 @@ def register(ctx) -> None:
         ),
     )
 
-    # Register CLI subcommands — `prostor photon ...`
+    # Register CLI subcommands — `hermes photon ...`
     ctx.register_cli_command(
         name="photon",
         help="Set up and manage the Photon iMessage integration",

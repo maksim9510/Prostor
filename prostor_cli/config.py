@@ -1,15 +1,15 @@
 """
-Configuration management for Prostor Agent.
+Configuration management for Hermes Agent.
 
-Config files are stored in ~/.prostor/ for easy access:
-- ~/.prostor/config.yaml  - All settings (model, toolsets, terminal, etc.)
-- ~/.prostor/.env         - API keys and secrets
+Config files are stored in ~/.hermes/ for easy access:
+- ~/.hermes/config.yaml  - All settings (model, toolsets, terminal, etc.)
+- ~/.hermes/.env         - API keys and secrets
 
 This module provides:
-- prostor config          - Show current configuration
-- prostor config edit     - Open config in editor
-- prostor config set      - Set a specific value
-- prostor config wizard   - Re-run setup wizard
+- hermes config          - Show current configuration
+- hermes config edit     - Open config in editor
+- hermes config set      - Set a specific value
+- hermes config wizard   - Re-run setup wizard
 """
 
 import copy
@@ -27,9 +27,9 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Dict, Any, Optional, List, Tuple
 
-from prostor_cli.secret_prompt import masked_secret_prompt
+from hermes_cli.secret_prompt import masked_secret_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +39,19 @@ logger = logging.getLogger(__name__)
 _CONFIG_PARSE_WARNED: set = set()
 
 
-def _backup_corrupt_config(config_path: Path) -> Path | None:
+def _backup_corrupt_config(config_path: Path) -> Optional[Path]:
     """Preserve a corrupted ``config.yaml`` by copying it to a timestamped ``.bak``.
 
     When the YAML can't be parsed, ``load_config()`` silently falls back to
     ``DEFAULT_CONFIG`` and the user's broken file stays on disk untouched.
     That file is still the user's only copy of their intended overrides — if
-    they re-run the setup wizard or ``prostor config set`` (which rewrites
+    they re-run the setup wizard or ``hermes config set`` (which rewrites
     ``config.yaml``), the broken-but-recoverable content is gone for good.
 
     This snapshots the corrupted file to ``config.yaml.corrupt.<ts>.bak`` so
     the user can diff/repair it. Unlike Gemini CLI's policy-file recovery
     (which resets the live file to a clean state), we deliberately leave
-    ``config.yaml`` in place: prostor never silently mutates the user's config,
+    ``config.yaml`` in place: hermes never silently mutates the user's config,
     and leaving it means a hand-fixed file is re-read on the next load. The
     backup is best-effort — any failure (permissions, symlink, disk full) is
     swallowed so config loading is never blocked by backup problems.
@@ -96,20 +96,20 @@ def _backup_corrupt_config(config_path: Path) -> Path | None:
 def _warn_config_parse_failure(config_path: Path, exc: Exception) -> None:
     """Surface a config.yaml parse failure to user, log, and stderr.
 
-    A YAML parse error in ``~/.prostor/config.yaml`` causes ``load_config()``
+    A YAML parse error in ``~/.hermes/config.yaml`` causes ``load_config()``
     to silently fall back to ``DEFAULT_CONFIG``, which means every user
     override (auxiliary providers, fallback chain, model overrides, etc.)
     is dropped. Before this helper that was a one-line ``print(...)`` that
     scrolled off-screen on the first invocation and was never seen again.
 
     Now: warn once per (path, mtime_ns, size) on stderr **and** in
-    ``agent.log`` / ``errors.log`` at WARNING level so ``prostor logs``
+    ``agent.log`` / ``errors.log`` at WARNING level so ``hermes logs``
     surfaces it. Re-warns automatically if the file changes (different
     mtime/size), so users editing the config see the next failure. On the
     first warning for a given broken file we also snapshot it to a
     timestamped ``.bak`` (best-effort) so the user's recoverable content
     survives any later rewrite of ``config.yaml`` by the setup wizard or
-    ``prostor config set``.
+    ``hermes config set``.
     """
     try:
         st = config_path.stat()
@@ -132,11 +132,10 @@ def _warn_config_parse_failure(config_path: Path, exc: Exception) -> None:
         msg += f" A copy of the corrupted file was saved to {backup_path}."
     logger.warning(msg)
     try:
-        sys.stderr.write(f"⚠️  prostor config: {msg}\n")
+        sys.stderr.write(f"⚠️  hermes config: {msg}\n")
         sys.stderr.flush()
     except Exception:
         pass
-
 
 _IS_WINDOWS = platform.system() == "Windows"
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -147,31 +146,31 @@ _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #
 # * ``LD_PRELOAD`` / ``LD_LIBRARY_PATH`` / ``LD_AUDIT`` — Linux dynamic
 #   loader. ``DYLD_*`` — macOS equivalent. Planting a path here means
-#   the next ``subprocess.run([...])`` Prostor makes loads attacker code
+#   the next ``subprocess.run([...])`` Hermes makes loads attacker code
 #   before main().
 # * ``PYTHONPATH`` / ``PYTHONHOME`` / ``PYTHONSTARTUP`` /
-#   ``PYTHONUSERBASE`` — Python interpreter init. Prostor itself starts
+#   ``PYTHONUSERBASE`` — Python interpreter init. Hermes itself starts
 #   from one of these on every restart.
 # * ``NODE_OPTIONS`` / ``NODE_PATH`` — Node interpreter; affects npm,
-#   ``prostor update``, the TUI build.
+#   ``hermes update``, the TUI build.
 # * ``PATH`` — too broad to allow. The dashboard never needs to rewrite
 #   the operator's PATH; if a tool can't be found, the fix is to add an
 #   absolute path in the integration config, not to mutate PATH globally.
 # * ``GIT_SSH_COMMAND`` / ``GIT_EXEC_PATH`` — git rewrites that fire
-#   on every plugin install / ``prostor update``.
+#   on every plugin install / ``hermes update``.
 # * ``BROWSER`` / ``EDITOR`` / ``VISUAL`` / ``PAGER`` — commands the
 #   shell or CLI invokes implicitly. Wrong values here = RCE on next
 #   ``$EDITOR``.
 # * ``SHELL`` — what subprocess uses with ``shell=True`` (we try to
 #   avoid that, but defense in depth).
-# * ``PROSTOR_HOME`` / ``PROSTOR_PROFILE`` / ``PROSTOR_CONFIG`` /
-#   ``PROSTOR_ENV`` — Prostor runtime location flags. Writing these into
+# * ``HERMES_HOME`` / ``HERMES_PROFILE`` / ``HERMES_CONFIG`` /
+#   ``HERMES_ENV`` — Hermes runtime location flags. Writing these into
 #   ``.env`` would relocate state in ways the user did not request from
 #   the dashboard. ``config.yaml`` is the supported surface for these.
 #
-# IMPORTANT: ``PROSTOR_*`` overall is NOT blocked. Many legitimate
-# integration credentials follow that prefix (PROSTOR_GEMINI_CLIENT_ID,
-# PROSTOR_LANGFUSE_PUBLIC_KEY, PROSTOR_SPOTIFY_CLIENT_ID, ...). The
+# IMPORTANT: ``HERMES_*`` overall is NOT blocked. Many legitimate
+# integration credentials follow that prefix (HERMES_LANGFUSE_PUBLIC_KEY,
+# HERMES_SPOTIFY_CLIENT_ID, ...). The
 # denylist is name-by-name on purpose so the gate stays narrow and
 # doesn't accidentally break provider setup wizards.
 #
@@ -193,10 +192,10 @@ _ENV_VAR_NAME_DENYLIST: frozenset[str] = frozenset({
     "PATH", "SHELL", "BROWSER", "EDITOR", "VISUAL", "PAGER",
     # Git
     "GIT_SSH_COMMAND", "GIT_EXEC_PATH", "GIT_SHELL",
-    # Prostor runtime location — never via dashboard env writer.
-    # NOT a PROSTOR_* blanket: integration credentials (PROSTOR_GEMINI_*,
-    # PROSTOR_LANGFUSE_*, PROSTOR_SPOTIFY_*, ...) ARE allowed.
-    "PROSTOR_HOME", "PROSTOR_PROFILE", "PROSTOR_CONFIG", "PROSTOR_ENV",
+    # Hermes runtime location — never via dashboard env writer.
+    # NOT a HERMES_* blanket: integration credentials (HERMES_GEMINI_*,
+    # HERMES_LANGFUSE_*, HERMES_SPOTIFY_*, ...) ARE allowed.
+    "HERMES_HOME", "HERMES_PROFILE", "HERMES_CONFIG", "HERMES_ENV",
 })
 
 
@@ -210,14 +209,13 @@ def _reject_denylisted_env_var(key: str) -> None:
         raise ValueError(
             f"Environment variable {key!r} is on the writer denylist. "
             "Names that influence subprocess execution (LD_PRELOAD, "
-            "PYTHONPATH, PATH, EDITOR, ...) or Prostor runtime location "
-            "(PROSTOR_HOME, PROSTOR_PROFILE, ...) cannot be persisted via "
+            "PYTHONPATH, PATH, EDITOR, ...) or Hermes runtime location "
+            "(HERMES_HOME, HERMES_PROFILE, ...) cannot be persisted via "
             "the env writer. If you really need this, edit "
-            "~/.prostor/.env directly."
+            "~/.hermes/.env directly."
         )
 
-
-_LAST_EXPANDED_CONFIG_BY_PATH: dict[str, Any] = {}
+_LAST_EXPANDED_CONFIG_BY_PATH: Dict[str, Any] = {}
 # (path, mtime_ns, size) -> cached expanded config dict.
 # load_config() returns a deepcopy of the cached value when the file
 # hasn't changed since the last load, skipping yaml.safe_load +
@@ -228,11 +226,11 @@ _LAST_EXPANDED_CONFIG_BY_PATH: dict[str, Any] = {}
 # Cached tuple is (user_mtime_ns, user_size, managed_mtime_ns, managed_size,
 # merged_value) — the managed-file signature is folded in so editing the
 # managed-scope config.yaml invalidates the cache (see managed_scope).
-_LOAD_CONFIG_CACHE: dict[str, tuple[int, int, int, int, dict[str, Any]]] = {}
+_LOAD_CONFIG_CACHE: Dict[str, Tuple[int, int, int, int, Dict[str, Any]]] = {}
 # (path, mtime_ns, size) -> cached raw yaml dict. Same pattern as
 # _LOAD_CONFIG_CACHE but for read_raw_config() — used when callers want
 # the user's on-disk values without defaults merged in.
-_RAW_CONFIG_CACHE: dict[str, tuple[int, int, dict[str, Any]]] = {}
+_RAW_CONFIG_CACHE: Dict[str, Tuple[int, int, Dict[str, Any]]] = {}
 # Serializes all config read/write paths. libyaml's C extension is not
 # thread-safe for concurrent safe_load() on the same file, and multiple
 # tool threads (approval.py, browser_tool.py, setup flows) hit
@@ -279,29 +277,30 @@ _EXTRA_ENV_KEYS = frozenset({
     # config.yaml. Kept known here so .env sanitization/reload still handle
     # them for existing users (gateway reads them as a back-compat fallback),
     # without surfacing them in user-facing OPTIONAL_ENV_VARS listings.
-    "PROSTOR_TOOL_PROGRESS", "PROSTOR_TOOL_PROGRESS_MODE",
+    "HERMES_TOOL_PROGRESS", "HERMES_TOOL_PROGRESS_MODE",
     "WHATSAPP_MODE", "WHATSAPP_ENABLED",
     "MATTERMOST_HOME_CHANNEL", "MATTERMOST_HOME_CHANNEL_NAME", "MATTERMOST_REPLY_MODE",
     "MATRIX_PASSWORD", "MATRIX_ENCRYPTION", "MATRIX_DEVICE_ID", "MATRIX_HOME_ROOM",
     "MATRIX_REQUIRE_MENTION", "MATRIX_FREE_RESPONSE_ROOMS", "MATRIX_AUTO_THREAD", "MATRIX_DM_AUTO_THREAD",
     "MATRIX_RECOVERY_KEY",
     # Langfuse observability plugin — optional tuning keys + standard SDK vars.
-    # Activation is via plugins.enabled (opt-in through `prostor plugins enable
-    # observability/langfuse` or `prostor tools → Langfuse`); credentials gate
+    # Activation is via plugins.enabled (opt-in through `hermes plugins enable
+    # observability/langfuse` or `hermes tools → Langfuse`); credentials gate
     # the plugin at runtime.
-    "PROSTOR_LANGFUSE_ENV",
-    "PROSTOR_LANGFUSE_RELEASE",
-    "PROSTOR_LANGFUSE_SAMPLE_RATE",
-    "PROSTOR_LANGFUSE_MAX_CHARS",
-    "PROSTOR_LANGFUSE_DEBUG",
+    "HERMES_LANGFUSE_ENV",
+    "HERMES_LANGFUSE_RELEASE",
+    "HERMES_LANGFUSE_SAMPLE_RATE",
+    "HERMES_LANGFUSE_MAX_CHARS",
+    "HERMES_LANGFUSE_DEBUG",
     "LANGFUSE_PUBLIC_KEY",
     "LANGFUSE_SECRET_KEY",
     "LANGFUSE_BASE_URL",
 })
 import yaml
 
-from prostor_cli.colors import Colors, color
-from prostor_cli.default_soul import DEFAULT_SOUL_MD
+from hermes_cli.colors import Colors, color
+from hermes_cli.default_soul import DEFAULT_SOUL_MD
+
 
 # =============================================================================
 # Managed mode (NixOS declarative config)
@@ -316,26 +315,26 @@ _MANAGED_SYSTEM_NAMES = {
 }
 
 
-def get_managed_system() -> str | None:
+def get_managed_system() -> Optional[str]:
     """Return the package manager owning this install, if any."""
-    raw = os.getenv("PROSTOR_MANAGED", "").strip()
+    raw = os.getenv("HERMES_MANAGED", "").strip()
     if raw:
         normalized = raw.lower()
         if normalized in _MANAGED_TRUE_VALUES:
             return "NixOS"
         return _MANAGED_SYSTEM_NAMES.get(normalized, raw)
 
-    managed_marker = get_prostor_home() / ".managed"
+    managed_marker = get_hermes_home() / ".managed"
     if managed_marker.exists():
         return "NixOS"
     return None
 
 
 def is_managed() -> bool:
-    """Check if Prostor is running in package-manager-managed mode.
+    """Check if Hermes is running in package-manager-managed mode.
 
-    Two signals: the PROSTOR_MANAGED env var (set by the systemd service),
-    or a .managed marker file in PROSTOR_HOME (set by the NixOS activation
+    Two signals: the HERMES_MANAGED env var (set by the systemd service),
+    or a .managed marker file in HERMES_HOME (set by the NixOS activation
     script, so interactive shells also see it).
     """
     return get_managed_system() is not None
@@ -344,23 +343,23 @@ def is_managed() -> bool:
 _NIX_UPDATE_MSG = "Update your Nix flake input and rebuild (e.g. nix flake update, nixos-rebuild, or home-manager switch)"
 
 
-def get_managed_update_command() -> str | None:
+def get_managed_update_command() -> Optional[str]:
     """Return the preferred upgrade command for a managed install."""
     managed_system = get_managed_system()
     if managed_system == "Homebrew":
-        return "brew upgrade prostor-agent"
+        return "brew upgrade hermes-agent"
     if managed_system == "NixOS":
         return _NIX_UPDATE_MSG
     return None
 
 
-def _install_method_project_root(project_root: Path | None = None) -> Path:
+def _install_method_project_root(project_root: Optional[Path] = None) -> Path:
     """Resolve the directory that holds the *running code* (the install tree).
 
-    This is the parent of ``prostor_cli/`` — i.e. the git checkout for source
-    installs, ``/opt/prostor`` inside the published image, the venv's
+    This is the parent of ``hermes_cli/`` — i.e. the git checkout for source
+    installs, ``/opt/hermes`` inside the published image, the venv's
     site-packages root for pip installs. It is a property of the running
-    interpreter, NOT of ``$PROSTOR_HOME``, which is why a code-scoped stamp
+    interpreter, NOT of ``$HERMES_HOME``, which is why a code-scoped stamp
     here is immune to two installs sharing one data directory.
     """
     if project_root is not None:
@@ -368,29 +367,29 @@ def _install_method_project_root(project_root: Path | None = None) -> Path:
     return Path(__file__).parent.parent.resolve()
 
 
-def detect_install_method(project_root: Path | None = None) -> str:
-    """Detect how Prostor was installed: 'docker', 'nixos', 'homebrew', 'git', or 'pip'.
+def detect_install_method(project_root: Optional[Path] = None) -> str:
+    """Detect how Hermes was installed: 'docker', 'nixos', 'homebrew', 'git', or 'pip'.
 
     Resolution order:
     1. Code-scoped stamp ``<install tree>/.install_method`` (next to the
        running code) — the authoritative marker.
-    2. Legacy home-scoped stamp ``$PROSTOR_HOME/.install_method`` — read for
+    2. Legacy home-scoped stamp ``$HERMES_HOME/.install_method`` — read for
        backward compatibility, but a ``docker`` value is IGNORED when we are
        not actually running inside a container (see below).
-    3. PROSTOR_MANAGED env / .managed marker (NixOS, Homebrew)
+    3. HERMES_MANAGED env / .managed marker (NixOS, Homebrew)
     4. .git directory presence -> 'git'
     5. Fallback -> 'pip'
 
-    Why the stamp is code-scoped, not home-scoped (issue: shared ``~/.prostor``)
+    Why the stamp is code-scoped, not home-scoped (issue: shared ``~/.hermes``)
     --------------------------------------------------------------------------
     The install method describes *the binary that is running*, but
-    ``$PROSTOR_HOME`` is a shared DATA directory — the Docker docs deliberately
-    bind-mount it (``~/.prostor:/opt/data``) so config/sessions/memory persist
+    ``$HERMES_HOME`` is a shared DATA directory — the Docker docs deliberately
+    bind-mount it (``~/.hermes:/opt/data``) so config/sessions/memory persist
     and can be shared with a host-side Desktop/CLI install. When a
-    containerised gateway and a host install share one ``$PROSTOR_HOME``, a
+    containerised gateway and a host install share one ``$HERMES_HOME``, a
     home-scoped stamp is a single slot describing two different installs:
     the container stamps ``docker`` on every boot, the host install then reads
-    ``docker`` and ``prostor update`` refuses to run ("doesn't apply inside the
+    ``docker`` and ``hermes update`` refuses to run ("doesn't apply inside the
     Docker container") even though the host binary is a perfectly updatable
     git/pip install. Scoping the stamp to the install tree gives each install
     its own truthful marker.
@@ -405,15 +404,15 @@ def detect_install_method(project_root: Path | None = None) -> str:
     The supported installs self-identify via the code-scoped stamp:
       - the curl installer (scripts/install.sh, the README/website install
         command) git-clones the repo and stamps ``git`` next to the code;
-      - the published ``nousresearch/prostor-agent`` image bakes a ``docker``
-        stamp into ``/opt/prostor`` at build time.
+      - the published ``nousresearch/hermes-agent`` image bakes a ``docker``
+        stamp into ``/opt/hermes`` at build time.
     An unsupported manual install dropped into a container (no stamp) falls
     through to the ``.git``/pip checks and behaves like any off-path install.
     See issue #34397.
     """
     root = _install_method_project_root(project_root)
 
-    # 1. Code-scoped stamp — authoritative, immune to shared $PROSTOR_HOME.
+    # 1. Code-scoped stamp — authoritative, immune to shared $HERMES_HOME.
     try:
         method = (root / ".install_method").read_text(encoding="utf-8").strip().lower()
         if method:
@@ -423,11 +422,11 @@ def detect_install_method(project_root: Path | None = None) -> str:
 
     # 2. Legacy home-scoped stamp — back-compat. Ignore a ``docker`` value
     #    when we are not actually containerised: that is the signature of a
-    #    host install whose shared $PROSTOR_HOME was stamped by a co-located
-    #    container, and honouring it wrongly blocks ``prostor update``.
+    #    host install whose shared $HERMES_HOME was stamped by a co-located
+    #    container, and honouring it wrongly blocks ``hermes update``.
     try:
         method = (
-            (get_prostor_home() / ".install_method")
+            (get_hermes_home() / ".install_method")
             .read_text(encoding="utf-8")
             .strip()
             .lower()
@@ -446,25 +445,25 @@ def detect_install_method(project_root: Path | None = None) -> str:
 
 
 def _running_in_container() -> bool:
-    """Thin wrapper around ``prostor_constants.is_container`` (import-safe)."""
+    """Thin wrapper around ``hermes_constants.is_container`` (import-safe)."""
     try:
-        from prostor_constants import is_container
+        from hermes_constants import is_container
 
         return is_container()
     except Exception:
         return False
 
 
-def stamp_install_method(method: str, project_root: Path | None = None) -> None:
+def stamp_install_method(method: str, project_root: Optional[Path] = None) -> None:
     """Write the install method next to the running code (code-scoped stamp).
 
     The stamp lives in the install tree (``<install tree>/.install_method``),
-    not in ``$PROSTOR_HOME``, so that two installs sharing one data directory
+    not in ``$HERMES_HOME``, so that two installs sharing one data directory
     do not overwrite each other's marker. See ``detect_install_method`` for
     the full rationale.
 
     Best-effort: if the install tree is read-only (e.g. the immutable
-    ``/opt/prostor`` in the published image, which instead bakes the stamp at
+    ``/opt/hermes`` in the published image, which instead bakes the stamp at
     build time) the write silently no-ops and detection falls back to its
     other signals.
     """
@@ -477,10 +476,10 @@ def stamp_install_method(method: str, project_root: Path | None = None) -> None:
 
 
 def is_uv_tool_install() -> bool:
-    """Return True when the *running* Prostor lives in a ``uv tool`` layout.
+    """Return True when the *running* Hermes lives in a ``uv tool`` layout.
 
-    ``uv tool install prostor-agent`` places the install at
-    ``.../uv/tools/prostor-agent/...`` (default ``~/.local/share/uv/tools``,
+    ``uv tool install hermes-agent`` places the install at
+    ``.../uv/tools/hermes-agent/...`` (default ``~/.local/share/uv/tools``,
     or ``$UV_TOOL_DIR/...``). Such installs live outside any virtualenv, so
     ``uv pip install`` fails with ``No virtual environment found`` and the
     update path must use ``uv tool upgrade`` instead.
@@ -488,14 +487,14 @@ def is_uv_tool_install() -> bool:
     Detection is intentionally restricted to properties of the running
     interpreter (``sys.prefix`` / ``sys.executable``). We deliberately do
     NOT consult ``uv tool list``: it would also return True when
-    ``prostor-agent`` happens to be uv-tool-installed on the machine while
-    the *active* Prostor is a regular pip/venv install, causing
-    ``prostor update`` to upgrade the wrong copy. It would also block on a
+    ``hermes-agent`` happens to be uv-tool-installed on the machine while
+    the *active* Hermes is a regular pip/venv install, causing
+    ``hermes update`` to upgrade the wrong copy. It would also block on a
     subprocess call (~seconds) just to compute a recommendation string.
     """
     def _has_uv_tool_marker(path: str) -> bool:
         norm = os.path.normpath(path).replace(os.sep, "/").lower()
-        return "/uv/tools/prostor-agent/" in norm + "/"
+        return "/uv/tools/hermes-agent/" in norm + "/"
 
     if _has_uv_tool_marker(sys.prefix):
         return True
@@ -509,17 +508,17 @@ def recommended_update_command_for_method(method: str) -> str:
     if method == "nixos":
         return _NIX_UPDATE_MSG
     if method == "homebrew":
-        return "brew upgrade prostor-agent"
+        return "brew upgrade hermes-agent"
     if method == "docker":
-        return "docker pull nousresearch/prostor-agent:latest"
+        return "docker pull nousresearch/hermes-agent:latest"
     if method == "pip":
         if is_uv_tool_install():
-            return "uv tool upgrade prostor-agent"
+            return "uv tool upgrade hermes-agent"
         import shutil
         if shutil.which("uv"):
-            return "uv pip install --upgrade prostor-agent"
-        return "pip install --upgrade prostor-agent"
-    return "prostor update"
+            return "uv pip install --upgrade hermes-agent"
+        return "pip install --upgrade hermes-agent"
+    return "hermes update"
 
 
 def recommended_update_command() -> str:
@@ -531,9 +530,9 @@ def recommended_update_command() -> str:
     return recommended_update_command_for_method(method)
 
 
-# Long-form text for ``prostor update`` / ``--check`` when running inside the
+# Long-form text for ``hermes update`` / ``--check`` when running inside the
 # Docker image.  Surfaced by ``cmd_update`` and ``_cmd_update_check`` in
-# prostor_cli/main.py; lives here so the wording stays consistent and we
+# hermes_cli/main.py; lives here so the wording stays consistent and we
 # don't grow two slightly-different copies.
 #
 # Why this matters:
@@ -541,32 +540,32 @@ def recommended_update_command() -> str:
 #     git-based update path can never succeed inside the container.
 #   - The pre-existing fallback message ("✗ Not a git repository. Please
 #     reinstall: curl ... install.sh") is actively misleading inside Docker
-#     — that script installs a *new* host-side Prostor, it doesn't update
+#     — that script installs a *new* host-side Hermes, it doesn't update
 #     the running container.
 #   - The right action is ``docker pull`` + restart the container; this
 #     helper spells that out, with notes on tag pinning and config
 #     persistence so users don't get blindsided.
 _DOCKER_UPDATE_MESSAGE = """\
-✗ ``prostor update`` doesn't apply inside the Docker container.
+✗ ``hermes update`` doesn't apply inside the Docker container.
 
-Prostor Agent runs as a published image (nousresearch/prostor-agent), not a
+Hermes Agent runs as a published image (nousresearch/hermes-agent), not a
 git checkout — the container has no working tree to pull into.  Update by
 pulling a fresh image and restarting your container instead:
 
-  docker pull nousresearch/prostor-agent:latest
+  docker pull nousresearch/hermes-agent:latest
   # then restart whatever started the container, e.g.:
-  docker compose up -d --force-recreate prostor-agent
+  docker compose up -d --force-recreate hermes-agent
   # or, for ad-hoc runs, exit the current container and `docker run` again
 
 Verify the new version after restart:
-  docker run --rm nousresearch/prostor-agent:latest --version
+  docker run --rm nousresearch/hermes-agent:latest --version
 
 Notes:
   • If you pinned a specific tag (e.g. ``:v0.14.0``) the ``:latest`` tag
     won't move your container — pull the newer tag you actually want, or
     switch to ``:latest`` / ``:main`` for rolling updates.  See available
-    tags at https://hub.docker.com/r/nousresearch/prostor-agent/tags
-  • Your config and session history live under ``$PROSTOR_HOME`` (``/opt/data``
+    tags at https://hub.docker.com/r/nousresearch/hermes-agent/tags
+  • Your config and session history live under ``$HERMES_HOME`` (``/opt/data``
     in the container, typically bind-mounted from the host) and persist
     across image upgrades — re-pulling doesn't lose any state.
   • Running a fork?  Build your own image with this repo's ``Dockerfile``
@@ -574,7 +573,7 @@ Notes:
 
 
 def format_docker_update_message() -> str:
-    """Return the user-facing message for ``prostor update`` inside Docker.
+    """Return the user-facing message for ``hermes update`` inside Docker.
 
     Centralised so ``cmd_update`` (the apply path) and ``_cmd_update_check``
     (the dry-run path) share the same wording.  See ``_DOCKER_UPDATE_MESSAGE``
@@ -583,34 +582,33 @@ def format_docker_update_message() -> str:
     return _DOCKER_UPDATE_MESSAGE
 
 
-def format_managed_message(action: str = "modify this Prostor installation") -> str:
+def format_managed_message(action: str = "modify this Hermes installation") -> str:
     """Build a user-facing error for managed installs."""
     managed_system = get_managed_system() or "a package manager"
-    raw = os.getenv("PROSTOR_MANAGED", "").strip().lower()
+    raw = os.getenv("HERMES_MANAGED", "").strip().lower()
 
     if managed_system == "NixOS":
         env_hint = "true" if raw in _MANAGED_TRUE_VALUES else raw or "true"
         return (
-            f"Cannot {action}: this Prostor installation is managed by NixOS "
-            f"(PROSTOR_MANAGED={env_hint}).\n"
-            "Edit services.prostor-agent.settings in your configuration.nix and run:\n"
+            f"Cannot {action}: this Hermes installation is managed by NixOS "
+            f"(HERMES_MANAGED={env_hint}).\n"
+            "Edit services.hermes-agent.settings in your configuration.nix and run:\n"
             "  sudo nixos-rebuild switch"
         )
 
     if managed_system == "Homebrew":
         env_hint = raw or "homebrew"
         return (
-            f"Cannot {action}: this Prostor installation is managed by Homebrew "
-            f"(PROSTOR_MANAGED={env_hint}).\n"
+            f"Cannot {action}: this Hermes installation is managed by Homebrew "
+            f"(HERMES_MANAGED={env_hint}).\n"
             "Use:\n"
-            "  brew upgrade prostor-agent"
+            "  brew upgrade hermes-agent"
         )
 
     return (
-        f"Cannot {action}: this Prostor installation is managed by {managed_system}.\n"
-        "Use your package manager to upgrade or reinstall Prostor."
+        f"Cannot {action}: this Hermes installation is managed by {managed_system}.\n"
+        "Use your package manager to upgrade or reinstall Hermes."
     )
-
 
 def managed_error(action: str = "modify configuration"):
     """Print user-friendly error for managed mode."""
@@ -621,29 +619,29 @@ def managed_error(action: str = "modify configuration"):
 # Container-aware CLI (NixOS container mode)
 # =============================================================================
 
-def get_container_exec_info() -> dict | None:
-    """Read container mode metadata from PROSTOR_HOME/.container-mode.
+def get_container_exec_info() -> Optional[dict]:
+    """Read container mode metadata from HERMES_HOME/.container-mode.
 
-    Returns a dict with keys: backend, container_name, exec_user, prostor_bin
+    Returns a dict with keys: backend, container_name, exec_user, hermes_bin
     or None if container mode is not active, we're already inside the
-    container, or PROSTOR_DEV=1 is set.
+    container, or HERMES_DEV=1 is set.
 
     The .container-mode file is written by the NixOS activation script when
     container.enable = true. It tells the host CLI to exec into the container
     instead of running locally.
     """
-    if os.environ.get("PROSTOR_DEV") == "1":
+    if os.environ.get("HERMES_DEV") == "1":
         return None
 
-    from prostor_constants import is_container
+    from hermes_constants import is_container
     if is_container():
         return None
 
-    container_mode_file = get_prostor_home() / ".container-mode"
+    container_mode_file = get_hermes_home() / ".container-mode"
 
     try:
         info = {}
-        with open(container_mode_file, encoding="utf-8") as f:
+        with open(container_mode_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if "=" in line and not line.startswith("#"):
@@ -654,15 +652,15 @@ def get_container_exec_info() -> dict | None:
     # All other exceptions (PermissionError, malformed data, etc.) propagate
 
     backend = info.get("backend", "docker")
-    container_name = info.get("container_name", "prostor-agent")
-    exec_user = info.get("exec_user", "prostor")
-    prostor_bin = info.get("prostor_bin", "/data/current-package/bin/prostor")
+    container_name = info.get("container_name", "hermes-agent")
+    exec_user = info.get("exec_user", "hermes")
+    hermes_bin = info.get("hermes_bin", "/data/current-package/bin/hermes")
 
     return {
         "backend": backend,
         "container_name": container_name,
         "exec_user": exec_user,
-        "prostor_bin": prostor_bin,
+        "hermes_bin": hermes_bin,
     }
 
 
@@ -670,33 +668,29 @@ def get_container_exec_info() -> dict | None:
 # Config paths
 # =============================================================================
 
-# Re-export from prostor_constants — canonical definition lives there.
-from prostor_constants import get_prostor_home  # noqa: F811,E402
+# Re-export from hermes_constants — canonical definition lives there.
+from hermes_constants import get_hermes_home  # noqa: F811,E402
 from utils import atomic_replace
-
 
 def get_config_path() -> Path:
     """Get the main config file path."""
-    return get_prostor_home() / "config.yaml"
-
+    return get_hermes_home() / "config.yaml"
 
 def get_env_path() -> Path:
     """Get the .env file path (for API keys)."""
-    return get_prostor_home() / ".env"
-
+    return get_hermes_home() / ".env"
 
 def get_project_root() -> Path:
     """Get the project installation directory."""
     return Path(__file__).parent.parent.resolve()
 
+def _resolve_hermes_uid_gid() -> tuple[Optional[int], Optional[int]]:
+    """Read the HERMES_UID / HERMES_GID env vars set by Docker deployments.
 
-def _resolve_prostor_uid_gid() -> tuple[int | None, int | None]:
-    """Read the PROSTOR_UID / PROSTOR_GID env vars set by Docker deployments.
-
-    Docker containers running Prostor commonly set these to map the in-container
+    Docker containers running Hermes commonly set these to map the in-container
     user to a host user so volume-mounted state files end up with the right
-    ownership. The entrypoint chowns the top-level PROSTOR_HOME once, but
-    subdirectories created at runtime by ``ensure_prostor_home()`` (especially
+    ownership. The entrypoint chowns the top-level HERMES_HOME once, but
+    subdirectories created at runtime by ``ensure_hermes_home()`` (especially
     for profile namespaces under ``profiles/<name>/``) need the same chown
     or they land as ``root:root`` and block subsequent uid-mapped workers
     with ``PermissionError [Errno 13]``. See #34107.
@@ -707,8 +701,8 @@ def _resolve_prostor_uid_gid() -> tuple[int | None, int | None]:
     """
     if sys.platform == "win32":
         return None, None
-    uid_str = os.environ.get("PROSTOR_UID", "").strip()
-    gid_str = os.environ.get("PROSTOR_GID", "").strip()
+    uid_str = os.environ.get("HERMES_UID", "").strip()
+    gid_str = os.environ.get("HERMES_GID", "").strip()
     try:
         uid = int(uid_str) if uid_str else None
     except ValueError:
@@ -720,8 +714,8 @@ def _resolve_prostor_uid_gid() -> tuple[int | None, int | None]:
     return uid, gid
 
 
-def _chown_to_prostor_uid(path) -> None:
-    """Chown ``path`` to ``PROSTOR_UID:PROSTOR_GID`` if those env vars are set.
+def _chown_to_hermes_uid(path) -> None:
+    """Chown ``path`` to ``HERMES_UID:HERMES_GID`` if those env vars are set.
 
     No-op when:
       - Either env var is unset/invalid
@@ -729,10 +723,10 @@ def _chown_to_prostor_uid(path) -> None:
       - On Windows (chown semantics don't apply)
 
     Used by :func:`_secure_dir` to keep ownership consistent across all
-    directories created by :func:`ensure_prostor_home` on Docker deployments.
+    directories created by :func:`ensure_hermes_home` on Docker deployments.
     See #34107.
     """
-    uid, gid = _resolve_prostor_uid_gid()
+    uid, gid = _resolve_hermes_uid_gid()
     if uid is None and gid is None:
         return
     try:
@@ -753,16 +747,16 @@ def _secure_dir(path):
     """Set directory to owner-only access (0700 by default). No-op on Windows.
 
     Skipped in managed mode — the NixOS module sets group-readable
-    permissions (0750) so interactive users in the prostor group can
+    permissions (0750) so interactive users in the hermes group can
     share state with the gateway service.
 
-    The mode can be overridden via the PROSTOR_HOME_MODE environment variable
-    (e.g. PROSTOR_HOME_MODE=0701) for deployments where a web server (nginx,
-    caddy, etc.) needs to traverse PROSTOR_HOME to reach a served subdirectory.
+    The mode can be overridden via the HERMES_HOME_MODE environment variable
+    (e.g. HERMES_HOME_MODE=0701) for deployments where a web server (nginx,
+    caddy, etc.) needs to traverse HERMES_HOME to reach a served subdirectory.
     The execute-only bit on a directory permits cd-through without exposing
     directory listings.
 
-    Also applies ``PROSTOR_UID``/``PROSTOR_GID``-based ownership when those env
+    Also applies ``HERMES_UID``/``HERMES_GID``-based ownership when those env
     vars are set (#34107 — Docker deployments need this so profile subdirs
     created at runtime by kanban workers don't land as root:root and block
     subsequent uid-mapped workers).
@@ -770,7 +764,7 @@ def _secure_dir(path):
     if is_managed():
         return
     try:
-        mode_str = os.environ.get("PROSTOR_HOME_MODE", "").strip()
+        mode_str = os.environ.get("HERMES_HOME_MODE", "").strip()
         mode = int(mode_str, 8) if mode_str else 0o700
     except ValueError:
         mode = 0o700
@@ -778,30 +772,30 @@ def _secure_dir(path):
         os.chmod(path, mode)
     except (OSError, NotImplementedError):
         pass
-    _chown_to_prostor_uid(path)
+    _chown_to_hermes_uid(path)
 
 
 def _is_container() -> bool:
     """Detect if we're running inside a Docker/Podman/LXC container.
 
-    When Prostor runs in a container with volume-mounted config files, forcing
+    When Hermes runs in a container with volume-mounted config files, forcing
     0o600 permissions breaks multi-process setups where the gateway and
     dashboard run as different UIDs or the volume mount requires broader
     permissions.
     """
     # Explicit opt-out
-    if os.environ.get("PROSTOR_CONTAINER") or os.environ.get("PROSTOR_SKIP_CHMOD"):
+    if os.environ.get("HERMES_CONTAINER") or os.environ.get("HERMES_SKIP_CHMOD"):
         return True
     # Docker / Podman marker file
     if os.path.exists("/.dockerenv"):
         return True
     # LXC / cgroup-based detection
     try:
-        with open("/proc/1/cgroup", encoding="utf-8") as f:
+        with open("/proc/1/cgroup", "r", encoding="utf-8") as f:
             cgroup_content = f.read()
         if "docker" in cgroup_content or "lxc" in cgroup_content or "kubepods" in cgroup_content:
             return True
-    except OSError:
+    except (OSError, IOError):
         pass
     return False
 
@@ -813,7 +807,7 @@ def _secure_file(path):
     group-readable permissions (0640) on config files.
 
     Skipped in containers — Docker/Podman volume mounts often need broader
-    permissions.  Set PROSTOR_SKIP_CHMOD=1 to force-skip on other systems.
+    permissions.  Set HERMES_SKIP_CHMOD=1 to force-skip on other systems.
     """
     if is_managed() or _is_container():
         return
@@ -825,7 +819,7 @@ def _secure_file(path):
 
 
 def _ensure_default_soul_md(home: Path) -> None:
-    """Seed a default SOUL.md into PROSTOR_HOME if the user doesn't have one yet."""
+    """Seed a default SOUL.md into HERMES_HOME if the user doesn't have one yet."""
     soul_path = home / "SOUL.md"
     if soul_path.exists():
         return
@@ -833,18 +827,18 @@ def _ensure_default_soul_md(home: Path) -> None:
     _secure_file(soul_path)
 
 
-def ensure_prostor_home():
-    """Ensure ~/.prostor directory structure exists with secure permissions.
+def ensure_hermes_home():
+    """Ensure ~/.hermes directory structure exists with secure permissions.
 
     In managed mode (NixOS), dirs are created by the activation script with
     setgid + group-writable (2770). We skip mkdir and set umask(0o007) so
     any files created (e.g. SOUL.md) are group-writable (0660).
     """
-    home = get_prostor_home()
+    home = get_hermes_home()
     if is_managed():
         old_umask = os.umask(0o007)
         try:
-            _ensure_prostor_home_managed(home)
+            _ensure_hermes_home_managed(home)
         finally:
             os.umask(old_umask)
     else:
@@ -860,11 +854,11 @@ def ensure_prostor_home():
         _ensure_default_soul_md(home)
 
 
-def _ensure_prostor_home_managed(home: Path):
+def _ensure_hermes_home_managed(home: Path):
     """Managed-mode variant: verify dirs exist (activation creates them), seed SOUL.md."""
     if not home.is_dir():
         raise RuntimeError(
-            f"PROSTOR_HOME {home} does not exist. "
+            f"HERMES_HOME {home} does not exist. "
             "Run 'sudo nixos-rebuild switch' first."
         )
     for subdir in ("cron", "sessions", "logs", "memories"):
@@ -891,7 +885,7 @@ DEFAULT_CONFIG = {
     "providers": {},
     "fallback_providers": [],
     "credential_pool_strategies": {},
-    "toolsets": ["prostor-cli"],
+    "toolsets": ["hermes-cli"],
     # Global active chat session cap across CLI, TUI/dashboard, and messaging.
     # None/0 = unbounded.
     "max_concurrent_sessions": None,
@@ -916,7 +910,7 @@ DEFAULT_CONFIG = {
         # provider timeouts, 5xx, etc.) before the agent surfaces the
         # failure.  The OpenAI SDK already does its own low-level retries
         # (max_retries=2 default) for transient network errors; this is
-        # the Prostor-level retry loop that wraps the whole call.  Lower
+        # the Hermes-level retry loop that wraps the whole call.  Lower
         # this to 1 if you use fallback providers and want fast failover
         # on flaky primaries; raise it if you prefer to tolerate longer
         # provider hiccups on a single provider.
@@ -952,14 +946,14 @@ DEFAULT_CONFIG = {
         # disable entirely.
         "environment_probe": True,
         # Embedder-supplied environment description appended to the system
-        # prompt's environment-hints block. Lets a host that wraps Prostor
+        # prompt's environment-hints block. Lets a host that wraps Hermes
         # (sandbox runner, managed platform) explain the runtime environment
         # — proxy, credential handling, mount layout — without editing the
-        # identity slot (SOUL.md). Empty by default. The PROSTOR_ENVIRONMENT_HINT
+        # identity slot (SOUL.md). Empty by default. The HERMES_ENVIRONMENT_HINT
         # env var overrides this (build-time/container mechanism).
         "environment_hint": "",
         # Coding posture — on interactive coding surfaces (CLI, TUI, desktop
-        # app, ACP) in a code workspace, Prostor adds a coding operating brief
+        # app, ACP) in a code workspace, Hermes adds a coding operating brief
         # + a live git/workspace snapshot to the system prompt. See
         # agent/coding_context.py.
         #   "auto" (default) — prompt-only posture when the surface is
@@ -1021,21 +1015,27 @@ DEFAULT_CONFIG = {
         "image_input_mode": "auto",
         "disabled_toolsets": [],
     },
-
+    
     "terminal": {
         "backend": "local",
         "modal_mode": "auto",
         "cwd": ".",  # Use current directory
         "timeout": 180,
+        # Bounded grace period (seconds) between SIGTERM and an escalated
+        # SIGKILL when terminating a host process tree (browser daemons, etc.).
+        # A daemon that stalls in its SIGTERM handler is force-killed after this
+        # window so it can't leak indefinitely. 0 disables escalation (SIGTERM
+        # only — the historical behavior). Floored internally at 0.
+        "daemon_term_grace_seconds": 2.0,
         # Environment variables to pass through to sandboxed execution
         # (terminal and execute_code).  Skill-declared required_environment_variables
         # are passed through automatically; this list is for non-skill use cases.
         "env_passthrough": [],
         # HOME handling for host tool subprocesses:
         #   auto    — host keeps the real OS-user HOME; containers use
-        #             PROSTOR_HOME/home for persistent state (default)
+        #             HERMES_HOME/home for persistent state (default)
         #   real    — force the real OS-user HOME
-        #   profile — force PROSTOR_HOME/home when it exists (old strict
+        #   profile — force HERMES_HOME/home when it exists (old strict
         #             per-profile CLI config isolation)
         "home_mode": "auto",
         # Extra files to source in the login shell when building the
@@ -1045,13 +1045,13 @@ DEFAULT_CONFIG = {
         # (bash doesn't source bashrc in non-interactive login mode) or
         # zsh-specific files like ``~/.zshrc`` / ``~/.zprofile``.
         # Paths support ``~`` / ``${VAR}``. Missing files are silently
-        # skipped. When empty, Prostor auto-sources ``~/.profile``,
+        # skipped. When empty, Hermes auto-sources ``~/.profile``,
         # ``~/.bash_profile``, and ``~/.bashrc`` (in that order) if the
         # snapshot shell is bash (this is the ``auto_source_bashrc``
         # behaviour — disable with that key if you want strict login-only
         # semantics).
         "shell_init_files": [],
-        # When true (default), Prostor sources the user's shell rc files
+        # When true (default), Hermes sources the user's shell rc files
         # (``~/.profile``, ``~/.bash_profile``, ``~/.bashrc``) in the
         # login shell used to build the environment snapshot. This
         # captures PATH additions, shell functions, and aliases — which a
@@ -1068,7 +1068,7 @@ DEFAULT_CONFIG = {
         "docker_forward_env": [],
         # Explicit environment variables to set inside Docker containers.
         # Unlike docker_forward_env (which reads values from the host process),
-        # docker_env lets you specify exact key-value pairs — useful when Prostor
+        # docker_env lets you specify exact key-value pairs — useful when Hermes
         # runs as a systemd service without access to the user's shell environment.
         # Example: {"SSH_AUTH_SOCK": "/run/user/1000/ssh-agent.sock"}
         "docker_env": {},
@@ -1084,7 +1084,7 @@ DEFAULT_CONFIG = {
         # Each entry is "host_path:container_path" (standard Docker -v syntax).
         # Example:
         # ["/home/user/projects:/workspace/projects",
-        #  "/home/user/.prostor/cache/documents:/output"]
+        #  "/home/user/.hermes/cache/documents:/output"]
         # For gateway MEDIA delivery, write inside Docker to /output/... and emit
         # the host-visible path in MEDIA:, not the container path.
         "docker_volumes": [],
@@ -1098,7 +1098,7 @@ DEFAULT_CONFIG = {
         # are owned by your host user instead of root, which avoids needing
         # `sudo chown` after container runs. Default off to preserve behavior
         # for images whose entrypoints expect to start as root (e.g. the
-        # bundled Prostor image, which drops to the `prostor` user via
+        # bundled Hermes image, which drops to the `hermes` user via
         # s6-setuidgid inside each supervised service).
         # When on, SETUID/SETGID caps are omitted from the container since
         # no privilege drop is needed.
@@ -1137,12 +1137,12 @@ DEFAULT_CONFIG = {
         "dialog_policy": "must_respond",  # must_respond | auto_dismiss | auto_accept
         "dialog_timeout_s": 300,  # Safety auto-dismiss after N seconds under must_respond
         "camofox": {
-            # When true, Prostor sends a stable profile-scoped userId to Camofox
+            # When true, Hermes sends a stable profile-scoped userId to Camofox
             # so the server maps it to a persistent Firefox profile automatically.
             # When false (default), each session gets a random userId (ephemeral).
             "managed_persistence": False,
             # Optional externally managed Camofox identity. Useful when another
-            # app owns the visible browser and Prostor should operate in it.
+            # app owns the visible browser and Hermes should operate in it.
             "user_id": "",
             "session_key": "",
             # Rehydrate tab_id from Camofox before creating a new tab.
@@ -1164,14 +1164,14 @@ DEFAULT_CONFIG = {
     #   - enabled: True -> False   (opt-in; most users never use /rollback)
     #   - max_snapshots: 50 -> 20  (now actually enforced via ref rewrite)
     #   - auto_prune:   False -> True (orphans/stale pruned automatically)
-    # Opt in via ``prostor chat --checkpoints`` or set enabled=True here.
+    # Opt in via ``hermes chat --checkpoints`` or set enabled=True here.
     "checkpoints": {
         "enabled": False,
         # Max checkpoints to keep per working directory.  Pre-v2 this only
         # limited the `/rollback` listing; v2 actually rewrites the ref and
         # garbage-collects older commits.
         "max_snapshots": 20,
-        # Hard ceiling on total ``~/.prostor/checkpoints/`` size (MB).  When
+        # Hard ceiling on total ``~/.hermes/checkpoints/`` size (MB).  When
         # exceeded, the oldest checkpoint per project is dropped in a
         # round-robin pass until total size falls under the cap.
         # 0 disables the size cap.
@@ -1180,7 +1180,7 @@ DEFAULT_CONFIG = {
         # Prevents accidental snapshotting of datasets, model weights, and
         # other large generated assets.  0 disables the filter.
         "max_file_size_mb": 10,
-        # Auto-maintenance: prostor sweeps the checkpoint base at startup
+        # Auto-maintenance: hermes sweeps the checkpoint base at startup
         # (at most once per ``min_interval_hours``) and:
         #   * deletes project entries whose workdir no longer exists (orphan)
         #   * deletes project entries whose last_touch is older than
@@ -1195,7 +1195,7 @@ DEFAULT_CONFIG = {
     },
 
     # Hard cap (chars) for a single automatic context file such as SOUL.md,
-    # AGENTS.md, CLAUDE.md, .prostor.md, or .cursorrules before Prostor applies
+    # AGENTS.md, CLAUDE.md, .hermes.md, or .cursorrules before Hermes applies
     # head/tail truncation. ``null`` (the default) lets the cap scale with the
     # model's context window (floor 20K, ceiling 500K) so large-context models
     # rarely truncate a project doc. Set a positive integer to pin a fixed cap
@@ -1223,7 +1223,7 @@ DEFAULT_CONFIG = {
     "mcp_discovery_timeout": 1.5,
 
     # Tool-output truncation thresholds. When terminal output or a
-    # single read_file page exceeds these limits, Prostor truncates the
+    # single read_file page exceeds these limits, Hermes truncates the
     # payload sent to the model (keeping head + tail for terminal,
     # enforcing pagination for read_file). Tuning these trades context
     # footprint against how much raw output the model can see in one
@@ -1265,7 +1265,7 @@ DEFAULT_CONFIG = {
         "threshold": 0.50,            # compress when context usage exceeds this ratio
         "target_ratio": 0.20,         # fraction of threshold to preserve as recent tail
         "protect_last_n": 20,         # minimum recent messages to keep uncompressed
-        "hygiene_hard_message_limit": 400,  # gateway session-hygiene force-compress threshold by message count
+        "hygiene_hard_message_limit": 5000,  # gateway session-hygiene force-compress threshold by message count
         "protect_first_n": 3,         # non-system head messages always preserved
                                       # verbatim, in ADDITION to the system prompt
                                       # (which is always implicitly protected). Set to
@@ -1312,9 +1312,9 @@ DEFAULT_CONFIG = {
     },
 
     # Kanban subsystem (orchestrator workers + dispatcher-driven child tasks).
-    # See tools/kanban_tools.py and prostor_cli/kanban_db.py for the actual
+    # See tools/kanban_tools.py and hermes_cli/kanban_db.py for the actual
     # implementations. Per-platform notification opt-out is handled by the
-    # kanban dashboard (see ``prostor dashboard`` -> Notifications).
+    # kanban dashboard (see ``hermes dashboard`` -> Notifications).
     "kanban": {
         # Auto-subscribe the originating gateway/TUI session to task
         # completion + block events when ``kanban_create`` is called from
@@ -1472,7 +1472,7 @@ DEFAULT_CONFIG = {
         },
         # Triage specifier — flesh out a rough one-liner in the Kanban
         # Triage column into a concrete spec, then promote it to ``todo``.
-        # Invoked by ``prostor kanban specify`` (single id or --all). Set a
+        # Invoked by ``hermes kanban specify`` (single id or --all). Set a
         # cheap, capable model here (gemini-flash works well); the main
         # model is overkill for short spec expansion.
         "triage_specifier": {
@@ -1485,7 +1485,7 @@ DEFAULT_CONFIG = {
         },
         # Kanban decomposer — decomposes a triage task into a graph of
         # child tasks routed to specialist profiles by description.
-        # Invoked by ``prostor kanban decompose`` and the kanban
+        # Invoked by ``hermes kanban decompose`` and the kanban
         # auto-decompose dispatcher tick. Returns a JSON task graph;
         # uses more tokens than the specifier so allow more headroom.
         "kanban_decomposer": {
@@ -1498,7 +1498,7 @@ DEFAULT_CONFIG = {
         },
         # Profile describer — auto-generates a 1-2 sentence description
         # of what a profile is good at. Invoked by
-        # ``prostor profile describe <name> --auto`` and the dashboard's
+        # ``hermes profile describe <name> --auto`` and the dashboard's
         # auto-generate button. Short, cheap call.
         "profile_describer": {
             "provider": "auto",
@@ -1511,7 +1511,7 @@ DEFAULT_CONFIG = {
         # Curator — skill-usage review fork. Timeout is generous because the
         # review pass can take several minutes on reasoning models (umbrella
         # building over hundreds of candidate skills). "auto" = use main chat
-        # model; override via `prostor model` → auxiliary → Curator to route
+        # model; override via `hermes model` → auxiliary → Curator to route
         # to a cheaper aux model (e.g. openrouter google/gemini-3-flash-preview).
         "curator": {
             "provider": "auto",
@@ -1535,8 +1535,27 @@ DEFAULT_CONFIG = {
             "timeout": 60,
             "extra_body": {},
         },
+        # Background review — the post-turn self-improvement fork that decides
+        # whether to save a memory / patch a skill. "auto" (default) = run on
+        # the main chat model, replaying the full conversation, which is already
+        # warm in the prompt cache (cheap cache reads) — unchanged, optimal.
+        # Set provider/model to a cheaper model (e.g. openrouter
+        # google/gemini-3-flash-preview) to run the review there for ~3-5x lower
+        # cost. A different model can't reuse the main prompt cache anyway, so
+        # the fork automatically replays a compact digest instead of the full
+        # transcript when routed (minimises the cold-write). Same model = full
+        # replay; different model = digest. Quality holds (memory capture
+        # identical, skill near-identical in benchmarks).
+        "background_review": {
+            "provider": "auto",
+            "model": "",
+            "base_url": "",
+            "api_key": "",
+            "timeout": 120,
+            "extra_body": {},
+        },
     },
-
+    
     "display": {
         "compact": False,
         "personality": "",
@@ -1546,7 +1565,7 @@ DEFAULT_CONFIG = {
         # widen or tighten the snapshot to taste.
         "resume_exchanges": 10,            # max user+assistant pairs to show
         "resume_max_user_chars": 300,      # truncate user message text
-        "resume_max_assistant_chars": 200,  # truncate non-last assistant text
+        "resume_max_assistant_chars": 200, # truncate non-last assistant text
         "resume_max_assistant_lines": 3,   # truncate non-last assistant lines
         # When True (default), assistant entries that are *only* tool calls
         # (no visible text) are skipped in the recap. This prevents the recap
@@ -1555,24 +1574,28 @@ DEFAULT_CONFIG = {
         # behavior of showing tool-call summaries inline.
         "resume_skip_tool_only": True,
         "busy_input_mode": "interrupt",  # interrupt | queue | steer
-        # Which interface bare `prostor` (and `prostor chat`) launches by default:
+        # Which interface bare `hermes` (and `hermes chat`) launches by default:
         #   "cli" — the classic prompt_toolkit REPL (default, preserves prior behavior)
         #   "tui" — the modern Ink TUI (same as passing `--tui`)
         # Explicit flags always win over this setting: `--cli` forces the classic
-        # REPL and `--tui` (or PROSTOR_TUI=1) forces the TUI regardless of config.
+        # REPL and `--tui` (or HERMES_TUI=1) forces the TUI regardless of config.
         "interface": "cli",
-        # When true, `prostor --tui` auto-resumes the most recent human-
+        # When true, `hermes --tui` auto-resumes the most recent human-
         # facing session on launch instead of forging a fresh one.
-        # Mirrors `prostor -c` muscle memory.  Default off so existing
-        # users aren't surprised.  PROSTOR_TUI_RESUME=<id> always wins.
+        # Mirrors `hermes -c` muscle memory.  Default off so existing
+        # users aren't surprised.  HERMES_TUI_RESUME=<id> always wins.
         "tui_auto_resume_recent": False,
-        # When true (default), `prostor --tui` drops a one-time hint
+        # When true (default), `hermes --tui` drops a one-time hint
         # ("subagents working · /agents to watch live") the first time a turn
         # starts delegating, nudging the user toward the live spawn-tree
         # dashboard. Set false to suppress the hint.
         "tui_agents_nudge": True,
         "bell_on_complete": False,
         "show_reasoning": False,
+        # When reasoning display is on, the post-response "Reasoning" recap box
+        # collapses long thinking to the first 10 lines. Set true to print the
+        # complete thinking text uncollapsed (live streaming is always full).
+        "reasoning_full": False,
         # Background self-improvement review notifications surfaced in chat.
         #   "off"     — no chat notification (the review still runs and writes)
         #   "on"      — generic "💾 Memory updated" line (default)
@@ -1617,8 +1640,8 @@ DEFAULT_CONFIG = {
         # UI language for static user-facing messages (approval prompts, a
         # handful of gateway slash-command replies).  Does NOT affect agent
         # responses, log lines, tool outputs, or slash-command descriptions.
-        # Supported: en, zh, ja, de, es, fr, tr, uk, ru.  Unknown values fall back to ru.
-        "language": "ru",
+        # Supported: en, zh, ja, de, es, fr, tr, uk.  Unknown values fall back to en.
+        "language": "en",
         # TUI busy indicator style: kaomoji (default), emoji, unicode (braille
         # spinner), or ascii.  Live-swappable via `/indicator <style>`.
         "tui_status_indicator": "kaomoji",
@@ -1644,6 +1667,12 @@ DEFAULT_CONFIG = {
         # applies where tool_progress is already enabled. Per-platform override
         # via display.platforms.<platform>.tool_progress_grouping.
         "tool_progress_grouping": "accumulate",
+        # How a reasoning/thinking summary renders when show_reasoning is on.
+        # "code" (default) = 💭 fenced code block; "blockquote" = "> " lines;
+        # "subtext" = "-# " lines (Discord small grey metadata text). Discord
+        # defaults to "subtext"; override per-platform via
+        # display.platforms.<platform>.reasoning_style.
+        "reasoning_style": "code",
         # Auto-delete system-notice replies (e.g. "✨ New session started!",
         # "♻ Restarting gateway…", "⚡ Stopped…") after N seconds on platforms
         # that support message deletion (currently Telegram; other platforms
@@ -1675,13 +1704,38 @@ DEFAULT_CONFIG = {
         },
         # Gateway runtime-metadata footer appended to the FINAL message of a turn
         # (disabled by default to keep replies minimal). When enabled, renders
-        # e.g. `model · 68% · ~/projects/prostor`. Per-platform overrides go under
+        # e.g. `model · 68% · ~/projects/hermes`. Per-platform overrides go under
         # display.platforms.<platform>.runtime_footer.
         "runtime_footer": {
             "enabled": False,
             "fields": ["model", "context_pct", "cwd"],  # Order shown; drop any to hide
         },
         "copy_shortcut": "auto",  # "auto" (platform default) | "ctrl_c" | "ctrl_shift_c" | "disabled"
+        # Petdex animated mascot (https://github.com/crafter-station/petdex).
+        # A purely cosmetic sprite that reacts to agent activity across the
+        # CLI, TUI, and desktop app. Manage with `hermes pets`. Disabled until
+        # a pet is installed + selected (no effect on prompt caching — this is
+        # a display concern only).
+        "pet": {
+            "enabled": False,
+            # Active pet slug; resolved against installed pets in
+            # get_hermes_home()/pets/. Empty → first installed pet.
+            "slug": "",
+            # Terminal render protocol for CLI/TUI:
+            #   auto  — detect kitty/iTerm2/sixel, else unicode half-blocks
+            #   kitty | iterm | sixel | unicode | off
+            "render_mode": "auto",
+            # Master size scalar (relative to native 192×208 frames). One knob
+            # shrinks every surface: the desktop canvas scales its pixels by it
+            # and the CLI/TUI derive their terminal column width from it. The
+            # half-block fallback clamps to a legibility floor (it can't shrink
+            # as far as true-pixel kitty/GUI without turning to mush).
+            "scale": 0.33,
+            # Hard override for terminal column width. 0 = auto (derive from
+            # scale); set a positive int only to pin the half-block/kitty width
+            # independently of scale.
+            "unicode_cols": 0,
+        },
     },
 
     # Web dashboard settings
@@ -1706,8 +1760,8 @@ DEFAULT_CONFIG = {
         # ``--insecure`` is not). The bundled Nous Portal plugin reads
         # both keys at startup; they are the canonical surface for these
         # settings. Each can be overridden by an environment variable —
-        # ``PROSTOR_DASHBOARD_OAUTH_CLIENT_ID`` and
-        # ``PROSTOR_DASHBOARD_PORTAL_URL`` respectively — and the env var
+        # ``HERMES_DASHBOARD_OAUTH_CLIENT_ID`` and
+        # ``HERMES_DASHBOARD_PORTAL_URL`` respectively — and the env var
         # wins when set to a non-empty value. The override path is what
         # Fly.io's platform-secret injection uses to push the per-deploy
         # client_id at provisioning time without operators needing to
@@ -1726,7 +1780,7 @@ DEFAULT_CONFIG = {
         # either ``password_hash`` (preferred — no plaintext at rest) or
         # ``password`` (plaintext, hashed in-memory at load) are set. Each
         # key is overridable by an env var
-        # (``PROSTOR_DASHBOARD_BASIC_AUTH_USERNAME`` /
+        # (``HERMES_DASHBOARD_BASIC_AUTH_USERNAME`` /
         # ``_PASSWORD_HASH`` / ``_PASSWORD`` / ``_SECRET`` /
         # ``_TTL_SECONDS``), env winning when non-empty. Leave ``username``
         # empty (the default) to keep the plugin a no-op — loopback /
@@ -1747,9 +1801,9 @@ DEFAULT_CONFIG = {
             "secret": "",  # token-signing key; blank → random per-process
             "session_ttl_seconds": 0,  # 0 → plugin default (12h)
         },
-        # Public URL override (env: ``PROSTOR_DASHBOARD_PUBLIC_URL``).
+        # Public URL override (env: ``HERMES_DASHBOARD_PUBLIC_URL``).
         # When set, this is the complete authority — scheme + host +
-        # optional path prefix (e.g. ``https://example.com/prostor``) —
+        # optional path prefix (e.g. ``https://example.com/hermes``) —
         # the OAuth ``redirect_uri`` is built from. Set this for deploys
         # behind reverse proxies that don't reliably forward
         # ``X-Forwarded-Host`` / ``X-Forwarded-Proto`` / ``X-Forwarded-Prefix``
@@ -1774,7 +1828,7 @@ DEFAULT_CONFIG = {
     "privacy": {
         "redact_pii": False,  # When True, hash user IDs and strip phone numbers from LLM context
     },
-
+    
     # Text-to-speech configuration
     # Each provider supports an optional `max_text_length:` override for the
     # per-request input-character cap. Omit it to use the provider's documented
@@ -1805,7 +1859,7 @@ DEFAULT_CONFIG = {
             # Optional local Markdown/text file with Gemini TTS performance
             # direction. It may include AUDIO PROFILE, SCENE, DIRECTOR'S NOTES,
             # SAMPLE CONTEXT, and either a `{transcript}` placeholder or no
-            # transcript section; Prostor appends the live transcript when absent.
+            # transcript section; Hermes appends the live transcript when absent.
             "persona_prompt_file": "",
         },
         "xai": {
@@ -1829,7 +1883,7 @@ DEFAULT_CONFIG = {
             # use, OR an absolute path to a pre-downloaded .onnx file.
             # Full voice list: https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md
             "voice": "en_US-lessac-medium",
-            # "voices_dir": "",        # Override voice cache dir; default = ~/.prostor/cache/piper-voices/
+            # "voices_dir": "",        # Override voice cache dir; default = ~/.hermes/cache/piper-voices/
             # "use_cuda": False,       # Requires onnxruntime-gpu
             # "length_scale": 1.0,     # 2.0 = twice as slow
             # "noise_scale": 0.667,
@@ -1838,7 +1892,7 @@ DEFAULT_CONFIG = {
             # "normalize_audio": True,
         },
     },
-
+    
     "stt": {
         "enabled": True,
         "provider": "local",  # "local" (free, faster-whisper) | "groq" | "openai" (Whisper API) | "mistral" (Voxtral Transcribe) | "elevenlabs" (Scribe)
@@ -1868,19 +1922,19 @@ DEFAULT_CONFIG = {
         "silence_threshold": 200,     # RMS below this = silence (0-32767)
         "silence_duration": 3.0,      # Seconds of silence before auto-stop
     },
-
+    
     "human_delay": {
         "mode": "off",
         "min_ms": 800,
         "max_ms": 2500,
     },
-
+    
     # Context engine -- controls how the context window is managed when
     # approaching the model's token limit.
     # "compressor" = built-in lossy summarization (default).
     # Set to a plugin name to activate an alternative engine (e.g. "lcm"
     # for Lossless Context Management).  The engine must be installed as
-    # a plugin in plugins/context_engine/<name>/ or ~/.prostor/plugins/.
+    # a plugin in plugins/context_engine/<name>/ or ~/.hermes/plugins/.
     "context": {
         "engine": "compressor",
     },
@@ -1965,13 +2019,13 @@ DEFAULT_CONFIG = {
     # Goals — persistent cross-turn goals (Ralph-style loop).
     # After every turn, a lightweight judge call asks the auxiliary model
     # whether the active /goal is satisfied by the assistant's last
-    # response. If not, Prostor feeds a continuation prompt back into the
+    # response. If not, Hermes feeds a continuation prompt back into the
     # same session and keeps working until the goal is done, the turn
     # budget is exhausted, or the user pauses/clears it. Judge failures
     # fail OPEN (continue) so a flaky judge never wedges progress — the
     # turn budget is the real backstop.
     "goals": {
-        # Max continuation turns before Prostor auto-pauses the goal and
+        # Max continuation turns before Hermes auto-pauses the goal and
         # asks the user to /goal resume. Protects against judge false
         # negatives (goal actually done but judge says continue) and
         # unbounded model spend on fuzzy / unachievable goals.
@@ -1980,10 +2034,10 @@ DEFAULT_CONFIG = {
 
     # Skills — external skill directories for sharing skills across tools/agents.
     # Each path is expanded (~, ${VAR}) and resolved.  Read-only — skill creation
-    # always goes to ~/.prostor/skills/.
+    # always goes to ~/.hermes/skills/.
     "skills": {
         "external_dirs": [],   # e.g. ["~/.agents/skills", "/shared/team-skills"]
-        # Substitute ${PROSTOR_SKILL_DIR} and ${PROSTOR_SESSION_ID} in SKILL.md
+        # Substitute ${HERMES_SKILL_DIR} and ${HERMES_SESSION_ID} in SKILL.md
         # content with the absolute skill directory and the active session id
         # before the agent sees it.  Lets skill authors reference bundled
         # scripts without the agent having to join paths.
@@ -2031,7 +2085,7 @@ DEFAULT_CONFIG = {
     # and patch drift. Runs inactivity-triggered from session start — no
     # cron daemon.
     #
-    # See `prostor curator status` for the last run summary.
+    # See `hermes curator status` for the last run summary.
     "curator": {
         "enabled": True,
         # How long to wait between curator runs (hours).  Default: 7 days.
@@ -2048,12 +2102,12 @@ DEFAULT_CONFIG = {
         # (mark stale / archive long-unused skills) and skips the forked
         # aux-model review entirely — no umbrella-building, no aux-model cost.
         # Set to true to opt back into merging overlapping skills into
-        # class-level umbrellas. `prostor curator run --consolidate` overrides
+        # class-level umbrellas. `hermes curator run --consolidate` overrides
         # this for a single invocation.
         "consolidate": False,
         # Also prune (archive) bundled built-in skills after the inactivity
         # period, not just agent-created ones. ON by default. Built-ins are
-        # normally restored on every `prostor update`, so pruning them only
+        # normally restored on every `hermes update`, so pruning them only
         # sticks because a suppression list tells the re-seeder to leave them
         # archived. Hub-installed skills are NEVER pruned here — they have an
         # external upstream owner. Built-ins accrue usage telemetry and their
@@ -2063,9 +2117,9 @@ DEFAULT_CONFIG = {
         # to keep all bundled built-ins permanently.
         "prune_builtins": True,
         # Pre-run backup: before every real curator pass (dry-run is
-        # skipped), snapshot ~/.prostor/skills/ into
-        # ~/.prostor/skills/.curator_backups/<utc-iso>/skills.tar.gz so the
-        # user can roll back with `prostor curator rollback`.
+        # skipped), snapshot ~/.hermes/skills/ into
+        # ~/.hermes/skills/.curator_backups/<utc-iso>/skills.tar.gz so the
+        # user can roll back with `hermes curator rollback`.
         "backup": {
             "enabled": True,
             "keep": 5,  # retain last N regular snapshots
@@ -2073,7 +2127,7 @@ DEFAULT_CONFIG = {
     },
 
     # Honcho AI-native memory -- reads ~/.honcho/config.json as single source of truth.
-    # This section is only needed for prostor-specific overrides; everything else
+    # This section is only needed for hermes-specific overrides; everything else
     # (apiKey, workspace, peerName, sessions, enabled) comes from the global config.
     "honcho": {},
 
@@ -2114,12 +2168,11 @@ DEFAULT_CONFIG = {
         # list_roles, member_info, search_members, fetch_messages, list_pins,
         # pin_message, unpin_message, create_thread, add_role, remove_role.
         "server_actions": "",
-        # Accept arbitrary attachment file types (not just SUPPORTED_DOCUMENT_TYPES).
-        # When True, any uploaded file is cached to disk with mime
-        # application/octet-stream and the path is surfaced to the agent so it
-        # can use terminal/read_file/etc. against it. Default False preserves
-        # the historical allowlist behaviour.
-        # Env override: DISCORD_ALLOW_ANY_ATTACHMENT.
+        # DEPRECATED / no-op. Any uploaded file is now always cached and
+        # surfaced to the agent regardless of file type — authorization to
+        # message the agent is the gate, not the extension. Kept so existing
+        # configs that set it do not error. Env override:
+        # DISCORD_ALLOW_ANY_ATTACHMENT.
         "allow_any_attachment": False,
         # Maximum bytes per attachment the gateway will cache. The whole file
         # is held in memory while being written, so unlimited uploads carry a
@@ -2153,7 +2206,7 @@ DEFAULT_CONFIG = {
     # WhatsApp platform settings (gateway mode)
     "whatsapp": {
         # Reply prefix prepended to every outgoing WhatsApp message.
-        # Default (None) uses the built-in "⚕ *Prostor Agent*" header.
+        # Default (None) uses the built-in "⚕ *Hermes Agent*" header.
         # Set to "" (empty string) to disable the header entirely.
         # Supports \n for newlines, e.g. "🤖 *My Bot*\n──────\n"
     },
@@ -2164,7 +2217,7 @@ DEFAULT_CONFIG = {
         "channel_prompts": {},         # Per-chat/topic ephemeral system prompts (topics inherit from parent group)
         "allowed_chats": "",           # If set, bot ONLY responds in these group/supergroup chat IDs (whitelist)
         "extra": {
-            "rich_messages": True,      # Bot API 10.1 rich messages (tables/task lists/details/math) render natively; set False to force legacy MarkdownV2
+            "rich_messages": False,     # Bot API 10.1 rich messages (tables/task lists/details/math) render natively; set True to opt in. Default stays legacy MarkdownV2 because rich messages can be hard to copy as plain text in Telegram clients.
         },
     },
 
@@ -2209,7 +2262,7 @@ DEFAULT_CONFIG = {
         # through tools.slash_confirm — native yes/no buttons on Telegram,
         # Discord, and Slack; text fallback elsewhere.  Users click "Always
         # Approve" to silence the prompt permanently; that flips this key to
-        # false.  TUI has its own modal overlay (PROSTOR_TUI_NO_CONFIRM=1 to
+        # false.  TUI has its own modal overlay (HERMES_TUI_NO_CONFIRM=1 to
         # opt out there).
         "destructive_slash_confirm": True,
     },
@@ -2220,7 +2273,7 @@ DEFAULT_CONFIG = {
     "quick_commands": {},
 
     # Per-platform system-prompt hint overrides. Lets an admin append to or
-    # replace Prostor' built-in platform hint for a single messaging platform
+    # replace Hermes' built-in platform hint for a single messaging platform
     # (WhatsApp, Slack, Telegram, ...) without affecting other platforms.
     # Useful for enterprise/managed profiles that ship platform-aware skills.
     # Each key is a platform name; the value is either:
@@ -2240,12 +2293,12 @@ DEFAULT_CONFIG = {
     # subagent_stop, etc.).  Each entry maps an event name to a list of
     # {matcher, command, timeout} dicts.  First registration of a new
     # command prompts the user for consent; subsequent runs reuse the
-    # stored approval from ~/.prostor/shell-hooks-allowlist.json.
+    # stored approval from ~/.hermes/shell-hooks-allowlist.json.
     # See `website/docs/user-guide/features/hooks.md` for schema + examples.
     "hooks": {},
 
     # Auto-accept shell-hook registrations without a TTY prompt.  Also
-    # toggleable per-invocation via --accept-hooks or PROSTOR_ACCEPT_HOOKS=1.
+    # toggleable per-invocation via --accept-hooks or HERMES_ACCEPT_HOOKS=1.
     # Gateway / cron / non-interactive runs need this (or one of the other
     # channels) to pick up newly-added hooks.
     "hooks_auto_accept": False,
@@ -2270,11 +2323,11 @@ DEFAULT_CONFIG = {
         # Acknowledged supply-chain security advisories. Each entry is the
         # ID of an advisory the user has read and acted on (uninstalled the
         # compromised package, rotated credentials). Acked advisories no
-        # longer trigger the startup banner. Add via `prostor doctor --ack
+        # longer trigger the startup banner. Add via `hermes doctor --ack
         # <id>`; remove by editing the list directly. See
-        # ``prostor_cli/security_advisories.py`` for the catalog.
+        # ``hermes_cli/security_advisories.py`` for the catalog.
         "acked_advisories": [],
-        # Allow Prostor to lazy-install opt-in backend packages from PyPI
+        # Allow Hermes to lazy-install opt-in backend packages from PyPI
         # the first time the user enables a backend that needs them
         # (e.g. installing ``elevenlabs`` when the user picks ElevenLabs as
         # their TTS provider). Set to false to require explicit
@@ -2287,8 +2340,8 @@ DEFAULT_CONFIG = {
     "cron": {
         # Active cron SCHEDULER provider (Axis B — the trigger that decides
         # WHEN a due job fires). Empty string = the built-in in-process 60s
-        # ticker (default). Name an installed provider (plugins/cron/<name>/ or
-        # $PROSTOR_HOME/plugins/<name>/) to relocate the trigger — e.g. "chronos",
+        # ticker (default). Name an installed provider (plugins/cron_providers/<name>/ or
+        # $HERMES_HOME/plugins/<name>/) to relocate the trigger — e.g. "chronos",
         # the NAS-mediated managed-cron provider for scale-to-zero deployments.
         # An unknown or unavailable provider falls back to the built-in, so cron
         # never loses its trigger.
@@ -2318,14 +2371,14 @@ DEFAULT_CONFIG = {
         # Maximum number of due jobs to run in parallel per tick.
         # null/0 = unbounded (limited only by thread count).
         # 1 = serial (pre-v0.9 behaviour).
-        # Also overridable via PROSTOR_CRON_MAX_PARALLEL env var.
+        # Also overridable via HERMES_CRON_MAX_PARALLEL env var.
         "max_parallel_jobs": None,
     },
 
     # Kanban multi-agent coordination — controls the dispatcher loop that
     # spawns workers for ready tasks. The dispatcher ticks every N seconds
     # (default 60), reclaims stale claims, promotes dependency-satisfied
-    # todos to ready, and fires `prostor -p <assignee> chat -q ...` for
+    # todos to ready, and fires `hermes -p <assignee> chat -q ...` for
     # each claimable ready task. One dispatcher per profile is sufficient;
     # running more than one on the same kanban.db will race for claims.
     "kanban": {
@@ -2349,7 +2402,7 @@ DEFAULT_CONFIG = {
         "worker_log_backup_count": 1,
         # Profile assigned to the root/orchestration task after Triage
         # decomposition. When unset, falls back to the default profile (the
-        # one `prostor` launches with no -p flag). This does not control the
+        # one `hermes` launches with no -p flag). This does not control the
         # decomposer prompt, model, or skills; configure that LLM path under
         # auxiliary.kanban_decomposer.
         "orchestrator_profile": "",
@@ -2368,7 +2421,7 @@ DEFAULT_CONFIG = {
         "max_in_progress_per_profile": None,
         # When true, the kanban dispatcher auto-runs the decomposer on
         # tasks that land in Triage (every dispatcher tick). When false,
-        # decomposition is manual via `prostor kanban decompose <id>` or
+        # decomposition is manual via `hermes kanban decompose <id>` or
         # the dashboard's Decompose button.
         "auto_decompose": True,
         # Max triage tasks to decompose per dispatcher tick. Prevents a
@@ -2390,7 +2443,7 @@ DEFAULT_CONFIG = {
         #     with the active virtualenv/conda env's python, so project deps
         #     (pandas, torch, project packages) and relative paths resolve.
         #   strict            — scripts run in an isolated temp directory with
-        #     prostor-agent's own python (sys.executable). Maximum isolation
+        #     hermes-agent's own python (sys.executable). Maximum isolation
         #     and reproducibility; project deps and relative paths won't work.
         # Env scrubbing (strips *_API_KEY, *_TOKEN, *_SECRET, ...) and the
         # tool whitelist apply identically in both modes.
@@ -2404,7 +2457,7 @@ DEFAULT_CONFIG = {
     # in the model-facing tools array with three bridge tools —
     # tool_search / tool_describe / tool_call — and surfaced on demand.
     #
-    # Core Prostor tools (terminal, read_file, write_file, patch,
+    # Core Hermes tools (terminal, read_file, write_file, patch,
     # search_files, todo, memory, browser_*, etc.) are NEVER deferred.
     # See tools/tool_search.py for full design notes and the
     # openclaw-tool-search-report PDF in this PR for the rationale.
@@ -2429,7 +2482,7 @@ DEFAULT_CONFIG = {
         },
     },
 
-    # Logging — controls file logging to ~/.prostor/logs/.
+    # Logging — controls file logging to ~/.hermes/logs/.
     # agent.log captures INFO+ (all agent activity); errors.log captures WARNING+.
     "logging": {
         "level": "INFO",       # Minimum level for agent.log: DEBUG, INFO, WARNING
@@ -2440,13 +2493,13 @@ DEFAULT_CONFIG = {
     # Remotely-hosted model catalog manifest.  When enabled, the CLI fetches
     # curated model lists for OpenRouter and Nous Portal from this URL,
     # falling back to the in-repo snapshot on network failure.  Lets us
-    # update model picker lists without shipping a prostor-agent release.
+    # update model picker lists without shipping a hermes-agent release.
     # The default URL is served by the docs site GitHub Pages deploy.
     "model_catalog": {
         "enabled": True,
-        "url": "https://github.com/maksim9510/Prostor/docs/api/model-catalog.json",
+        "url": "https://hermes-agent.nousresearch.com/docs/api/model-catalog.json",
         # Disk cache TTL in hours.  Beyond this, the CLI refetches on the
-        # next /model or `prostor model` invocation; network failures
+        # next /model or `hermes model` invocation; network failures
         # silently fall back to the stale cache.
         "ttl_hours": 1,
         # Optional per-provider override URLs for third parties that want
@@ -2480,28 +2533,38 @@ DEFAULT_CONFIG = {
             "enabled": False,
         },
 
+        # Maximum bytes for an inbound image / audio / video payload the
+        # gateway will buffer into memory and cache to disk. Inbound media is
+        # read fully into RAM before being written, so an unbounded upload
+        # (Discord Nitro allows 500 MB) or a remote media URL pointing at a
+        # huge file can spike memory and OOM-kill the gateway on constrained
+        # deployments. Enforced in the shared cache helpers
+        # (gateway/platforms/base.py), so the cap holds across every platform
+        # adapter. ``0`` disables the cap. Default 128 MiB.
+        "max_inbound_media_bytes": 134217728,
+
         # When false (default), any file path the agent emits is delivered
         # as a native attachment as long as it isn't under the credential /
-        # system-path denylist (/etc, /proc, ~/.ssh, ~/.aws, ~/.prostor/.env,
+        # system-path denylist (/etc, /proc, ~/.ssh, ~/.aws, ~/.hermes/.env,
         # auth.json, etc.). This matches the symmetry of inbound delivery
         # — we accept any document type the user uploads, and the agent
         # can hand back any file that isn't a credential.
         #
         # When true, fall back to the older allowlist+recency-window
-        # behavior: files must live under the Prostor cache, under
+        # behavior: files must live under the Hermes cache, under
         # ``media_delivery_allow_dirs``, or be freshly produced inside the
         # ``trust_recent_files_seconds`` window. Recommended for
         # public-facing gateways where prompt injection from one user
         # shouldn't be able to exfiltrate the host's secrets to that same
-        # user. Bridged to PROSTOR_MEDIA_DELIVERY_STRICT.
+        # user. Bridged to HERMES_MEDIA_DELIVERY_STRICT.
         "strict": False,
         # Extra directories from which model-emitted bare file paths may be
-        # uploaded as native gateway attachments. Files inside the Prostor
-        # cache (~/.prostor/cache/{documents,images,audio,video,screenshots})
+        # uploaded as native gateway attachments. Files inside the Hermes
+        # cache (~/.hermes/cache/{documents,images,audio,video,screenshots})
         # are always trusted; this list adds operator-controlled roots
         # (project dirs, scratch dirs, mounted shares). Accepts a list of
         # absolute paths or a single os.pathsep-separated string. Bridged
-        # to PROSTOR_MEDIA_ALLOW_DIRS at gateway startup. Tilde paths are
+        # to HERMES_MEDIA_ALLOW_DIRS at gateway startup. Tilde paths are
         # expanded. Honored in both default and strict mode.
         "media_delivery_allow_dirs": [],
         # When true, files whose mtime is within ``trust_recent_files_seconds``
@@ -2510,13 +2573,25 @@ DEFAULT_CONFIG = {
         # PDFs the agent writes into a working directory. System paths
         # (/etc, /proc, ~/.ssh, ~/.aws, etc.) remain blocked regardless.
         # Disable to fall back to pure-allowlist mode. Bridged to
-        # PROSTOR_MEDIA_TRUST_RECENT_FILES. Only consulted when ``strict``
+        # HERMES_MEDIA_TRUST_RECENT_FILES. Only consulted when ``strict``
         # is true; in default mode the denylist alone gates delivery.
         "trust_recent_files": True,
         # Recency window in seconds. 600 (10 min) comfortably covers a
-        # multi-tool agent turn. Bridged to PROSTOR_MEDIA_TRUST_RECENT_SECONDS.
+        # multi-tool agent turn. Bridged to HERMES_MEDIA_TRUST_RECENT_SECONDS.
         # Only consulted when ``strict`` is true.
         "trust_recent_files_seconds": 600,
+
+        # OpenAI-compatible API server platform
+        # (gateway/platforms/api_server.py).
+        "api_server": {
+            # Maximum number of agent runs the API server will service
+            # concurrently. Requests to /v1/chat/completions, /v1/responses,
+            # and /v1/runs that arrive while this many runs are already
+            # in flight are rejected with HTTP 429 + a Retry-After header,
+            # bounding CPU / memory / upstream-LLM-quota exhaustion from a
+            # request flood. Set to 0 to disable the cap entirely.
+            "max_concurrent_runs": 10,
+        },
     },
 
     # Real-time token streaming to messaging platforms (Telegram, Discord,
@@ -2558,7 +2633,7 @@ DEFAULT_CONFIG = {
         "fresh_final_after_seconds": 0.0,
     },
 
-    # Session storage — controls automatic cleanup of ~/.prostor/state.db.
+    # Session storage — controls automatic cleanup of ~/.hermes/state.db.
     # state.db accumulates every session, message, tool call, and FTS5 index
     # entry forever.  Without auto-pruning, a heavy user (gateway + cron)
     # reports 384MB+ databases with 68K+ messages, which slows down FTS5
@@ -2571,7 +2646,7 @@ DEFAULT_CONFIG = {
         # silently deleting it could surprise users.  Opt in explicitly.
         "auto_prune": False,
         # How many days of ended-session history to keep.  Matches the
-        # default of ``prostor sessions prune``.
+        # default of ``hermes sessions prune``.
         "retention_days": 90,
         # VACUUM after a prune that actually deleted rows.  SQLite does not
         # reclaim disk space on DELETE — freed pages are just reused on
@@ -2585,7 +2660,7 @@ DEFAULT_CONFIG = {
         # state.db itself, so it's shared across all processes.
         "min_interval_hours": 24,
         # Legacy per-session JSON snapshot writer.  When true, the agent
-        # rewrites ``~/.prostor/sessions/session_{sid}.json`` on every turn
+        # rewrites ``~/.hermes/sessions/session_{sid}.json`` on every turn
         # boundary with the full message list.  state.db is canonical and
         # has every field the snapshot stored (plus per-message timestamps
         # and token counts), so this is off by default — the snapshots had
@@ -2608,12 +2683,12 @@ DEFAULT_CONFIG = {
         "profile_build": "ask",
     },
 
-    # ``prostor update`` behaviour.
+    # ``hermes update`` behaviour.
     "updates": {
-        # Run a full ``prostor backup``-style zip of PROSTOR_HOME before every
-        # ``prostor update``.  Backups land in ``<PROSTOR_HOME>/backups/`` and
-        # can be restored with ``prostor import <path>``.  Defaults to true
-        # after the #48200 incident: a ``prostor update --yes`` run that
+        # Run a full ``hermes backup``-style zip of HERMES_HOME before every
+        # ``hermes update``.  Backups land in ``<HERMES_HOME>/backups/`` and
+        # can be restored with ``hermes import <path>``.  Defaults to true
+        # after the #48200 incident: a ``hermes update --yes`` run that
         # computed a wrong path silently wiped the user's ``.env``,
         # ``MEMORY.md``, ``kanban.db``, custom skills, and scripts in one
         # go.  The cost of a few minutes of zip time per update is
@@ -2626,7 +2701,7 @@ DEFAULT_CONFIG = {
         # disable backups entirely, set ``pre_update_backup: false`` above
         # rather than ``backup_keep: 0``.
         "backup_keep": 5,
-        # What `prostor update` does with uncommitted local changes to the
+        # What `hermes update` does with uncommitted local changes to the
         # source tree when it runs NON-interactively — i.e. triggered from
         # the desktop/chat app or the gateway, where there's no TTY to answer
         # a restore prompt. Interactive (terminal) updates are unaffected:
@@ -2670,7 +2745,7 @@ DEFAULT_CONFIG = {
 
         # How to handle missing server binaries.
         # ``"auto"`` — try to install via npm/go/pip into
-        #              ``<PROSTOR_HOME>/lsp/bin/`` on first use.
+        #              ``<HERMES_HOME>/lsp/bin/`` on first use.
         # ``"manual"`` — only use binaries already on PATH.
         # ``"off"`` — alias for ``manual``.
         "install_strategy": "auto",
@@ -2695,7 +2770,7 @@ DEFAULT_CONFIG = {
     # X (Twitter) Search via xAI's built-in x_search Responses tool.
     # The tool registers when xAI credentials are available (SuperGrok
     # OAuth or XAI_API_KEY) AND the x_search toolset is enabled in
-    # `prostor tools`. These settings tune the backing Responses API call.
+    # `hermes tools`. These settings tune the backing Responses API call.
     "x_search": {
         # xAI model used for the Responses call. grok-4.20-reasoning is
         # the recommended default; any Grok model with x_search tool
@@ -2713,7 +2788,7 @@ DEFAULT_CONFIG = {
     # External secret sources
     # =========================================================================
     # Pull credentials from external secret managers at process startup
-    # rather than storing them in ~/.prostor/.env.
+    # rather than storing them in ~/.hermes/.env.
     "secrets": {
         "bitwarden": {
             # Master switch.  When false, BSM is never contacted and the
@@ -2722,7 +2797,7 @@ DEFAULT_CONFIG = {
             "enabled": False,
             # Name of the env var that holds the Bitwarden machine-account
             # access token.  This is the one bootstrap secret; it lives
-            # in ~/.prostor/.env (or your shell) and never in config.yaml.
+            # in ~/.hermes/.env (or your shell) and never in config.yaml.
             "access_token_env": "BWS_ACCESS_TOKEN",
             # UUID of the BSM project to sync from.
             "project_id": "",
@@ -2734,7 +2809,7 @@ DEFAULT_CONFIG = {
             # take effect until you also cleared the matching .env line.
             "override_existing": True,
             # When True, the bws binary is auto-downloaded into
-            # ~/.prostor/bin/ on first use.  When False you must install
+            # ~/.hermes/bin/ on first use.  When False you must install
             # bws yourself and have it on PATH.
             "auto_install": True,
             # Bitwarden region / self-hosted endpoint.  Empty string
@@ -2743,7 +2818,7 @@ DEFAULT_CONFIG = {
             # https://vault.bitwarden.eu for EU Cloud, or your own URL
             # for self-hosted Bitwarden.  Plumbed into the bws subprocess
             # as BWS_SERVER_URL.  Prompted for during
-            # `prostor secrets bitwarden setup`.
+            # `hermes secrets bitwarden setup`.
             "server_url": "",
         },
     },
@@ -2769,6 +2844,17 @@ DEFAULT_CONFIG = {
     "paste_collapse_threshold_fallback": 5,
     "paste_collapse_char_threshold": 2000,
 
+    # Computer Use (cua-driver) toolset settings.
+    "computer_use": {
+        # cua-driver ships with anonymous usage telemetry (PostHog) ENABLED
+        # by default upstream. Hermes disables it for our users unless they
+        # explicitly opt in here. When false (default), Hermes sets
+        # CUA_DRIVER_RS_TELEMETRY_ENABLED=0 in the cua-driver child env for
+        # every invocation (MCP backend, status, doctor, install). Set true
+        # to let cua-driver use its own default (telemetry on).
+        "cua_telemetry": False,
+    },
+
 
     # Config schema version - bump this when adding new required fields
     "_config_version": 30,
@@ -2780,7 +2866,7 @@ DEFAULT_CONFIG = {
 
 # Track which env vars were introduced in each config version.
 # Migration only mentions vars new since the user's previous version.
-ENV_VARS_BY_VERSION: dict[int, list[str]] = {
+ENV_VARS_BY_VERSION: Dict[int, List[str]] = {
     3: ["FIRECRAWL_API_KEY", "BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID", "FAL_KEY"],
     4: ["VOICE_TOOLS_OPENAI_KEY", "ELEVENLABS_API_KEY"],
     5: ["WHATSAPP_ENABLED", "WHATSAPP_MODE", "WHATSAPP_ALLOWED_USERS",
@@ -3052,33 +3138,9 @@ OPTIONAL_ENV_VARS = {
         "category": "provider",
         "advanced": True,
     },
-    "PROSTOR_QWEN_BASE_URL": {
+    "HERMES_QWEN_BASE_URL": {
         "description": "Qwen Portal base URL override (default: https://portal.qwen.ai/v1)",
         "prompt": "Qwen Portal base URL (leave empty for default)",
-        "url": None,
-        "password": False,
-        "category": "provider",
-        "advanced": True,
-    },
-    "PROSTOR_GEMINI_CLIENT_ID": {
-        "description": "Google OAuth client ID for google-gemini-cli (optional; defaults to Google's public gemini-cli client)",
-        "prompt": "Google OAuth client ID (optional — leave empty to use the public default)",
-        "url": "https://console.cloud.google.com/apis/credentials",
-        "password": False,
-        "category": "provider",
-        "advanced": True,
-    },
-    "PROSTOR_GEMINI_CLIENT_SECRET": {
-        "description": "Google OAuth client secret for google-gemini-cli (optional)",
-        "prompt": "Google OAuth client secret (optional)",
-        "url": "https://console.cloud.google.com/apis/credentials",
-        "password": True,
-        "category": "provider",
-        "advanced": True,
-    },
-    "PROSTOR_GEMINI_PROJECT_ID": {
-        "description": "GCP project ID for paid Gemini tiers (free tier auto-provisions)",
-        "prompt": "GCP project ID for Gemini OAuth (leave empty for free tier)",
         "url": None,
         "password": False,
         "category": "provider",
@@ -3186,7 +3248,7 @@ OPTIONAL_ENV_VARS = {
         "category": "provider",
     },
     "AZURE_FOUNDRY_BASE_URL": {
-        "description": "Azure Foundry base URL (set via 'prostor model' for endpoint-specific config)",
+        "description": "Azure Foundry base URL (set via 'hermes model' for endpoint-specific config)",
         "prompt": "Azure Foundry base URL",
         "url": None,
         "password": False,
@@ -3252,7 +3314,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "TOOL_GATEWAY_USER_TOKEN": {
-        "description": "Explicit Nous Subscriber access token for tool-gateway requests (optional; otherwise read from the Prostor auth store)",
+        "description": "Explicit Nous Subscriber access token for tool-gateway requests (optional; otherwise read from the Hermes auth store)",
         "prompt": "Tool-gateway user token",
         "url": None,
         "password": True,
@@ -3432,21 +3494,21 @@ OPTIONAL_ENV_VARS = {
     },
 
     # ── Langfuse observability ──
-    "PROSTOR_LANGFUSE_PUBLIC_KEY": {
+    "HERMES_LANGFUSE_PUBLIC_KEY": {
         "description": "Langfuse project public key (pk-lf-...)",
         "prompt": "Langfuse public key",
         "url": "https://cloud.langfuse.com",
         "password": False,
         "category": "tool",
     },
-    "PROSTOR_LANGFUSE_SECRET_KEY": {
+    "HERMES_LANGFUSE_SECRET_KEY": {
         "description": "Langfuse project secret key (sk-lf-...)",
         "prompt": "Langfuse secret key",
         "url": "https://cloud.langfuse.com",
         "password": True,
         "category": "tool",
     },
-    "PROSTOR_LANGFUSE_BASE_URL": {
+    "HERMES_LANGFUSE_BASE_URL": {
         "description": "Langfuse server URL (default: https://cloud.langfuse.com)",
         "prompt": "Langfuse server URL (leave empty for cloud.langfuse.com)",
         "url": None,
@@ -3518,7 +3580,7 @@ OPTIONAL_ENV_VARS = {
         "category": "messaging",
     },
     "SLACK_ALLOWED_USERS": {
-        "description": "Comma-separated Slack member IDs allowed to use Prostor, e.g. U01ABC2DEF3. Without this, Slack may connect but deny messages by default.",
+        "description": "Comma-separated Slack member IDs allowed to use Hermes, e.g. U01ABC2DEF3. Without this, Slack may connect but deny messages by default.",
         "prompt": "Allowed Slack member IDs",
         "help": "In Slack, open your profile, choose More or the three-dot menu, then Copy member ID. Add multiple IDs comma-separated.",
         "url": "https://api.slack.com/apps",
@@ -3575,7 +3637,7 @@ OPTIONAL_ENV_VARS = {
         "category": "messaging",
     },
     "MATRIX_USER_ID": {
-        "description": "Matrix user ID (e.g. @prostor:example.org)",
+        "description": "Matrix user ID (e.g. @hermes:example.org)",
         "prompt": "Matrix user ID (@user:server)",
         "url": None,
         "password": False,
@@ -3621,7 +3683,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "MATRIX_DEVICE_ID": {
-        "description": "Stable Matrix device ID for E2EE persistence across restarts (e.g. PROSTOR_BOT)",
+        "description": "Stable Matrix device ID for E2EE persistence across restarts (e.g. HERMES_BOT)",
         "prompt": "Matrix device ID (stable across restarts)",
         "url": None,
         "password": False,
@@ -3712,14 +3774,14 @@ OPTIONAL_ENV_VARS = {
         "category": "messaging",
     },
     "IRC_CHANNEL": {
-        "description": "IRC channel to join (e.g. #prostor)",
+        "description": "IRC channel to join (e.g. #hermes)",
         "prompt": "IRC channel",
         "url": None,
         "password": False,
         "category": "messaging",
     },
     "IRC_NICKNAME": {
-        "description": "Bot nickname on IRC (default: prostor-bot)",
+        "description": "Bot nickname on IRC (default: hermes-bot)",
         "prompt": "IRC nickname",
         "url": None,
         "password": False,
@@ -3782,7 +3844,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "API_SERVER_MODEL_NAME": {
-        "description": "Model name advertised on /v1/models. Defaults to the profile name (or 'prostor-agent' for the default profile). Useful for multi-user setups with OpenWebUI.",
+        "description": "Model name advertised on /v1/models. Defaults to the profile name (or 'hermes-agent' for the default profile). Useful for multi-user setups with OpenWebUI.",
         "prompt": "API server model name",
         "url": None,
         "password": False,
@@ -3790,15 +3852,15 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "GATEWAY_PROXY_URL": {
-        "description": "URL of a remote Prostor API server to forward messages to (proxy mode). When set, the gateway handles platform I/O only — all agent work is delegated to the remote server. Use for Docker E2EE containers that relay to a host agent. Also configurable via gateway.proxy_url in config.yaml.",
-        "prompt": "Remote Prostor API server URL (e.g. http://192.168.1.100:8642)",
+        "description": "URL of a remote Hermes API server to forward messages to (proxy mode). When set, the gateway handles platform I/O only — all agent work is delegated to the remote server. Use for Docker E2EE containers that relay to a host agent. Also configurable via gateway.proxy_url in config.yaml.",
+        "prompt": "Remote Hermes API server URL (e.g. http://192.168.1.100:8642)",
         "url": None,
         "password": False,
         "category": "messaging",
         "advanced": True,
     },
     "GATEWAY_PROXY_KEY": {
-        "description": "Bearer token for authenticating with the remote Prostor API server (proxy mode). Must match the API_SERVER_KEY on the remote host.",
+        "description": "Bearer token for authenticating with the remote Hermes API server (proxy mode). Must match the API_SERVER_KEY on the remote host.",
         "prompt": "Remote API server auth key",
         "url": None,
         "password": True,
@@ -3837,21 +3899,21 @@ OPTIONAL_ENV_VARS = {
         "password": True,
         "category": "setting",
     },
-    # PROSTOR_TOOL_PROGRESS and PROSTOR_TOOL_PROGRESS_MODE are deprecated —
+    # HERMES_TOOL_PROGRESS and HERMES_TOOL_PROGRESS_MODE are deprecated —
     # now configured via display.tool_progress in config.yaml (off|new|all|verbose).
     # The gateway still falls back to these env vars for backward compatibility,
     # so they live in _EXTRA_ENV_KEYS (known to .env sanitization/reload) but
     # are intentionally NOT listed here: OPTIONAL_ENV_VARS feeds user-facing
     # surfaces (dashboard keys page, setup checklists) and deprecated knobs
     # shouldn't be offered there.
-    "PROSTOR_PREFILL_MESSAGES_FILE": {
+    "HERMES_PREFILL_MESSAGES_FILE": {
         "description": "Path to JSON file with ephemeral prefill messages for few-shot priming",
         "prompt": "Prefill messages file path",
         "url": None,
         "password": False,
         "category": "setting",
     },
-    "PROSTOR_EPHEMERAL_SYSTEM_PROMPT": {
+    "HERMES_EPHEMERAL_SYSTEM_PROMPT": {
         "description": "Ephemeral system prompt injected at API-call time (never persisted to sessions)",
         "prompt": "Ephemeral system prompt",
         "url": None,
@@ -3864,25 +3926,25 @@ OPTIONAL_ENV_VARS = {
 # self-hosted / custom gateway setups regardless of subscription state.
 
 
-def get_missing_env_vars(required_only: bool = False) -> list[dict[str, Any]]:
+def get_missing_env_vars(required_only: bool = False) -> List[Dict[str, Any]]:
     """
     Check which environment variables are missing.
-
+    
     Returns list of dicts with var info for missing variables.
     """
     missing = []
-
+    
     # Check required vars
     for var_name, info in REQUIRED_ENV_VARS.items():
         if not get_env_value(var_name):
             missing.append({"name": var_name, **info, "is_required": True})
-
+    
     # Check optional vars (if not required_only)
     if not required_only:
         for var_name, info in OPTIONAL_ENV_VARS.items():
             if not get_env_value(var_name):
                 missing.append({"name": var_name, **info, "is_required": False})
-
+    
     return missing
 
 
@@ -3938,11 +4000,11 @@ def _set_nested(config, dotted_key: str, value):
 
 
 def clear_model_endpoint_credentials(
-    model_cfg: dict[str, Any],
+    model_cfg: Dict[str, Any],
     *,
     clear_api_key: bool = True,
     clear_api_mode: bool = True,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Remove stale inline endpoint credentials from a model config.
 
     ``model.api_key`` is valid only for explicit custom endpoint assignments.
@@ -3961,10 +4023,10 @@ def clear_model_endpoint_credentials(
     return model_cfg
 
 
-def get_missing_config_fields() -> list[dict[str, Any]]:
+def get_missing_config_fields() -> List[Dict[str, Any]]:
     """
     Check which config fields are missing or outdated (recursive).
-
+    
     Walks the DEFAULT_CONFIG tree at arbitrary depth and reports any keys
     present in defaults but absent from the user's loaded config.
     """
@@ -3989,15 +4051,15 @@ def get_missing_config_fields() -> list[dict[str, Any]]:
     return missing
 
 
-def get_missing_skill_config_vars() -> list[dict[str, Any]]:
+def get_missing_skill_config_vars() -> List[Dict[str, Any]]:
     """Return skill-declared config vars that are missing or empty in config.yaml.
 
-    Scans all enabled skills for ``metadata.prostor.config`` entries, then checks
+    Scans all enabled skills for ``metadata.hermes.config`` entries, then checks
     which ones are absent or empty under ``skills.config.<key>`` in the user's
     config.yaml.  Returns a list of dicts suitable for prompting.
     """
     try:
-        from agent.skill_utils import SKILL_CONFIG_PREFIX, discover_all_skill_config_vars
+        from agent.skill_utils import discover_all_skill_config_vars, SKILL_CONFIG_PREFIX
     except Exception:
         return []
 
@@ -4005,7 +4067,7 @@ def get_missing_skill_config_vars() -> list[dict[str, Any]]:
         all_vars = discover_all_skill_config_vars()
     except Exception as e:
         # A malformed SKILL.md, unreadable external skill dir, or similar
-        # should never break `prostor update`.  Skill-config prompting is a
+        # should never break `hermes update`.  Skill-config prompting is a
         # post-migration nicety, not a blocker.
         import logging
         logging.getLogger(__name__).debug(
@@ -4016,7 +4078,7 @@ def get_missing_skill_config_vars() -> list[dict[str, Any]]:
         return []
 
     config = load_config()
-    missing: list[dict[str, Any]] = []
+    missing: List[Dict[str, Any]] = []
     for var in all_vars:
         # Skill config is stored under skills.config.<logical_key>
         storage_key = f"{SKILL_CONFIG_PREFIX}.{var['key']}"
@@ -4040,13 +4102,13 @@ def _normalize_custom_provider_entry(
     entry: Any,
     *,
     provider_key: str = "",
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """Return a runtime-compatible custom provider entry or ``None``."""
     if not isinstance(entry, dict):
         return None
 
     # Accept camelCase aliases commonly used in hand-written configs.
-    _CAMEL_ALIASES: dict[str, str] = {
+    _CAMEL_ALIASES: Dict[str, str] = {
         "apiKey": "api_key",
         "baseUrl": "base_url",
         "apiMode": "api_mode",
@@ -4112,7 +4174,7 @@ def _normalize_custom_provider_entry(
     if not name:
         return None
 
-    normalized: dict[str, Any] = {
+    normalized: Dict[str, Any] = {
         "name": name,
         "base_url": base_url,
     }
@@ -4141,7 +4203,7 @@ def _normalize_custom_provider_entry(
     if isinstance(models, dict) and models:
         normalized["models"] = models
     elif isinstance(models, list) and models:
-        # Hand-edited configs (and older Prostor versions) write ``models`` as
+        # Hand-edited configs (and older Hermes versions) write ``models`` as
         # a plain list of model ids. Preserve them by converting to the dict
         # shape downstream code expects; otherwise normalize silently drops
         # the list and /model shows the provider with (0) models.
@@ -4172,7 +4234,7 @@ def _custom_provider_entry_to_provider_config(
     entry: Any,
     *,
     provider_key: str = "",
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """Translate a legacy custom provider entry to the v12 providers shape."""
     normalized = _normalize_custom_provider_entry(
         dict(entry) if isinstance(entry, dict) else entry,
@@ -4181,7 +4243,7 @@ def _custom_provider_entry_to_provider_config(
     if normalized is None:
         return None
 
-    provider_entry: dict[str, Any] = {"api": normalized["base_url"]}
+    provider_entry: Dict[str, Any] = {"api": normalized["base_url"]}
 
     for field in (
         "name",
@@ -4204,12 +4266,12 @@ def _custom_provider_entry_to_provider_config(
     return provider_entry
 
 
-def providers_dict_to_custom_providers(providers_dict: Any) -> list[dict[str, Any]]:
+def providers_dict_to_custom_providers(providers_dict: Any) -> List[Dict[str, Any]]:
     """Normalize ``providers`` config entries into the legacy custom-provider shape."""
     if not isinstance(providers_dict, dict):
         return []
 
-    custom_providers: list[dict[str, Any]] = []
+    custom_providers: List[Dict[str, Any]] = []
     for key, entry in providers_dict.items():
         normalized = _normalize_custom_provider_entry(entry, provider_key=str(key))
         if normalized is not None:
@@ -4219,8 +4281,8 @@ def providers_dict_to_custom_providers(providers_dict: Any) -> list[dict[str, An
 
 
 def get_compatible_custom_providers(
-    config: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
+    config: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     """Return a deduplicated custom-provider view across legacy and v12+ config.
 
     ``custom_providers`` remains the on-disk legacy format, while ``providers``
@@ -4231,11 +4293,11 @@ def get_compatible_custom_providers(
     if config is None:
         config = load_config()
 
-    compatible: list[dict[str, Any]] = []
+    compatible: List[Dict[str, Any]] = []
     seen_provider_keys: set = set()
     seen_name_url_pairs: set = set()
 
-    def _append_if_new(entry: dict[str, Any] | None) -> None:
+    def _append_if_new(entry: Optional[Dict[str, Any]]) -> None:
         if entry is None:
             return
         provider_key = str(entry.get("provider_key", "") or "").strip().lower()
@@ -4271,9 +4333,9 @@ def get_compatible_custom_providers(
 def get_custom_provider_context_length(
     model: str,
     base_url: str,
-    custom_providers: list[dict[str, Any]] | None = None,
-    config: dict[str, Any] | None = None,
-) -> int | None:
+    custom_providers: Optional[List[Dict[str, Any]]] = None,
+    config: Optional[Dict[str, Any]] = None,
+) -> Optional[int]:
     """Look up a per-model ``context_length`` override from ``custom_providers``.
 
     Matches any entry whose ``base_url`` equals ``base_url`` (trailing-slash
@@ -4284,7 +4346,7 @@ def get_custom_provider_context_length(
     used by:
       * ``AIAgent.__init__`` (startup resolution)
       * ``AIAgent.switch_model`` (mid-session ``/model`` switch)
-      * ``prostor_cli.model_switch.resolve_display_context_length`` (``/model`` confirmation display)
+      * ``hermes_cli.model_switch.resolve_display_context_length`` (``/model`` confirmation display)
       * ``gateway.run._format_session_info`` (``/info`` display)
       * ``agent.model_metadata.get_model_context_length`` (when custom_providers is threaded through)
 
@@ -4344,7 +4406,7 @@ def _coerce_config_version(value: Any) -> int:
     return max(version, 0)
 
 
-def check_config_version() -> tuple[int, int]:
+def check_config_version() -> Tuple[int, int]:
     """
     Check the raw on-disk config schema version.
 
@@ -4411,7 +4473,7 @@ class ConfigIssue:
     hint: str
 
 
-def validate_config_structure(config: dict[str, Any] | None = None) -> list["ConfigIssue"]:
+def validate_config_structure(config: Optional[Dict[str, Any]] = None) -> List["ConfigIssue"]:
     """Validate config.yaml structure and return a list of detected issues.
 
     Catches common YAML formatting mistakes that produce confusing runtime
@@ -4423,9 +4485,9 @@ def validate_config_structure(config: dict[str, Any] | None = None) -> list["Con
         try:
             config = load_config()
         except Exception:
-            return [ConfigIssue("error", "Could not load config.yaml", "Run 'prostor setup' to create a valid config")]
+            return [ConfigIssue("error", "Could not load config.yaml", "Run 'hermes setup' to create a valid config")]
 
-    issues: list[ConfigIssue] = []
+    issues: List[ConfigIssue] = []
 
     # ── custom_providers must be a list, not a dict ──────────────────────
     cp = config.get("custom_providers")
@@ -4533,7 +4595,7 @@ def validate_config_structure(config: dict[str, Any] | None = None) -> list["Con
     if cp and not model_cfg:
         issues.append(ConfigIssue(
             "warning",
-            "custom_providers defined but no 'model' section — Prostor won't know which provider to use",
+            "custom_providers defined but no 'model' section — Hermes won't know which provider to use",
             "Add a model section:\n"
             "  model:\n"
             "    provider: custom\n"
@@ -4555,7 +4617,7 @@ def validate_config_structure(config: dict[str, Any] | None = None) -> list["Con
     return issues
 
 
-def print_config_warnings(config: dict[str, Any] | None = None) -> None:
+def print_config_warnings(config: Optional[Dict[str, Any]] = None) -> None:
     """Print config structure warnings to stderr at startup.
 
     Called early in CLI and gateway init so users see problems before
@@ -4573,11 +4635,11 @@ def print_config_warnings(config: dict[str, Any] | None = None) -> None:
     for ci in issues:
         marker = "\033[31m✗\033[0m" if ci.severity == "error" else "\033[33m⚠\033[0m"
         lines.append(f"  {marker} {ci.message}")
-    lines.append("  \033[2mRun 'prostor doctor' for fix suggestions.\033[0m")
+    lines.append("  \033[2mRun 'hermes doctor' for fix suggestions.\033[0m")
     sys.stderr.write("\n".join(lines) + "\n\n")
 
 
-def warn_deprecated_cwd_env_vars(config: dict[str, Any] | None = None) -> None:
+def warn_deprecated_cwd_env_vars(config: Optional[Dict[str, Any]] = None) -> None:
     """Warn if MESSAGING_CWD or TERMINAL_CWD is set in .env instead of config.yaml.
 
     These env vars are deprecated — the canonical setting is terminal.cwd
@@ -4610,11 +4672,11 @@ def warn_deprecated_cwd_env_vars(config: dict[str, Any] | None = None) -> None:
             f"this is deprecated."
         )
     if lines:
-        hint_path = os.environ.get("PROSTOR_HOME", "~/.prostor")
+        hint_path = os.environ.get("HERMES_HOME", "~/.hermes")
         lines.insert(0, "\033[33m⚠ Deprecated .env settings detected:\033[0m")
         lines.append(
-            "  \033[2mMove to config.yaml instead:  "
-            "terminal:\\n    cwd: /your/project/path\033[0m"
+            f"  \033[2mMove to config.yaml instead:  "
+            f"terminal:\\n    cwd: /your/project/path\033[0m"
         )
         lines.append(
             f"  \033[2mThen remove the old entries from {hint_path}/.env\033[0m"
@@ -4622,14 +4684,14 @@ def warn_deprecated_cwd_env_vars(config: dict[str, Any] | None = None) -> None:
         sys.stderr.write("\n".join(lines) + "\n\n")
 
 
-def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, Any]:
+def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, Any]:
     """
     Migrate config to latest version, prompting for new required fields.
-
+    
     Args:
         interactive: If True, prompt user for missing values
         quiet: If True, suppress output
-
+        
     Returns:
         Dict with migration results: {"env_added": [...], "config_added": [...], "warnings": [...]}
     """
@@ -4645,7 +4707,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
 
     # Check config version
     current_ver, latest_ver = check_config_version()
-
+    
     # ── Version 3 → 4: migrate tool progress from .env to config.yaml ──
     if current_ver < 4:
         config = load_config()
@@ -4653,14 +4715,14 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
         if not isinstance(display, dict):
             display = {}
         if "tool_progress" not in display:
-            old_enabled = get_env_value("PROSTOR_TOOL_PROGRESS")
-            old_mode = get_env_value("PROSTOR_TOOL_PROGRESS_MODE")
+            old_enabled = get_env_value("HERMES_TOOL_PROGRESS")
+            old_mode = get_env_value("HERMES_TOOL_PROGRESS_MODE")
             if old_enabled and old_enabled.lower() in {"false", "0", "no"}:
                 display["tool_progress"] = "off"
-                results["config_added"].append("display.tool_progress=off (from PROSTOR_TOOL_PROGRESS=false)")
+                results["config_added"].append("display.tool_progress=off (from HERMES_TOOL_PROGRESS=false)")
             elif old_mode and old_mode.lower() in {"new", "all"}:
                 display["tool_progress"] = old_mode.lower()
-                results["config_added"].append(f"display.tool_progress={old_mode.lower()} (from PROSTOR_TOOL_PROGRESS_MODE)")
+                results["config_added"].append(f"display.tool_progress={old_mode.lower()} (from HERMES_TOOL_PROGRESS_MODE)")
             else:
                 display["tool_progress"] = "all"
                 results["config_added"].append("display.tool_progress=all (default)")
@@ -4668,15 +4730,15 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
             save_config(config)
             if not quiet:
                 print(f"  ✓ Migrated tool progress to config.yaml: {display['tool_progress']}")
-
+    
     # ── Version 4 → 5: add timezone field ──
     if current_ver < 5:
         config = load_config()
         if "timezone" not in config:
-            old_tz = os.getenv("PROSTOR_TIMEZONE", "")
+            old_tz = os.getenv("HERMES_TIMEZONE", "")
             if old_tz and old_tz.strip():
                 config["timezone"] = old_tz.strip()
-                results["config_added"].append(f"timezone={old_tz.strip()} (from PROSTOR_TIMEZONE)")
+                results["config_added"].append(f"timezone={old_tz.strip()} (from HERMES_TIMEZONE)")
             else:
                 config["timezone"] = ""
                 results["config_added"].append("timezone= (empty, uses server-local)")
@@ -4824,7 +4886,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
             config["stt"] = stt
             save_config(config)
             if not quiet:
-                print("  ✓ Migrated legacy stt.model to provider-specific config")
+                print(f"  ✓ Migrated legacy stt.model to provider-specific config")
 
     # ── Version 14 → 15: add explicit gateway interim-message gate ──
     if current_ver < 15:
@@ -4923,10 +4985,10 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
                 disabled = []
             disabled_set = set(disabled)
 
-            # Scan ``$PROSTOR_HOME/plugins/`` for currently installed user plugins.
-            grandfathered: list[str] = []
+            # Scan ``$HERMES_HOME/plugins/`` for currently installed user plugins.
+            grandfathered: List[str] = []
             try:
-                user_plugins_dir = get_prostor_home() / "plugins"
+                user_plugins_dir = get_hermes_home() / "plugins"
                 if user_plugins_dir.is_dir():
                     for child in sorted(user_plugins_dir.iterdir()):
                         if not child.is_dir():
@@ -4963,7 +5025,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
                 else:
                     print(
                         "  ✓ Plugins now opt-in: no existing plugins to grandfather. "
-                        "Use `prostor plugins enable <name>` to activate."
+                        "Use `hermes plugins enable <name>` to activate."
                     )
 
     # ── Version 22 → 23: seed curator defaults + create logs/curator/ ──
@@ -4972,7 +5034,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
     # unification under `auxiliary.curator`) never wrote the curator section
     # to disk. The runtime deep-merge in `load_config()` fills defaults at
     # read time, so the curator *functions*; but users can't see/edit the
-    # settings in their `config.yaml`, and `prostor curator status` has no
+    # settings in their `config.yaml`, and `hermes curator status` has no
     # stable logs dir to point at until the first run mkdir's it.
     #
     # This migration:
@@ -4982,12 +5044,12 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
     #   2. Writes the `auxiliary.curator` aux-task slot (provider, model,
     #      base_url, api_key, timeout, extra_body) — canonical slot for
     #      routing the curator fork to a cheaper aux model.
-    #   3. Creates `~/.prostor/logs/curator/` if missing (belt-and-suspenders
-    #      on top of ensure_prostor_home() — old profiles that predate this
+    #   3. Creates `~/.hermes/logs/curator/` if missing (belt-and-suspenders
+    #      on top of ensure_hermes_home() — old profiles that predate this
     #      migration still benefit).
     if current_ver < 23:
         try:
-            curator_dir = get_prostor_home() / "logs" / "curator"
+            curator_dir = get_hermes_home() / "logs" / "curator"
             curator_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             results["warnings"].append(f"Could not create {curator_dir}: {e}")
@@ -5000,7 +5062,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
         raw_curator = config.get("curator")
         if not isinstance(raw_curator, dict):
             raw_curator = {}
-        added_curator: list[str] = []
+        added_curator: List[str] = []
         for k, v in _curator_defaults.items():
             if k not in raw_curator:
                 raw_curator[k] = copy.deepcopy(v)
@@ -5019,7 +5081,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
         raw_aux_curator = raw_aux.get("curator")
         if not isinstance(raw_aux_curator, dict):
             raw_aux_curator = {}
-        added_aux: list[str] = []
+        added_aux: List[str] = []
         for k, v in _aux_curator_defaults.items():
             if k not in raw_aux_curator:
                 raw_aux_curator[k] = copy.deepcopy(v)
@@ -5125,7 +5187,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
     raw_mcp_servers = config.get("mcp_servers")
     if isinstance(raw_mcp_servers, dict):
         try:
-            from prostor_cli.mcp_security import validate_mcp_server_entry as _validate_mcp_server_entry
+            from hermes_cli.mcp_security import validate_mcp_server_entry as _validate_mcp_server_entry
         except Exception:
             _validate_mcp_server_entry = None
         if _validate_mcp_server_entry:
@@ -5151,26 +5213,26 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
 
     if current_ver < latest_ver and not quiet:
         print(f"Config version: {current_ver} → {latest_ver}")
-
+    
     # Check for missing required env vars
     missing_env = get_missing_env_vars(required_only=True)
-
+    
     if missing_env and not quiet:
         print("\n⚠️  Missing required environment variables:")
         for var in missing_env:
             print(f"   • {var['name']}: {var['description']}")
-
+    
     if interactive and missing_env:
         print("\nLet's configure them now:\n")
         for var in missing_env:
             if var.get("url"):
                 print(f"  Get your key at: {var['url']}")
-
+            
             if var.get("password"):
                 value = masked_secret_prompt(f"  {var['prompt']}: ")
             else:
                 value = input(f"  {var['prompt']}: ").strip()
-
+            
             if value:
                 save_env_value(var["name"], value)
                 results["env_added"].append(var["name"])
@@ -5178,7 +5240,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
             else:
                 results["warnings"].append(f"Skipped {var['name']} - some features may not work")
             print()
-
+    
     # Check for missing optional env vars and offer to configure interactively
     # Skip "advanced" vars (like OPENAI_BASE_URL) -- those are for power users
     missing_optional = get_missing_env_vars(required_only=False)
@@ -5187,7 +5249,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
         v for v in missing_optional
         if v["name"] not in required_names and not v.get("advanced")
     ]
-
+    
     # Only offer to configure env vars that are NEW since the user's previous version
     new_var_names = set()
     for ver in range(current_ver + 1, latest_ver + 1):
@@ -5229,23 +5291,23 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
                         print(f"  ✓ Saved {name}")
                     print()
             else:
-                print("  Set later with: prostor config set <key> <value>")
-
+                print("  Set later with: hermes config set <key> <value>")
+    
     # Check for missing config fields
     missing_config = get_missing_config_fields()
-
+    
     if missing_config:
         config = load_config()
-
+        
         for field in missing_config:
             key = field["key"]
             default = field["default"]
-
+            
             _set_nested(config, key, default)
             results["config_added"].append(key)
             if not quiet:
                 print(f"  ✓ Added {key} = {default}")
-
+        
         # Update version and save
         config["_config_version"] = latest_ver
         save_config(config)
@@ -5257,7 +5319,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
 
     # ── Skill-declared config vars ──────────────────────────────────────
     # Skills can declare config.yaml settings they need via
-    # metadata.prostor.config in their SKILL.md frontmatter.
+    # metadata.hermes.config in their SKILL.md frontmatter.
     # Prompt for any that are missing/empty.
     missing_skill_config = get_missing_skill_config_vars()
     if missing_skill_config and interactive and not quiet:
@@ -5296,7 +5358,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
                 print()
             save_config(config)
         else:
-            print("  Set later with: prostor config set <key> <value>")
+            print("  Set later with: hermes config set <key> <value>")
 
     return results
 
@@ -5321,7 +5383,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def _strip_dotted_keys(cfg: dict, dotted_keys: set) -> tuple[dict, set]:
+def _strip_dotted_keys(cfg: dict, dotted_keys: set) -> Tuple[dict, set]:
     """Remove the given dotted leaf keys from a nested config dict.
 
     Returns ``(pruned_cfg, set_of_stripped_keys_that_were_present)``. Used by
@@ -5443,7 +5505,7 @@ def _preserve_env_ref_templates(current, raw, loaded_expanded=None):
     return current
 
 
-def _normalize_root_model_keys(config: dict[str, Any]) -> dict[str, Any]:
+def _normalize_root_model_keys(config: Dict[str, Any]) -> Dict[str, Any]:
     """Move stale root-level provider/base_url/context_length into model section.
 
     Some users (or older code) placed ``provider:``, ``base_url:``, or
@@ -5452,17 +5514,31 @@ def _normalize_root_model_keys(config: dict[str, Any]) -> dict[str, Any]:
     ``model.*`` key is empty — they never override an existing value.
     After migration the root-level keys are removed so they can't cause
     confusion on subsequent loads.
+
+    Also aliases ``api_base`` → ``base_url`` (issue #8919). ``api_base`` is the
+    intuitive name OpenAI-SDK / LiteLLM users reach for, and ``hermes config set``
+    blindly accepts any dotted key — so ``model.api_base`` got written, confirmed,
+    and then silently ignored by the runtime resolver (which reads only
+    ``model.base_url``), causing requests to fall back to OpenRouter. We migrate
+    the alias to the canonical key (fallback-only — never override an explicit
+    ``base_url``) and drop the alias so it can't confuse later loads.
     """
-    # Only act if there are root-level keys to migrate
-    has_root = any(config.get(k) for k in ("provider", "base_url", "context_length"))
-    if not has_root:
+    # Only act if there are root-level keys (or an api_base alias) to migrate
+    model_in = config.get("model")
+    model_has_alias = isinstance(model_in, dict) and model_in.get("api_base")
+    has_root = any(
+        config.get(k) for k in ("provider", "base_url", "context_length", "api_base")
+    )
+    if not has_root and not model_has_alias:
         return config
 
     config = dict(config)
     model = config.get("model")
     if not isinstance(model, dict):
         model = {"default": model} if model else {}
-        config["model"] = model
+    else:
+        model = dict(model)
+    config["model"] = model
 
     for key in ("provider", "base_url", "context_length"):
         root_val = config.get(key)
@@ -5470,10 +5546,17 @@ def _normalize_root_model_keys(config: dict[str, Any]) -> dict[str, Any]:
             model[key] = root_val
         config.pop(key, None)
 
+    # api_base is an alias for base_url, at the root OR inside model.
+    for alias_val in (config.get("api_base"), model.get("api_base")):
+        if alias_val and not model.get("base_url"):
+            model["base_url"] = alias_val
+    config.pop("api_base", None)
+    model.pop("api_base", None)
+
     return config
 
 
-def _normalize_max_turns_config(config: dict[str, Any]) -> dict[str, Any]:
+def _normalize_max_turns_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize legacy root-level max_turns into agent.max_turns."""
     config = dict(config)
     agent_config = dict(config.get("agent") or {})
@@ -5489,17 +5572,55 @@ def _normalize_max_turns_config(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-# cfg_get was extracted to prostor_core/config.py (Issue #25).
-# Re-exported here for back-compat — existing `from prostor_cli.config import cfg_get`
-# callsites continue to work. New code in agent/ and tools/ should import from
-# prostor_core instead to avoid the prostor_cli circular dependency.
-from prostor_core.config import cfg_get as _cfg_get_core
+def cfg_get(cfg: Optional[Dict[str, Any]], *keys: str, default: Any = None) -> Any:
+    """Traverse nested dict keys safely, returning ``default`` on any miss.
 
-cfg_get = _cfg_get_core
+    Canonical helper for the ``cfg.get("X", {}).get("Y", default)`` pattern
+    that appears 50+ times across the codebase. Handles three common gotchas
+    in one place:
+
+      1. Missing intermediate keys (returns ``default``, no KeyError).
+      2. An intermediate value that's not a dict (e.g. a user wrote a string
+         where a section was expected). Returns ``default`` instead of
+         AttributeError on ``.get()``.
+      3. ``cfg is None`` (callers sometimes pass ``load_config() or None``).
+
+    Named ``cfg_get`` rather than ``cfg_path`` to avoid shadowing the
+    ubiquitous ``cfg_path = _hermes_home / "config.yaml"`` local variable
+    that appears in gateway/run.py, cron/scheduler.py, main.py, etc.
+
+    Explicit ``None`` values are returned as-is (matches ``dict.get(key,
+    default)`` semantics — ``default`` is only returned when the key is
+    *absent*, not when it's present but set to ``None``).
+
+    Examples:
+        >>> cfg_get({"agent": {"reasoning_effort": "high"}}, "agent", "reasoning_effort")
+        'high'
+        >>> cfg_get({}, "agent", "reasoning_effort", default="medium")
+        'medium'
+        >>> cfg_get({"agent": "oops_a_string"}, "agent", "reasoning_effort", default="low")
+        'low'
+        >>> cfg_get(None, "anything", default=42)
+        42
+        >>> cfg_get({"a": {"b": None}}, "a", "b", default="def")  # explicit None preserved
+        >>> cfg_get({"a": {"b": False}}, "a", "b", default=True)  # falsy values preserved
+        False
+    """
+    if not isinstance(cfg, dict):
+        return default
+    node: Any = cfg
+    for key in keys:
+        if not isinstance(node, dict):
+            return default
+        if key not in node:
+            return default
+        node = node[key]
+    return node
 
 
-def read_raw_config() -> dict[str, Any]:
-    """Read ~/.prostor/config.yaml as-is, without merging defaults or migrating.
+
+def read_raw_config() -> Dict[str, Any]:
+    """Read ~/.hermes/config.yaml as-is, without merging defaults or migrating.
 
     Returns the raw YAML dict, or ``{}`` if the file doesn't exist or can't
     be parsed.  Use this for lightweight config reads where you just need a
@@ -5536,14 +5657,14 @@ def read_raw_config() -> dict[str, Any]:
         return data
 
 
-def load_config() -> dict[str, Any]:
-    """Load configuration from ~/.prostor/config.yaml.
+def load_config() -> Dict[str, Any]:
+    """Load configuration from ~/.hermes/config.yaml.
 
     Cached on the config file's (mtime_ns, size). Returns a deepcopy of
     the cached value when unchanged, since most call sites mutate the
     result (e.g. ``cfg["model"]["default"] = ...`` before ``save_config``).
     The cache is keyed on ``str(config_path)`` so profile switches
-    (which change ``PROSTOR_HOME`` and therefore ``get_config_path()``)
+    (which change ``HERMES_HOME`` and therefore ``get_config_path()``)
     don't collide.
 
     Read-only callers should use ``load_config_readonly()`` to skip the
@@ -5553,7 +5674,7 @@ def load_config() -> dict[str, Any]:
     return _load_config_impl(want_deepcopy=True)
 
 
-def load_config_readonly() -> dict[str, Any]:
+def load_config_readonly() -> Dict[str, Any]:
     """Fast-path variant of ``load_config()`` for callers that ONLY READ.
 
     Returns the cached config dict directly without the defensive deepcopy
@@ -5574,6 +5695,34 @@ def load_config_readonly() -> dict[str, Any]:
     safety guarantee is purely documented, not enforced — be careful.
     """
     return _load_config_impl(want_deepcopy=False)
+
+
+def write_platform_config_field(
+    platform_key: str,
+    field_key: str,
+    value: Any,
+    *,
+    raw: bool = False,
+) -> None:
+    """Persist one scalar field under ``platforms.<platform_key>``.
+
+    ``raw=True`` preserves CLI setup flows that intentionally edit only the
+    user's raw config file. Dashboard routes use the default loaded-config path
+    so they retain their existing profile-scoped ``load_config`` behavior.
+    """
+    config = read_raw_config() if raw else load_config()
+    platforms = config.setdefault("platforms", {})
+    if not isinstance(platforms, dict):
+        platforms = {}
+        config["platforms"] = platforms
+
+    platform_config = platforms.setdefault(platform_key, {})
+    if not isinstance(platform_config, dict):
+        platform_config = {}
+        platforms[platform_key] = platform_config
+
+    platform_config[field_key] = value
+    save_config(config)
 
 
 TERMINAL_CONFIG_ENV_MAP = {
@@ -5613,7 +5762,7 @@ def _terminal_env_value(value: Any) -> str:
     return str(value)
 
 
-def terminal_config_env_var_for_key(key: str) -> str | None:
+def terminal_config_env_var_for_key(key: str) -> Optional[str]:
     """Return the env var mirrored by a ``terminal.*`` config key."""
     prefix = "terminal."
     if not key.startswith(prefix):
@@ -5623,10 +5772,10 @@ def terminal_config_env_var_for_key(key: str) -> str | None:
 
 def apply_terminal_config_to_env(
     *,
-    env: dict[str, str] | None = None,
-    config: dict[str, Any] | None = None,
-    override: bool | None = None,
-) -> dict[str, str]:
+    env: Optional[Dict[str, str]] = None,
+    config: Optional[Dict[str, Any]] = None,
+    override: Optional[bool] = None,
+) -> Dict[str, str]:
     """Bridge ``terminal.*`` config into the env vars terminal tools read.
 
     ``tools.terminal_tool`` is intentionally environment-driven because it also
@@ -5664,22 +5813,22 @@ def apply_terminal_config_to_env(
     return target
 
 
-def _load_config_impl(*, want_deepcopy: bool) -> dict[str, Any]:
+def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
     with _CONFIG_LOCK:
-        ensure_prostor_home()
+        ensure_hermes_home()
         config_path = get_config_path()
         path_key = str(config_path)
 
         try:
             st = config_path.stat()
-            user_sig: tuple[int, int] | None = (st.st_mtime_ns, st.st_size)
+            user_sig: Optional[Tuple[int, int]] = (st.st_mtime_ns, st.st_size)
         except FileNotFoundError:
             user_sig = None
 
         # Managed scope: fold the managed config file's (mtime, size) into the
-        # cache signature so editing /etc/prostor/config.yaml invalidates the
+        # cache signature so editing /etc/hermes/config.yaml invalidates the
         # cached merged result. (0, 0) means "no managed config file".
-        from prostor_cli import managed_scope
+        from hermes_cli import managed_scope
 
         managed_dir = managed_scope.get_managed_dir()
         managed_cfg_path = (managed_dir / "config.yaml") if managed_dir else None
@@ -5692,7 +5841,7 @@ def _load_config_impl(*, want_deepcopy: bool) -> dict[str, Any]:
         # Combined cache signature: user file + managed file. None only when the
         # user config is absent AND no managed file exists (nothing to cache on).
         if user_sig is not None:
-            cache_sig: tuple[int, int, int, int] | None = (
+            cache_sig: Optional[Tuple[int, int, int, int]] = (
                 user_sig[0],
                 user_sig[1],
                 managed_sig[0],
@@ -5786,8 +5935,8 @@ _FALLBACK_COMMENT = """
 #
 # Supported providers:
 #   openrouter   (OPENROUTER_API_KEY)  — routes to any model
-#   openai-codex (OAuth — prostor auth) — OpenAI Codex
-#   nous         (OAuth — prostor auth) — Nous Portal
+#   openai-codex (OAuth — hermes auth) — OpenAI Codex
+#   nous         (OAuth — hermes auth) — Nous Portal
 #   zai          (ZAI_API_KEY)         — Z.AI / GLM
 #   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
 #   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)
@@ -5818,8 +5967,8 @@ _COMMENTED_SECTIONS = """
 #
 # Supported providers:
 #   openrouter   (OPENROUTER_API_KEY)  — routes to any model
-#   openai-codex (OAuth — prostor auth) — OpenAI Codex
-#   nous         (OAuth — prostor auth) — Nous Portal
+#   openai-codex (OAuth — hermes auth) — OpenAI Codex
+#   nous         (OAuth — hermes auth) — Nous Portal
 #   zai          (ZAI_API_KEY)         — Z.AI / GLM
 #   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
 #   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)
@@ -5835,8 +5984,8 @@ _COMMENTED_SECTIONS = """
 """
 
 
-def save_config(config: dict[str, Any]):
-    """Save configuration to ~/.prostor/config.yaml."""
+def save_config(config: Dict[str, Any]):
+    """Save configuration to ~/.hermes/config.yaml."""
     with _CONFIG_LOCK:
         if is_managed():
             managed_error("save configuration")
@@ -5846,7 +5995,7 @@ def save_config(config: dict[str, Any]):
         # silently lose to managed on the next load. Single-key `config set`
         # hard-rejects (see set_config_value); this is the mechanical safety net
         # for bulk writes so the unmanaged remainder still lands.
-        from prostor_cli import managed_scope
+        from hermes_cli import managed_scope
 
         managed_keys = managed_scope.managed_config_keys()
         if managed_keys:
@@ -5859,7 +6008,7 @@ def save_config(config: dict[str, Any]):
                 )
         from utils import atomic_yaml_write
 
-        ensure_prostor_home()
+        ensure_hermes_home()
         config_path = get_config_path()
         current_normalized = _normalize_root_model_keys(_normalize_max_turns_config(config))
         normalized = current_normalized
@@ -5895,8 +6044,8 @@ def save_config(config: dict[str, Any]):
         _LAST_EXPANDED_CONFIG_BY_PATH[str(config_path)] = copy.deepcopy(current_normalized)
 
 
-def load_env() -> dict[str, str]:
-    """Load environment variables from ~/.prostor/.env.
+def load_env() -> Dict[str, str]:
+    """Load environment variables from ~/.hermes/.env.
 
     Sanitizes lines before parsing so that corrupted files (e.g.
     concatenated KEY=VALUE pairs on a single line) are handled
@@ -5905,9 +6054,9 @@ def load_env() -> dict[str, str]:
 
     The parsed dict is memoised keyed on the .env file mtime, because
     ``get_env_value()`` is called dozens-to-hundreds of times per
-    interactive menu render (`prostor tools`, `prostor setup`, status
+    interactive menu render (`hermes tools`, `hermes setup`, status
     panels). Sanitisation is O(lines × known-keys), so re-parsing the
-    same file on every call was burning ~300ms of CPU per `prostor tools`
+    same file on every call was burning ~300ms of CPU per `hermes tools`
     menu paint on top of the OAuth-refresh slowness. The mtime check
     invalidates the cache when the user edits .env mid-process.
     """
@@ -5928,7 +6077,7 @@ def load_env() -> dict[str, str]:
         if cached_key == cache_key:
             return dict(cached_vars)
 
-    env_vars: dict[str, str] = {}
+    env_vars: Dict[str, str] = {}
 
     if env_path.exists():
         # On Windows, open() defaults to the system locale (cp1252) which can
@@ -5957,7 +6106,7 @@ def load_env() -> dict[str, str]:
 # is the explicit knob for writers that update .env via this module
 # (set_env_value, save_env, etc.) without relying on filesystem mtime
 # resolution.
-_env_cache: tuple[tuple[str, float | None, int | None], dict[str, str]] | None = None
+_env_cache: Optional[Tuple[Tuple[str, Optional[float], Optional[int]], Dict[str, str]]] = None
 
 
 def invalidate_env_cache() -> None:
@@ -5981,7 +6130,7 @@ def _sanitize_env_lines(lines: list) -> list:
     2. Stale ``KEY=***`` placeholder entries left by incomplete setup runs.
 
     Uses a known-keys set (OPTIONAL_ENV_VARS + _EXTRA_ENV_KEYS) so we only
-    split on real Prostor env var names, avoiding false positives from values
+    split on real Hermes env var names, avoiding false positives from values
     that happen to contain uppercase text with ``=``.
     """
     # Build the known keys set lazily from OPTIONAL_ENV_VARS + extras.
@@ -6033,7 +6182,7 @@ def _sanitize_env_lines(lines: list) -> list:
 
 
 def sanitize_env_file() -> int:
-    """Read, sanitize, and rewrite ~/.prostor/.env in place.
+    """Read, sanitize, and rewrite ~/.hermes/.env in place.
 
     Returns the number of lines that were fixed (concatenation splits +
     placeholder removals).  Returns 0 when no changes are needed.
@@ -6057,7 +6206,7 @@ def sanitize_env_file() -> int:
     fixes = abs(len(sanitized) - len(original_lines))
     if fixes == 0:
         # Lines changed content (e.g. *** removal) even if count is same
-        fixes = sum(1 for a, b in zip(original_lines, sanitized, strict=False) if a != b)
+        fixes = sum(1 for a, b in zip(original_lines, sanitized) if a != b)
         fixes += abs(len(sanitized) - len(original_lines))
 
     fd, tmp_path = tempfile.mkstemp(dir=str(env_path.parent), suffix=".tmp", prefix=".env_")
@@ -6111,21 +6260,21 @@ def _check_non_ascii_credential(key: str, value: str) -> str:
         f"\n"
         + "\n".join(f"  {line}" for line in bad_chars[:5])
         + ("\n  ... and more" if len(bad_chars) > 5 else "")
-        + "\n\n  The non-ASCII characters have been stripped automatically.\n"
-        "  If authentication fails, re-copy the key from the provider's dashboard.\n",
+        + f"\n\n  The non-ASCII characters have been stripped automatically.\n"
+        f"  If authentication fails, re-copy the key from the provider's dashboard.\n",
         file=sys.stderr,
     )
     return sanitized
 
 
 def save_env_value(key: str, value: str):
-    """Save or update a value in ~/.prostor/.env."""
+    """Save or update a value in ~/.hermes/.env."""
     if is_managed():
         managed_error(f"set {key}")
         return
     # Managed scope guard: a managed env key can't be set by the user — the
     # managed .env wins at load anyway. Distinct from is_managed() above.
-    from prostor_cli import managed_scope
+    from hermes_cli import managed_scope
 
     if managed_scope.is_env_managed(key):
         managed_dir = managed_scope.get_managed_dir()
@@ -6142,7 +6291,7 @@ def save_env_value(key: str, value: str):
     value = value.replace("\n", "").replace("\r", "")
     # API keys / tokens must be ASCII — strip non-ASCII with a warning.
     value = _check_non_ascii_credential(key, value)
-    ensure_prostor_home()
+    ensure_hermes_home()
     env_path = get_env_path()
 
     # On Windows, open() defaults to the system locale (cp1252) which can
@@ -6170,7 +6319,7 @@ def save_env_value(key: str, value: str):
         if lines and not lines[-1].endswith("\n"):
             lines[-1] += "\n"
         lines.append(f"{key}={value}\n")
-
+    
     fd, tmp_path = tempfile.mkstemp(dir=str(env_path.parent), suffix='.tmp', prefix='.env_')
     # Preserve original permissions so Docker volume mounts aren't clobbered.
     original_mode = None
@@ -6206,7 +6355,7 @@ def save_env_value(key: str, value: str):
 
 
 def remove_env_value(key: str) -> bool:
-    """Remove a key from ~/.prostor/.env and os.environ.
+    """Remove a key from ~/.hermes/.env and os.environ.
 
     Returns True if the key was found and removed, False otherwise.
     """
@@ -6214,7 +6363,7 @@ def remove_env_value(key: str) -> bool:
         managed_error(f"remove {key}")
         return False
     # Managed scope guard: a managed env key can't be removed by the user.
-    from prostor_cli import managed_scope
+    from hermes_cli import managed_scope
 
     if managed_scope.is_env_managed(key):
         managed_dir = managed_scope.get_managed_dir()
@@ -6299,7 +6448,7 @@ def save_anthropic_api_key(value: str, save_fn=None):
     writer("ANTHROPIC_TOKEN", "")
 
 
-def save_env_value_secure(key: str, value: str) -> dict[str, Any]:
+def save_env_value_secure(key: str, value: str) -> Dict[str, Any]:
     save_env_value(key, value)
     return {
         "success": True,
@@ -6308,11 +6457,12 @@ def save_env_value_secure(key: str, value: str) -> dict[str, Any]:
     }
 
 
+
 def reload_env() -> int:
-    """Re-read ~/.prostor/.env into os.environ. Returns count of vars updated.
+    """Re-read ~/.hermes/.env into os.environ. Returns count of vars updated.
 
     Adds/updates vars that changed and removes vars that were deleted from
-    the .env file (but only vars known to Prostor — OPTIONAL_ENV_VARS and
+    the .env file (but only vars known to Hermes — OPTIONAL_ENV_VARS and
     _EXTRA_ENV_KEYS — to avoid clobbering unrelated environment).
     """
     env_vars = load_env()
@@ -6322,7 +6472,7 @@ def reload_env() -> int:
         if os.environ.get(key) != value:
             os.environ[key] = value
             count += 1
-    # Remove known Prostor vars that are no longer in .env
+    # Remove known Hermes vars that are no longer in .env
     for key in known_keys:
         if key not in env_vars and key in os.environ:
             del os.environ[key]
@@ -6330,12 +6480,12 @@ def reload_env() -> int:
     return count
 
 
-def get_env_value(key: str) -> str | None:
-    """Get a value from ~/.prostor/.env or environment."""
+def get_env_value(key: str) -> Optional[str]:
+    """Get a value from ~/.hermes/.env or environment."""
     # Check environment first
     if key in os.environ:
         return os.environ[key]
-
+    
     # Then check .env file
     env_vars = load_env()
     return env_vars.get(key)
@@ -6355,18 +6505,72 @@ def redact_key(key: str) -> str:
     return mask_secret(key, empty=color("(not set)", Colors.DIM))
 
 
+# Key names (case-insensitive, exact match) whose VALUE is a credential and
+# must be masked before printing any config dict to the terminal. Covers the
+# fields a custom provider stuffs into the `model`/`custom_providers` blocks
+# (`api_key`) plus the usual token/secret/password shapes. Exact-match only so
+# benign keys like `token_count` or `secret_santa` don't get masked.
+_SECRET_CONFIG_KEYS = frozenset({
+    "api_key",
+    "apikey",
+    "key",
+    "token",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "secret",
+    "client_secret",
+    "password",
+    "passwd",
+    "auth",
+    "authorization",
+    "private_key",
+    "bearer",
+    "jwt",
+})
+
+
+def redact_config_value(value: Any, _depth: int = 0) -> Any:
+    """Return a copy of ``value`` with credential-shaped keys masked for display.
+
+    Recursively walks dicts/lists and replaces the value of any key in
+    ``_SECRET_CONFIG_KEYS`` (case-insensitive) with a masked form via
+    :func:`agent.redact.mask_secret`. Non-secret keys and scalar values pass
+    through unchanged. Use this before ``print``-ing any config sub-tree that
+    might carry a custom-provider ``api_key`` — ``print`` bypasses the logging
+    redactor, and opaque tokens (e.g. Cloudflare ``cfut_...``) don't match the
+    vendor-prefix regexes either, so structural key-name masking is required.
+    """
+    from agent.redact import mask_secret
+
+    # Defensive bound on recursion depth for pathological/cyclic configs.
+    if _depth > 20:
+        return value
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if isinstance(k, str) and k.lower() in _SECRET_CONFIG_KEYS and isinstance(v, str) and v:
+                out[k] = mask_secret(v)
+            else:
+                out[k] = redact_config_value(v, _depth + 1)
+        return out
+    if isinstance(value, list):
+        return [redact_config_value(v, _depth + 1) for v in value]
+    return value
+
+
 def show_config():
     """Display current configuration."""
     config = load_config()
 
     print()
     print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│              ⚕ Prostor Configuration                    │", Colors.CYAN))
+    print(color("│              ⚕ Hermes Configuration                    │", Colors.CYAN))
     print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
 
     # Managed scope: surface that some settings are administrator-pinned so the
     # user understands why their config.yaml value may not be the effective one.
-    from prostor_cli import managed_scope
+    from hermes_cli import managed_scope
 
     _managed_keys = managed_scope.managed_config_keys()
     _managed_env = managed_scope.load_managed_env()
@@ -6396,11 +6600,11 @@ def show_config():
     print(f"  Config:       {get_config_path()}")
     print(f"  Secrets:      {get_env_path()}")
     print(f"  Install:      {get_project_root()}")
-
+    
     # API Keys
     print()
     print(color("◆ API Keys", Colors.CYAN, Colors.BOLD))
-
+    
     keys = [
         ("OPENROUTER_API_KEY", "OpenRouter"),
         ("VOICE_TOOLS_OPENAI_KEY", "OpenAI (STT/TTS)"),
@@ -6412,34 +6616,34 @@ def show_config():
         ("BROWSER_USE_API_KEY", "Browser Use"),
         ("FAL_KEY", "FAL"),
     ]
-
+    
     for env_key, name in keys:
         value = get_env_value(env_key)
         print(f"  {name:<14} {redact_key(value)}")
-    from prostor_cli.auth import get_anthropic_key
+    from hermes_cli.auth import get_anthropic_key
     anthropic_value = get_anthropic_key()
     print(f"  {'Anthropic':<14} {redact_key(anthropic_value)}")
-
+    
     # Model settings
     print()
     print(color("◆ Model", Colors.CYAN, Colors.BOLD))
-    print(f"  Model:        {config.get('model', 'not set')}")
+    print(f"  Model:        {redact_config_value(config.get('model', 'not set'))}")
     _cfg_max_turns = config.get('agent', {}).get('max_turns', DEFAULT_CONFIG['agent']['max_turns'])
     print(f"  Max turns:    {_cfg_max_turns}")
-    # Warn on stale PROSTOR_MAX_ITERATIONS ghost in .env that disagrees with
+    # Warn on stale HERMES_MAX_ITERATIONS ghost in .env that disagrees with
     # config.yaml (issue #17534). Read the .env FILE directly so we catch the
     # ghost even when the gateway bridge already overrode os.environ.
     try:
-        _env_ghost = load_env().get("PROSTOR_MAX_ITERATIONS")
+        _env_ghost = load_env().get("HERMES_MAX_ITERATIONS")
         if _env_ghost is not None and str(_env_ghost).strip() != str(_cfg_max_turns).strip():
             print(color(
-                f"                ⚠ .env has stale PROSTOR_MAX_ITERATIONS={_env_ghost} "
-                f"(run 'prostor doctor --fix' to remove)",
+                f"                ⚠ .env has stale HERMES_MAX_ITERATIONS={_env_ghost} "
+                f"(run 'hermes doctor --fix' to remove)",
                 Colors.YELLOW,
             ))
     except Exception:
         pass
-
+    
     # Display
     print()
     print(color("◆ Display", Colors.CYAN, Colors.BOLD))
@@ -6459,7 +6663,7 @@ def show_config():
     print(f"  Backend:      {terminal.get('backend', 'local')}")
     print(f"  Working dir:  {terminal.get('cwd', '.')}")
     print(f"  Timeout:      {terminal.get('timeout', 60)}s")
-
+    
     if terminal.get('backend') == 'docker':
         print(f"  Docker image: {terminal.get('docker_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}")
     elif terminal.get('backend') == 'singularity':
@@ -6477,7 +6681,7 @@ def show_config():
         ssh_user = get_env_value('TERMINAL_SSH_USER')
         print(f"  SSH host:     {ssh_host or '(not set)'}")
         print(f"  SSH user:     {ssh_user or '(not set)'}")
-
+    
     # Timezone
     print()
     print(color("◆ Timezone", Colors.CYAN, Colors.BOLD))
@@ -6504,7 +6708,7 @@ def show_config():
         comp_provider = _aux_comp.get('provider', 'auto')
         if comp_provider and comp_provider != 'auto':
             print(f"  Provider:     {comp_provider}")
-
+    
     # Auxiliary models
     auxiliary = config.get('auxiliary', {})
     aux_tasks = {
@@ -6526,17 +6730,17 @@ def show_config():
                 if mdl:
                     parts.append(f"model={mdl}")
                 print(f"  {label:12s}  {', '.join(parts)}")
-
+    
     # Messaging
     print()
     print(color("◆ Messaging Platforms", Colors.CYAN, Colors.BOLD))
-
+    
     telegram_token = get_env_value('TELEGRAM_BOT_TOKEN')
     discord_token = get_env_value('DISCORD_BOT_TOKEN')
-
+    
     print(f"  Telegram:     {'configured' if telegram_token else color('not configured', Colors.DIM)}")
     print(f"  Discord:      {'configured' if discord_token else color('not configured', Colors.DIM)}")
-
+    
     # Skill config
     try:
         from agent.skill_utils import discover_all_skill_config_vars, resolve_skill_config_values
@@ -6556,9 +6760,9 @@ def show_config():
 
     print()
     print(color("─" * 60, Colors.DIM))
-    print(color("  prostor config edit     # Edit config file", Colors.DIM))
-    print(color("  prostor config set <key> <value>", Colors.DIM))
-    print(color("  prostor setup           # Run setup wizard", Colors.DIM))
+    print(color("  hermes config edit     # Edit config file", Colors.DIM))
+    print(color("  hermes config set <key> <value>", Colors.DIM))
+    print(color("  hermes setup           # Run setup wizard", Colors.DIM))
     print()
 
 
@@ -6568,12 +6772,12 @@ def edit_config():
         managed_error("edit configuration")
         return
     config_path = get_config_path()
-
+    
     # Ensure config exists
     if not config_path.exists():
         save_config(DEFAULT_CONFIG)
         print(f"Created {config_path}")
-
+    
     # Find editor
     editor = os.getenv('EDITOR') or os.getenv('VISUAL')
 
@@ -6592,12 +6796,12 @@ def edit_config():
             if shutil.which(cmd):
                 editor = cmd
                 break
-
+    
     if not editor:
         print("No editor found. Config file is at:")
         print(f"  {config_path}")
         return
-
+    
     print(f"Opening {config_path} in {editor}...")
     subprocess.run([editor, str(config_path)])
 
@@ -6612,7 +6816,7 @@ def set_config_value(key: str, value: str):
     # source. Distinct from is_managed() above (the package-manager write-lock).
     # Env-shaped keys (API keys / tokens) route to save_env_value below, which has
     # its own managed-env-key guard; this catches the config.yaml keys.
-    from prostor_cli import managed_scope
+    from hermes_cli import managed_scope
 
     if managed_scope.is_key_managed(key):
         managed_dir = managed_scope.get_managed_dir()
@@ -6635,12 +6839,12 @@ def set_config_value(key: str, value: str):
         'SUDO_PASSWORD', 'SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN',
         'GITHUB_TOKEN', 'HONCHO_API_KEY',
     ]
-
+    
     if key.upper() in api_keys or key.upper().endswith(('_API_KEY', '_TOKEN')) or key.upper().startswith('TERMINAL_SSH'):
         save_env_value(key.upper(), value)
         print(f"✓ Set {key} in {get_env_path()}")
         return
-
+    
     # Otherwise it goes to config.yaml
     # Read the raw user config (not merged with defaults) to avoid
     # dumping all default values back to the file
@@ -6652,7 +6856,7 @@ def set_config_value(key: str, value: str):
                 user_config = yaml.safe_load(f) or {}
         except Exception:
             user_config = {}
-
+    
     # Handle nested keys (e.g., "tts.provider") including numeric list
     # indices (e.g., "custom_providers.0.api_key").  Delegates to
     # _set_nested which preserves list-typed nodes; before #17876 the
@@ -6669,19 +6873,37 @@ def set_config_value(key: str, value: str):
         value = float(value)
 
     _set_nested(user_config, key, value)
-
+    # Normalize the api_base → base_url alias at set-time too (issue #8919),
+    # so a fresh `hermes config set model.api_base ...` lands on the canonical
+    # key the runtime resolver actually reads, instead of being silently
+    # ignored. Mirrors the load-time migration in _normalize_root_model_keys.
+    _alias_norm = key.strip().lower()
+    if _alias_norm in ("model.api_base", "api_base"):
+        user_config = _normalize_root_model_keys(user_config)
+        key = "model.base_url"
+        print("  (note: 'api_base' is an alias — saved as model.base_url)")
     # Write only user config back (not the full merged defaults)
-    ensure_prostor_home()
+    ensure_hermes_home()
     from utils import atomic_yaml_write
     atomic_yaml_write(config_path, user_config, sort_keys=False)
-
+    
     # Keep .env in sync for keys that terminal_tool reads directly from env vars.
     # config.yaml is authoritative, but terminal_tool only reads TERMINAL_ENV etc.
     env_var = terminal_config_env_var_for_key(key)
     if env_var and key != "terminal.cwd":
         save_env_value(env_var, _terminal_env_value(value))
 
-    print(f"✓ Set {key} = {value} in {config_path}")
+    # Mask the echoed value when the (possibly nested) key is credential-shaped
+    # — e.g. `hermes config set model.api_key cfut_...` routes to config.yaml
+    # (lowercase, so it misses the .env api_keys list above) and would otherwise
+    # print the raw secret to the terminal.
+    _leaf_key = key.rsplit(".", 1)[-1].lower()
+    if _leaf_key in _SECRET_CONFIG_KEYS and isinstance(value, str) and value:
+        from agent.redact import mask_secret
+        _display_value = mask_secret(value)
+    else:
+        _display_value = value
+    print(f"✓ Set {key} = {_display_value} in {config_path}")
 
 
 # =============================================================================
@@ -6691,100 +6913,100 @@ def set_config_value(key: str, value: str):
 def config_command(args):
     """Handle config subcommands."""
     subcmd = getattr(args, 'config_command', None)
-
+    
     if subcmd is None or subcmd == "show":
         show_config()
-
+    
     elif subcmd == "edit":
         edit_config()
-
+    
     elif subcmd == "set":
         key = getattr(args, 'key', None)
         value = getattr(args, 'value', None)
         if not key or value is None:
-            print("Usage: prostor config set <key> <value>")
+            print("Usage: hermes config set <key> <value>")
             print()
             print("Examples:")
-            print("  prostor config set model anthropic/claude-sonnet-4")
-            print("  prostor config set terminal.backend docker")
-            print("  prostor config set OPENROUTER_API_KEY sk-or-...")
+            print("  hermes config set model anthropic/claude-sonnet-4")
+            print("  hermes config set terminal.backend docker")
+            print("  hermes config set OPENROUTER_API_KEY sk-or-...")
             sys.exit(1)
         set_config_value(key, value)
-
+    
     elif subcmd == "path":
         print(get_config_path())
-
+    
     elif subcmd == "env-path":
         print(get_env_path())
-
+    
     elif subcmd == "migrate":
         print()
         print(color("🔄 Checking configuration for updates...", Colors.CYAN, Colors.BOLD))
         print()
-
+        
         # Check what's missing
         missing_env = get_missing_env_vars(required_only=False)
         missing_config = get_missing_config_fields()
         current_ver, latest_ver = check_config_version()
-
+        
         if not missing_env and not missing_config and current_ver >= latest_ver:
             print(color("✓ Configuration is up to date!", Colors.GREEN))
             print()
             return
-
+        
         # Show what needs to be updated
         if current_ver < latest_ver:
             print(f"  Config version: {current_ver} → {latest_ver}")
-
+        
         if missing_config:
             print(f"\n  {len(missing_config)} new config option(s) will be added with defaults")
-
+        
         required_missing = [v for v in missing_env if v.get("is_required")]
         optional_missing = [
             v for v in missing_env
             if not v.get("is_required") and not v.get("advanced")
         ]
-
+        
         if required_missing:
             print(f"\n  ⚠️  {len(required_missing)} required API key(s) missing:")
             for var in required_missing:
                 print(f"     • {var['name']}")
-
+        
         if optional_missing:
             print(f"\n  ℹ️  {len(optional_missing)} optional API key(s) not configured:")
             for var in optional_missing:
                 tools = var.get("tools", [])
                 tools_str = f" (enables: {', '.join(tools[:2])})" if tools else ""
                 print(f"     • {var['name']}{tools_str}")
-
+        
         print()
-
+        
         # Run migration
         results = migrate_config(interactive=True, quiet=False)
-
+        
         print()
         if results["env_added"] or results["config_added"]:
             print(color("✓ Configuration updated!", Colors.GREEN))
-
+        
         if results["warnings"]:
             print()
             for warning in results["warnings"]:
                 print(color(f"  ⚠️  {warning}", Colors.YELLOW))
-
+        
         print()
-
+    
     elif subcmd == "check":
         # Non-interactive check for what's missing
         print()
         print(color("📋 Configuration Status", Colors.CYAN, Colors.BOLD))
         print()
-
+        
         current_ver, latest_ver = check_config_version()
         if current_ver >= latest_ver:
             print(f"  Config version: {current_ver} ✓")
         else:
             print(color(f"  Config version: {current_ver} → {latest_ver} (update available)", Colors.YELLOW))
-
+        
         print()
         print(color("  Required:", Colors.BOLD))
         for var_name in REQUIRED_ENV_VARS:
@@ -6792,7 +7014,7 @@ def config_command(args):
                 print(f"    ✓ {var_name}")
             else:
                 print(color(f"    ✗ {var_name} (missing)", Colors.RED))
-
+        
         print()
         print(color("  Optional:", Colors.BOLD))
         for var_name, info in OPTIONAL_ENV_VARS.items():
@@ -6802,26 +7024,26 @@ def config_command(args):
                 tools = info.get("tools", [])
                 tools_str = f" → {', '.join(tools[:2])}" if tools else ""
                 print(color(f"    ○ {var_name}{tools_str}", Colors.DIM))
-
+        
         missing_config = get_missing_config_fields()
         if missing_config:
             print()
             print(color(f"  {len(missing_config)} new config option(s) available", Colors.YELLOW))
-            print("    Run 'prostor config migrate' to add them")
-
+            print("    Run 'hermes config migrate' to add them")
+        
         print()
-
+    
     else:
         print(f"Unknown config command: {subcmd}")
         print()
         print("Available commands:")
-        print("  prostor config           Show current configuration")
-        print("  prostor config edit      Open config in editor")
-        print("  prostor config set <key> <value>   Set a config value")
-        print("  prostor config check     Check for missing/outdated config")
-        print("  prostor config migrate   Update config with new options")
-        print("  prostor config path      Show config file path")
-        print("  prostor config env-path  Show .env file path")
+        print("  hermes config           Show current configuration")
+        print("  hermes config edit      Open config in editor")
+        print("  hermes config set <key> <value>   Set a config value")
+        print("  hermes config check     Check for missing/outdated config")
+        print("  hermes config migrate   Update config with new options")
+        print("  hermes config path      Show config file path")
+        print("  hermes config env-path  Show .env file path")
         sys.exit(1)
 
 
@@ -6845,7 +7067,7 @@ def _inject_profile_env_vars() -> None:
     try:
         from providers import list_providers
         for _pp in list_providers():
-            if _pp.auth_type not in {"api_key", }:
+            if _pp.auth_type not in {"api_key",}:
                 continue
             for _var in _pp.env_vars:
                 if _var in OPTIONAL_ENV_VARS:
@@ -6870,7 +7092,7 @@ _inject_profile_env_vars()
 # ── Platform-plugin env var injection ────────────────────────────────────────
 # Bundled platform plugins under ``plugins/platforms/*/plugin.yaml`` declare
 # their required env vars via ``requires_env``.  This mirror of
-# ``_inject_profile_env_vars`` surfaces them in ``prostor config`` UI so users
+# ``_inject_profile_env_vars`` surfaces them in ``hermes config`` UI so users
 # can configure Teams / IRC / Google Chat without the core repo ever needing
 # to know they exist.
 #
@@ -6918,7 +7140,7 @@ def _inject_platform_plugin_env_vars() -> None:
             if not manifest_path.exists():
                 continue
             try:
-                with open(manifest_path, encoding="utf-8") as f:
+                with open(manifest_path, "r", encoding="utf-8") as f:
                     manifest = yaml.safe_load(f) or {}
             except Exception:
                 continue
@@ -6941,7 +7163,7 @@ def _inject_platform_plugin_env_vars() -> None:
                 # is a password field unless explicitly overridden.
                 name_upper = name.upper()
                 is_secret = bool(meta.get("password") or meta.get("secret"))
-                if not is_secret and meta.get("password") is not False:
+                if not is_secret and not meta.get("password") is False:
                     is_secret = any(
                         name_upper.endswith(suf)
                         for suf in ("_TOKEN", "_SECRET", "_KEY", "_PASSWORD", "_JSON")

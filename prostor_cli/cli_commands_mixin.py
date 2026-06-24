@@ -1,7 +1,7 @@
 """Slash-command handlers for the interactive CLI (god-file decomposition Phase 4).
 
 This module hosts the ``_handle_*_command`` slash-command handlers lifted out of
-``cli.py``'s ``ProstorCLI`` class. ``ProstorCLI`` inherits ``CLICommandsMixin`` so
+``cli.py``'s ``HermesCLI`` class. ``HermesCLI`` inherits ``CLICommandsMixin`` so
 every ``self.<handler>`` call resolves unchanged via the MRO — behavior-neutral.
 
 Import discipline (mirrors gateway/slash_commands.py, PR #41886):
@@ -27,13 +27,12 @@ from rich import box as rich_box
 from rich.markup import escape as _escape
 from rich.panel import Panel
 
-from prostor_cli.browser_connect import (
+from hermes_constants import display_hermes_home, is_termux as _is_termux_environment
+from hermes_cli.browser_connect import (
     DEFAULT_BROWSER_CDP_URL,
     is_browser_debug_ready,
     manual_chrome_debug_command,
 )
-from prostor_constants import display_prostor_home
-from prostor_constants import is_termux as _is_termux_environment
 
 
 class CLICommandsMixin:
@@ -41,7 +40,7 @@ class CLICommandsMixin:
 
     All methods use only ``self`` state plus the imports above and per-method
     lazy ``from cli import ...`` lines, so they compose cleanly onto
-    ``ProstorCLI`` via the MRO.
+    ``HermesCLI`` via the MRO.
     """
 
     def _handle_rollback_command(self, command: str):
@@ -62,7 +61,7 @@ class CLICommandsMixin:
         mgr = self.agent._checkpoint_mgr
         if not mgr.enabled:
             print("  Checkpoints are not enabled.")
-            print("  Enable with: prostor --checkpoints")
+            print("  Enable with: hermes --checkpoints")
             print("  Or in config.yaml: checkpoints: { enabled: true }")
             return
 
@@ -139,7 +138,7 @@ class CLICommandsMixin:
             print(f"  ❌ {result['error']}")
 
     def _handle_snapshot_command(self, command: str):
-        """Handle /snapshot — lightweight state snapshots for Prostor config/state.
+        """Handle /snapshot — lightweight state snapshots for Hermes config/state.
 
         Syntax:
             /snapshot                  — list recent snapshots
@@ -147,13 +146,11 @@ class CLICommandsMixin:
             /snapshot restore <id>     — restore state from snapshot
             /snapshot prune [N]        — prune to N snapshots (default 20)
         """
-        from prostor_cli.backup import (
-            create_quick_snapshot,
-            list_quick_snapshots,
-            prune_quick_snapshots,
-            restore_quick_snapshot,
+        from hermes_cli.backup import (
+            create_quick_snapshot, list_quick_snapshots,
+            restore_quick_snapshot, prune_quick_snapshots,
         )
-        from prostor_constants import display_prostor_home
+        from hermes_constants import display_hermes_home
 
         parts = command.split()
         subcmd = parts[1].lower() if len(parts) > 1 else "list"
@@ -164,9 +161,9 @@ class CLICommandsMixin:
                 print("  No state snapshots yet.")
                 print("  Create one: /snapshot create [label]")
                 return
-            print(f"  State snapshots ({display_prostor_home()}/state-snapshots/):\n")
+            print(f"  State snapshots ({display_hermes_home()}/state-snapshots/):\n")
             print(f"  {'#':>3}  {'ID':<35} {'Files':>5} {'Size':>10} {'Label'}")
-            print(f"  {'─' * 3}  {'─' * 35} {'─' * 5} {'─' * 10} {'─' * 20}")
+            print(f"  {'─'*3}  {'─'*35} {'─'*5} {'─'*10} {'─'*20}")
             for i, s in enumerate(snaps, 1):
                 size = s.get("total_size", 0)
                 if size < 1024:
@@ -313,7 +310,7 @@ class CLICommandsMixin:
             )
             return
 
-        from prostor_cli.clipboard import has_clipboard_image
+        from hermes_cli.clipboard import has_clipboard_image
         if has_clipboard_image():
             if self._try_attach_clipboard_image():
                 n = len(self._attached_images)
@@ -364,15 +361,7 @@ class CLICommandsMixin:
 
     def _handle_image_command(self, cmd_original: str):
         """Handle /image <path> — attach a local image file for the next prompt."""
-        from cli import (
-            _DIM,
-            _IMAGE_EXTENSIONS,
-            _RST,
-            _cprint,
-            _resolve_attachment_path,
-            _split_path_input,
-            _termux_example_image_path,
-        )
+        from cli import _DIM, _IMAGE_EXTENSIONS, _RST, _cprint, _resolve_attachment_path, _split_path_input, _termux_example_image_path
         raw_args = (cmd_original.split(None, 1)[1].strip() if " " in cmd_original else "")
         if not raw_args:
             hint = _termux_example_image_path() if _is_termux_environment() else "/path/to/image.png"
@@ -393,7 +382,7 @@ class CLICommandsMixin:
         if _remainder:
             _cprint(f"  {_DIM}Now type your prompt (or use --image in single-query mode): {_remainder}{_RST}")
         elif _is_termux_environment():
-            _cprint(f"  {_DIM}Tip: type your next message, or run prostor chat -q --image {_termux_example_image_path(image_path.name)} \"What do you see?\"{_RST}")
+            _cprint(f"  {_DIM}Tip: type your next message, or run hermes chat -q --image {_termux_example_image_path(image_path.name)} \"What do you see?\"{_RST}")
 
     def _handle_tools_command(self, cmd: str):
         """Handle /tools [list|disable|enable] slash commands.
@@ -404,13 +393,12 @@ class CLICommandsMixin:
         the session so the new tool set takes effect cleanly (no
         prompt-cache breakage mid-conversation).
         """
+        from cli import _ACCENT, _DIM, _RST, _cprint
         import shlex
         from argparse import Namespace
         from contextlib import redirect_stdout
         from io import StringIO
-
-        from cli import _ACCENT, _DIM, _RST, _cprint
-        from prostor_cli.tools_config import tools_disable_enable_command
+        from hermes_cli.tools_config import tools_disable_enable_command
 
         def _run_capture(ns: Namespace) -> None:
             """Run tools_disable_enable_command, routing its ANSI-colored
@@ -426,7 +414,7 @@ class CLICommandsMixin:
                 tools_disable_enable_command(ns)
                 return
 
-            # Buffer reports isatty()=True so color() in prostor_cli/colors.py
+            # Buffer reports isatty()=True so color() in hermes_cli/colors.py
             # still emits ANSI escapes. StringIO.isatty() is False, which
             # would otherwise strip all colors before we re-render them.
             class _TTYBuf(StringIO):
@@ -470,18 +458,18 @@ class CLICommandsMixin:
         _run_capture(Namespace(tools_action=subcommand, names=names, platform="cli"))
 
         # Reset session so the new tool config is picked up from a clean state
-        from prostor_cli.config import load_config
-        from prostor_cli.tools_config import _get_platform_tools
+        from hermes_cli.tools_config import _get_platform_tools
+        from hermes_cli.config import load_config
         self.enabled_toolsets = _get_platform_tools(load_config(), "cli")
         self.new_session()
         _cprint(f"{_DIM}Session reset. New tool configuration is active.{_RST}")
 
     def _handle_profile_command(self):
         """Display active profile name and home directory."""
-        from prostor_cli.profiles import get_active_profile_name
-        from prostor_constants import display_prostor_home
+        from hermes_constants import display_hermes_home
+        from hermes_cli.profiles import get_active_profile_name
 
-        display = display_prostor_home()
+        display = display_hermes_home()
         profile_name = get_active_profile_name()
 
         print()
@@ -507,7 +495,7 @@ class CLICommandsMixin:
             False to signal CLI exit, True to keep going.
         """
         from cli import _cprint
-        from prostor_state import format_session_db_unavailable
+        from hermes_state import format_session_db_unavailable
 
         parts = cmd_original.split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
@@ -520,7 +508,7 @@ class CLICommandsMixin:
 
         # Validate platform name + home channel via the live gateway config.
         try:
-            from gateway.config import Platform, load_gateway_config
+            from gateway.config import load_gateway_config, Platform
         except Exception as exc:  # pragma: no cover — gateway pkg always shipped
             _cprint(f"  Could not load gateway config: {exc}")
             return True
@@ -545,7 +533,7 @@ class CLICommandsMixin:
         home = gw_config.get_home_channel(platform)
         if not home or not home.chat_id:
             _cprint(f"  No home channel configured for {platform_name}.")
-            _cprint("  Set one with /sethome on the destination chat first.")
+            _cprint(f"  Set one with /sethome on the destination chat first.")
             return True
 
         # Refuse mid-turn: an in-flight agent run would race with the
@@ -557,7 +545,7 @@ class CLICommandsMixin:
         # Make sure we have a SessionDB handle.
         if not self._session_db:
             try:
-                from prostor_state import SessionDB
+                from hermes_state import SessionDB
                 self._session_db = SessionDB()
             except Exception:
                 pass
@@ -600,7 +588,7 @@ class CLICommandsMixin:
             return True
 
         _cprint(f"  Queued handoff of '{session_title}' → {platform_name} (home: {home.name}).")
-        _cprint("  Waiting for the gateway to pick it up...")
+        _cprint(f"  Waiting for the gateway to pick it up...")
 
         # Poll-block on terminal state. Tick every 0.5s; bail at ~60s.
         import time as _time
@@ -636,7 +624,7 @@ class CLICommandsMixin:
             self._session_db.fail_handoff(self.session_id, "timed out waiting for gateway")
         except Exception:
             pass
-        _cprint("  Timed out waiting for the gateway. Is `prostor gateway` running?")
+        _cprint("  Timed out waiting for the gateway. Is `hermes gateway` running?")
         _cprint("  Your CLI session is intact.")
         return True
 
@@ -670,7 +658,7 @@ class CLICommandsMixin:
                 # #34584.
                 self._pending_resume_sessions = self._list_recent_sessions(limit=10)
                 return
-            _cprint("  Tip:   Use /history or `prostor sessions list` to find sessions.")
+            _cprint("  Tip:   Use /history or `hermes sessions list` to find sessions.")
             return
 
         # Any explicit /resume <target> supersedes a previously-armed bare
@@ -678,7 +666,7 @@ class CLICommandsMixin:
         self._pending_resume_sessions = None
 
         if not self._session_db:
-            from prostor_state import format_session_db_unavailable
+            from hermes_state import format_session_db_unavailable
             _cprint(f"  {format_session_db_unavailable()}")
             return
 
@@ -693,14 +681,14 @@ class CLICommandsMixin:
             selected = sessions[index - 1]
             target_id = selected["id"]
         else:
-            from prostor_cli.main import _resolve_session_by_name_or_id
+            from hermes_cli.main import _resolve_session_by_name_or_id
             resolved = _resolve_session_by_name_or_id(target)
             target_id = resolved or target
 
         session_meta = self._session_db.get_session(target_id)
         if not session_meta:
             _cprint(f"  Session not found: {target}")
-            _cprint("  Use /history or `prostor sessions list` to see available sessions.")
+            _cprint("  Use /history or `hermes sessions list` to see available sessions.")
             return
 
         # If the target is the empty head of a compression chain, redirect to
@@ -813,7 +801,7 @@ class CLICommandsMixin:
         # Bare /sessions or /sessions list — show recent sessions inline.
         if not arg or sub in {"list", "ls", "browse"}:
             if not self._session_db:
-                from prostor_state import format_session_db_unavailable
+                from hermes_state import format_session_db_unavailable
                 _cprint(f"  {format_session_db_unavailable()}")
                 return
             if not self._show_recent_sessions(reason="sessions"):
@@ -836,7 +824,7 @@ class CLICommandsMixin:
             return
 
         if not self._session_db:
-            from prostor_state import format_session_db_unavailable
+            from hermes_state import format_session_db_unavailable
             _cprint(f"  {format_session_db_unavailable()}")
             return
 
@@ -877,7 +865,7 @@ class CLICommandsMixin:
         try:
             self._session_db.create_session(
                 session_id=new_session_id,
-                source=os.environ.get("PROSTOR_SESSION_SOURCE", "cli"),
+                source=os.environ.get("HERMES_SESSION_SOURCE", "cli"),
                 model=self.model,
                 model_config={
                     "max_iterations": self.max_turns,
@@ -959,61 +947,15 @@ class CLICommandsMixin:
         _cprint(f"  Original session: {parent_session_id}")
         _cprint(f"  Branch session:   {new_session_id}")
 
-    def _handle_gquota_command(self, cmd_original: str) -> None:
-        """Show Google Gemini Code Assist quota usage for the current OAuth account."""
-        try:
-            from agent.google_code_assist import CodeAssistError, retrieve_user_quota
-            from agent.google_oauth import GoogleOAuthError, get_valid_access_token, load_credentials
-        except ImportError as exc:
-            self._console_print(f"  [red]Gemini modules unavailable: {exc}[/]")
-            return
-
-        try:
-            access_token = get_valid_access_token()
-        except GoogleOAuthError as exc:
-            self._console_print(f"  [yellow]{exc}[/]")
-            self._console_print("  Run [bold]/model[/] and pick 'Google Gemini (OAuth)' to sign in.")
-            return
-
-        creds = load_credentials()
-        project_id = (creds.project_id if creds else "") or ""
-
-        try:
-            buckets = retrieve_user_quota(access_token, project_id=project_id)
-        except CodeAssistError as exc:
-            self._console_print(f"  [red]Quota lookup failed:[/] {exc}")
-            return
-
-        if not buckets:
-            self._console_print("  [dim]No quota buckets reported (account may be on legacy/unmetered tier).[/]")
-            return
-
-        # Sort for stable display, group by model
-        buckets.sort(key=lambda b: (b.model_id, b.token_type))
-        self._console_print()
-        self._console_print(f"  [bold]Gemini Code Assist quota[/]  (project: {project_id or '(auto / free-tier)'})")
-        self._console_print()
-        for b in buckets:
-            pct = max(0.0, min(1.0, b.remaining_fraction))
-            width = 20
-            filled = int(round(pct * width))
-            bar = "▓" * filled + "░" * (width - filled)
-            pct_str = f"{int(pct * 100):3d}%"
-            header = b.model_id
-            if b.token_type:
-                header += f" [{b.token_type}]"
-            self._console_print(f"    {header:40s}  {bar}  {pct_str}")
-        self._console_print()
-
     def _handle_personality_command(self, cmd: str):
         """Handle the /personality command to set predefined personalities."""
         from cli import save_config_value
         parts = cmd.split(maxsplit=1)
-
+        
         if len(parts) > 1:
             # Set personality
             personality_name = parts[1].strip().lower()
-
+            
             if personality_name in {"none", "default", "neutral"}:
                 self.system_prompt = ""
                 self.agent = None  # Force re-init
@@ -1051,11 +993,68 @@ class CLICommandsMixin:
             print("  Usage: /personality <name>")
             print()
 
+    def _handle_pet_command(self, cmd: str):
+        """Toggle, browse, or adopt a petdex mascot.
+
+        ``/pet`` / ``/pet toggle`` → flip ``display.pet.enabled`` on/off
+        ``/pet list``            → browse the petdex gallery
+        ``/pet scale <n>``       → resize the pet everywhere (e.g. 0.5)
+        ``/pet <slug>``          → adopt (install if needed) + make active
+        ``/pet off``             → disable (alias for toggle-off)
+
+        Writes ``display.pet.*`` to config; the CLI/TUI/desktop pet surfaces
+        pick the change up on their next poll, so the pet appears shortly.
+        """
+        from agent.pet import store
+        from agent.pet.manifest import ManifestError
+        from hermes_cli.pets import _set_active, _set_enabled, print_pet_gallery, set_pet_scale, toggle_pet_display
+
+        parts = cmd.split(maxsplit=1)
+        arg = parts[1].strip() if len(parts) > 1 else ""
+        low = arg.lower()
+
+        if not arg or low == "toggle":
+            enabled, name, err = toggle_pet_display()
+            if err:
+                print(f"(x_x) {err}")
+                return
+            if enabled:
+                print(f"(^_^)b {name} is out — it'll pop in shortly.")
+            else:
+                print(f"(-_-)zzZ {name} put away." if name else "(-_-)zzZ Pet put away.")
+            return
+
+        if low in ("list", "gallery", "browse", "all"):
+            print_pet_gallery()
+            return
+
+        if low == "scale" or low.startswith("scale "):
+            value = arg[len("scale"):].strip()
+            if not value:
+                print("(o_o) Usage: /pet scale <factor>  (e.g. /pet scale 0.5)")
+                return
+            scale, err = set_pet_scale(value)
+            print(f"(x_x) {err}" if err else f"(^_^) Pet scale → {scale:g}.")
+            return
+
+        if low == "off":
+            _set_enabled(False)
+            print("(-_-)zzZ Pet put away.")
+            return
+
+        print(f"(o_o) Fetching '{arg}' from petdex…")
+        try:
+            pet = store.install_pet(arg)
+        except (store.PetStoreError, ManifestError) as exc:
+            print(f"(x_x) Couldn't adopt '{arg}': {exc}")
+            return
+        _set_active(arg)
+        print(f"(^_^)b {pet.display_name} is out — it'll pop in shortly.")
+
     def _handle_cron_command(self, cmd: str):
         """Handle the /cron command to manage scheduled tasks."""
-        import shlex
-
         from cli import get_job
+        import shlex
         from tools.cronjob_tools import cronjob as cronjob_tool
 
         def _cron_api(**kwargs):
@@ -1313,7 +1312,7 @@ class CLICommandsMixin:
             tokens = (cmd or "").split()[1:]
         args = " ".join(tokens)
         try:
-            from prostor_cli.suggestions_cmd import handle_suggestions_command
+            from hermes_cli.suggestions_cmd import handle_suggestions_command
             output = handle_suggestions_command(args)
         except Exception as e:
             output = f"Suggestions command failed: {e}"
@@ -1337,7 +1336,7 @@ class CLICommandsMixin:
             tokens = (cmd or "").split()[1:]
         args = " ".join(shlex.quote(t) for t in tokens)
         try:
-            from prostor_cli.blueprint_cmd import handle_blueprint_command
+            from hermes_cli.blueprint_cmd import handle_blueprint_command
             result = handle_blueprint_command(args)
         except Exception as e:
             self._console_print(f"Cron blueprint command failed: {e}")
@@ -1352,7 +1351,7 @@ class CLICommandsMixin:
     def _handle_curator_command(self, cmd: str):
         """Handle /curator slash command.
 
-        Delegates to prostor_cli.curator so the CLI and the `prostor curator`
+        Delegates to hermes_cli.curator so the CLI and the `hermes curator`
         subcommand share the same handler set.
         """
         import shlex
@@ -1362,7 +1361,7 @@ class CLICommandsMixin:
             tokens = ["status"]
 
         try:
-            from prostor_cli.curator import cli_main
+            from hermes_cli.curator import cli_main
             cli_main(tokens)
         except SystemExit:
             # argparse calls sys.exit() on --help or errors; swallow so we
@@ -1378,7 +1377,7 @@ class CLICommandsMixin:
         including the leading slash; we strip it and hand the remainder
         to ``kanban.run_slash`` which returns a single formatted string.
         """
-        from prostor_cli.kanban import run_slash
+        from hermes_cli.kanban import run_slash
 
         rest = cmd.strip()
         if rest.startswith("/"):
@@ -1393,7 +1392,7 @@ class CLICommandsMixin:
             print(output)
 
     def _handle_skills_command(self, cmd: str):
-        """Handle /skills slash command — delegates to prostor_cli.skills_hub."""
+        """Handle /skills slash command — delegates to hermes_cli.skills_hub."""
         from cli import ChatConsole
         # Intercept write-approval review subcommands first (pending/approve/
         # reject/diff/mode); everything else goes to the skills hub.
@@ -1401,7 +1400,7 @@ class CLICommandsMixin:
         args = parts[1:] if len(parts) > 1 else []
         if args and args[0].lower() in {"pending", "approve", "apply", "reject",
                                         "deny", "drop", "diff", "approval", "mode"}:
-            from prostor_cli.write_approval_commands import handle_pending_subcommand
+            from hermes_cli.write_approval_commands import handle_pending_subcommand
             from tools import write_approval as wa
             out = handle_pending_subcommand(
                 wa.SKILLS, args,
@@ -1410,16 +1409,53 @@ class CLICommandsMixin:
             if out is not None:
                 print(out)
                 return
-        from prostor_cli.skills_hub import handle_skills_slash
+        from hermes_cli.skills_hub import handle_skills_slash
         handle_skills_slash(cmd, ChatConsole())
+
+    def _handle_learn_command(self, cmd: str):
+        """Handle /learn — distill a reusable skill from anything the user describes.
+
+        Open-ended: the argument is free text describing the source(s) — a
+        directory, a URL, "what we just did", pasted notes. We build a
+        standards-guided prompt and inject it onto the agent's input queue; the
+        live agent gathers the material with the tools it already has and
+        authors the skill via ``skill_manage``. No engine, no model-tool
+        footprint, works on any terminal backend.
+        """
+        from agent.learn_prompt import build_learn_prompt
+
+        # Everything after the command word is the open-ended request.
+        parts = cmd.strip().split(None, 1)
+        user_request = parts[1].strip() if len(parts) > 1 else ""
+
+        msg = build_learn_prompt(user_request)
+        if user_request:
+            print("\n⚡ Learning a skill from what you described...")
+        else:
+            print("\n⚡ Learning a skill from this conversation...")
+        if hasattr(self, "_pending_input"):
+            self._pending_input.put(msg)
+        else:  # pragma: no cover - defensive (no live input loop)
+            print("  /learn needs an active chat session to run.")
 
     def _handle_memory_command(self, cmd: str):
         """Handle /memory slash command — pending review + approval-gate toggle."""
-        from prostor_cli.write_approval_commands import handle_pending_subcommand
+        from hermes_cli.write_approval_commands import handle_pending_subcommand
         from tools import write_approval as wa
         parts = cmd.strip().split()
         args = parts[1:] if len(parts) > 1 else []
         store = getattr(self.agent, "_memory_store", None) if getattr(self, "agent", None) else None
+        if store is None:
+            # No live agent store (e.g. /memory approve invoked from the Desktop
+            # GUI, or any context without an active agent). Apply against a freshly
+            # loaded on-disk store, mirroring the gateway path
+            # (gateway/slash_commands.py): it persists to the same MEMORY/USER.md
+            # and creates MEMORY.md on the first approved write. Without this the
+            # shared handler returns "memory store unavailable". See #46783.
+            # load_on_disk_store() honors the user's configured char limits, so
+            # an approval here enforces the same caps as the live agent would.
+            from tools.memory_tool import load_on_disk_store
+            store = load_on_disk_store()
         out = handle_pending_subcommand(
             wa.MEMORY, args,
             memory_store=store,
@@ -1442,17 +1478,7 @@ class CLICommandsMixin:
         When it completes, prints the result to the CLI without modifying
         the active session's conversation history.
         """
-        from cli import (
-            AIAgent,
-            ChatConsole,
-            _accent_hex,
-            _cprint,
-            _maybe_remap_for_light_mode,
-            _render_final_assistant_content,
-            set_approval_callback,
-            set_secret_capture_callback,
-            set_sudo_password_callback,
-        )
+        from cli import AIAgent, ChatConsole, _accent_hex, _cprint, _maybe_remap_for_light_mode, _render_final_assistant_content, set_approval_callback, set_secret_capture_callback, set_sudo_password_callback
         parts = cmd.strip().split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
             _cprint("  Usage: /background <prompt>")
@@ -1546,13 +1572,13 @@ class CLICommandsMixin:
                 ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
                 if response:
                     try:
-                        from prostor_cli.skin_engine import get_active_skin
+                        from hermes_cli.skin_engine import get_active_skin
                         _skin = get_active_skin()
-                        label = _skin.get_branding("response_label", "⚕ Prostor")
+                        label = _skin.get_branding("response_label", "⚕ Hermes")
                         _resp_color = _maybe_remap_for_light_mode(_skin.get_color("response_border", "#CD7F32"))
                         _resp_text = _maybe_remap_for_light_mode(_skin.get_color("banner_text", "#FFF8DC"))
                     except Exception:
-                        label = "⚕ Prostor"
+                        label = "⚕ Hermes"
                         _resp_color = "#CD7F32"
                         _resp_text = "#FFF8DC"
 
@@ -1603,13 +1629,13 @@ class CLICommandsMixin:
     def _handle_bundles_command(self, cmd: str) -> None:
         """In-session ``/bundles`` — show installed skill bundles.
 
-        Mirrors ``prostor bundles list`` but renders inside the running
+        Mirrors ``hermes bundles list`` but renders inside the running
         CLI so users can discover what's available without dropping out
         of their session. Bundles are loaded via ``/<bundle-name>``.
         """
-        from cli import _BOLD, _DIM, _RST, ChatConsole, _accent_hex, _cprint
+        from cli import ChatConsole, _BOLD, _DIM, _RST, _accent_hex, _cprint
         try:
-            from agent.skill_bundles import _bundles_dir, list_bundles
+            from agent.skill_bundles import list_bundles, _bundles_dir
         except Exception as exc:
             _cprint(f"\033[1;31mBundle subsystem unavailable: {exc}{_RST}")
             return
@@ -1618,7 +1644,7 @@ class CLICommandsMixin:
         if not bundles:
             _cprint("  No skill bundles installed.")
             _cprint(
-                f"  {_DIM}Create one with: prostor bundles create "
+                f"  {_DIM}Create one with: hermes bundles create "
                 f"<name> --skill <s1> --skill <s2>{_RST}"
             )
             _cprint(f"  {_DIM}Directory: {_bundles_dir()}{_RST}")
@@ -1636,7 +1662,7 @@ class CLICommandsMixin:
                 ChatConsole().print(f"        [dim]· {_escape(s)}[/]")
         _cprint(
             f"\n  {_DIM}Invoke a bundle with /<slug>. "
-            f"Manage with `prostor bundles`.{_RST}"
+            f"Manage with `hermes bundles`.{_RST}"
         )
 
     def _handle_browser_command(self, cmd: str):
@@ -1720,7 +1746,7 @@ class CLICommandsMixin:
                     sys_name = _plat.system()
                     chrome_cmd = manual_chrome_debug_command(_port, sys_name)
                     if chrome_cmd:
-                        print("     Launch a Chromium-family browser manually:")
+                        print(f"     Launch a Chromium-family browser manually:")
                         print(f"     {chrome_cmd}")
                     else:
                         print("     No supported Chromium-family browser executable found in this environment")
@@ -1755,7 +1781,7 @@ class CLICommandsMixin:
                     "Your browser_navigate, browser_snapshot, browser_click, and other browser tools now "
                     "control that CDP browser. The command itself is a signal that using browser tools for "
                     "their current browser-related request is expected; do not wait for separate permission "
-                    "just because CDP is connected. This is typically a Prostor-managed isolated debug "
+                    "just because CDP is connected. This is typically a Hermes-managed isolated debug "
                     "profile, not the user's main everyday browser. It is still user-visible and may contain "
                     "pages, logged-in sessions, or cookies in that debug profile, so avoid destructive actions, "
                     "closing tabs, or navigating away unless the user's task calls for it.]"
@@ -1765,7 +1791,7 @@ class CLICommandsMixin:
             if current:
                 os.environ.pop("BROWSER_CDP_URL", None)
                 try:
-                    from tools.browser_tool import _stop_cdp_supervisor, cleanup_all_browsers
+                    from tools.browser_tool import cleanup_all_browsers, _stop_cdp_supervisor
                     _stop_cdp_supervisor("default")
                     cleanup_all_browsers()
                 except Exception:
@@ -1844,7 +1870,7 @@ class CLICommandsMixin:
             print()
 
     def _handle_goal_command(self, cmd: str) -> None:
-        """Dispatch /goal subcommands: set / status / pause / resume / clear."""
+        """Dispatch /goal subcommands: set / draft / show / status / pause / resume / clear."""
         from cli import _DIM, _RST, _cprint
         parts = (cmd or "").strip().split(None, 1)
         arg = parts[1].strip() if len(parts) > 1 else ""
@@ -1859,6 +1885,25 @@ class CLICommandsMixin:
         # Bare /goal or /goal status → show current state
         if not arg or lower == "status":
             _cprint(f"  {mgr.status_line()}")
+            return
+
+        # /goal show → print the active goal's completion contract
+        if lower == "show":
+            _cprint(f"  {mgr.status_line()}")
+            _cprint(f"  {mgr.render_contract()}")
+            return
+
+        # /goal draft <objective> → expand plain text into a structured
+        # completion contract (outcome / verification / constraints /
+        # boundaries / stop_when) and set it as the active goal. Adapted
+        # from Codex's "let the agent draft the goal" guidance: the contract
+        # makes "done" evidence-based instead of a loose vibe check.
+        if lower.startswith("draft"):
+            objective = arg[len("draft"):].strip()
+            if not objective:
+                _cprint("  Usage: /goal draft <objective in plain language>")
+                return
+            self._handle_goal_draft(objective)
             return
 
         if lower == "pause":
@@ -1890,21 +1935,111 @@ class CLICommandsMixin:
                 _cprint(f"  {_DIM}No active goal.{_RST}")
             return
 
-        # Otherwise treat the arg as the goal text.
+        # /goal wait <pid> [reason] — park the loop on a background process so
+        # it stops re-poking the agent every turn while it waits on CI / a
+        # build / a long job. The barrier auto-clears when the PID exits.
+        if lower == "wait" or lower.startswith("wait "):
+            wait_arg = arg[len("wait"):].strip()
+            if not wait_arg:
+                _cprint("  Usage: /goal wait <pid> [reason]")
+                return
+            wtokens = wait_arg.split(None, 1)
+            try:
+                pid = int(wtokens[0])
+            except ValueError:
+                _cprint("  /goal wait: <pid> must be an integer process id.")
+                return
+            reason = wtokens[1].strip() if len(wtokens) > 1 else ""
+            try:
+                mgr.wait_on(pid, reason=reason)
+            except (RuntimeError, ValueError) as exc:
+                _cprint(f"  /goal wait: {exc}")
+                return
+            rtxt = f" ({reason})" if reason else ""
+            _cprint(f"  ⏳ Goal parked on pid {pid}{rtxt}. Loop pauses until it exits.")
+            return
+
+        # /goal unwait — drop the wait barrier and resume normal looping.
+        if lower == "unwait":
+            if mgr.stop_waiting():
+                _cprint("  ▶ Wait barrier cleared — goal loop resumes.")
+            else:
+                _cprint(f"  {_DIM}No wait barrier set.{_RST}")
+            return
+
+        # Otherwise treat the arg as the goal text. Inline `field: value`
+        # lines (verify:, constraints:, boundaries:, stop when:) are parsed
+        # into a completion contract; the remaining prose is the headline.
+        # A plain free-form goal with no such lines behaves exactly as before.
+        from hermes_cli.goals import parse_contract
+
+        headline, contract = parse_contract(arg)
+        goal_text = headline or arg
         try:
-            state = mgr.set(arg)
+            state = mgr.set(goal_text, contract=contract if not contract.is_empty() else None)
         except ValueError as exc:
             _cprint(f"  Invalid goal: {exc}")
             return
 
         _cprint(f"  ⊙ Goal set ({state.max_turns}-turn budget): {state.goal}")
+        if state.has_contract():
+            _cprint(f"  {_DIM}Completion contract:{_RST}")
+            for line in state.contract.render_block().splitlines():
+                _cprint(f"    {line}")
         _cprint(
-            f"  {_DIM}After each turn, a judge model will check if the goal is done. "
-            f"Prostor keeps working until it is, you pause/clear it, or the budget is "
-            f"exhausted. Use /goal status, /goal pause, /goal resume, /goal clear.{_RST}"
+            f"  {_DIM}After each turn, a judge model checks if the goal is done"
+            f"{' against the contract above' if state.has_contract() else ''}. "
+            f"Hermes keeps working until it is, you pause/clear it, or the budget is "
+            f"exhausted. Use /goal status, /goal show, /goal pause, /goal resume, /goal clear.{_RST}"
         )
         # Kick the loop off immediately so the user doesn't have to send a
         # separate message after setting the goal.
+        try:
+            self._pending_input.put(state.goal)
+        except Exception:
+            pass
+
+    def _handle_goal_draft(self, objective: str) -> None:
+        """Draft a structured completion contract from a plain objective and
+        set it as the active goal. Falls back to a bare goal if the aux model
+        can't produce a contract."""
+        from cli import _DIM, _RST, _cprint
+        from hermes_cli.goals import draft_contract
+
+        mgr = self._get_goal_manager()
+        if mgr is None:
+            _cprint(f"  {_DIM}Goals unavailable (no active session).{_RST}")
+            return
+
+        _cprint(f"  {_DIM}Drafting completion contract…{_RST}")
+        try:
+            contract = draft_contract(objective)
+        except Exception as exc:
+            import logging as _logging
+            _logging.getLogger(__name__).debug("goal draft failed: %s", exc)
+            contract = None
+
+        try:
+            state = mgr.set(objective, contract=contract)
+        except ValueError as exc:
+            _cprint(f"  Invalid goal: {exc}")
+            return
+
+        _cprint(f"  ⊙ Goal set ({state.max_turns}-turn budget): {state.goal}")
+        if state.has_contract():
+            _cprint(f"  {_DIM}Drafted completion contract:{_RST}")
+            for line in state.contract.render_block().splitlines():
+                _cprint(f"    {line}")
+            _cprint(
+                f"  {_DIM}Tighten any field by re-setting the goal with inline "
+                f"lines (e.g. verify: <command>), then /goal resume. "
+                f"Use /goal show to review.{_RST}"
+            )
+        else:
+            _cprint(
+                f"  {_DIM}Couldn't draft a contract (aux model unavailable) — "
+                f"running as a free-form goal. The per-turn judge still applies.{_RST}"
+            )
         try:
             self._pending_input.put(state.goal)
         except Exception:
@@ -1990,7 +2125,7 @@ class CLICommandsMixin:
         """Handle /skin [name] — show or change the display skin."""
         from cli import _ACCENT, save_config_value
         try:
-            from prostor_cli.skin_engine import get_active_skin_name, list_skins, set_active_skin
+            from hermes_cli.skin_engine import list_skins, set_active_skin, get_active_skin_name
         except ImportError:
             print("Skin engine not available.")
             return
@@ -2007,7 +2142,7 @@ class CLICommandsMixin:
                 source = f" ({s['source']})" if s["source"] == "user" else ""
                 print(f"   {marker} {s['name']}{source} — {s['description']}")
             print("\n  Usage: /skin <name>")
-            print(f"  Custom skins: drop a YAML file in {display_prostor_home()}/skins/\n")
+            print(f"  Custom skins: drop a YAML file in {display_hermes_home()}/skins/\n")
             return
 
         new_skin = parts[1].strip().lower()
@@ -2029,6 +2164,79 @@ class CLICommandsMixin:
         if self._apply_tui_skin_style():
             print("  Prompt + TUI colors updated.")
 
+    def _compose_in_editor(self, initial_text: str = "") -> str:
+        """Open ``$VISUAL``/``$EDITOR`` on a temp markdown file and return the
+        saved buffer (comment lines starting with ``#!`` stripped).
+
+        Returns the composed prompt text, or an empty string if the editor
+        could not be launched or the buffer was left empty. Factored out so
+        the read-back/strip logic is unit-testable without spawning an editor.
+        """
+        import os
+        import shlex
+        import subprocess
+        import tempfile
+
+        editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+        if not editor:
+            editor = "notepad" if os.name == "nt" else "nano"
+
+        header = (
+            "#! Compose your prompt below. Lines starting with '#!' are ignored.\n"
+            "#! Save and quit to send; leave empty to cancel.\n\n"
+        )
+        fd, path = tempfile.mkstemp(suffix=".md", prefix="hermes_prompt_")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(header)
+                if initial_text:
+                    fh.write(initial_text)
+            try:
+                subprocess.call([*shlex.split(editor), path])
+            except Exception:
+                # Fall back to a bare invocation (editor value may not be a
+                # simple argv-splittable string on some platforms).
+                subprocess.call(f"{editor} {shlex.quote(path)}", shell=True)
+            with open(path, "r", encoding="utf-8") as fh:
+                raw = fh.read()
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+        lines = [ln for ln in raw.splitlines() if not ln.startswith("#!")]
+        return "\n".join(lines).strip()
+
+    def _handle_prompt_compose_command(self, cmd_original: str) -> None:
+        """Handle /prompt — compose the next prompt in $EDITOR and send it.
+
+        Opens the user's editor on a temporary markdown file (optionally
+        seeded with text passed after the command), then queues the saved
+        buffer as the next agent turn via the one-shot ``_pending_agent_seed``
+        the interactive loop already consumes (same path as /blueprint).
+        """
+        from cli import _DIM, _RST, _cprint
+
+        initial = ""
+        parts = (cmd_original or "").strip().split(None, 1)
+        if len(parts) > 1:
+            initial = parts[1]
+
+        try:
+            composed = self._compose_in_editor(initial)
+        except Exception as exc:
+            _cprint(f"  {_DIM}(>_<) Could not open editor: {exc}{_RST}")
+            return
+
+        if not composed:
+            _cprint(f"  {_DIM}(._.) Empty prompt — nothing sent.{_RST}")
+            return
+
+        # One-shot seed: the interactive loop runs this as the next agent turn
+        # right after process_command() returns (see cli.py main loop).
+        self._pending_agent_seed = composed
+
     def _handle_footer_command(self, cmd_original: str) -> None:
         """Toggle or inspect ``display.runtime_footer.enabled`` from the CLI.
 
@@ -2038,8 +2246,8 @@ class CLICommandsMixin:
             /footer status    → show current state
         """
         from cli import _cprint, save_config_value
-        from prostor_cli.colors import Colors as _Colors
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
+        from hermes_cli.colors import Colors as _Colors
 
         # Parse arg
         arg = ""
@@ -2082,6 +2290,56 @@ class CLICommandsMixin:
         else:
             _cprint("  Failed to save runtime_footer setting to config.yaml")
 
+    def _handle_timestamps_command(self, cmd_original: str) -> None:
+        """Toggle or inspect ``display.timestamps`` from the CLI.
+
+        When on, submitted and streamed message labels carry an ``[HH:MM]``
+        suffix and ``/history`` prefixes each turn with its time (for turns
+        that carry a stored timestamp).
+
+        Usage:
+            /timestamps           → toggle
+            /timestamps on|off    → explicit
+            /timestamps status    → show current state
+        """
+        from cli import _cprint, save_config_value
+        from hermes_cli.colors import Colors as _Colors
+
+        arg = ""
+        try:
+            parts = (cmd_original or "").strip().split(None, 1)
+            if len(parts) > 1:
+                arg = parts[1].strip().lower()
+        except Exception:
+            arg = ""
+
+        current = bool(getattr(self, "show_timestamps", False))
+
+        if arg in {"status", "?"}:
+            state = "ON" if current else "OFF"
+            _cprint(f"  {_Colors.BOLD}Message timestamps:{_Colors.RESET} {state}")
+            return
+
+        if arg in {"on", "enable", "true", "1"}:
+            new_state = True
+        elif arg in {"off", "disable", "false", "0"}:
+            new_state = False
+        elif arg == "":
+            new_state = not current
+        else:
+            _cprint("  Usage: /timestamps [on|off|status]")
+            return
+
+        self.show_timestamps = new_state
+        if save_config_value("display.timestamps", new_state):
+            state = (
+                f"{_Colors.GREEN}ON{_Colors.RESET}" if new_state
+                else f"{_Colors.DIM}OFF{_Colors.RESET}"
+            )
+            _cprint(f"  Message timestamps: {state}")
+        else:
+            _cprint("  Failed to save timestamps setting to config.yaml")
+
     def _handle_reasoning_command(self, cmd: str):
         """Handle /reasoning — manage effort level and display toggle.
 
@@ -2090,6 +2348,8 @@ class CLICommandsMixin:
             /reasoning <level>      Set reasoning effort (none, minimal, low, medium, high, xhigh)
             /reasoning show|on      Show model thinking/reasoning in output
             /reasoning hide|off     Hide model thinking/reasoning from output
+            /reasoning full         Show complete thinking (no 10-line clamp)
+            /reasoning clamp        Collapse long thinking to the first 10 lines
         """
         from cli import _ACCENT, _DIM, _RST, _cprint, _parse_reasoning_config, save_config_value
         parts = cmd.strip().split(maxsplit=1)
@@ -2104,9 +2364,10 @@ class CLICommandsMixin:
             else:
                 level = rc.get("effort", "medium")
             display_state = "on ✓" if self.show_reasoning else "off"
+            full_state = "full" if getattr(self, "reasoning_full", False) else "clamped to 10 lines"
             _cprint(f"  {_ACCENT}Reasoning effort:  {level}{_RST}")
-            _cprint(f"  {_ACCENT}Reasoning display: {display_state}{_RST}")
-            _cprint(f"  {_DIM}Usage: /reasoning <none|minimal|low|medium|high|xhigh|show|hide>{_RST}")
+            _cprint(f"  {_ACCENT}Reasoning display: {display_state} ({full_state}){_RST}")
+            _cprint(f"  {_DIM}Usage: /reasoning <none|minimal|low|medium|high|xhigh|show|hide|full|clamp>{_RST}")
             return
 
         arg = parts[1].strip().lower()
@@ -2128,6 +2389,21 @@ class CLICommandsMixin:
             _cprint(f"  {_ACCENT}✓ Reasoning display: OFF (saved){_RST}")
             return
 
+        # Full / clamped recap toggle
+        if arg in {"full", "all"}:
+            self.reasoning_full = True
+            save_config_value("display.reasoning_full", True)
+            _cprint(f"  {_ACCENT}✓ Reasoning display: FULL (saved){_RST}")
+            _cprint(f"  {_DIM}  The post-response recap box will print complete thinking.{_RST}")
+            if not self.show_reasoning:
+                _cprint(f"  {_DIM}  Note: reasoning display is OFF — run /reasoning show to see it.{_RST}")
+            return
+        if arg in {"clamp", "collapse", "short"}:
+            self.reasoning_full = False
+            save_config_value("display.reasoning_full", False)
+            _cprint(f"  {_ACCENT}✓ Reasoning display: CLAMPED to 10 lines (saved){_RST}")
+            return
+
         # Effort level change
         parsed = _parse_reasoning_config(arg)
         if parsed is None:
@@ -2145,7 +2421,7 @@ class CLICommandsMixin:
             _cprint(f"  {_ACCENT}✓ Reasoning effort set to '{arg}' (session only){_RST}")
 
     def _handle_busy_command(self, cmd: str):
-        """Handle /busy — control what Enter does while Prostor is working.
+        """Handle /busy — control what Enter does while Hermes is working.
 
         Usage:
             /busy               Show current busy input mode
@@ -2177,11 +2453,11 @@ class CLICommandsMixin:
         self.busy_input_mode = arg
         if save_config_value("display.busy_input_mode", arg):
             if arg == "queue":
-                behavior = "Enter will queue follow-up input while Prostor is busy."
+                behavior = "Enter will queue follow-up input while Hermes is busy."
             elif arg == "steer":
                 behavior = "Enter will steer your message into the current run (after the next tool call)."
             else:
-                behavior = "Enter will interrupt the current run while Prostor is busy."
+                behavior = "Enter will interrupt the current run while Hermes is busy."
             _cprint(f"  {_ACCENT}✓ Busy input mode set to '{arg}' (saved to config){_RST}")
             _cprint(f"  {_DIM}{behavior}{_RST}")
         else:
@@ -2196,7 +2472,7 @@ class CLICommandsMixin:
 
         # Determine the branding for the current model
         try:
-            from prostor_cli.models import _is_anthropic_fast_model
+            from hermes_cli.models import _is_anthropic_fast_model
             agent = getattr(self, "agent", None)
             model = getattr(agent, "model", None) or getattr(self, "model", None)
             feature_name = "Anthropic Fast Mode" if _is_anthropic_fast_model(model) else "Priority Processing"
@@ -2233,18 +2509,17 @@ class CLICommandsMixin:
 
     def _handle_debug_command(self):
         """Handle /debug — upload debug report + logs and print paste URLs."""
+        from hermes_cli.debug import run_debug_share
         from types import SimpleNamespace
-
-        from prostor_cli.debug import run_debug_share
 
         args = SimpleNamespace(lines=200, expire=7, local=False)
         run_debug_share(args)
 
     def _handle_update_command(self) -> bool:
-        """Handle /update — update Prostor Agent to the latest version.
+        """Handle /update — update Hermes Agent to the latest version.
 
         In the classic CLI this exits the session and relaunches as
-        ``prostor update`` so the user sees update output directly and gets
+        ``hermes update`` so the user sees update output directly and gets
         the new version on next launch.
 
         Returns ``True`` when the update was confirmed (caller should trigger
@@ -2252,10 +2527,10 @@ class CLICommandsMixin:
         prompt_toolkit cleans up terminal modes).  Returns ``False`` / falsy
         when cancelled.
         """
-        from prostor_cli.config import format_managed_message, is_managed
+        from hermes_cli.config import is_managed, format_managed_message
 
         if is_managed():
-            print(f"  ✗ {format_managed_message('update Prostor Agent')}")
+            print(f"  ✗ {format_managed_message('update Hermes Agent')}")
             return False
 
         # Use the prompt_toolkit-native modal so the confirmation panel
@@ -2263,12 +2538,12 @@ class CLICommandsMixin:
         # with the prompt_toolkit event loop (same pattern as
         # _confirm_destructive_slash).
         choices = [
-            ("once", "Update Now", "exit the current session and update Prostor Agent"),
+            ("once", "Update Now", "exit the current session and update Hermes Agent"),
             ("cancel", "Cancel", "keep the current session"),
         ]
         raw = self._prompt_text_input_modal(
-            title="⚕  Update Prostor Agent",
-            detail="This will exit the current session and run `prostor update`.",
+            title="⚕  Update Hermes Agent",
+            detail="This will exit the current session and run `hermes update`.",
             choices=choices,
         )
         if raw is None:

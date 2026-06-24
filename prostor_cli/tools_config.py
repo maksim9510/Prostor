@@ -1,11 +1,11 @@
 """
-Unified tool configuration for Prostor Agent.
+Unified tool configuration for Hermes Agent.
 
-`prostor tools` and `prostor setup tools` both enter this module.
+`hermes tools` and `hermes setup tools` both enter this module.
 Select a platform → toggle toolsets on/off → for newly enabled tools
 that need API keys, run through provider-aware configuration.
 
-Saves per-platform tool configuration to ~/.prostor/config.yaml under
+Saves per-platform tool configuration to ~/.hermes/config.yaml under
 the `platform_toolsets` key.
 """
 
@@ -16,20 +16,19 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional, Set
 
-from prostor_cli.colors import Colors, color
-from prostor_cli.config import (
+
+from hermes_cli.config import (
     cfg_get,
-    get_env_value,
-    load_config,
-    save_config,
-    save_env_value,
+    load_config, save_config, get_env_value, save_env_value,
 )
-from prostor_cli.nous_account import format_nous_portal_entitlement_message
-from prostor_cli.nous_subscription import (
+from hermes_cli.colors import Colors, color
+from hermes_cli.nous_subscription import (
     apply_nous_managed_defaults,
     get_nous_subscription_features,
 )
+from hermes_cli.nous_account import format_nous_portal_entitlement_message
 from tools.tool_backend_helpers import fal_key_is_configured
 from utils import base_url_hostname, is_truthy_value
 
@@ -40,19 +39,11 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 # ─── UI Helpers (shared with setup.py) ────────────────────────────────────────
 
-from prostor_cli.cli_output import (  # noqa: E402 — late import block
+from hermes_cli.cli_output import (  # noqa: E402 — late import block
     print_error as _print_error,
-)
-from prostor_cli.cli_output import (
     print_info as _print_info,
-)
-from prostor_cli.cli_output import (
     print_success as _print_success,
-)
-from prostor_cli.cli_output import (
     print_warning as _print_warning,
-)
-from prostor_cli.cli_output import (
     prompt as _prompt,
 )
 
@@ -62,32 +53,32 @@ from prostor_cli.cli_output import (
 # Each entry: (toolset_name, label, description)
 # These map to keys in toolsets.py TOOLSETS dict.
 CONFIGURABLE_TOOLSETS = [
-    ("web", "🔍 Web Search & Scraping", "web_search, web_extract"),
-    ("browser", "🌐 Browser Automation", "navigate, click, type, scroll"),
-    ("terminal", "💻 Terminal & Processes", "terminal, process"),
-    ("file", "📁 File Operations", "read, write, patch, search"),
-    ("code_execution", "⚡ Code Execution", "execute_code"),
-    ("vision", "👁️  Vision / Image Analysis", "vision_analyze"),
-    ("video", "🎬 Video Analysis", "video_analyze (requires video-capable model)"),
-    ("image_gen", "🎨 Image Generation", "image_generate"),
-    ("video_gen", "🎬 Video Generation", "video_generate (text-to-video + image-to-video)"),
-    ("x_search", "🐦 X (Twitter) Search", "x_search (requires xAI OAuth or XAI_API_KEY)"),
-    ("moa", "🧠 Mixture of Agents", "mixture_of_agents"),
-    ("tts", "🔊 Text-to-Speech", "text_to_speech"),
-    ("skills", "📚 Skills", "list, view, manage"),
-    ("todo", "📋 Task Planning", "todo"),
-    ("memory", "💾 Memory", "persistent memory across sessions"),
-    ("context_engine", "🧩 Context Engine", "runtime tools from the active context engine"),
-    ("session_search", "🔎 Session Search", "search past conversations"),
-    ("clarify", "❓ Clarifying Questions", "clarify"),
-    ("delegation", "👥 Task Delegation", "delegate_task"),
-    ("cronjob", "⏰ Cron Jobs", "create/list/update/pause/resume/run, with optional attached skills"),
-    ("homeassistant", "🏠 Home Assistant", "smart home device control"),
-    ("spotify", "🎵 Spotify", "playback, search, playlists, library"),
-    ("discord", "💬 Discord (read/participate)", "fetch messages, search members, create thread"),
-    ("discord_admin", "🛡️  Discord Server Admin", "list channels/roles, pin, assign roles"),
-    ("yuanbao", "🤖 Yuanbao", "group info, member queries, DM"),
-    ("computer_use", "🖱️  Computer Use (macOS)", "background desktop control via cua-driver"),
+    ("web",             "🔍 Web Search & Scraping",    "web_search, web_extract"),
+    ("browser",         "🌐 Browser Automation",       "navigate, click, type, scroll"),
+    ("terminal",        "💻 Terminal & Processes",      "terminal, process"),
+    ("file",            "📁 File Operations",           "read, write, patch, search"),
+    ("code_execution",  "⚡ Code Execution",            "execute_code"),
+    ("vision",          "👁️  Vision / Image Analysis",  "vision_analyze"),
+    ("video",           "🎬 Video Analysis",            "video_analyze (requires video-capable model)"),
+    ("image_gen",       "🎨 Image Generation",          "image_generate"),
+    ("video_gen",       "🎬 Video Generation",          "video_generate (text-to-video + image-to-video)"),
+    ("x_search",        "🐦 X (Twitter) Search",        "x_search (requires xAI OAuth or XAI_API_KEY)"),
+    ("moa",             "🧠 Mixture of Agents",         "mixture_of_agents"),
+    ("tts",             "🔊 Text-to-Speech",            "text_to_speech"),
+    ("skills",          "📚 Skills",                    "list, view, manage"),
+    ("todo",            "📋 Task Planning",             "todo"),
+    ("memory",          "💾 Memory",                    "persistent memory across sessions"),
+    ("context_engine",  "🧩 Context Engine",            "runtime tools from the active context engine"),
+    ("session_search",  "🔎 Session Search",            "search past conversations"),
+    ("clarify",         "❓ Clarifying Questions",      "clarify"),
+    ("delegation",      "👥 Task Delegation",           "delegate_task"),
+    ("cronjob",         "⏰ Cron Jobs",                 "create/list/update/pause/resume/run, with optional attached skills"),
+    ("homeassistant",    "🏠 Home Assistant",           "smart home device control"),
+    ("spotify",          "🎵 Spotify",                  "playback, search, playlists, library"),
+    ("discord",         "💬 Discord (read/participate)", "fetch messages, search members, create thread"),
+    ("discord_admin",   "🛡️  Discord Server Admin",    "list channels/roles, pin, assign roles"),
+    ("yuanbao",          "🤖 Yuanbao",                  "group info, member queries, DM"),
+    ("computer_use",     "🖱️  Computer Use (macOS/Windows/Linux)", "background desktop control via cua-driver"),
 ]
 
 
@@ -107,17 +98,17 @@ def gui_toolset_label(label: str) -> str:
 
 
 # Toolsets that are OFF by default for new installs.
-# They're still in _PROSTOR_CORE_TOOLS (available at runtime if enabled),
+# They're still in _HERMES_CORE_TOOLS (available at runtime if enabled),
 # but the setup checklist won't pre-select them for first-time users.
 #
 # Video gen is off by default — it's a niche, paid, slow feature. Users
-# who want it opt in via `prostor tools` → Video Generation, which walks
+# who want it opt in via `hermes tools` → Video Generation, which walks
 # them through provider + model selection.
 #
 # X search is off by default for users without xAI credentials, but
 # auto-enables when SuperGrok OAuth tokens are stored OR XAI_API_KEY is
 # set — mirroring the HASS_TOKEN → homeassistant auto-enable below. The
-# `prostor tools` → X (Twitter) Search setup walks users through credential
+# `hermes tools` → X (Twitter) Search setup walks users through credential
 # setup. The tool's check_fn means the schema still won't appear to the
 # model if the credential later goes missing or expires.
 _DEFAULT_OFF_TOOLSETS = {"moa", "homeassistant", "spotify", "discord", "discord_admin", "video", "video_gen", "x_search"}
@@ -133,7 +124,7 @@ def _xai_credentials_present() -> bool:
     gates schema registration if creds later expire or get revoked.
     """
     try:
-        from prostor_cli.auth import _read_xai_oauth_tokens
+        from hermes_cli.auth import _read_xai_oauth_tokens
 
         _read_xai_oauth_tokens()
         return True
@@ -148,15 +139,14 @@ def _xai_credentials_present() -> bool:
         pass
     return bool(str(os.environ.get("XAI_API_KEY") or "").strip())
 
-
-# Platform-scoped toolsets: only appear in the `prostor tools` checklist for
+# Platform-scoped toolsets: only appear in the `hermes tools` checklist for
 # these platforms, and only resolve/save for these platforms.  A toolset
 # absent from this map is available on every platform (current behaviour).
 #
 # Use this for tools whose APIs only make sense on one platform (Discord
 # server admin, Slack workspace admin, etc.).  Keeps every other platform's
 # checklist from filling up with irrelevant toggles.
-_TOOLSET_PLATFORM_RESTRICTIONS: dict[str, set[str]] = {
+_TOOLSET_PLATFORM_RESTRICTIONS: Dict[str, Set[str]] = {
     "discord": {"discord"},
     "discord_admin": {"discord"},
 }
@@ -179,13 +169,13 @@ def _get_effective_configurable_toolsets():
     already appears in ``CONFIGURABLE_TOOLSETS`` is skipped — bundled
     plugins (e.g. ``plugins/spotify``) share their toolset key with the
     built-in entry, and we want the built-in label/description to win.
-    Without the dedupe, ``prostor tools`` → "reconfigure existing" would
+    Without the dedupe, ``hermes tools`` → "reconfigure existing" would
     list the same toolset twice.
     """
     result = list(CONFIGURABLE_TOOLSETS)
     seen = {ts_key for ts_key, _, _ in result}
     try:
-        from prostor_cli.plugins import discover_plugins, get_plugin_toolsets
+        from hermes_cli.plugins import discover_plugins, get_plugin_toolsets
         discover_plugins()  # idempotent — ensures plugins are loaded
         for entry in get_plugin_toolsets():
             if entry[0] in seen:
@@ -200,15 +190,15 @@ def _get_effective_configurable_toolsets():
 def _get_plugin_toolset_keys() -> set:
     """Return the set of toolset keys provided by plugins."""
     try:
-        from prostor_cli.plugins import discover_plugins, get_plugin_toolsets
+        from hermes_cli.plugins import discover_plugins, get_plugin_toolsets
         discover_plugins()  # idempotent — ensures plugins are loaded
         return {ts_key for ts_key, _, _ in get_plugin_toolsets()}
     except Exception:
         return set()
 
 
-def _checklist_toolset_keys(platform: str) -> set[str]:
-    """Return the toolset keys the ``prostor tools`` checklist actually offers
+def _checklist_toolset_keys(platform: str) -> Set[str]:
+    """Return the toolset keys the ``hermes tools`` checklist actually offers
     for ``platform``.
 
     This mirrors exactly what ``_prompt_toolset_checklist`` renders:
@@ -220,7 +210,7 @@ def _checklist_toolset_keys(platform: str) -> set[str]:
     time — ``kanban`` and other check_fn-gated toolsets, recovered platform
     composites, MCP server names — are NOT in this set because the checklist
     never shows them. Use this to scope the added/removed diff the UI prints,
-    so ``prostor tools`` never claims to add or remove a toolset the user was
+    so ``hermes tools`` never claims to add or remove a toolset the user was
     never given a checkbox for. The underlying config is unaffected — those
     entries are preserved by ``_save_platform_tools`` regardless.
     """
@@ -230,11 +220,10 @@ def _checklist_toolset_keys(platform: str) -> set[str]:
         if _toolset_allowed_for_platform(ts_key, platform)
     }
 
-
 # Platform display config — derived from the canonical registry so every
 # module shares the same data.  Kept as dict-of-dicts for backward
 # compatibility with existing ``PLATFORMS[key]["label"]`` access patterns.
-from prostor_cli.platforms import PLATFORMS as _PLATFORMS_REGISTRY
+from hermes_cli.platforms import PLATFORMS as _PLATFORMS_REGISTRY
 
 PLATFORMS = {
     k: {"label": info.label, "default_toolset": info.default_toolset}
@@ -421,7 +410,7 @@ TOOL_CATEGORIES = {
         "name": "X (Twitter) Search",
         "setup_title": "Select xAI Credential Source",
         "setup_note": (
-            "Prostor routes X searches through xAI's built-in x_search "
+            "Hermes routes X searches through xAI's built-in x_search "
             "Responses tool. Both credential sources hit the same "
             "https://api.x.ai/v1/responses endpoint — pick whichever you "
             "already have. SuperGrok OAuth is preferred when both are set "
@@ -527,21 +516,24 @@ TOOL_CATEGORIES = {
         ],
     },
     "computer_use": {
-        "name": "Computer Use (macOS)",
+        "name": "Computer Use (macOS/Windows/Linux)",
         "icon": "🖱️",
-        "platform_gate": "darwin",
+        # Runtime backends ship for macOS, Windows, and Linux (X11 today,
+        # Wayland via XWayland). Per-host gaps surface via `computer-use doctor`.
+        "platform_gate": ["darwin", "win32", "linux"],
         "providers": [
             {
                 "name": "cua-driver (background)",
                 "badge": "★ recommended · free · local",
                 "tag": (
-                    "macOS background computer-use via SkyLight SPIs — does "
-                    "NOT steal your cursor or focus. Works with any model."
+                    "Background computer-use via cua-driver — does NOT steal "
+                    "your cursor or focus. Works with any model."
                 ),
                 "env_vars": [
                     # cua-driver reads HOME/TMPDIR from the process env, no
-                    # extra keys required. PROSTOR_CUA_DRIVER_VERSION is an
-                    # optional pin for reproducibility across macOS updates.
+                    # extra keys required. Set HERMES_CUA_DRIVER_CMD to use a
+                    # specific binary (e.g. a local build); there is no
+                    # version-pin env var.
                 ],
                 "post_setup": "cua_driver",
             },
@@ -555,8 +547,8 @@ TOOL_CATEGORIES = {
                 "name": "Langfuse Cloud",
                 "tag": "Hosted Langfuse (cloud.langfuse.com)",
                 "env_vars": [
-                    {"key": "PROSTOR_LANGFUSE_PUBLIC_KEY", "prompt": "Langfuse public key (pk-lf-...)", "url": "https://cloud.langfuse.com"},
-                    {"key": "PROSTOR_LANGFUSE_SECRET_KEY", "prompt": "Langfuse secret key (sk-lf-...)", "url": "https://cloud.langfuse.com"},
+                    {"key": "HERMES_LANGFUSE_PUBLIC_KEY", "prompt": "Langfuse public key (pk-lf-...)", "url": "https://cloud.langfuse.com"},
+                    {"key": "HERMES_LANGFUSE_SECRET_KEY", "prompt": "Langfuse secret key (sk-lf-...)", "url": "https://cloud.langfuse.com"},
                 ],
                 "post_setup": "langfuse",
             },
@@ -564,9 +556,9 @@ TOOL_CATEGORIES = {
                 "name": "Langfuse Self-Hosted",
                 "tag": "Self-hosted Langfuse instance",
                 "env_vars": [
-                    {"key": "PROSTOR_LANGFUSE_PUBLIC_KEY", "prompt": "Langfuse public key (pk-lf-...)"},
-                    {"key": "PROSTOR_LANGFUSE_SECRET_KEY", "prompt": "Langfuse secret key (sk-lf-...)"},
-                    {"key": "PROSTOR_LANGFUSE_BASE_URL", "prompt": "Langfuse server URL (e.g. http://localhost:3000)", "default": "http://localhost:3000"},
+                    {"key": "HERMES_LANGFUSE_PUBLIC_KEY", "prompt": "Langfuse public key (pk-lf-...)"},
+                    {"key": "HERMES_LANGFUSE_SECRET_KEY", "prompt": "Langfuse secret key (sk-lf-...)"},
+                    {"key": "HERMES_LANGFUSE_BASE_URL", "prompt": "Langfuse server URL (e.g. http://localhost:3000)", "default": "http://localhost:3000"},
                 ],
                 "post_setup": "langfuse",
             },
@@ -577,8 +569,8 @@ TOOL_CATEGORIES = {
 # Simple env-var requirements for toolsets NOT in TOOL_CATEGORIES.
 # Used as a fallback for tools like vision/moa that just need an API key.
 TOOLSET_ENV_REQUIREMENTS = {
-    "vision":     [("OPENROUTER_API_KEY", "https://openrouter.ai/keys")],
-    "moa":        [("OPENROUTER_API_KEY", "https://openrouter.ai/keys")],
+    "vision":     [("OPENROUTER_API_KEY",   "https://openrouter.ai/keys")],
+    "moa":        [("OPENROUTER_API_KEY",   "https://openrouter.ai/keys")],
 }
 
 
@@ -587,11 +579,27 @@ TOOLSET_ENV_REQUIREMENTS = {
 
 def _cua_driver_cmd() -> str:
     """Return the cua-driver executable name/path, honoring non-empty overrides."""
-    return os.environ.get("PROSTOR_CUA_DRIVER_CMD", "").strip() or "cua-driver"
+    return os.environ.get("HERMES_CUA_DRIVER_CMD", "").strip() or "cua-driver"
+
+
+def _cua_driver_env() -> dict:
+    """cua-driver child env with the Hermes telemetry policy applied.
+
+    Delegates to ``cua_backend.cua_driver_child_env`` (telemetry disabled by
+    default; user opt-in via ``computer_use.cua_telemetry``). Falls back to the
+    current environment if the helper can't be imported, so install/status
+    never break on a telemetry-helper error.
+    """
+    try:
+        from tools.computer_use.cua_backend import cua_driver_child_env
+
+        return cua_driver_child_env()
+    except Exception:
+        return dict(os.environ)
 
 
 def _pip_install(
-    args: list[str],
+    args: List[str],
     *,
     timeout: int = 300,
     capture_output: bool = True,
@@ -658,52 +666,32 @@ def _pip_install(
     )
 
 
-def _check_cua_driver_asset_for_arch() -> bool:
-    """Check whether the latest CUA release ships an asset for this architecture.
 
-    Returns True if the asset likely exists (or if we cannot determine it).
-    Returns False and prints a warning when the asset is confirmed missing,
-    so callers can skip the install attempt and avoid a raw 404.
-    """
-    import platform as _plat
-    import urllib.request
-
-    machine = _plat.machine()  # "x86_64" or "arm64"
-    if machine == "arm64":
-        # arm64 (Apple Silicon) assets are always published.
-        return True
-
-    # x86_64 / Intel — probe the latest release for an architecture-specific
-    # asset before falling through to the upstream installer.
-    api_url = (
-        "https://api.github.com/repos/trycua/cua/releases/latest"
-    )
-    try:
-        req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github+json"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            release = _json.loads(resp.read().decode())
-        tag = release.get("tag_name", "")
-        assets = release.get("assets", [])
-        arch_names = {"x86_64", "amd64"}
-        has_asset = any(
-            any(a in a_info.get("name", "").lower() for a in arch_names)
-            for a_info in assets
-        )
-        if not has_asset:
-            _print_warning(
-                f"    Latest CUA release ({tag}) has no Intel (x86_64) asset."
-            )
-            _print_info(
-                "    CUA Driver currently only ships Apple Silicon builds."
-            )
-            _print_info(
-                "    See: https://github.com/trycua/cua/issues/1493"
-            )
-            return False
-    except Exception:
-        # Network / API failure — proceed and let the installer handle it.
-        pass
-    return True
+# The asset-probe that lived here used to hit `/releases/latest` on
+# trycua/cua and inspect the release's asset list before piping the
+# installer to bash. It was broken in two places:
+#
+#   1. cua-driver-rs releases are marked **prerelease** on every cut,
+#      and GitHub's `/releases/latest` endpoint explicitly skips
+#      prereleases. On the live trycua/cua repo today, `/releases/latest`
+#      returns the Python `cua-agent v0.8.3` package (zero binary
+#      assets) instead of `cua-driver-rs-v0.6.0` (19 binary assets).
+#      The probe then reported "no asset for this arch" and skipped the
+#      install on every non-arm64 host — Linux x86_64, Windows, macOS
+#      Intel, Linux arm64 — even when the upstream installer would have
+#      succeeded.
+#   2. Even with the right endpoint, we'd be duplicating tag-resolution
+#      logic the upstream installer already does correctly via
+#      `CUA_DRIVER_RS_BAKED_VERSION` (auto-baked by CD on every release,
+#      with an API fallback). Drift between our probe and theirs is a
+#      maintenance hazard.
+#
+# Resolution: trust the upstream installer. For fresh installs, run
+# install.sh directly — it errors clean if the target arch has no
+# asset. For the upgrade path, `cua_driver_update_check()` (which calls
+# `cua-driver check-update --json`) gives us the canonical update
+# answer from the binary itself — same tag-resolution as the installer,
+# no Python-side duplication.
 
 
 def install_cua_driver(upgrade: bool = False) -> bool:
@@ -716,36 +704,45 @@ def install_cua_driver(upgrade: bool = False) -> bool:
       installed, install otherwise. Used by the toolset enable flow where
       we don't want to surprise the user with a network fetch.
     * ``upgrade=True`` — always re-run the installer (or call ``cua-driver
-      update`` if the binary supports it). Used by ``prostor update`` and
-      by ``prostor computer-use install --upgrade``.
+      update`` if the binary supports it). Used by ``hermes update`` and
+      by ``hermes computer-use install --upgrade``.
 
     Returns True iff cua-driver is installed (or successfully refreshed)
-    when the function returns. macOS-only — silently returns False on
-    other platforms.
+    when the function returns. Supported on macOS, Windows, and Linux
+    (Linux is alpha). Silently returns False on unsupported platforms.
     """
     import platform as _plat
     import shutil
     import subprocess
 
-    if _plat.system() != "Darwin":
+    system = _plat.system()
+    if system not in ("Darwin", "Windows", "Linux"):
         if upgrade:
-            # Silent on non-macOS — `prostor update` calls this for every
-            # user; only macOS users with cua-driver care.
+            # Silent on unsupported platforms — `hermes update` calls this
+            # for every user; only macOS/Windows/Linux users care.
             return False
-        _print_warning("    Computer Use (cua-driver) is macOS-only; skipping.")
+        _print_warning("    Computer Use (cua-driver) is unsupported on this platform; skipping.")
         return False
+
+    is_windows = system == "Windows"
+    is_linux = system == "Linux"
+
+    # The Windows installer (install.ps1) is fetched via PowerShell's `irm`,
+    # so it needs PowerShell rather than curl. macOS/Linux use curl | bash.
+    fetch_tool = "powershell" if is_windows else "curl"
 
     driver_cmd = _cua_driver_cmd()
     binary = shutil.which(driver_cmd)
 
     # Not installed → fresh install path (only when caller asked for it).
     if not binary and not upgrade:
-        if not shutil.which("curl"):
-            _print_warning("    curl not found — install manually:")
+        if not shutil.which(fetch_tool):
+            _print_warning(f"    {fetch_tool} not found — install manually:")
             _print_info("      https://github.com/trycua/cua/blob/main/libs/cua-driver/README.md")
             return False
-        if not _check_cua_driver_asset_for_arch():
-            return False
+        # Pre-install asset probe deleted — see comment near the top of
+        # tools_config.py for why. install.sh has CUA_DRIVER_RS_BAKED_VERSION
+        # baked in by CD and errors cleanly on missing-arch assets.
         return _run_cua_driver_installer(label="Installing")
 
     # Already installed and caller didn't ask to upgrade → just confirm.
@@ -753,30 +750,55 @@ def install_cua_driver(upgrade: bool = False) -> bool:
         try:
             version = subprocess.run(
                 [driver_cmd, "--version"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=5, env=_cua_driver_env(),
             ).stdout.strip()
             _print_success(f"    {driver_cmd} already installed: {version or 'unknown version'}")
         except Exception:
             _print_success(f"    {driver_cmd} already installed.")
-        _print_info("    Grant macOS permissions if not done yet:")
-        _print_info("      System Settings > Privacy & Security > Accessibility")
-        _print_info("      System Settings > Privacy & Security > Screen Recording")
+        if is_windows:
+            _print_info("    cua-driver may spawn a UIAccess worker (cua-driver-uia.exe);")
+            _print_info("    Windows/SmartScreen may prompt the first time it runs.")
+        elif is_linux:
+            _print_warning("    Linux support is alpha.")
+        else:
+            _print_info("    Grant macOS permissions if not done yet:")
+            _print_info("      System Settings > Privacy & Security > Accessibility")
+            _print_info("      System Settings > Privacy & Security > Screen Recording")
         return True
 
     # upgrade=True path — refresh to the latest upstream release.
-    if not shutil.which("curl"):
-        _print_warning("    curl not found — cannot refresh cua-driver.")
+    if not shutil.which(fetch_tool):
+        _print_warning(f"    {fetch_tool} not found — cannot refresh cua-driver.")
         return bool(binary)
 
-    if not _check_cua_driver_asset_for_arch():
-        return bool(binary)
+    # Pre-install asset probe deleted (see top-of-file comment). The
+    # `cua_driver_update_check()` call further down asks the installed
+    # cua-driver binary itself whether an update exists — same
+    # tag-resolution as the installer, no duplication.
+
+    # Skip the (network) re-install when the driver itself reports it's already
+    # on the latest release. Best-effort: an older driver (no check-update
+    # verb) or an offline check returns None, in which case we fall through and
+    # re-run the installer as before.
+    if binary:
+        try:
+            from tools.computer_use.cua_backend import cua_driver_update_check
+            _state = cua_driver_update_check()
+            if _state is not None and not _state.get("update_available"):
+                _print_success(
+                    f"    {driver_cmd} is already on the latest release "
+                    f"({_state.get('current_version') or 'unknown'})."
+                )
+                return True
+        except Exception:
+            pass
 
     if binary:
         # Show before/after version when we have a baseline. Best-effort.
         try:
             before = subprocess.run(
                 [driver_cmd, "--version"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=5, env=_cua_driver_env(),
             ).stdout.strip()
         except Exception:
             before = ""
@@ -788,7 +810,7 @@ def install_cua_driver(upgrade: bool = False) -> bool:
         try:
             after = subprocess.run(
                 [driver_cmd, "--version"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=5, env=_cua_driver_env(),
             ).stdout.strip()
             if after and after != before:
                 _print_success(f"    {driver_cmd} upgraded: {before} → {after}")
@@ -800,36 +822,70 @@ def install_cua_driver(upgrade: bool = False) -> bool:
 
 
 def _run_cua_driver_installer(label: str = "Installing", verbose: bool = True) -> bool:
-    """Run the upstream cua-driver install.sh. Returns True on success.
+    """Run the upstream cua-driver installer for this platform.
 
-    The script is idempotent: it always downloads the latest release, so
-    re-running it on an already-installed system performs an upgrade.
+    The scripts are idempotent: they always download the latest release, so
+    re-running on an already-installed system performs an upgrade.
+
+    * macOS / Linux → ``curl -fsSL …/install.sh | /bin/bash``.
+    * Windows       → ``powershell -NoProfile -ExecutionPolicy Bypass -Command
+      "irm …/install.ps1 | iex"``.
     """
+    import platform as _plat
     import shutil
     import subprocess
 
-    install_cmd = (
-        "/bin/bash -c \"$(curl -fsSL "
-        "https://raw.githubusercontent.com/trycua/cua/main/"
-        "libs/cua-driver/scripts/install.sh)\""
-    )
+    system = _plat.system()
+    is_windows = system == "Windows"
+    is_linux = system == "Linux"
+
+    if is_windows:
+        # Mirror the one-liner printed by cua_driver_install_hint().
+        ps_oneliner = (
+            "irm https://raw.githubusercontent.com/trycua/cua/main/"
+            "libs/cua-driver/scripts/install.ps1 | iex"
+        )
+        install_cmd = [
+            "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+            "-Command", ps_oneliner,
+        ]
+        use_shell = False
+        manual_hint = (
+            'powershell -NoProfile -ExecutionPolicy Bypass -Command '
+            f'"{ps_oneliner}"'
+        )
+    else:
+        install_cmd = (
+            "/bin/bash -c \"$(curl -fsSL "
+            "https://raw.githubusercontent.com/trycua/cua/main/"
+            "libs/cua-driver/scripts/install.sh)\""
+        )
+        use_shell = True
+        manual_hint = install_cmd
+
     if verbose:
-        _print_info(f"    {label} cua-driver (macOS background computer-use)...")
+        _print_info(f"    {label} cua-driver (background computer-use)...")
     else:
         _print_info(f"    {label} cua-driver...")
     driver_cmd = _cua_driver_cmd()
     try:
-        result = subprocess.run(install_cmd, shell=True, timeout=300)
+        result = subprocess.run(install_cmd, shell=use_shell, timeout=300, env=_cua_driver_env())
         if result.returncode == 0 and shutil.which(driver_cmd):
             if verbose:
                 _print_success(f"    {driver_cmd} installed.")
-                _print_info("    IMPORTANT — grant macOS permissions now:")
-                _print_info("      System Settings > Privacy & Security > Accessibility")
-                _print_info("      System Settings > Privacy & Security > Screen Recording")
-                _print_info("    Both must allow the terminal / Prostor process.")
+                if is_windows:
+                    _print_info("    cua-driver may spawn a UIAccess worker (cua-driver-uia.exe);")
+                    _print_info("    Windows/SmartScreen may prompt the first time it runs.")
+                elif is_linux:
+                    _print_warning("    Linux support is alpha.")
+                else:
+                    _print_info("    IMPORTANT — grant macOS permissions now:")
+                    _print_info("      System Settings > Privacy & Security > Accessibility")
+                    _print_info("      System Settings > Privacy & Security > Screen Recording")
+                    _print_info("    Both must allow the terminal / Hermes process.")
             return True
         _print_warning(f"    cua-driver {label.lower()} did not complete. Re-run manually:")
-        _print_info(f"      {install_cmd}")
+        _print_info(f"      {manual_hint}")
         return False
     except subprocess.TimeoutExpired:
         _print_warning(f"    cua-driver {label.lower()} timed out. Re-run manually.")
@@ -864,12 +920,12 @@ def _run_post_setup(post_setup_key: str):
             if result.returncode == 0:
                 _print_success("    Node.js dependencies installed")
             else:
-                from prostor_constants import display_prostor_home
-                _print_warning(f"    npm install failed - run manually: cd {display_prostor_home()}/prostor-agent && npm install --workspaces=false")
+                from hermes_constants import display_hermes_home
+                _print_warning(f"    npm install failed - run manually: cd {display_hermes_home()}/hermes-agent && npm install --workspaces=false")
                 if result.stderr:
                     _print_info(f"      {result.stderr.strip()[:200]}")
         elif not node_modules.exists():
-            _print_warning("    Node.js not found - browser tools require: npm install (in prostor-agent directory)")
+            _print_warning("    Node.js not found - browser tools require: npm install (in hermes-agent directory)")
             return
 
         # Step 2: only the local browser provider actually needs Chromium on
@@ -906,7 +962,7 @@ def _run_post_setup(post_setup_key: str):
                 "    Pull the latest image to get the bundled Chromium:"
             )
             _print_info(
-                "      docker pull ghcr.io/nousresearch/prostor-agent:latest"
+                "      docker pull ghcr.io/nousresearch/hermes-agent:latest"
             )
             return
 
@@ -1030,7 +1086,7 @@ def _run_post_setup(post_setup_key: str):
                 return
         _print_info("    Default voice: en_US-lessac-medium (downloaded on first TTS call)")
         _print_info("    Full voice list: https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md")
-        _print_info("    Switch voices by setting tts.piper.voice in ~/.prostor/config.yaml")
+        _print_info("    Switch voices by setting tts.piper.voice in ~/.hermes/config.yaml")
 
     elif post_setup_key == "ddgs":
         try:
@@ -1055,17 +1111,17 @@ def _run_post_setup(post_setup_key: str):
         _print_info("    Pair with an extract provider if you also need web_extract.")
 
     elif post_setup_key == "spotify":
-        # Run the full `prostor auth spotify` flow — if the user has no
+        # Run the full `hermes auth spotify` flow — if the user has no
         # client_id yet, this drops them into the interactive wizard
         # (opens the Spotify dashboard, prompts for client_id, persists
-        # to ~/.prostor/.env), then continues straight into PKCE. If they
+        # to ~/.hermes/.env), then continues straight into PKCE. If they
         # already have an app, it skips the wizard and just does OAuth.
         from types import SimpleNamespace
         try:
-            from prostor_cli.auth import login_spotify_command
+            from hermes_cli.auth import login_spotify_command
         except Exception as exc:
             _print_warning(f"    Could not load Spotify auth: {exc}")
-            _print_info("    Run manually: prostor auth spotify")
+            _print_info("    Run manually: hermes auth spotify")
             return
         _print_info("    Starting Spotify login...")
         try:
@@ -1076,12 +1132,12 @@ def _run_post_setup(post_setup_key: str):
             _print_success("    Spotify authenticated")
         except SystemExit as exc:
             # User aborted the wizard, or OAuth failed — don't fail the
-            # toolset enable; they can retry with `prostor auth spotify`.
+            # toolset enable; they can retry with `hermes auth spotify`.
             _print_warning(f"    Spotify login did not complete: {exc}")
-            _print_info("    Run later: prostor auth spotify")
+            _print_info("    Run later: hermes auth spotify")
         except Exception as exc:
             _print_warning(f"    Spotify login failed: {exc}")
-            _print_info("    Run manually: prostor auth spotify")
+            _print_info("    Run manually: hermes auth spotify")
 
     elif post_setup_key == "langfuse":
         # Install the langfuse SDK.
@@ -1099,7 +1155,7 @@ def _run_post_setup(post_setup_key: str):
         # The plugin ships in the repo but doesn't load until the user enables
         # it (standalone plugins are opt-in).
         try:
-            from prostor_cli.plugins_cmd import _get_enabled_set, _save_enabled_set
+            from hermes_cli.plugins_cmd import _get_enabled_set, _save_enabled_set
             enabled = _get_enabled_set()
             if "observability/langfuse" in enabled or "langfuse" in enabled:
                 _print_success("    Plugin observability/langfuse already enabled")
@@ -1109,9 +1165,9 @@ def _run_post_setup(post_setup_key: str):
                 _print_success("    Plugin observability/langfuse enabled")
         except Exception as exc:
             _print_warning(f"    Could not enable plugin automatically: {exc}")
-            _print_info("    Run manually: prostor plugins enable observability/langfuse")
-        _print_info("    Restart Prostor for tracing to take effect.")
-        _print_info("    Verify: prostor plugins list")
+            _print_info("    Run manually: hermes plugins enable observability/langfuse")
+        _print_info("    Restart Hermes for tracing to take effect.")
+        _print_info("    Verify: hermes plugins list")
 
     elif post_setup_key == "xai_grok":
         # Shared credential bootstrap for any picker entry that talks to xAI
@@ -1121,7 +1177,7 @@ def _run_post_setup(post_setup_key: str):
         # console.x.ai. The picker entries declare empty env_vars so we
         # drive the full auth UX here.
         try:
-            from prostor_cli.auth import get_xai_oauth_auth_status
+            from hermes_cli.auth import get_xai_oauth_auth_status
             oauth_logged_in = bool(get_xai_oauth_auth_status().get("logged_in"))
         except Exception:
             oauth_logged_in = False
@@ -1138,17 +1194,15 @@ def _run_post_setup(post_setup_key: str):
 
         _print_info("    xAI needs credentials. Choose one:")
         try:
-            from prostor_cli.config import save_env_value
-            from prostor_cli.setup import (
+            from hermes_cli.setup import (
                 _run_xai_oauth_login_from_setup,
                 prompt_choice,
-            )
-            from prostor_cli.setup import (
                 prompt as _setup_prompt,
             )
+            from hermes_cli.config import save_env_value
         except Exception as exc:
             _print_warning(f"    Could not load setup helpers: {exc}")
-            _print_info("    Run later: prostor auth add xai-oauth   (or set XAI_API_KEY)")
+            _print_info("    Run later: hermes auth add xai-oauth   (or set XAI_API_KEY)")
             return
 
         idx = prompt_choice(
@@ -1156,7 +1210,7 @@ def _run_post_setup(post_setup_key: str):
             choices=[
                 "Sign in with xAI Grok OAuth (SuperGrok / Premium+) — browser login",
                 "Paste an xAI API key (console.x.ai)",
-                "Skip — configure later via `prostor auth add xai-oauth`",
+                "Skip — configure later via `hermes auth add xai-oauth`",
             ],
             default=0,
         )
@@ -1168,7 +1222,7 @@ def _run_post_setup(post_setup_key: str):
             else:
                 _print_warning(
                     "    xAI Grok OAuth login did not complete. "
-                    "Run later: prostor auth add xai-oauth"
+                    "Run later: hermes auth add xai-oauth"
                 )
         elif idx == 1:
             api_key = _setup_prompt("    xAI API key", password=True)
@@ -1177,22 +1231,22 @@ def _run_post_setup(post_setup_key: str):
                 _print_success("    XAI_API_KEY saved")
             else:
                 _print_warning(
-                    "    No API key provided. Run later: prostor auth add xai-oauth"
+                    "    No API key provided. Run later: hermes auth add xai-oauth"
                 )
         else:
             _print_info("    xAI will remain inactive until credentials are configured.")
 
 
-def valid_post_setup_keys() -> set[str]:
+def valid_post_setup_keys() -> Set[str]:
     """Return the set of post-setup keys declared by any visible provider.
 
     Collected from ``TOOL_CATEGORIES`` plus the plugin-registered web /
     image-gen / video-gen / browser providers (which can also carry a
-    ``post_setup``). This is the allowlist the ``prostor tools post-setup``
+    ``post_setup``). This is the allowlist the ``hermes tools post-setup``
     command and the dashboard post-setup endpoint validate against, so a
     caller can't drive ``_run_post_setup`` with an arbitrary key.
     """
-    keys: set[str] = set()
+    keys: Set[str] = set()
     for cat in TOOL_CATEGORIES.values():
         for prov in cat.get("providers", []):
             ps = prov.get("post_setup")
@@ -1216,7 +1270,7 @@ def valid_post_setup_keys() -> set[str]:
 
 
 def run_post_setup_command(args) -> int:
-    """``prostor tools post-setup <key>`` — non-interactive post-setup runner.
+    """``hermes tools post-setup <key>`` — non-interactive post-setup runner.
 
     Runs the install/bootstrap hook a provider declares (npm install for
     browser/Camofox, pip install for kittentts/piper/ddgs, cua-driver fetch,
@@ -1226,7 +1280,7 @@ def run_post_setup_command(args) -> int:
     """
     key = getattr(args, "post_setup_key", None)
     if not key:
-        _print_error("Usage: prostor tools post-setup <key>")
+        _print_error("Usage: hermes tools post-setup <key>")
         return 2
     valid = valid_post_setup_keys()
     if key not in valid:
@@ -1247,7 +1301,7 @@ def run_post_setup_command(args) -> int:
 
 # ─── Platform / Toolset Helpers ───────────────────────────────────────────────
 
-def _get_enabled_platforms() -> list[str]:
+def _get_enabled_platforms() -> List[str]:
     """Return platform keys that are configured (have tokens or are CLI)."""
     enabled = ["cli"]
     if get_env_value("TELEGRAM_BOT_TOKEN"):
@@ -1263,7 +1317,7 @@ def _get_enabled_platforms() -> list[str]:
     return enabled
 
 
-def _platform_toolset_summary(config: dict, platforms: list[str] | None = None) -> dict[str, set[str]]:
+def _platform_toolset_summary(config: dict, platforms: Optional[List[str]] = None) -> Dict[str, Set[str]]:
     """Return a summary of enabled toolsets per platform.
 
     When ``platforms`` is None, this uses ``_get_enabled_platforms`` to
@@ -1273,7 +1327,7 @@ def _platform_toolset_summary(config: dict, platforms: list[str] | None = None) 
     if platforms is None:
         platforms = _get_enabled_platforms()
 
-    summary: dict[str, set[str]] = {}
+    summary: Dict[str, Set[str]] = {}
     for pkey in platforms:
         summary[pkey] = _get_platform_tools(config, pkey)
     return summary
@@ -1296,14 +1350,32 @@ def _parse_enabled_flag(value, default: bool = True) -> bool:
     return default
 
 
+def enabled_mcp_server_names(config: dict) -> Set[str]:
+    """Names of MCP servers globally enabled in config.yaml.
+
+    Shared by the gateway/CLI platform resolver (``_get_platform_tools``) and
+    the cron per-job toolset resolver (``cron.scheduler``) so every path agrees
+    on MCP membership. A server is enabled unless its config sets an explicitly
+    falsey ``enabled`` (per ``_parse_enabled_flag``: false/0/no/off) — a missing
+    flag or an unrecognized value is treated as enabled.
+    """
+    mcp_servers = (config or {}).get("mcp_servers") or {}
+    return {
+        str(name)
+        for name, server_cfg in mcp_servers.items()
+        if isinstance(server_cfg, dict)
+        and _parse_enabled_flag(server_cfg.get("enabled", True), default=True)
+    }
+
+
 def _get_platform_tools(
     config: dict,
     platform: str,
     *,
     include_default_mcp_servers: bool = True,
-) -> set[str]:
+) -> Set[str]:
     """Resolve which individual toolset names are enabled for a platform."""
-    from toolsets import TOOLSETS, resolve_toolset
+    from toolsets import resolve_toolset, TOOLSETS
 
     platform_toolsets = config.get("platform_toolsets") or {}
     toolset_names = platform_toolsets.get(platform)
@@ -1314,7 +1386,7 @@ def _get_platform_tools(
             default_ts = plat_info["default_toolset"]
         else:
             # Plugin platform — derive toolset name from platform key
-            default_ts = f"prostor-{platform}"
+            default_ts = f"hermes-{platform}"
         toolset_names = [default_ts]
 
     # YAML may parse bare numeric names (e.g. ``12306:``) as int.
@@ -1328,7 +1400,7 @@ def _get_platform_tools(
     # If the saved list contains any configurable keys directly, the user
     # has explicitly configured this platform — use direct membership.
     # This avoids the subset-inference bug where composite toolsets like
-    # "prostor-cli" (which include all _PROSTOR_CORE_TOOLS) cause disabled
+    # "hermes-cli" (which include all _HERMES_CORE_TOOLS) cause disabled
     # toolsets to re-appear as enabled.
     has_explicit_config = any(ts in configurable_keys for ts in toolset_names)
 
@@ -1338,7 +1410,7 @@ def _get_platform_tools(
             if ts in configurable_keys and _toolset_allowed_for_platform(ts, platform)
         }
         # Mixed config: composite toolset alongside configurables (e.g.
-        # ``[prostor-cli, spotify]`` after enabling Spotify via ``prostor
+        # ``[hermes-cli, spotify]`` after enabling Spotify via ``hermes
         # tools``). Without expansion the composite name is silently dropped,
         # leaving sessions with only the configurable opt-ins and no native
         # tools. Mirror the else-branch's subset inference, but apply
@@ -1371,7 +1443,7 @@ def _get_platform_tools(
             enabled_toolsets |= expanded
     else:
         # No explicit config — fall back to resolving composite toolset names
-        # (e.g. "prostor-cli") to individual tool names and reverse-mapping.
+        # (e.g. "hermes-cli") to individual tool names and reverse-mapping.
         all_tool_names = set()
         for ts_name in toolset_names:
             all_tool_names.update(resolve_toolset(ts_name))
@@ -1391,7 +1463,7 @@ def _get_platform_tools(
         # NOT include, so the subset loop never picks it up. Inject it
         # directly here, mirroring the HASS_TOKEN → ``homeassistant`` rule
         # below: once you have working creds, you don't have to also click
-        # through ``prostor tools`` to flip the toolset on. Only fires when
+        # through ``hermes tools`` to flip the toolset on. Only fires when
         # the user has not yet saved an explicit toolset list — once they
         # do, the saved list is authoritative.
         x_search_auto_enabled = (
@@ -1429,10 +1501,10 @@ def _get_platform_tools(
     # feishu_drive).  These are part of the platform's default composite but
     # absent from CONFIGURABLE_TOOLSETS, so they can't appear in the TUI
     # checklist or in a user-saved config.  Must run in BOTH branches —
-    # otherwise saving via `prostor tools` (which flips has_explicit_config
+    # otherwise saving via `hermes tools` (which flips has_explicit_config
     # to True) silently drops them.
     _plat_info = PLATFORMS.get(platform)
-    _default_ts = _plat_info["default_toolset"] if _plat_info else f"prostor-{platform}"
+    _default_ts = _plat_info["default_toolset"] if _plat_info else f"hermes-{platform}"
     platform_tool_universe = set(resolve_toolset(_default_ts))
     configurable_tool_universe = set()
     for ck in configurable_keys:
@@ -1441,7 +1513,7 @@ def _get_platform_tools(
     for ts_key in enabled_toolsets:
         claimed.update(resolve_toolset(ts_key))
     skip = configurable_keys | plugin_ts_keys | platform_default_keys
-    skip |= {k for k in TOOLSETS if k.startswith("prostor-")}
+    skip |= {k for k in TOOLSETS if k.startswith("hermes-")}
     skip |= set(_DEFAULT_OFF_TOOLSETS) - {platform}
     for ts_key, ts_def in TOOLSETS.items():
         if ts_key in skip:
@@ -1463,9 +1535,9 @@ def _get_platform_tools(
 
     # Plugin toolsets: enabled by default unless explicitly disabled, or
     # unless the toolset is in _DEFAULT_OFF_TOOLSETS (e.g. spotify —
-    # shipped as a bundled plugin but user must opt in via `prostor tools`
+    # shipped as a bundled plugin but user must opt in via `hermes tools`
     # so we don't ship 7 Spotify tool schemas to users who don't use it).
-    # A plugin toolset is "known" for a platform once `prostor tools`
+    # A plugin toolset is "known" for a platform once `hermes tools`
     # has been saved for that platform (tracked via known_plugin_toolsets).
     # Unknown plugins default to enabled; known-but-absent = disabled.
     if plugin_ts_keys:
@@ -1479,7 +1551,7 @@ def _get_platform_tools(
                 # Opt-in plugin toolset — stay off until user picks it
                 continue
             elif pts not in known_for_platform:
-                # New plugin not yet seen by prostor tools — default enabled
+                # New plugin not yet seen by hermes tools — default enabled
                 enabled_toolsets.add(pts)
             # else: known but not in config = user disabled it
 
@@ -1515,13 +1587,7 @@ def _get_platform_tools(
     # If the platform explicitly lists one or more MCP server names, treat that
     # as an allowlist. Otherwise include every globally enabled MCP server.
     # Special sentinel: "no_mcp" in the toolset list disables all MCP servers.
-    mcp_servers = config.get("mcp_servers") or {}
-    enabled_mcp_servers = {
-        str(name)
-        for name, server_cfg in mcp_servers.items()
-        if isinstance(server_cfg, dict)
-        and _parse_enabled_flag(server_cfg.get("enabled", True), default=True)
-    }
+    enabled_mcp_servers = enabled_mcp_server_names(config)
     # Allow "no_mcp" sentinel to opt out of all MCP servers for this platform
     if "no_mcp" in toolset_names:
         explicit_mcp_servers = set()
@@ -1550,7 +1616,7 @@ def _get_platform_tools(
     return enabled_toolsets
 
 
-def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: set[str]):
+def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: Set[str]):
     """Save the selected toolset keys for a platform to config.
 
     Preserves any non-configurable toolset entries (like MCP server names)
@@ -1571,7 +1637,7 @@ def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: set[
     plugin_keys = _get_plugin_toolset_keys()
     configurable_keys |= plugin_keys
 
-    # Also exclude platform default toolsets (prostor-cli, prostor-telegram, etc.)
+    # Also exclude platform default toolsets (hermes-cli, hermes-telegram, etc.)
     # These are "super" toolsets that resolve to ALL tools, so preserving them
     # would silently override the user's unchecked selections on the next read.
     platform_default_keys = {p["default_toolset"] for p in PLATFORMS.values()}
@@ -1588,7 +1654,7 @@ def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: set[
         entry for entry in existing_toolsets
         if entry not in configurable_keys and entry not in platform_default_keys
     }
-    # Opening `prostor tools` is the user's opt-in to reconfigure tools, so treat
+    # Opening `hermes tools` is the user's opt-in to reconfigure tools, so treat
     # saving from the picker as consent to clear the "no_mcp" sentinel. The
     # picker has no checkbox for no_mcp, so without this users who once set it
     # by hand could never re-enable MCP servers through the UI.
@@ -1653,17 +1719,17 @@ def _toolset_has_keys(
 
 def _prompt_choice(question: str, choices: list, default: int = 0) -> int:
     """Single-select menu (arrow keys). Delegates to curses_radiolist."""
-    from prostor_cli.curses_ui import curses_radiolist
+    from hermes_cli.curses_ui import curses_radiolist
     return curses_radiolist(question, choices, selected=default, cancel_returns=default)
 
 
 # ─── Token Estimation ────────────────────────────────────────────────────────
 
 # Module-level cache so discovery + tokenization runs at most once per process.
-_tool_token_cache: dict[str, int] | None = None
+_tool_token_cache: Optional[Dict[str, int]] = None
 
 
-def _estimate_tool_tokens() -> dict[str, int]:
+def _estimate_tool_tokens() -> Dict[str, int]:
     """Return estimated token counts per individual tool name.
 
     Uses tiktoken (cl100k_base) to count tokens in the JSON-serialised
@@ -1693,7 +1759,7 @@ def _estimate_tool_tokens() -> dict[str, int]:
         _tool_token_cache = {}
         return _tool_token_cache
 
-    counts: dict[str, int] = {}
+    counts: Dict[str, int] = {}
     for name in registry.get_all_tool_names():
         schema = registry.get_schema(name)
         if schema:
@@ -1707,13 +1773,13 @@ def _estimate_tool_tokens() -> dict[str, int]:
 
 def _prompt_toolset_checklist(
     platform_label: str,
-    enabled: set[str],
+    enabled: Set[str],
     platform: str = "cli",
     *,
     force_fresh: bool = True,
-) -> set[str]:
+) -> Set[str]:
     """Multi-select checklist of toolsets. Returns set of selected toolset keys."""
-    from prostor_cli.curses_ui import curses_checklist
+    from hermes_cli.curses_ui import curses_checklist
     from toolsets import resolve_toolset
 
     # Pre-compute per-tool token counts (cached after first call).
@@ -1775,7 +1841,7 @@ def _configure_toolset(
     force_fresh: bool = True,
 ):
     """Configure a toolset - provider selection + API keys.
-
+    
     Uses TOOL_CATEGORIES for provider-aware config, falls back to simple
     env var prompts for toolsets not in TOOL_CATEGORIES.
     """
@@ -1800,7 +1866,7 @@ def _plugin_image_gen_providers() -> list[dict]:
     """
     try:
         from agent.image_gen_registry import list_providers
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = list_providers()
@@ -1838,7 +1904,7 @@ def _plugin_video_gen_providers() -> list[dict]:
     """
     try:
         from agent.video_gen_registry import list_providers
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = list_providers()
@@ -1891,7 +1957,7 @@ def _plugin_web_search_providers() -> list[dict]:
     """
     try:
         from agent.web_search_registry import list_providers as _list_web_providers
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = _list_web_providers()
@@ -1946,7 +2012,7 @@ def _plugin_browser_providers() -> list[dict]:
     """
     try:
         from agent.browser_registry import list_providers as _list_browser_providers
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = _list_browser_providers()
@@ -1997,7 +2063,7 @@ def _plugin_tts_providers() -> list[dict]:
     """
     try:
         from agent.tts_registry import _BUILTIN_NAMES, list_providers
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         providers = list_providers()
@@ -2143,7 +2209,7 @@ _POST_SETUP_INSTALLED: dict = {
     # is already satisfied. Used by `_toolset_needs_configuration_prompt`
     # to force the provider-setup flow when a no-key provider still needs
     # a binary/dependency install (otherwise an already-configured user
-    # who toggles the toolset on via `prostor tools` gets a silent no-op
+    # who toggles the toolset on via `hermes tools` gets a silent no-op
     # because the gate sees "no env vars to ask about" and skips the
     # provider-setup flow that would have run the post_setup hook).
     #
@@ -2205,7 +2271,7 @@ def _toolset_needs_configuration_prompt(
             return False
         try:
             from agent.image_gen_registry import list_providers
-            from prostor_cli.plugins import _ensure_plugins_discovered
+            from hermes_cli.plugins import _ensure_plugins_discovered
 
             _ensure_plugins_discovered()
             for provider in list_providers():
@@ -2222,7 +2288,7 @@ def _toolset_needs_configuration_prompt(
         # available — no in-tree fallback (every backend is a plugin).
         try:
             from agent.video_gen_registry import list_providers
-            from prostor_cli.plugins import _ensure_plugins_discovered
+            from hermes_cli.plugins import _ensure_plugins_discovered
 
             _ensure_plugins_discovered()
             for provider in list_providers():
@@ -2459,7 +2525,7 @@ def _detect_active_provider_index(
 
 def _fal_model_catalog():
     """Lazy-load the FAL model catalog from the tool module."""
-    from tools.image_generation_tool import DEFAULT_MODEL, FAL_MODELS
+    from tools.image_generation_tool import FAL_MODELS, DEFAULT_MODEL
     return FAL_MODELS, DEFAULT_MODEL
 
 
@@ -2554,7 +2620,7 @@ def _plugin_image_gen_catalog(plugin_name: str):
     """
     try:
         from agent.image_gen_registry import get_provider
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         provider = get_provider(plugin_name)
@@ -2649,7 +2715,7 @@ def _plugin_video_gen_catalog(plugin_name: str):
     """
     try:
         from agent.video_gen_registry import get_provider
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
         provider = get_provider(plugin_name)
@@ -2853,9 +2919,9 @@ def _configure_provider(
     # _visible_providers), but only *activate* once the user has paid Nous
     # Portal access. Selecting one runs an inline Portal login when needed —
     # auth + entitlement only, no inference-provider switch and no bulk
-    # "enable all tools" prompt (that lives in `prostor model`).
+    # "enable all tools" prompt (that lives in `hermes model`).
     if managed_feature:
-        from prostor_cli.nous_subscription import (
+        from hermes_cli.nous_subscription import (
             MANAGED_FEATURE_COVERAGE_CATEGORY,
             ensure_nous_portal_access,
         )
@@ -3223,7 +3289,7 @@ def _reconfigure_provider(
     # Same inline Nous Portal login + entitlement gate as _configure_provider:
     # managed Tool Gateway backends only activate with paid Portal access.
     if managed_feature:
-        from prostor_cli.nous_subscription import (
+        from hermes_cli.nous_subscription import (
             MANAGED_FEATURE_COVERAGE_CATEGORY,
             ensure_nous_portal_access,
         )
@@ -3385,7 +3451,7 @@ def _reconfigure_simple_requirements(ts_key: str):
 # ─── Main Entry Point ─────────────────────────────────────────────────────────
 
 def tools_command(args=None, first_install: bool = False, config: dict = None):
-    """Entry point for `prostor tools` and `prostor setup tools`.
+    """Entry point for `hermes tools` and `hermes setup tools`.
 
     Args:
         first_install: When True (set by the setup wizard on fresh installs),
@@ -3420,10 +3486,10 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
                 print(color("    (none enabled)", Colors.DIM))
         print()
         return
-    print(color("⚕ Prostor Tool Configuration", Colors.CYAN, Colors.BOLD))
+    print(color("⚕ Hermes Tool Configuration", Colors.CYAN, Colors.BOLD))
     print(color("  Enable or disable tools per platform.", Colors.DIM))
     print(color("  Tools that need API keys will be configured when enabled.", Colors.DIM))
-    print(color("  Guide: https://github.com/maksim9510/Prostor/docs/user-guide/features/tools", Colors.DIM))
+    print(color("  Guide: https://hermes-agent.nousresearch.com/docs/user-guide/features/tools", Colors.DIM))
     print()
 
     # ── First-time install: linear flow, no platform menu ──
@@ -3646,9 +3712,9 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
         platform_choices[idx] = f"Configure {pinfo['label']}  ({new_count}/{total} enabled)"
 
     print()
-    from prostor_constants import display_prostor_home
-    print(color(f"  Tool configuration saved to {display_prostor_home()}/config.yaml", Colors.DIM))
-    print(color("  Changes take effect on next 'prostor' or gateway restart.", Colors.DIM))
+    from hermes_constants import display_hermes_home
+    print(color(f"  Tool configuration saved to {display_hermes_home()}/config.yaml", Colors.DIM))
+    print(color("  Changes take effect on next 'hermes' or gateway restart.", Colors.DIM))
     print()
 
 
@@ -3662,7 +3728,7 @@ def _configure_mcp_tools_interactive(config: dict):
     a per-server curses checklist.  Writes changes back as ``tools.exclude``
     entries in config.yaml.
     """
-    from prostor_cli.curses_ui import curses_checklist
+    from hermes_cli.curses_ui import curses_checklist
 
     mcp_servers = config.get("mcp_servers") or {}
     if not mcp_servers:
@@ -3726,7 +3792,7 @@ def _configure_mcp_tools_interactive(config: dict):
                 labels.append(tool_name)
 
         # Determine which tools are currently enabled
-        pre_selected: set[int] = set()
+        pre_selected: Set[int] = set()
         tool_names = [t[0] for t in tools]
         for i, tool_name in enumerate(tool_names):
             if include_list:
@@ -3753,7 +3819,7 @@ def _configure_mcp_tools_interactive(config: dict):
             continue
 
         # Compute new include list (the chosen tools). We standardize on
-        # tools.include across the codebase (catalog installs, prostor mcp
+        # tools.include across the codebase (catalog installs, hermes mcp
         # configure, and this UI) so a server\'s on-disk config shape doesn\'t
         # depend on which UI the user touched last.
         chosen_names = [tool_names[i] for i in sorted(chosen)]
@@ -3791,7 +3857,7 @@ def _configure_mcp_tools_interactive(config: dict):
 # ─── Non-interactive disable/enable ──────────────────────────────────────────
 
 
-def _apply_toolset_change(config: dict, platform: str, toolset_names: list[str], action: str):
+def _apply_toolset_change(config: dict, platform: str, toolset_names: List[str], action: str):
     """Add or remove built-in toolsets for a platform."""
     enabled = _get_platform_tools(config, platform, include_default_mcp_servers=False)
     if action == "disable":
@@ -3801,12 +3867,12 @@ def _apply_toolset_change(config: dict, platform: str, toolset_names: list[str],
     _save_platform_tools(config, platform, updated)
 
 
-def _apply_mcp_change(config: dict, targets: list[str], action: str) -> set[str]:
+def _apply_mcp_change(config: dict, targets: List[str], action: str) -> Set[str]:
     """Add or remove specific MCP tools from a server's exclude list.
 
     Returns the set of server names that were not found in config.
     """
-    failed_servers: set[str] = set()
+    failed_servers: Set[str] = set()
     mcp_servers = config.get("mcp_servers") or {}
 
     for target in targets:
@@ -3887,7 +3953,7 @@ def tools_disable_enable_command(args):
                           config.get("mcp_servers") or {}, platform)
         return
 
-    targets: list[str] = args.names
+    targets: List[str] = args.names
     toolset_targets = [t for t in targets if ":" not in t]
     mcp_targets = [t for t in targets if ":" in t]
 
@@ -3915,7 +3981,7 @@ def tools_disable_enable_command(args):
     if toolset_targets:
         _apply_toolset_change(config, platform, toolset_targets, action)
 
-    failed_servers: set[str] = set()
+    failed_servers: Set[str] = set()
     if mcp_targets:
         failed_servers = _apply_mcp_change(config, mcp_targets, action)
         for srv in failed_servers:

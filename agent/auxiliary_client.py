@@ -8,7 +8,7 @@ Resolution order for text tasks (auto mode):
   1. User's main provider + main model (used regardless of provider type —
      aggregators, direct API-key providers, native Anthropic, Codex, etc.)
   2. OpenRouter  (OPENROUTER_API_KEY)
-  3. Nous Portal (~/.prostor/auth.json active provider)
+  3. Nous Portal (~/.hermes/auth.json active provider)
   4. Custom endpoint (config.yaml model.base_url + OPENAI_API_KEY)
   5. Native Anthropic
   6. Direct API-key providers (z.ai/GLM, Kimi/Moonshot, MiniMax, MiniMax-CN)
@@ -40,8 +40,7 @@ Payment / credit exhaustion fallback:
   their OpenRouter balance but has Codex OAuth or another provider available.
 """
 
-from __future__ import annotations
-
+import contextlib
 import json
 import logging
 import os
@@ -49,8 +48,8 @@ import threading
 import time
 from pathlib import Path  # noqa: F401 — used by test mocks
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, urlparse, urlunparse
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from urllib.parse import urlparse, parse_qs, urlunparse
 
 # NOTE: `from openai import OpenAI` is deliberately NOT at module top — the
 # openai SDK pulls a large type tree (~240 ms cold, including responses/*,
@@ -68,7 +67,7 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 if TYPE_CHECKING:
     from openai import OpenAI  # noqa: F401 — type hints only
 
-_OPENAI_CLS_CACHE: type | None = None
+_OPENAI_CLS_CACHE: Optional[type] = None
 
 
 def _load_openai_cls() -> type:
@@ -102,17 +101,44 @@ class _OpenAIProxy:
 OpenAI = _OpenAIProxy()  # module-level name, resolves lazily on call/isinstance
 
 from agent.credential_pool import load_pool
-from prostor_constants import OPENROUTER_BASE_URL
-from prostor_core import get_prostor_home
-from utils import (
-    base_url_host_matches,
-    base_url_hostname,
-    env_float,
-    model_forces_max_completion_tokens,
-    normalize_proxy_env_vars,
-)
+from hermes_cli.config import get_hermes_home
+from hermes_constants import OPENROUTER_BASE_URL
+from utils import base_url_host_matches, base_url_hostname, env_float, model_forces_max_completion_tokens, normalize_proxy_env_vars
 
 logger = logging.getLogger(__name__)
+
+
+# ── Interrupt protection for atomic auxiliary tasks ──────────────────────
+# Some auxiliary tasks must NOT be aborted mid-flight by a gateway interrupt
+# (e.g. an incoming user message while the agent is busy). Context
+# compression is the prime case: if the summary LLM call is interrupted
+# part-way, compression falls back to a static "summary unavailable" marker
+# and the real handoff is lost (#23975). A thread-local flag lets such a
+# task mark its in-flight LLM call as interrupt-protected; the Codex
+# Responses stream's cancellation check honors it. TIMEOUTS still fire
+# (a hung call must die), and all OTHER aux tasks (vision, web_extract,
+# title_generation, …) remain freely interruptible.
+_aux_interrupt_protection = threading.local()
+
+
+def _aux_interrupt_protected() -> bool:
+    return bool(getattr(_aux_interrupt_protection, "active", False))
+
+
+@contextlib.contextmanager
+def aux_interrupt_protection(active: bool = True):
+    """Mark the current thread's auxiliary LLM call as interrupt-protected.
+
+    Used by atomic aux tasks (compression) so a mid-flight gateway interrupt
+    doesn't abort the call and trigger a degraded fallback. Re-entrant-safe:
+    restores the previous value on exit.
+    """
+    prev = getattr(_aux_interrupt_protection, "active", False)
+    _aux_interrupt_protection.active = active
+    try:
+        yield
+    finally:
+        _aux_interrupt_protection.active = prev
 
 
 def _safe_isinstance(obj: Any, maybe_type: Any) -> bool:
@@ -170,7 +196,7 @@ _PROVIDER_ALIASES = {
 }
 
 
-def _normalize_aux_provider(provider: str | None) -> str:
+def _normalize_aux_provider(provider: Optional[str]) -> str:
     normalized = (provider or "auto").strip().lower()
     if normalized.startswith("custom:"):
         suffix = normalized.split(":", 1)[1].strip()
@@ -198,13 +224,13 @@ def _normalize_aux_provider(provider: str | None) -> str:
 OMIT_TEMPERATURE: object = object()
 
 
-def _is_kimi_model(model: str | None) -> bool:
+def _is_kimi_model(model: Optional[str]) -> bool:
     """True for any Kimi / Moonshot model that manages temperature server-side."""
     bare = (model or "").strip().lower().rsplit("/", 1)[-1]
     return bare.startswith("kimi-") or bare == "kimi"
 
 
-def _is_arcee_trinity_thinking(model: str | None) -> bool:
+def _is_arcee_trinity_thinking(model: Optional[str]) -> bool:
     """True for Arcee Trinity Large Thinking (direct or via OpenRouter)."""
     bare = (model or "").strip().lower().rsplit("/", 1)[-1]
     return bare == "trinity-large-thinking"
@@ -222,7 +248,7 @@ def _is_arcee_trinity_thinking(model: str | None) -> bool:
 _CODEX_GPT55_COMPACTION_THRESHOLD = 0.85
 
 
-def _is_codex_gpt55(model: str | None, provider: str | None = None) -> bool:
+def _is_codex_gpt55(model: Optional[str], provider: Optional[str] = None) -> bool:
     """True for gpt-5.5 accessed through the ChatGPT Codex OAuth backend.
 
     Matches only the Codex OAuth route (provider ``openai-codex``), not the
@@ -240,9 +266,9 @@ def _is_codex_gpt55(model: str | None, provider: str | None = None) -> bool:
 
 
 def _fixed_temperature_for_model(
-    model: str | None,
-    base_url: str | None = None,
-) -> float | None | object:
+    model: Optional[str],
+    base_url: Optional[str] = None,
+) -> "Optional[float] | object":
     """Return a temperature directive for models with strict contracts.
 
     Returns:
@@ -262,15 +288,15 @@ def _fixed_temperature_for_model(
 
 
 def _compression_threshold_for_model(
-    model: str | None,
-    provider: str | None = None,
+    model: Optional[str],
+    provider: Optional[str] = None,
     *,
     allow_codex_gpt55_autoraise: bool = True,
-) -> float | None:
+) -> Optional[float]:
     """Return a context-compression threshold override for specific models.
 
     The threshold is the fraction of the model's context window that must be
-    consumed before Prostor triggers summarization.  Higher values delay
+    consumed before Hermes triggers summarization.  Higher values delay
     compression and preserve more raw context.
 
     Per-model/route overrides:
@@ -288,7 +314,6 @@ def _compression_threshold_for_model(
     if allow_codex_gpt55_autoraise and _is_codex_gpt55(model, provider):
         return _CODEX_GPT55_COMPACTION_THRESHOLD
     return None
-
 
 # Default auxiliary models for direct API-key providers (cheap/fast for side tasks)
 def _get_aux_model_for_provider(provider_id: str) -> str:
@@ -310,7 +335,7 @@ def _get_aux_model_for_provider(provider_id: str) -> str:
 # Fallback for providers not yet migrated to ProviderProfile.default_aux_model,
 # plus providers we intentionally keep pinned here (e.g. Anthropic predates
 # profiles). New providers should set default_aux_model on their profile instead.
-_API_KEY_PROVIDER_AUX_MODELS_FALLBACK: dict[str, str] = {
+_API_KEY_PROVIDER_AUX_MODELS_FALLBACK: Dict[str, str] = {
     "gemini": "gemini-3-flash-preview",
     "zai": "glm-4.5-flash",
     "kimi-coding": "kimi-k2-turbo-preview",
@@ -327,13 +352,13 @@ _API_KEY_PROVIDER_AUX_MODELS_FALLBACK: dict[str, str] = {
 
 # Legacy alias — callers that haven't been updated to _get_aux_model_for_provider()
 # can still use this dict directly. Kept in sync with _FALLBACK above.
-_API_KEY_PROVIDER_AUX_MODELS: dict[str, str] = _API_KEY_PROVIDER_AUX_MODELS_FALLBACK
+_API_KEY_PROVIDER_AUX_MODELS: Dict[str, str] = _API_KEY_PROVIDER_AUX_MODELS_FALLBACK
 
 # Vision-specific model overrides for direct providers.
 # When the user's main provider has a dedicated vision/multimodal model that
 # differs from their main chat model, map it here.  The vision auto-detect
 # "exotic provider" branch checks this before falling back to the main model.
-_PROVIDER_VISION_MODELS: dict[str, str] = {
+_PROVIDER_VISION_MODELS: Dict[str, str] = {
     "xiaomi": "mimo-v2.5",
     "zai": "glm-5v-turbo",
 }
@@ -357,8 +382,8 @@ _PROVIDERS_WITHOUT_VISION: frozenset = frozenset({
 # `X-Title` is the canonical attribution header OpenRouter's dashboard
 # reads; the previous `X-OpenRouter-Title` label was not recognized there.
 _OR_HEADERS_BASE = {
-    "HTTP-Referer": "https://github.com/maksim9510/Prostor",
-    "X-Title": "Prostor Agent",
+    "HTTP-Referer": "https://hermes-agent.nousresearch.com",
+    "X-Title": "Hermes Agent",
     "X-OpenRouter-Categories": "productivity,cli-agent",
 }
 
@@ -381,7 +406,7 @@ def _apply_user_default_headers(headers: dict | None) -> dict | None:
     when nothing is configured. No allocation when there are no overrides.
     """
     try:
-        from prostor_cli.config import cfg_get, load_config
+        from hermes_cli.config import cfg_get, load_config
         user_headers = cfg_get(load_config(), "model", "default_headers")
     except Exception:
         return headers
@@ -401,10 +426,10 @@ def build_or_headers(or_config: dict | None = None) -> dict:
     Precedence for response cache: env var > config.yaml > default (enabled).
 
     Environment variables:
-        ``PROSTOR_OPENROUTER_CACHE`` — truthy (``1``/``true``/``yes``/``on``)
+        ``HERMES_OPENROUTER_CACHE`` — truthy (``1``/``true``/``yes``/``on``)
             enables caching; ``0``/``false``/``no``/``off`` disables.
             Overrides ``openrouter.response_cache`` in config.yaml.
-        ``PROSTOR_OPENROUTER_CACHE_TTL`` — integer seconds (1-86400).
+        ``HERMES_OPENROUTER_CACHE_TTL`` — integer seconds (1-86400).
             Overrides ``openrouter.response_cache_ttl`` in config.yaml.
 
     *or_config* is the ``openrouter`` section from config.yaml.  When *None*,
@@ -415,13 +440,13 @@ def build_or_headers(or_config: dict | None = None) -> dict:
     # Resolve config from disk if not provided.
     if or_config is None:
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             or_config = load_config().get("openrouter", {})
         except Exception:
             or_config = {}
 
     # Determine cache enabled: env var overrides config.
-    env_cache = os.environ.get("PROSTOR_OPENROUTER_CACHE", "").strip().lower()
+    env_cache = os.environ.get("HERMES_OPENROUTER_CACHE", "").strip().lower()
     if env_cache:
         cache_enabled = env_cache in _TRUTHY_ENV_VALUES
     else:
@@ -433,7 +458,7 @@ def build_or_headers(or_config: dict | None = None) -> dict:
     headers["X-OpenRouter-Cache"] = "true"
 
     # Determine TTL: env var overrides config.
-    env_ttl = os.environ.get("PROSTOR_OPENROUTER_CACHE_TTL", "").strip()
+    env_ttl = os.environ.get("HERMES_OPENROUTER_CACHE_TTL", "").strip()
     if env_ttl:
         if env_ttl.isdigit():
             ttl = int(env_ttl)
@@ -450,7 +475,7 @@ def build_or_headers(or_config: dict | None = None) -> dict:
 # NVIDIA NIM cloud billing attribution.  Keep this host-gated because the
 # nvidia provider also supports local/on-prem NIM endpoints via NVIDIA_BASE_URL.
 _NVIDIA_NIM_CLOUD_HEADERS = {
-    "X-BILLING-INVOKE-ORIGIN": "ProstorAgent",
+    "X-BILLING-INVOKE-ORIGIN": "HermesAgent",
 }
 
 
@@ -461,12 +486,13 @@ def build_nvidia_nim_headers(base_url: str | None) -> dict:
     return {}
 
 
+
 # Nous Portal extra_body for product attribution.
 # Callers should pass this as extra_body in chat.completions.create()
 # when the auxiliary client is backed by Nous Portal.
 #
 # The tags are computed from agent.portal_tags so the client= marker stays
-# in lockstep with prostor_cli.__version__ across every Portal call site
+# in lockstep with hermes_cli.__version__ across every Portal call site
 # (main loop, aux, compression, web_extract). Do not inline a literal here;
 # see agent/portal_tags.py for the rationale.
 from agent.portal_tags import nous_portal_tags as _nous_portal_tags
@@ -475,7 +501,7 @@ from agent.portal_tags import nous_portal_tags as _nous_portal_tags
 def _nous_extra_body() -> dict:
     """Return a fresh Nous Portal ``extra_body`` dict.
 
-    Computed at call time so a hot-reloaded ``prostor_cli.__version__`` is
+    Computed at call time so a hot-reloaded ``hermes_cli.__version__`` is
     reflected without restarting long-running processes.
     """
     return {"tags": _nous_portal_tags()}
@@ -495,7 +521,7 @@ _OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _NOUS_MODEL = "google/gemini-3-flash-preview"
 _NOUS_DEFAULT_BASE_URL = "https://inference-api.nousresearch.com/v1"
 _ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
-_AUTH_JSON_PATH = get_prostor_home() / "auth.json"
+_AUTH_JSON_PATH = get_hermes_home() / "auth.json"
 
 # Codex OAuth endpoint used when a caller explicitly requests
 # provider="openai-codex".  There is deliberately no hardcoded default
@@ -508,7 +534,7 @@ _AUTH_JSON_PATH = get_prostor_home() / "auth.json"
 _CODEX_AUX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
 
-def _codex_cloudflare_headers(access_token: str) -> dict[str, str]:
+def _codex_cloudflare_headers(access_token: str) -> Dict[str, str]:
     """Headers required to avoid Cloudflare 403s on chatgpt.com/backend-api/codex.
 
     The Cloudflare layer in front of the Codex endpoint whitelists a small set of
@@ -527,7 +553,7 @@ def _codex_cloudflare_headers(access_token: str) -> dict[str, str]:
     crash at client construction.
     """
     headers = {
-        "User-Agent": "codex_cli_rs/0.0.0 (Prostor Agent)",
+        "User-Agent": "codex_cli_rs/0.0.0 (Hermes Agent)",
         "originator": "codex_cli_rs",
     }
     if not isinstance(access_token, str) or not access_token.strip():
@@ -577,7 +603,7 @@ def _to_openai_base_url(base_url: str) -> str:
     return url
 
 
-def _select_pool_entry(provider: str) -> tuple[bool, Any | None]:
+def _select_pool_entry(provider: str) -> Tuple[bool, Optional[Any]]:
     """Return (pool_exists_for_provider, selected_entry)."""
     try:
         pool = load_pool(provider)
@@ -593,7 +619,7 @@ def _select_pool_entry(provider: str) -> tuple[bool, Any | None]:
         return True, None
 
 
-def _peek_pool_entry(provider: str) -> Any | None:
+def _peek_pool_entry(provider: str) -> Optional[Any]:
     """Best-effort current/next pool entry without mutating selection order."""
     try:
         pool = load_pool(provider)
@@ -639,6 +665,13 @@ def _pool_runtime_base_url(entry: Any, fallback: str = "") -> str:
     return str(url or "").strip().rstrip("/")
 
 
+def _nous_min_key_ttl_seconds() -> int:
+    try:
+        return max(60, int(os.getenv("HERMES_NOUS_MIN_KEY_TTL_SECONDS", "1800")))
+    except (TypeError, ValueError):
+        return 1800
+
+
 # ── Codex Responses → chat.completions adapter ─────────────────────────────
 # All auxiliary consumers call client.chat.completions.create(**kwargs) and
 # read response.choices[0].message.content. This adapter translates those
@@ -673,7 +706,7 @@ class _CodexCompletionsAdapter:
         from agent.codex_responses_adapter import _chat_messages_to_responses_input
 
         instructions = "You are a helpful assistant."
-        replay_messages: list[dict[str, Any]] = []
+        replay_messages: List[Dict[str, Any]] = []
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content") or ""
@@ -684,7 +717,7 @@ class _CodexCompletionsAdapter:
 
         input_items = _chat_messages_to_responses_input(replay_messages)
 
-        resp_kwargs: dict[str, Any] = {
+        resp_kwargs: Dict[str, Any] = {
             "model": model,
             "instructions": instructions,
             "input": input_items or [{"role": "user", "content": ""}],
@@ -748,7 +781,6 @@ class _CodexCompletionsAdapter:
             # constraints after the first auxiliary xAI call.  See #27907.
             try:
                 import copy as _copy
-
                 from tools.schema_sanitizer import (
                     strip_pattern_and_format,
                     strip_slash_enum,
@@ -777,13 +809,13 @@ class _CodexCompletionsAdapter:
                 resp_kwargs["tools"] = converted
 
         # Stream and collect the response
-        text_parts: list[str] = []
-        tool_calls_raw: list[Any] = []
+        text_parts: List[str] = []
+        tool_calls_raw: List[Any] = []
         usage = None
         total_timeout = timeout if isinstance(timeout, (int, float)) and timeout > 0 else None
         deadline = time.monotonic() + float(total_timeout) if total_timeout else None
         timed_out = threading.Event()
-        timeout_timer: threading.Timer | None = None
+        timeout_timer: Optional[threading.Timer] = None
 
         def _timeout_message() -> str:
             return f"Codex auxiliary Responses stream exceeded {float(total_timeout):.1f}s total timeout"
@@ -814,7 +846,11 @@ class _CodexCompletionsAdapter:
                 raise TimeoutError(_timeout_message())
             try:
                 from tools.interrupt import is_interrupted
-                if is_interrupted():
+                # Honor interrupt protection for atomic aux tasks (compression):
+                # a mid-flight gateway interrupt must NOT abort the summary call
+                # and trigger a degraded fallback marker (#23975). Timeouts above
+                # still fire; other aux tasks remain interruptible.
+                if is_interrupted() and not _aux_interrupt_protected():
                     raise InterruptedError("Codex auxiliary Responses stream interrupted")
             except InterruptedError:
                 raise
@@ -981,7 +1017,7 @@ class _AsyncCodexChatShim:
 class AsyncCodexAuxiliaryClient:
     """Async-compatible wrapper matching AsyncOpenAI.chat.completions.create()."""
 
-    def __init__(self, sync_wrapper: CodexAuxiliaryClient):
+    def __init__(self, sync_wrapper: "CodexAuxiliaryClient"):
         sync_adapter = sync_wrapper.chat.completions
         async_adapter = _AsyncCodexCompletionsAdapter(sync_adapter)
         self.chat = _AsyncCodexChatShim(async_adapter)
@@ -1124,7 +1160,7 @@ class _AsyncAnthropicChatShim:
 
 
 class AsyncAnthropicAuxiliaryClient:
-    def __init__(self, sync_wrapper: AnthropicAuxiliaryClient):
+    def __init__(self, sync_wrapper: "AnthropicAuxiliaryClient"):
         sync_adapter = sync_wrapper.chat.completions
         async_adapter = _AsyncAnthropicCompletionsAdapter(sync_adapter)
         self.chat = _AsyncAnthropicChatShim(async_adapter)
@@ -1139,7 +1175,7 @@ def _endpoint_speaks_anthropic_messages(base_url: str) -> bool:
     """True if the endpoint at ``base_url`` speaks the Anthropic Messages
     protocol instead of OpenAI chat.completions.
 
-    Mirrors ``prostor_cli.runtime_provider._detect_api_mode_for_url`` so the
+    Mirrors ``hermes_cli.runtime_provider._detect_api_mode_for_url`` so the
     auxiliary client and the main agent stay in sync on transport selection.
     Covers:
 
@@ -1169,7 +1205,7 @@ def _maybe_wrap_anthropic(
     model: str,
     api_key: str,
     base_url: str,
-    api_mode: str | None = None,
+    api_mode: Optional[str] = None,
 ) -> Any:
     """Rewrap a plain OpenAI client in ``AnthropicAuxiliaryClient`` when
     the endpoint actually speaks Anthropic Messages.
@@ -1246,8 +1282,8 @@ def _maybe_wrap_anthropic(
     )
 
 
-def _read_nous_auth() -> dict | None:
-    """Read and validate ~/.prostor/auth.json for an active Nous provider.
+def _read_nous_auth() -> Optional[dict]:
+    """Read and validate ~/.hermes/auth.json for an active Nous provider.
 
     Returns the provider state dict if Nous is active with tokens,
     otherwise None.
@@ -1286,7 +1322,7 @@ def _read_nous_auth() -> dict | None:
 
 def _nous_api_key(provider: dict) -> str:
     """Extract a usable Nous inference JWT from stored auth state."""
-    from prostor_cli.auth import _nous_invoke_jwt_is_usable
+    from hermes_cli.auth import _nous_invoke_jwt_is_usable
 
     for token_key, expiry_key in (
         ("agent_key", "agent_key_expires_at"),
@@ -1309,7 +1345,58 @@ def _nous_base_url() -> str:
     return os.getenv("NOUS_INFERENCE_BASE_URL", _NOUS_DEFAULT_BASE_URL)
 
 
-def _resolve_nous_runtime_api(*, force_refresh: bool = False) -> tuple[str, str] | None:
+def _resolve_nous_pool_runtime_api(*, force_refresh: bool = False) -> Optional[tuple[str, str]]:
+    """Resolve Nous auxiliary credentials from the selected pool entry."""
+    try:
+        from hermes_cli.auth import _agent_key_is_usable
+
+        pool = load_pool("nous")
+    except Exception as exc:
+        logger.debug("Auxiliary Nous pool credential resolution failed: %s", exc)
+        return None
+
+    if not pool or not pool.has_credentials():
+        return None
+
+    try:
+        entry = pool.select()
+    except Exception as exc:
+        logger.debug("Auxiliary Nous pool selection failed: %s", exc)
+        return None
+
+    if entry is None:
+        return None
+
+    state = {
+        "agent_key": getattr(entry, "agent_key", None),
+        "agent_key_expires_at": getattr(entry, "agent_key_expires_at", None),
+        "scope": getattr(entry, "scope", None),
+    }
+    if force_refresh or not _agent_key_is_usable(state, _nous_min_key_ttl_seconds()):
+        try:
+            refreshed = pool.try_refresh_current()
+        except Exception as exc:
+            logger.debug("Auxiliary Nous pool refresh failed: %s", exc)
+            refreshed = None
+        if refreshed is None:
+            return None
+        entry = refreshed
+
+    provider = {
+        "agent_key": getattr(entry, "agent_key", None),
+        "agent_key_expires_at": getattr(entry, "agent_key_expires_at", None),
+        "access_token": getattr(entry, "access_token", None),
+        "expires_at": getattr(entry, "expires_at", None),
+        "scope": getattr(entry, "scope", None),
+    }
+    api_key = _nous_api_key(provider)
+    base_url = _pool_runtime_base_url(entry, _NOUS_DEFAULT_BASE_URL)
+    if not api_key or not base_url:
+        return None
+    return api_key, base_url
+
+
+def _resolve_nous_runtime_api(*, force_refresh: bool = False) -> Optional[tuple[str, str]]:
     """Return fresh Nous runtime credentials when available.
 
     This mirrors the main agent's 401 recovery path and keeps auxiliary
@@ -1317,11 +1404,15 @@ def _resolve_nous_runtime_api(*, force_refresh: bool = False) -> tuple[str, str]
     relying only on whatever raw tokens happen to be sitting in auth.json
     or the credential pool.
     """
+    pooled = _resolve_nous_pool_runtime_api(force_refresh=force_refresh)
+    if pooled is not None:
+        return pooled
+
     try:
-        from prostor_cli.auth import resolve_nous_runtime_credentials
+        from hermes_cli.auth import resolve_nous_runtime_credentials
 
         creds = resolve_nous_runtime_credentials(
-            timeout_seconds=env_float("PROSTOR_NOUS_TIMEOUT_SECONDS", 15),
+            timeout_seconds=env_float("HERMES_NOUS_TIMEOUT_SECONDS", 15),
             force_refresh=force_refresh,
         )
     except Exception as exc:
@@ -1335,21 +1426,21 @@ def _resolve_nous_runtime_api(*, force_refresh: bool = False) -> tuple[str, str]
     return api_key, base_url
 
 
-def _resolve_xai_oauth_for_aux() -> tuple[str, str] | None:
+def _resolve_xai_oauth_for_aux() -> Optional[Tuple[str, str]]:
     """Resolve a fresh xAI OAuth (api_key, base_url) for auxiliary clients.
 
     Prefer the credential pool, matching the main runtime/provider status
     path.  Some xAI OAuth logins live only as pool entries; falling straight
     to the singleton auth-store resolver would make auxiliary tasks such as
-    compression report "no provider configured" even though ``prostor auth
+    compression report "no provider configured" even though ``hermes auth
     status`` shows xAI OAuth as logged in.
 
-    Falls back to ``prostor_cli.auth``'s singleton runtime resolver for older
+    Falls back to ``hermes_cli.auth``'s singleton runtime resolver for older
     auth-store-only logins. Returns ``None`` if the user is not authenticated
     with xAI Grok OAuth.
     """
     try:
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             DEFAULT_XAI_OAUTH_BASE_URL,
             _xai_validate_inference_base_url,
         )
@@ -1364,7 +1455,7 @@ def _resolve_xai_oauth_for_aux() -> tuple[str, str] | None:
                     or ""
                 ).strip()
                 base_url = _xai_validate_inference_base_url(
-                    os.getenv("PROSTOR_XAI_BASE_URL", "").strip().rstrip("/")
+                    os.getenv("HERMES_XAI_BASE_URL", "").strip().rstrip("/")
                     or os.getenv("XAI_BASE_URL", "").strip().rstrip("/")
                     or str(getattr(entry, "runtime_base_url", None) or "").strip().rstrip("/")
                     or str(getattr(entry, "base_url", None) or "").strip().rstrip("/"),
@@ -1376,7 +1467,7 @@ def _resolve_xai_oauth_for_aux() -> tuple[str, str] | None:
         logger.debug("Auxiliary xAI OAuth pool credential resolution failed: %s", exc)
 
     try:
-        from prostor_cli.auth import resolve_xai_oauth_runtime_credentials
+        from hermes_cli.auth import resolve_xai_oauth_runtime_credentials
 
         creds = resolve_xai_oauth_runtime_credentials()
     except Exception as exc:
@@ -1390,8 +1481,8 @@ def _resolve_xai_oauth_for_aux() -> tuple[str, str] | None:
     return api_key, base_url
 
 
-def _read_codex_access_token() -> str | None:
-    """Read a valid, non-expired Codex OAuth access token from Prostor auth store.
+def _read_codex_access_token() -> Optional[str]:
+    """Read a valid, non-expired Codex OAuth access token from Hermes auth store.
 
     If a credential pool exists but currently has no selectable runtime entry
     (for example all pool slots are marked exhausted), fall back to the
@@ -1406,7 +1497,7 @@ def _read_codex_access_token() -> str | None:
             return token
 
     try:
-        from prostor_cli.auth import _read_codex_tokens
+        from hermes_cli.auth import _read_codex_tokens
         data = _read_codex_tokens()
         tokens = data.get("tokens", {})
         access_token = tokens.get("access_token")
@@ -1433,14 +1524,14 @@ def _read_codex_access_token() -> str | None:
         return None
 
 
-def _resolve_api_key_provider() -> tuple[OpenAI | None, str | None]:
+def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
     """Try each API-key provider in PROVIDER_REGISTRY order.
 
     Returns (client, model) for the first provider with usable runtime
     credentials, or (None, None) if none are configured.
     """
     try:
-        from prostor_cli.auth import PROVIDER_REGISTRY, resolve_api_key_provider_credentials
+        from hermes_cli.auth import PROVIDER_REGISTRY, resolve_api_key_provider_credentials
     except ImportError:
         logger.debug("Could not import PROVIDER_REGISTRY for API-key fallback")
         return None, None
@@ -1456,7 +1547,7 @@ def _resolve_api_key_provider() -> tuple[OpenAI | None, str | None]:
             # Without this gate, Claude Code credentials get silently used
             # as auxiliary fallback when the user's primary provider fails.
             try:
-                from prostor_cli.auth import is_provider_explicitly_configured
+                from hermes_cli.auth import is_provider_explicitly_configured
                 if not is_provider_explicitly_configured("anthropic"):
                     continue
             except ImportError:
@@ -1484,7 +1575,7 @@ def _resolve_api_key_provider() -> tuple[OpenAI | None, str | None]:
             if base_url_host_matches(base_url, "api.kimi.com"):
                 extra["default_headers"] = {"User-Agent": "claude-code/0.1.0"}
             elif base_url_host_matches(base_url, "api.githubcopilot.com"):
-                from prostor_cli.models import copilot_default_headers
+                from hermes_cli.models import copilot_default_headers
 
                 extra["default_headers"] = copilot_default_headers()
             elif base_url_host_matches(base_url, "integrate.api.nvidia.com"):
@@ -1524,7 +1615,7 @@ def _resolve_api_key_provider() -> tuple[OpenAI | None, str | None]:
         if base_url_host_matches(base_url, "api.kimi.com"):
             extra["default_headers"] = {"User-Agent": "claude-code/0.1.0"}
         elif base_url_host_matches(base_url, "api.githubcopilot.com"):
-            from prostor_cli.models import copilot_default_headers
+            from hermes_cli.models import copilot_default_headers
 
             extra["default_headers"] = copilot_default_headers()
         elif base_url_host_matches(base_url, "integrate.api.nvidia.com"):
@@ -1550,7 +1641,8 @@ def _resolve_api_key_provider() -> tuple[OpenAI | None, str | None]:
 # ── Provider resolution helpers ─────────────────────────────────────────────
 
 
-def _try_openrouter(explicit_api_key: str = None, model: str = None) -> tuple[OpenAI | None, str | None]:
+
+def _try_openrouter(explicit_api_key: str = None, model: str = None) -> Tuple[Optional[OpenAI], Optional[str]]:
     pool_present, entry = _select_pool_entry("openrouter")
     if pool_present:
         or_key = explicit_api_key or _pool_runtime_api_key(entry)
@@ -1584,7 +1676,7 @@ def _describe_openrouter_unavailable() -> str:
     return "no usable OpenRouter credentials found"
 
 
-def _try_nous(vision: bool = False) -> tuple[OpenAI | None, str | None]:
+def _try_nous(vision: bool = False) -> Tuple[Optional[OpenAI], Optional[str]]:
     # Check cross-session rate limit guard before attempting Nous —
     # if another session already recorded a 429, skip Nous entirely
     # to avoid piling more requests onto the tapped RPH bucket.
@@ -1606,7 +1698,7 @@ def _try_nous(vision: bool = False) -> tuple[OpenAI | None, str | None]:
     if runtime is None and not nous:
         logger.warning(
             "Auxiliary Nous client unavailable: no Nous authentication found "
-            "(run: prostor auth)."
+            "(run: hermes auth)."
         )
         _mark_provider_unhealthy("nous", ttl=60)
         return None, None
@@ -1627,7 +1719,7 @@ def _try_nous(vision: bool = False) -> tuple[OpenAI | None, str | None]:
     # or returns a null recommendation for this task type.
     model = _NOUS_MODEL
     try:
-        from prostor_cli.models import get_nous_recommended_aux_model
+        from hermes_cli.models import get_nous_recommended_aux_model
         recommended = get_nous_recommended_aux_model(vision=vision)
         if recommended:
             model = recommended
@@ -1654,7 +1746,7 @@ def _try_nous(vision: bool = False) -> tuple[OpenAI | None, str | None]:
         if not api_key:
             logger.warning(
                 "Auxiliary Nous client unavailable: no usable inference JWT found "
-                "(run: prostor auth add nous)."
+                "(run: hermes auth add nous)."
             )
             _mark_provider_unhealthy("nous", ttl=60)
             return None, None
@@ -1669,8 +1761,8 @@ def _try_nous(vision: bool = False) -> tuple[OpenAI | None, str | None]:
 
 
 def _refresh_nous_recommended_model(
-    *, vision: bool, stale_model: str | None
-) -> str | None:
+    *, vision: bool, stale_model: Optional[str]
+) -> Optional[str]:
     """Re-fetch the Nous Portal's recommended model after a stale-model 404.
 
     Long-lived processes (gateway, watchers) cache the Portal's
@@ -1690,9 +1782,9 @@ def _refresh_nous_recommended_model(
     matches it) — callers should then let the original error propagate.
     """
     stale = (stale_model or "").strip().lower()
-    fresh: str | None = None
+    fresh: Optional[str] = None
     try:
-        from prostor_cli.models import get_nous_recommended_aux_model
+        from hermes_cli.models import get_nous_recommended_aux_model
 
         fresh = get_nous_recommended_aux_model(vision=vision, force_refresh=True)
     except Exception as exc:
@@ -1725,7 +1817,7 @@ def _read_main_model() -> str:
     if isinstance(override, str) and override.strip():
         return override.strip()
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
         model_cfg = cfg.get("model", {})
         if isinstance(model_cfg, str) and model_cfg.strip():
@@ -1752,7 +1844,7 @@ def _read_main_provider() -> str:
     if isinstance(override, str) and override.strip():
         return override.strip().lower()
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
         model_cfg = cfg.get("model", {})
         if isinstance(model_cfg, dict):
@@ -1812,7 +1904,7 @@ def clear_runtime_main() -> None:
     _RUNTIME_MAIN_API_MODE = ""
 
 
-def _resolve_custom_runtime() -> tuple[str | None, str | None, str | None]:
+def _resolve_custom_runtime() -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """Resolve the active custom/main endpoint the same way the main CLI does.
 
     This covers both env-driven OPENAI_BASE_URL setups and config-saved custom
@@ -1820,7 +1912,7 @@ def _resolve_custom_runtime() -> tuple[str | None, str | None, str | None]:
     environment.
     """
     try:
-        from prostor_cli.runtime_provider import resolve_runtime_provider
+        from hermes_cli.runtime_provider import resolve_runtime_provider
 
         runtime = resolve_runtime_provider(requested="custom")
     except Exception as exc:
@@ -1910,11 +2002,11 @@ def _validate_base_url(base_url: str) -> None:
     except ValueError as exc:
         raise RuntimeError(
             f"Malformed custom endpoint URL: {candidate!r}. "
-            "Run `prostor setup` or `prostor model` and enter a valid http(s) base URL."
+            "Run `hermes setup` or `hermes model` and enter a valid http(s) base URL."
         ) from exc
 
 
-def _try_custom_endpoint() -> tuple[Any | None, str | None]:
+def _try_custom_endpoint() -> Tuple[Optional[Any], Optional[str]]:
     runtime = _resolve_custom_runtime()
     if len(runtime) == 2:
         custom_base, custom_key = runtime
@@ -1965,7 +2057,7 @@ def _try_custom_endpoint() -> tuple[Any | None, str | None]:
     return _fallback_client, model
 
 
-def _build_xai_oauth_aux_client(model: str) -> tuple[Any | None, str | None]:
+def _build_xai_oauth_aux_client(model: str) -> Tuple[Optional[Any], Optional[str]]:
     """Build a CodexAuxiliaryClient for an xAI Grok OAuth-authenticated session.
 
     xAI's ``/v1/responses`` endpoint speaks the OpenAI Responses API, so we
@@ -1991,7 +2083,7 @@ def _build_xai_oauth_aux_client(model: str) -> tuple[Any | None, str | None]:
     return CodexAuxiliaryClient(real_client, model), model
 
 
-def _build_codex_client(model: str) -> tuple[Any | None, str | None]:
+def _build_codex_client(model: str) -> Tuple[Optional[Any], Optional[str]]:
     """Build a CodexAuxiliaryClient for an explicitly-requested model.
 
     There is no auto-selection of the Codex model: the ChatGPT-account
@@ -2034,15 +2126,15 @@ def _build_codex_client(model: str) -> tuple[Any | None, str | None]:
 
 def _try_azure_foundry(
     *,
-    model: str | None = None,
-    explicit_api_key: str | None = None,
-    explicit_base_url: str | None = None,
-    api_mode: str | None = None,
-) -> tuple[Any | None, str | None]:
+    model: Optional[str] = None,
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
+    api_mode: Optional[str] = None,
+) -> Tuple[Optional[Any], Optional[str]]:
     """Resolve an Azure Foundry auxiliary client via the runtime resolver.
 
     Mirrors the ``_try_anthropic`` / ``_try_nous`` shape but delegates to
-    :func:`prostor_cli.runtime_provider._resolve_azure_foundry_runtime` —
+    :func:`hermes_cli.runtime_provider._resolve_azure_foundry_runtime` —
     the same resolver the main agent uses — so:
 
     * ``auth_mode: api_key`` (default) gets the static
@@ -2062,9 +2154,9 @@ def _try_azure_foundry(
     Returns ``(client, model)`` or ``(None, None)`` on failure.
     """
     try:
-        from prostor_cli.auth import AuthError
-        from prostor_cli.config import load_config
-        from prostor_cli.runtime_provider import _resolve_azure_foundry_runtime
+        from hermes_cli.runtime_provider import _resolve_azure_foundry_runtime
+        from hermes_cli.auth import AuthError
+        from hermes_cli.config import load_config
     except ImportError:
         return None, None
 
@@ -2119,7 +2211,7 @@ def _try_azure_foundry(
     # Azure pre-v1 endpoints sometimes carry api-version query params
     # in the base URL; the OpenAI SDK drops them when joining paths,
     # so lift them out and pass via default_query.
-    extra: dict[str, Any] = {}
+    extra: Dict[str, Any] = {}
     _clean_base, _dq = _extract_url_query_params(base_url)
     if _dq:
         extra["default_query"] = _dq
@@ -2146,7 +2238,7 @@ def _try_azure_foundry(
     return client, final_model
 
 
-def _try_anthropic(explicit_api_key: str = None) -> tuple[Any | None, str | None]:
+def _try_anthropic(explicit_api_key: str = None) -> Tuple[Optional[Any], Optional[str]]:
     try:
         from agent.anthropic_adapter import build_anthropic_client, resolve_anthropic_token
     except ImportError:
@@ -2168,7 +2260,7 @@ def _try_anthropic(explicit_api_key: str = None) -> tuple[Any | None, str | None
     # base_url (e.g. Codex endpoint) would leak into Anthropic requests.
     base_url = _pool_runtime_base_url(entry, _ANTHROPIC_DEFAULT_BASE_URL) if pool_present else _ANTHROPIC_DEFAULT_BASE_URL
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
         model_cfg = cfg.get("model")
         if isinstance(model_cfg, dict):
@@ -2204,7 +2296,7 @@ _AUTO_PROVIDER_LABELS = {
 _MAIN_RUNTIME_FIELDS = ("provider", "model", "base_url", "api_key", "api_mode", "auth_mode")
 
 
-def _normalize_main_runtime(main_runtime: dict[str, Any] | None) -> dict[str, Any]:
+def _normalize_main_runtime(main_runtime: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Return a sanitized copy of a live main-runtime override.
 
     Most fields are stripped strings. ``api_key`` may legitimately be a
@@ -2215,7 +2307,7 @@ def _normalize_main_runtime(main_runtime: dict[str, Any] | None) -> dict[str, An
     """
     if not isinstance(main_runtime, dict):
         return {}
-    normalized: dict[str, Any] = {}
+    normalized: Dict[str, Any] = {}
     for field in _MAIN_RUNTIME_FIELDS:
         value = main_runtime.get(field)
         # Preserve a callable api_key (Entra ID bearer provider) unchanged.
@@ -2230,7 +2322,7 @@ def _normalize_main_runtime(main_runtime: dict[str, Any] | None) -> dict[str, An
     return normalized
 
 
-def _get_provider_chain() -> list[tuple]:
+def _get_provider_chain() -> List[tuple]:
     """Return the ordered provider detection chain.
 
     Built at call time (not module level) so that test patches
@@ -2267,13 +2359,13 @@ def _get_provider_chain() -> list[tuple]:
 # happened). Entries auto-expire so a topped-up account recovers without
 # manual intervention.
 #
-# Failure isolation: the cache is in-process only. A second prostor
+# Failure isolation: the cache is in-process only. A second hermes
 # process won't inherit the unhealthy mark — that's intentional, since
 # the user might be running two profiles with different OpenRouter keys.
 
 _AUX_UNHEALTHY_TTL_SECONDS = 600  # 10 minutes
-_aux_unhealthy_until: dict[str, float] = {}
-_aux_unhealthy_logged_at: dict[str, float] = {}
+_aux_unhealthy_until: Dict[str, float] = {}
+_aux_unhealthy_logged_at: Dict[str, float] = {}
 
 # Map provider names that show up in resolved_provider / explicit-config
 # back to the chain labels used by _get_provider_chain(). Keep in sync
@@ -2300,7 +2392,7 @@ def _normalize_chain_label(provider: str) -> str:
     return _AUX_UNHEALTHY_LABEL_ALIASES.get(p, p)
 
 
-def _mark_provider_unhealthy(provider: str, ttl: float | None = None) -> None:
+def _mark_provider_unhealthy(provider: str, ttl: Optional[float] = None) -> None:
     """Mark ``provider`` as recently-402'd, hidden from chain iteration
     until the TTL expires. Called from the payment-fallback branches in
     ``call_llm`` and ``acall_llm`` after a confirmed payment error.
@@ -2335,7 +2427,7 @@ def _is_provider_unhealthy(label: str) -> bool:
     return True
 
 
-def _log_skip_unhealthy(label: str, task: str | None = None) -> None:
+def _log_skip_unhealthy(label: str, task: Optional[str] = None) -> None:
     """Emit a single info-level log per minute when we skip an unhealthy
     provider. Avoids spamming the log on bursty sessions while still
     giving the user a trail.
@@ -2353,7 +2445,7 @@ def _log_skip_unhealthy(label: str, task: str | None = None) -> None:
 
 def _reset_aux_unhealthy_cache() -> None:
     """Clear the unhealthy cache. Used by tests and by a future explicit
-    user trigger (e.g. ``prostor config aux reset``)."""
+    user trigger (e.g. ``hermes config aux reset``)."""
     _aux_unhealthy_until.clear()
     _aux_unhealthy_logged_at.clear()
 
@@ -2401,7 +2493,7 @@ def _is_payment_error(exc: Exception) -> bool:
 def _nous_portal_account_has_fresh_paid_access() -> bool:
     """Return True only when the fresh Nous account API says paid access is allowed."""
     try:
-        from prostor_cli.nous_account import get_nous_portal_account_info
+        from hermes_cli.nous_account import get_nous_portal_account_info
 
         account_info = get_nous_portal_account_info(force_fresh=True)
         return account_info.paid_service_access is True
@@ -2664,7 +2756,7 @@ def _evict_cached_client_instance(target: Any) -> bool:
 def _pool_cache_hint(
     provider: str,
     *,
-    main_runtime: dict[str, Any] | None = None,
+    main_runtime: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Return a stable cache discriminator for pooled providers."""
     normalized = _normalize_aux_provider(provider)
@@ -2682,9 +2774,9 @@ def _pool_cache_hint(
     return f"{normalized}:{entry_id}"
 
 
-def _pool_error_context(exc: Exception) -> dict[str, Any]:
+def _pool_error_context(exc: Exception) -> Dict[str, Any]:
     status = getattr(exc, "status_code", None)
-    payload: dict[str, Any] = {"message": str(exc)}
+    payload: Dict[str, Any] = {"message": str(exc)}
     if status is not None:
         payload["status_code"] = status
     return payload
@@ -2693,8 +2785,8 @@ def _pool_error_context(exc: Exception) -> dict[str, Any]:
 def _recoverable_pool_provider(
     resolved_provider: str,
     client: Any,
-    main_runtime: dict[str, Any] | None = None,
-) -> str | None:
+    main_runtime: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
     """Infer which provider pool can recover the current auxiliary client."""
     normalized = _normalize_aux_provider(resolved_provider)
     if normalized not in {"", "auto", "custom"}:
@@ -2722,7 +2814,7 @@ def _recoverable_pool_provider(
         rt_provider = rt.get("provider", "")
         if rt_provider and rt_provider not in {"", "auto", "custom"}:
             try:
-                from prostor_cli.auth import PROVIDER_REGISTRY
+                from hermes_cli.auth import PROVIDER_REGISTRY
                 pconfig = PROVIDER_REGISTRY.get(rt_provider)
                 if pconfig and getattr(pconfig, "auth_type", None) == "api_key":
                     rt_base = str(getattr(pconfig, "inference_base_url", "") or "").rstrip("/")
@@ -2784,18 +2876,18 @@ def _recover_provider_pool(provider: str, exc: Exception, *, failed_api_key: str
 
 def _retry_same_provider_sync(
     *,
-    task: str | None,
+    task: Optional[str],
     resolved_provider: str,
-    resolved_model: str | None,
-    resolved_base_url: str | None,
-    resolved_api_key: str | None,
-    resolved_api_mode: str | None,
-    main_runtime: dict[str, Any] | None,
-    final_model: str | None,
+    resolved_model: Optional[str],
+    resolved_base_url: Optional[str],
+    resolved_api_key: Optional[str],
+    resolved_api_mode: Optional[str],
+    main_runtime: Optional[Dict[str, Any]],
+    final_model: Optional[str],
     messages: list,
-    temperature: float | None,
-    max_tokens: int | None,
-    tools: list | None,
+    temperature: Optional[float],
+    max_tokens: Optional[int],
+    tools: Optional[list],
     effective_timeout: float,
     effective_extra_body: dict,
 ) -> Any:
@@ -2842,17 +2934,17 @@ def _retry_same_provider_sync(
 
 async def _retry_same_provider_async(
     *,
-    task: str | None,
+    task: Optional[str],
     resolved_provider: str,
-    resolved_model: str | None,
-    resolved_base_url: str | None,
-    resolved_api_key: str | None,
-    resolved_api_mode: str | None,
-    final_model: str | None,
+    resolved_model: Optional[str],
+    resolved_base_url: Optional[str],
+    resolved_api_key: Optional[str],
+    resolved_api_mode: Optional[str],
+    final_model: Optional[str],
     messages: list,
-    temperature: float | None,
-    max_tokens: int | None,
-    tools: list | None,
+    temperature: Optional[float],
+    max_tokens: Optional[int],
+    tools: Optional[list],
     effective_timeout: float,
     effective_extra_body: dict,
 ) -> Any:
@@ -2902,7 +2994,7 @@ def _refresh_provider_credentials(provider: str) -> bool:
     normalized = _normalize_aux_provider(provider)
     try:
         if normalized == "openai-codex":
-            from prostor_cli.auth import resolve_codex_runtime_credentials
+            from hermes_cli.auth import resolve_codex_runtime_credentials
 
             creds = resolve_codex_runtime_credentials(force_refresh=True)
             if not str(creds.get("api_key", "") or "").strip():
@@ -2910,10 +3002,10 @@ def _refresh_provider_credentials(provider: str) -> bool:
             _evict_cached_clients(normalized)
             return True
         if normalized == "nous":
-            from prostor_cli.auth import resolve_nous_runtime_credentials
+            from hermes_cli.auth import resolve_nous_runtime_credentials
 
             creds = resolve_nous_runtime_credentials(
-                timeout_seconds=env_float("PROSTOR_NOUS_TIMEOUT_SECONDS", 15),
+                timeout_seconds=env_float("HERMES_NOUS_TIMEOUT_SECONDS", 15),
                 force_refresh=True,
             )
             if not str(creds.get("api_key", "") or "").strip():
@@ -2921,11 +3013,7 @@ def _refresh_provider_credentials(provider: str) -> bool:
             _evict_cached_clients(normalized)
             return True
         if normalized == "anthropic":
-            from agent.anthropic_adapter import (
-                _refresh_oauth_token,
-                read_claude_code_credentials,
-                resolve_anthropic_token,
-            )
+            from agent.anthropic_adapter import read_claude_code_credentials, _refresh_oauth_token, resolve_anthropic_token
 
             creds = read_claude_code_credentials()
             token = _refresh_oauth_token(creds) if isinstance(creds, dict) and creds.get("refreshToken") else None
@@ -2946,7 +3034,7 @@ def _refresh_provider_credentials(provider: str) -> bool:
                 if refreshed is not None and str(getattr(refreshed, "runtime_api_key", "") or "").strip():
                     _evict_cached_clients(normalized)
                     return True
-            from prostor_cli.auth import resolve_xai_oauth_runtime_credentials
+            from hermes_cli.auth import resolve_xai_oauth_runtime_credentials
 
             creds = resolve_xai_oauth_runtime_credentials(force_refresh=True)
             if not str(creds.get("api_key", "") or "").strip():
@@ -2963,7 +3051,7 @@ def _try_payment_fallback(
     failed_provider: str,
     task: str = None,
     reason: str = "payment error",
-) -> tuple[Any | None, str | None, str]:
+) -> Tuple[Optional[Any], Optional[str], str]:
     """Try alternative providers after a payment/credit or connection error.
 
     Iterates the standard auto-detection chain, skipping the provider that
@@ -3014,7 +3102,7 @@ def _try_main_agent_model_fallback(
     failed_provider: str,
     task: str = None,
     reason: str = "error",
-) -> tuple[Any | None, str | None, str]:
+) -> Tuple[Optional[Any], Optional[str], str]:
     """Last-resort fallback to the user's main agent provider + model.
 
     Used after the configured fallback_chain is exhausted (or empty) for
@@ -3063,7 +3151,7 @@ def _try_configured_fallback_chain(
     task: str,
     failed_provider: str,
     reason: str = "error",
-) -> tuple[Any | None, str | None, str]:
+) -> Tuple[Optional[Any], Optional[str], str]:
     """Try user-configured fallback_chain for a specific auxiliary task.
 
     Reads auxiliary.<task>.fallback_chain from config.yaml and tries each
@@ -3115,7 +3203,7 @@ def _try_configured_fallback_chain(
     return None, None, ""
 
 
-def _fallback_entry_api_key(entry: dict[str, Any]) -> str | None:
+def _fallback_entry_api_key(entry: Dict[str, Any]) -> Optional[str]:
     """Resolve inline or env-backed API key from a fallback-chain entry."""
     explicit = str(entry.get("api_key") or "").strip()
     if explicit:
@@ -3126,7 +3214,7 @@ def _fallback_entry_api_key(entry: dict[str, Any]) -> str | None:
     return None
 
 
-def _resolve_fallback_entry(entry: dict[str, Any]) -> tuple[Any | None, str | None]:
+def _resolve_fallback_entry(entry: Dict[str, Any]) -> Tuple[Optional[Any], Optional[str]]:
     """Resolve one fallback entry through the central provider router."""
     provider = str(entry.get("provider") or "").strip()
     model = str(entry.get("model") or "").strip() or None
@@ -3145,21 +3233,21 @@ def _resolve_fallback_entry(entry: dict[str, Any]) -> tuple[Any | None, str | No
 
 
 def _try_main_fallback_chain(
-    task: str | None,
+    task: Optional[str],
     failed_provider: str = "",
     reason: str = "error",
-) -> tuple[Any | None, str | None, str]:
+) -> Tuple[Optional[Any], Optional[str], str]:
     """Try the top-level main-agent fallback chain for an auxiliary call.
 
     ``provider: auto`` auxiliary tasks should respect the user's declared
-    main fallback policy before dropping into Prostor' built-in discovery
+    main fallback policy before dropping into Hermes' built-in discovery
     chain. The top-level chain is read through ``get_fallback_chain`` so
     both modern ``fallback_providers`` and legacy ``fallback_model`` entries
     participate in the same order as the main agent.
     """
     try:
-        from prostor_cli.config import load_config
-        from prostor_cli.fallback_config import get_fallback_chain
+        from hermes_cli.config import load_config
+        from hermes_cli.fallback_config import get_fallback_chain
 
         chain = get_fallback_chain(load_config())
     except Exception as exc:
@@ -3172,7 +3260,7 @@ def _try_main_fallback_chain(
     failed_norm = (failed_provider or "").strip().lower()
     main_norm = (_read_main_provider() or "").strip().lower()
     skip = {p for p in (failed_norm, main_norm, "auto") if p}
-    tried: list[str] = []
+    tried: List[str] = []
 
     for i, entry in enumerate(chain):
         if not isinstance(entry, dict):
@@ -3214,10 +3302,10 @@ def _try_main_fallback_chain(
 
 def _resolve_single_provider(
     provider: str,
-    model: str | None = None,
-    base_url: str | None = None,
-    api_key: str | None = None,
-) -> Any | None:
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Optional[Any]:
     """Resolve a single provider entry from fallback_chain to an OpenAI client.
 
     Uses the existing provider resolution infrastructure where possible.
@@ -3231,11 +3319,10 @@ def _resolve_single_provider(
     )
     return client
 
-
 def _resolve_auto(
-    main_runtime: dict[str, Any] | None = None,
-    task: str | None = None,
-) -> tuple[OpenAI | None, str | None]:
+    main_runtime: Optional[Dict[str, Any]] = None,
+    task: Optional[str] = None,
+) -> Tuple[Optional[OpenAI], Optional[str]]:
     """Full auto-detection chain.
 
     Priority:
@@ -3272,8 +3359,8 @@ def _resolve_auto(
 
     # ── Warn once if OPENAI_BASE_URL is set but config.yaml uses a named
     #    provider (not 'custom').  This catches the common "env poisoning"
-    #    scenario where a user switches providers via `prostor model` but the
-    #    old OPENAI_BASE_URL lingers in ~/.prostor/.env. ──
+    #    scenario where a user switches providers via `hermes model` but the
+    #    old OPENAI_BASE_URL lingers in ~/.hermes/.env. ──
     if not _stale_base_url_warned:
         _env_base = os.getenv("OPENAI_BASE_URL", "").strip()
         _cfg_provider = runtime_provider or _read_main_provider()
@@ -3283,8 +3370,8 @@ def _resolve_auto(
             logger.warning(
                 "OPENAI_BASE_URL is set (%s) but model.provider is '%s'. "
                 "Auxiliary clients may route to the wrong endpoint. "
-                "Run: prostor model to reconfigure, or remove "
-                "OPENAI_BASE_URL from ~/.prostor/.env",
+                "Run: hermes model to reconfigure, or remove "
+                "OPENAI_BASE_URL from ~/.hermes/.env",
                 _env_base, _cfg_provider,
             )
             _stale_base_url_warned = True
@@ -3397,7 +3484,7 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
     if isinstance(sync_client, AnthropicAuxiliaryClient):
         return AsyncAnthropicAuxiliaryClient(sync_client), model
     try:
-        from agent.gemini_native_adapter import AsyncGeminiNativeClient, GeminiNativeClient
+        from agent.gemini_native_adapter import GeminiNativeClient, AsyncGeminiNativeClient
 
         if isinstance(sync_client, GeminiNativeClient):
             return AsyncGeminiNativeClient(sync_client), model
@@ -3418,7 +3505,7 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
     if base_url_host_matches(sync_base_url, "openrouter.ai"):
         async_kwargs["default_headers"] = build_or_headers()
     elif base_url_host_matches(sync_base_url, "api.githubcopilot.com"):
-        from prostor_cli.copilot_auth import copilot_request_headers
+        from hermes_cli.copilot_auth import copilot_request_headers
 
         async_kwargs["default_headers"] = copilot_request_headers(
             is_agent_turn=True, is_vision=is_vision
@@ -3447,12 +3534,12 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
     return AsyncOpenAI(**async_kwargs), model
 
 
-def _normalize_resolved_model(model_name: str | None, provider: str) -> str | None:
+def _normalize_resolved_model(model_name: Optional[str], provider: str) -> Optional[str]:
     """Normalize a resolved model for the provider that will receive it."""
     if not model_name:
         return model_name
     try:
-        from prostor_cli.model_normalize import normalize_model_for_provider
+        from hermes_cli.model_normalize import normalize_model_for_provider
 
         return normalize_model_for_provider(model_name, provider)
     except Exception:
@@ -3467,10 +3554,10 @@ def resolve_provider_client(
     explicit_base_url: str = None,
     explicit_api_key: str = None,
     api_mode: str = None,
-    main_runtime: dict[str, Any] | None = None,
+    main_runtime: Optional[Dict[str, Any]] = None,
     is_vision: bool = False,
-    task: str | None = None,
-) -> tuple[Any | None, str | None]:
+    task: Optional[str] = None,
+) -> Tuple[Optional[Any], Optional[str]]:
     """Central router: given a provider name and optional model, return a
     configured client with the correct auth, base URL, and API format.
 
@@ -3630,7 +3717,7 @@ def resolve_provider_client(
         client, default = _try_nous(vision=_is_vision)
         if client is None:
             logger.warning("resolve_provider_client: nous requested "
-                           "but Nous Portal not configured (run: prostor auth)")
+                           "but Nous Portal not configured (run: hermes auth)")
             return None, None
         final_model = _normalize_resolved_model(model or default, provider)
         return (_to_async_client(client, final_model, is_vision=is_vision) if async_mode
@@ -3651,7 +3738,7 @@ def resolve_provider_client(
             codex_token = _read_codex_access_token()
             if not codex_token:
                 logger.warning("resolve_provider_client: openai-codex requested "
-                               "but no Codex OAuth token found (run: prostor model)")
+                               "but no Codex OAuth token found (run: hermes model)")
                 return None, None
             final_model = _normalize_resolved_model(model, provider)
             raw_client = OpenAI(
@@ -3664,7 +3751,7 @@ def resolve_provider_client(
         client, default = _build_codex_client(model)
         if client is None:
             logger.warning("resolve_provider_client: openai-codex requested "
-                           "but no Codex OAuth token found (run: prostor model)")
+                           "but no Codex OAuth token found (run: hermes model)")
             return None, None
         final_model = _normalize_resolved_model(model or default, provider)
         return (_to_async_client(client, final_model, is_vision=is_vision) if async_mode
@@ -3683,7 +3770,7 @@ def resolve_provider_client(
         if client is None:
             logger.warning(
                 "resolve_provider_client: xai-oauth requested but no xAI "
-                "OAuth token found (run: prostor model -> xAI Grok OAuth — SuperGrok / Premium+)"
+                "OAuth token found (run: hermes model -> xAI Grok OAuth — SuperGrok / Premium+)"
             )
             return None, None
         final_model = _normalize_resolved_model(model or default, provider)
@@ -3716,7 +3803,7 @@ def resolve_provider_client(
             if base_url_host_matches(custom_base, "api.kimi.com"):
                 extra["default_headers"] = {"User-Agent": "claude-code/0.1.0"}
             elif base_url_host_matches(custom_base, "api.githubcopilot.com"):
-                from prostor_cli.copilot_auth import copilot_request_headers
+                from hermes_cli.copilot_auth import copilot_request_headers
                 extra["default_headers"] = copilot_request_headers(
                     is_agent_turn=True, is_vision=is_vision
                 )
@@ -3760,7 +3847,7 @@ def resolve_provider_client(
 
     # ── Named custom providers (config.yaml providers dict / custom_providers list) ───
     try:
-        from prostor_cli.runtime_provider import _get_named_custom_provider
+        from hermes_cli.runtime_provider import _get_named_custom_provider
         # When the raw requested name is an alias (``kimi`` → ``kimi-coding``)
         # and the user defined a ``custom_providers`` entry under that alias
         # name, the custom entry is the intended target — the built-in alias
@@ -3894,7 +3981,7 @@ def resolve_provider_client(
         if client is None:
             logger.warning(
                 "resolve_provider_client: azure-foundry requested but "
-                "runtime resolution failed (run: prostor doctor for "
+                "runtime resolution failed (run: hermes doctor for "
                 "diagnostics)"
             )
             return None, None
@@ -3904,13 +3991,13 @@ def resolve_provider_client(
 
     # ── API-key providers from PROVIDER_REGISTRY ─────────────────────
     try:
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             PROVIDER_REGISTRY,
             resolve_api_key_provider_credentials,
             resolve_external_process_provider_credentials,
         )
     except ImportError:
-        logger.debug("prostor_cli.auth not available for provider %s", provider)
+        logger.debug("hermes_cli.auth not available for provider %s", provider)
         return None, None
 
     pconfig = PROVIDER_REGISTRY.get(provider)
@@ -3969,7 +4056,7 @@ def resolve_provider_client(
         if base_url_host_matches(base_url, "api.kimi.com"):
             headers["User-Agent"] = "claude-code/0.1.0"
         elif base_url_host_matches(base_url, "api.githubcopilot.com"):
-            from prostor_cli.copilot_auth import copilot_request_headers
+            from hermes_cli.copilot_auth import copilot_request_headers
 
             headers.update(copilot_request_headers(
                 is_agent_turn=True, is_vision=is_vision
@@ -3999,7 +4086,7 @@ def resolve_provider_client(
         # routes through responses.stream().
         if provider == "copilot" and final_model and not raw_codex:
             try:
-                from prostor_cli.models import _should_use_copilot_responses_api
+                from hermes_cli.models import _should_use_copilot_responses_api
                 if _should_use_copilot_responses_api(final_model):
                     logger.debug(
                         "resolve_provider_client: copilot model %s needs "
@@ -4065,8 +4152,8 @@ def resolve_provider_client(
         # AWS SDK providers (Bedrock) — use the Anthropic Bedrock client via
         # boto3's credential chain (IAM roles, SSO, env vars, instance metadata).
         try:
-            from agent.anthropic_adapter import build_anthropic_bedrock_client
             from agent.bedrock_adapter import has_aws_credentials, resolve_bedrock_region
+            from agent.anthropic_adapter import build_anthropic_bedrock_client
         except ImportError:
             logger.warning("resolve_provider_client: bedrock requested but "
                            "boto3 or anthropic SDK not installed")
@@ -4117,8 +4204,8 @@ def resolve_provider_client(
 def get_text_auxiliary_client(
     task: str = "",
     *,
-    main_runtime: dict[str, Any] | None = None,
-) -> tuple[OpenAI | None, str | None]:
+    main_runtime: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[OpenAI], Optional[str]]:
     """Return (client, default_model_slug) for text-only auxiliary tasks.
 
     Args:
@@ -4139,7 +4226,7 @@ def get_text_auxiliary_client(
     )
 
 
-def get_async_text_auxiliary_client(task: str = "", *, main_runtime: dict[str, Any] | None = None):
+def get_async_text_auxiliary_client(task: str = "", *, main_runtime: Optional[Dict[str, Any]] = None):
     """Return (async_client, model_slug) for async consumers.
 
     For standard providers returns (AsyncOpenAI, model). For Codex returns
@@ -4164,7 +4251,7 @@ _VISION_AUTO_PROVIDER_ORDER = (
 )
 
 
-def _main_model_supports_vision(provider: str, model: str | None) -> bool:
+def _main_model_supports_vision(provider: str, model: Optional[str]) -> bool:
     """Return True when ``provider``/``model`` is known to accept image input.
 
     Used by the vision auto-detect chain to skip the user's main provider
@@ -4180,7 +4267,7 @@ def _main_model_supports_vision(provider: str, model: str | None) -> bool:
     """
     try:
         from agent.image_routing import _lookup_supports_vision
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
     except ImportError:
         return True
     try:
@@ -4195,14 +4282,14 @@ def _main_model_supports_vision(provider: str, model: str | None) -> bool:
     return bool(supports)
 
 
-def _normalize_vision_provider(provider: str | None) -> str:
+def _normalize_vision_provider(provider: Optional[str]) -> str:
     return _normalize_aux_provider(provider)
 
 
 def _resolve_strict_vision_backend(
     provider: str,
-    model: str | None = None,
-) -> tuple[Any | None, str | None]:
+    model: Optional[str] = None,
+) -> Tuple[Optional[Any], Optional[str]]:
     provider = _normalize_vision_provider(provider)
     if provider == "copilot":
         return resolve_provider_client("copilot", model, is_vision=True)
@@ -4226,14 +4313,14 @@ def _strict_vision_backend_available(provider: str) -> bool:
     return _resolve_strict_vision_backend(provider)[0] is not None
 
 
-def get_available_vision_backends() -> list[str]:
+def get_available_vision_backends() -> List[str]:
     """Return the currently available vision backends in auto-selection order.
 
     Order: active provider → OpenRouter → Nous → stop.  This is the single
     source of truth for setup, tool gating, and runtime auto-routing of
     vision tasks.
     """
-    available: list[str] = []
+    available: List[str] = []
     # 1. Active provider — if the user configured a provider, try it first.
     main_provider = _read_main_provider()
     if main_provider and main_provider not in {"auto", ""}:
@@ -4252,13 +4339,13 @@ def get_available_vision_backends() -> list[str]:
 
 
 def resolve_vision_provider_client(
-    provider: str | None = None,
-    model: str | None = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
     *,
-    base_url: str | None = None,
-    api_key: str | None = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
     async_mode: bool = False,
-) -> tuple[str | None, Any | None, str | None]:
+) -> Tuple[Optional[str], Optional[Any], Optional[str]]:
     """Resolve the client actually used for vision tasks.
 
     Direct endpoint overrides take precedence over provider selection. Explicit
@@ -4271,7 +4358,7 @@ def resolve_vision_provider_client(
     )
     requested = _normalize_vision_provider(requested)
 
-    def _finalize(resolved_provider: str, sync_client: Any, default_model: str | None):
+    def _finalize(resolved_provider: str, sync_client: Any, default_model: Optional[str]):
         if sync_client is None:
             return resolved_provider, None, None
         final_model = resolved_model or default_model
@@ -4420,14 +4507,14 @@ def resolve_vision_provider_client(
 
 def get_auxiliary_extra_body() -> dict:
     """Return extra_body kwargs for auxiliary API calls.
-
+    
     Includes Nous Portal product tags when the auxiliary client is backed
     by Nous Portal. Returns empty dict otherwise.
     """
     return _nous_extra_body() if auxiliary_is_nous else {}
 
 
-def auxiliary_max_tokens_param(value: int, *, model: str | None = None) -> dict:
+def auxiliary_max_tokens_param(value: int, *, model: Optional[str] = None) -> dict:
     """Return the correct max tokens kwarg for the auxiliary client's provider.
 
     OpenRouter and local models use 'max_tokens'. Direct OpenAI with newer
@@ -4469,7 +4556,7 @@ def auxiliary_max_tokens_param(value: int, *, model: str | None = None) -> dict:
 # replaced in-place.  This bounds cache growth to one entry per unique
 # provider config rather than one per (config × event-loop), which previously
 # caused unbounded fd accumulation in long-running gateway processes (#10200).
-_client_cache: dict[tuple, tuple] = {}
+_client_cache: Dict[tuple, tuple] = {}
 _client_cache_lock = threading.Lock()
 _CLIENT_CACHE_MAX_SIZE = 64  # safety belt — evict oldest when exceeded
 
@@ -4478,12 +4565,12 @@ def _client_cache_key(
     provider: str,
     *,
     async_mode: bool,
-    base_url: str | None = None,
-    api_key: str | None = None,
-    api_mode: str | None = None,
-    main_runtime: dict[str, Any] | None = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    api_mode: Optional[str] = None,
+    main_runtime: Optional[Dict[str, Any]] = None,
     is_vision: bool = False,
-    task: str | None = None,
+    task: Optional[str] = None,
 ) -> tuple:
     runtime = _normalize_main_runtime(main_runtime)
     runtime_key = tuple(runtime.get(field, "") for field in _MAIN_RUNTIME_FIELDS) if provider == "auto" else ()
@@ -4495,7 +4582,7 @@ def _client_cache_key(
     return (provider, async_mode, base_url or "", api_key or "", api_mode or "", runtime_key, is_vision, task_key, pool_hint)
 
 
-def _store_cached_client(cache_key: tuple, client: Any, default_model: str | None, *, bound_loop: Any = None) -> None:
+def _store_cached_client(cache_key: tuple, client: Any, default_model: Optional[str], *, bound_loop: Any = None) -> None:
     with _client_cache_lock:
         old_entry = _client_cache.get(cache_key)
         if old_entry is not None and old_entry[0] is not client:
@@ -4512,14 +4599,14 @@ def _store_cached_client(cache_key: tuple, client: Any, default_model: str | Non
 def _refresh_nous_auxiliary_client(
     *,
     cache_provider: str,
-    model: str | None,
+    model: Optional[str],
     async_mode: bool,
-    base_url: str | None = None,
-    api_key: str | None = None,
-    api_mode: str | None = None,
-    main_runtime: dict[str, Any] | None = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    api_mode: Optional[str] = None,
+    main_runtime: Optional[Dict[str, Any]] = None,
     is_vision: bool = False,
-) -> tuple[Any | None, str | None]:
+) -> Tuple[Optional[Any], Optional[str]]:
     """Refresh Nous runtime creds, rebuild the client, and replace the cache entry."""
     runtime = _resolve_nous_runtime_api(force_refresh=True)
     if runtime is None:
@@ -4615,7 +4702,7 @@ def shutdown_cached_clients() -> None:
     import inspect
 
     with _client_cache_lock:
-        for _key, entry in list(_client_cache.items()):
+        for key, entry in list(_client_cache.items()):
             client = entry[0]
             if client is None:
                 continue
@@ -4659,14 +4746,14 @@ def _is_openrouter_client(client: Any) -> bool:
     return False
 
 
-def _cached_client_accepts_slash_models(client: Any, cached_default: str | None) -> bool:
+def _cached_client_accepts_slash_models(client: Any, cached_default: Optional[str]) -> bool:
     """Best-effort check for cached clients that accept ``vendor/model`` IDs."""
     if _is_openrouter_client(client):
         return True
     return bool(cached_default and "/" in cached_default)
 
 
-def _compat_model(client: Any, model: str | None, cached_default: str | None) -> str | None:
+def _compat_model(client: Any, model: Optional[str], cached_default: Optional[str]) -> Optional[str]:
     """Keep slash-bearing model IDs only for cached clients that support them.
 
     Mirrors the guard in resolve_provider_client() which is skipped on cache hits.
@@ -4683,10 +4770,10 @@ def _get_cached_client(
     base_url: str = None,
     api_key: str = None,
     api_mode: str = None,
-    main_runtime: dict[str, Any] | None = None,
+    main_runtime: Optional[Dict[str, Any]] = None,
     is_vision: bool = False,
-    task: str | None = None,
-) -> tuple[Any | None, str | None]:
+    task: Optional[str] = None,
+) -> Tuple[Optional[Any], Optional[str]]:
     """Get or create a cached client for the given provider.
 
     Async clients (AsyncOpenAI) use httpx.AsyncClient internally, which
@@ -4800,7 +4887,7 @@ def _get_cached_client(
 # silently fell back to the user's main provider, sending OpenAI model names
 # to e.g. DeepSeek and producing cryptic ``unknown variant 'image_url'``
 # errors (issue #31179).
-_AUX_DIRECT_API_BASE_URLS: dict[str, str] = {
+_AUX_DIRECT_API_BASE_URLS: Dict[str, str] = {
     "openai": "https://api.openai.com/v1",
 }
 
@@ -4811,7 +4898,7 @@ def _resolve_task_provider_model(
     model: str = None,
     base_url: str = None,
     api_key: str = None,
-) -> tuple[str, str | None, str | None, str | None, str | None]:
+) -> Tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Determine provider + model for a call.
 
     Priority:
@@ -4847,7 +4934,7 @@ def _resolve_task_provider_model(
     # has already supplied a base_url we keep their endpoint but still rewrite
     # the provider to ``custom`` so resolution doesn't hit the
     # PROVIDER_REGISTRY-only path (which has no ``openai`` entry).
-    def _expand_direct_api_alias(prov: str | None, existing_base: str | None) -> tuple[str | None, str | None]:
+    def _expand_direct_api_alias(prov: Optional[str], existing_base: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         if not prov:
             return prov, existing_base
         target_base = _AUX_DIRECT_API_BASE_URLS.get(prov.strip().lower())
@@ -4886,11 +4973,11 @@ def _resolve_task_provider_model(
 _DEFAULT_AUX_TIMEOUT = 30.0
 
 
-def _get_auxiliary_task_config(task: str) -> dict[str, Any]:
+def _get_auxiliary_task_config(task: str) -> Dict[str, Any]:
     """Return the config dict for auxiliary.<task>, or {} when unavailable.
 
     For plugin-registered auxiliary tasks (see
-    :meth:`prostor_cli.plugins.PluginContext.register_auxiliary_task`) the
+    :meth:`hermes_cli.plugins.PluginContext.register_auxiliary_task`) the
     plugin's declared *defaults* are layered underneath the user's config
     so an unconfigured plugin task still works:
 
@@ -4901,7 +4988,7 @@ def _get_auxiliary_task_config(task: str) -> dict[str, Any]:
     if not task:
         return {}
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         config = load_config()
     except ImportError:
         return {}
@@ -4914,7 +5001,7 @@ def _get_auxiliary_task_config(task: str) -> dict[str, Any]:
     # ctx.register_auxiliary_task(defaults={...}) takes effect without
     # forcing the user to write config.yaml entries.
     try:
-        from prostor_cli.plugins import get_plugin_auxiliary_tasks
+        from hermes_cli.plugins import get_plugin_auxiliary_tasks
         for _entry in get_plugin_auxiliary_tasks():
             if _entry.get("key") == task:
                 _defaults = _entry.get("defaults") or {}
@@ -4944,7 +5031,7 @@ def _get_task_timeout(task: str, default: float = _DEFAULT_AUX_TIMEOUT) -> float
     return default
 
 
-def _get_task_extra_body(task: str) -> dict[str, Any]:
+def _get_task_extra_body(task: str) -> Dict[str, Any]:
     """Read auxiliary.<task>.extra_body and return a shallow copy when valid."""
     task_config = _get_auxiliary_task_config(task)
     raw = task_config.get("extra_body")
@@ -5058,19 +5145,20 @@ def _convert_openai_images_to_anthropic(messages: list) -> list:
     return converted
 
 
+
 def _build_call_kwargs(
     provider: str,
     model: str,
     messages: list,
-    temperature: float | None = None,
-    max_tokens: int | None = None,
-    tools: list | None = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    tools: Optional[list] = None,
     timeout: float = 30.0,
-    extra_body: dict | None = None,
-    base_url: str | None = None,
+    extra_body: Optional[dict] = None,
+    base_url: Optional[str] = None,
 ) -> dict:
     """Build kwargs for .chat.completions.create() with model/provider adjustments."""
-    kwargs: dict[str, Any] = {
+    kwargs: Dict[str, Any] = {
         "model": model,
         "messages": messages,
         "timeout": timeout,
@@ -5184,7 +5272,7 @@ def call_llm(
     model: str = None,
     base_url: str = None,
     api_key: str = None,
-    main_runtime: dict[str, Any] | None = None,
+    main_runtime: Optional[Dict[str, Any]] = None,
     messages: list,
     temperature: float = None,
     max_tokens: int = None,
@@ -5242,7 +5330,7 @@ def call_llm(
         if client is None:
             raise RuntimeError(
                 f"No LLM provider configured for task={task} provider={resolved_provider}. "
-                f"Run: prostor setup"
+                f"Run: hermes setup"
             )
         resolved_provider = effective_provider or resolved_provider
     else:
@@ -5263,7 +5351,7 @@ def call_llm(
                 raise RuntimeError(
                     f"Provider '{_explicit}' is set in config.yaml but no API key "
                     f"was found. Set the {_explicit.upper()}_API_KEY environment "
-                    f"variable, or switch to a different provider with `prostor model`."
+                    f"variable, or switch to a different provider with `hermes model`."
                 )
             # For auto/custom with no credentials, try the full auto chain
             # rather than hardcoding OpenRouter (which may be depleted).
@@ -5277,7 +5365,7 @@ def call_llm(
         if client is None:
             raise RuntimeError(
                 f"No LLM provider configured for task={task} provider={resolved_provider}. "
-                f"Run: prostor setup")
+                f"Run: hermes setup")
 
     effective_timeout = timeout if timeout is not None else _get_task_timeout(task)
 
@@ -5713,7 +5801,7 @@ async def async_call_llm(
     model: str = None,
     base_url: str = None,
     api_key: str = None,
-    main_runtime: dict[str, Any] | None = None,
+    main_runtime: Optional[Dict[str, Any]] = None,
     messages: list,
     temperature: float = None,
     max_tokens: int = None,
@@ -5751,7 +5839,7 @@ async def async_call_llm(
         if client is None:
             raise RuntimeError(
                 f"No LLM provider configured for task={task} provider={resolved_provider}. "
-                f"Run: prostor setup"
+                f"Run: hermes setup"
             )
         resolved_provider = effective_provider or resolved_provider
     else:
@@ -5769,7 +5857,7 @@ async def async_call_llm(
                 raise RuntimeError(
                     f"Provider '{_explicit}' is set in config.yaml but no API key "
                     f"was found. Set the {_explicit.upper()}_API_KEY environment "
-                    f"variable, or switch to a different provider with `prostor model`."
+                    f"variable, or switch to a different provider with `hermes model`."
                 )
             if not resolved_base_url:
                 logger.info("Auxiliary %s: provider %s unavailable, trying auto-detection chain",
@@ -5778,7 +5866,7 @@ async def async_call_llm(
         if client is None:
             raise RuntimeError(
                 f"No LLM provider configured for task={task} provider={resolved_provider}. "
-                f"Run: prostor setup")
+                f"Run: hermes setup")
 
     effective_timeout = timeout if timeout is not None else _get_task_timeout(task)
 

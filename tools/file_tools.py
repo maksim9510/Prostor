@@ -9,19 +9,42 @@ import threading
 from pathlib import Path
 
 from agent.file_safety import get_read_block_error
-from agent.redact import redact_sensitive_text
-from tools import file_state
 from tools.binary_extensions import has_binary_extension
 from tools.file_operations import (
     ShellFileOperations,
     normalize_read_pagination,
     normalize_search_pagination,
 )
+from tools import file_state
+from agent.redact import redact_sensitive_text
 
 logger = logging.getLogger(__name__)
 
 
 _EXPECTED_WRITE_ERRNOS = {errno.EACCES, errno.EPERM, errno.EROFS}
+
+
+def _expand_tilde(path: str) -> str:
+    """Expand ``~`` using the effective profile home when available.
+
+    In-process file tools share the gateway process's HOME, which may differ
+    from the profile-specific HOME that interactive CLI sessions use.  This
+    mirrors ``hermes_constants.get_subprocess_home()`` so that ``~`` resolves
+    consistently regardless of whether the tool runs interactively or inside a
+    gateway-driven cron job (#48552).
+    """
+    if not path or "~" not in path:
+        return path
+    try:
+        from hermes_constants import get_subprocess_home
+
+        home = get_subprocess_home()
+    except Exception:
+        home = None
+    if home and (path == "~" or path.startswith("~/")):
+        return home if path == "~" else os.path.join(home, path[2:])
+    return os.path.expanduser(path)
+
 
 # ---------------------------------------------------------------------------
 # Read-size guard: cap the character count returned to the model.
@@ -32,7 +55,7 @@ _EXPECTED_WRITE_ERRNOS = {errno.EACCES, errno.EPERM, errno.EROFS}
 #
 # Configurable via config.yaml:  file_read_max_chars: 200000
 # ---------------------------------------------------------------------------
-_DEFAULT_MAX_READ_CHARS = 50_000
+_DEFAULT_MAX_READ_CHARS = 100_000
 _max_read_chars_cached: int | None = None
 
 
@@ -47,7 +70,7 @@ def _get_max_read_chars() -> int:
     if _max_read_chars_cached is not None:
         return _max_read_chars_cached
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
         val = cfg.get("file_read_max_chars")
         if isinstance(val, (int, float)) and val > 0:
@@ -57,7 +80,6 @@ def _get_max_read_chars() -> int:
         pass
     _max_read_chars_cached = _DEFAULT_MAX_READ_CHARS
     return _max_read_chars_cached
-
 
 # If the total file size exceeds this AND the caller didn't specify a narrow
 # range (limit <= 200), we include a hint encouraging targeted reads.
@@ -108,7 +130,7 @@ def _sentinel_free_abs_cwd(raw: str | None) -> str | None:
     raw = str(raw or "").strip()
     if raw.lower() in _TERMINAL_CWD_SENTINELS:
         return None
-    expanded = os.path.expanduser(raw)
+    expanded = _expand_tilde(raw)
     if not os.path.isabs(expanded):
         return None
     return expanded
@@ -223,7 +245,7 @@ def _resolve_base_dir(task_id: str = "default") -> Path:
     """
     root = _authoritative_workspace_root(task_id)
     if root:
-        base = Path(root).expanduser()
+        base = Path(_expand_tilde(root))
     else:
         base = Path(os.getcwd())
     if not base.is_absolute():
@@ -240,7 +262,7 @@ def _resolve_path_for_task(filepath: str, task_id: str = "default") -> Path:
     See :func:`_resolve_base_dir` for how the base is chosen. Absolute input
     paths are returned resolved-but-unanchored.
     """
-    p = Path(filepath).expanduser()
+    p = Path(_expand_tilde(filepath))
     if p.is_absolute():
         return p.resolve()
     return (_resolve_base_dir(task_id) / p).resolve()
@@ -262,12 +284,12 @@ def _path_resolution_warning(filepath: str, resolved: Path, task_id: str = "defa
     (no ``cd`` run yet) is warned on the very first write.
     """
     try:
-        if Path(filepath).expanduser().is_absolute():
+        if Path(_expand_tilde(filepath)).is_absolute():
             return None
         workspace_root = _authoritative_workspace_root(task_id)
         if not workspace_root:
             return None  # No authoritative workspace root to compare against.
-        root = Path(workspace_root).expanduser().resolve()
+        root = Path(_expand_tilde(workspace_root)).resolve()
         # Is `resolved` inside `root`?
         try:
             resolved.relative_to(root)
@@ -286,7 +308,7 @@ def _path_resolution_warning(filepath: str, resolved: Path, task_id: str = "defa
 
 def _is_blocked_device_path(path: str) -> bool:
     """Return True for concrete device/fd paths that can hang reads."""
-    normalized = os.path.expanduser(path)
+    normalized = os.path.normpath(_expand_tilde(path))
     if normalized in _BLOCKED_DEVICE_PATHS:
         return True
     # /proc/self/fd/0-2 and /proc/<pid>/fd/0-2 are Linux aliases for stdio
@@ -303,21 +325,42 @@ def _is_blocked_device_path(path: str) -> bool:
     return False
 
 
-def _is_blocked_device(filepath: str) -> bool:
+def _is_blocked_device(filepath: str, base_dir: str | Path | None = None) -> bool:
     """Return True if the path would hang the process (infinite output or blocking input).
 
     Check the literal path first so aliases like /dev/stdin are caught before
-    they resolve to terminal-specific paths. Then check the resolved path so a
-    workspace symlink to /dev/zero cannot bypass the guard.
+    they resolve to terminal-specific paths. Then check each symlink hop before
+    the final resolved path so aliases to devices cannot bypass the guard.
     """
-    normalized = os.path.expanduser(filepath)
+    expanded = _expand_tilde(filepath)
+    if base_dir is not None and not os.path.isabs(expanded):
+        expanded = os.path.join(os.fspath(base_dir), expanded)
+    normalized = os.path.normpath(expanded)
     if _is_blocked_device_path(normalized):
         return True
+
+    seen: set[str] = set()
+    current = normalized
+    for _ in range(20):
+        try:
+            target = os.readlink(current)
+        except OSError:
+            break
+        if not os.path.isabs(target):
+            target = os.path.join(os.path.dirname(current), target)
+        target = os.path.normpath(target)
+        if _is_blocked_device_path(target):
+            return True
+        if target in seen:
+            break
+        seen.add(target)
+        current = target
+
     try:
-        resolved = os.path.realpath(normalized)
+        resolved = os.path.normpath(os.path.realpath(normalized))
     except (OSError, ValueError):
         return False
-    if resolved != normalized and _is_blocked_device_path(resolved):
+    if _is_blocked_device_path(resolved):
         return True
     return False
 
@@ -330,25 +373,25 @@ _SENSITIVE_PATH_PREFIXES = (
 )
 _SENSITIVE_EXACT_PATHS = {"/var/run/docker.sock", "/run/docker.sock"}
 
-_prostor_config_resolved: str | None = None
-_prostor_config_resolved_loaded = False
+_hermes_config_resolved: str | None = None
+_hermes_config_resolved_loaded = False
 
 
-def _get_prostor_config_resolved() -> str | None:
-    """Return the resolved absolute path of the Prostor config file (cached)."""
-    global _prostor_config_resolved, _prostor_config_resolved_loaded
-    if _prostor_config_resolved_loaded:
-        return _prostor_config_resolved
-    _prostor_config_resolved_loaded = True
+def _get_hermes_config_resolved() -> str | None:
+    """Return the resolved absolute path of the Hermes config file (cached)."""
+    global _hermes_config_resolved, _hermes_config_resolved_loaded
+    if _hermes_config_resolved_loaded:
+        return _hermes_config_resolved
+    _hermes_config_resolved_loaded = True
     try:
-        from prostor_cli.config import get_config_path
-        _prostor_config_resolved = str(get_config_path().resolve())
+        from hermes_cli.config import get_config_path
+        _hermes_config_resolved = str(get_config_path().resolve())
     except Exception:
         try:
-            _prostor_config_resolved = str(Path("~/.prostor/config.yaml").expanduser().resolve())
+            _hermes_config_resolved = str(Path(_expand_tilde("~/.hermes/config.yaml")).resolve())
         except Exception:
-            _prostor_config_resolved = None
-    return _prostor_config_resolved
+            _hermes_config_resolved = None
+    return _hermes_config_resolved
 
 
 def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None:
@@ -357,7 +400,7 @@ def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None
         resolved = str(_resolve_path_for_task(filepath, task_id))
     except (OSError, ValueError):
         resolved = filepath
-    normalized = os.path.normpath(os.path.expanduser(filepath))
+    normalized = os.path.normpath(_expand_tilde(filepath))
     _err = (
         f"Refusing to write to sensitive system path: {filepath}\n"
         "Use the terminal tool with sudo if you need to modify system files."
@@ -367,22 +410,22 @@ def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None
             return _err
     if resolved in _SENSITIVE_EXACT_PATHS or normalized in _SENSITIVE_EXACT_PATHS:
         return _err
-    # Prevent agents from modifying the Prostor config file directly.
+    # Prevent agents from modifying the Hermes config file directly.
     # approvals.mode and other security settings live here; a malicious or
     # prompt-injected agent could silently disable exec approval by writing to
     # this file.
-    prostor_config = _get_prostor_config_resolved()
-    if prostor_config and (resolved == prostor_config or normalized == prostor_config):
+    hermes_config = _get_hermes_config_resolved()
+    if hermes_config and (resolved == hermes_config or normalized == hermes_config):
         return (
-            f"Refusing to write to Prostor config file: {filepath}\n"
+            f"Refusing to write to Hermes config file: {filepath}\n"
             "Agent cannot modify security-sensitive configuration. "
-            "Edit ~/.prostor/config.yaml directly or use 'prostor config' instead."
+            "Edit ~/.hermes/config.yaml directly or use 'hermes config' instead."
         )
     return None
 
 
 def _get_container_mirror_prefix_for_task(task_id: str = "default") -> str | None:
-    """Return the container-side Prostor mirror prefix for Docker file tools."""
+    """Return the container-side Hermes mirror prefix for Docker file tools."""
     try:
         from tools.terminal_tool import (
             _active_environments,
@@ -403,7 +446,7 @@ def _get_container_mirror_prefix_for_task(task_id: str = "default") -> str | Non
             if env.__class__.__name__ == "DockerEnvironment" and bool(
                 getattr(env, "_persistent", False)
             ):
-                return "/root/.prostor"
+                return "/root/.hermes"
             return None
 
         config = _get_env_config()
@@ -411,29 +454,29 @@ def _get_container_mirror_prefix_for_task(task_id: str = "default") -> str | Non
         return None
 
     if config.get("env_type") == "docker" and config.get("container_persistent", True):
-        return "/root/.prostor"
+        return "/root/.hermes"
     return None
 
 
 def _check_cross_profile_path(filepath: str, task_id: str = "default") -> str | None:
-    """Return a soft-guard warning when ``filepath`` lands in another Prostor
+    """Return a soft-guard warning when ``filepath`` lands in another Hermes
     profile's scoped area, a host-side sandbox-mirror of authoritative profile
-    state, or the Docker container's sandbox mirror of Prostor state.
+    state, or the Docker container's sandbox mirror of Hermes state.
 
     Three detectors run in order:
 
-    * cross-profile (#TBD) — writes that hit another profile's
+    * cross-profile — writes that hit another profile's
       ``skills/plugins/cron/memories`` directory.
     * sandbox-mirror (#32049) — writes that hit the
-      ``…/sandboxes/<backend>/<task>/home/.prostor/…`` mirror created by a
+      ``…/sandboxes/<backend>/<task>/home/.hermes/…`` mirror created by a
       non-local terminal backend (Docker, Daytona, etc.), where the host
-      Prostor process never reads the mirror and the authoritative file is
+      Hermes process never reads the mirror and the authoritative file is
       left untouched.
     * container-mirror (#32049 follow-up) — writes from inside a Docker
       container whose bind-mounted home strips the ``sandboxes/`` prefix, so
-      the agent sees a plain ``/root/.prostor/…`` path.
+      the agent sees a plain ``/root/.hermes/…`` path.
 
-    Returns ``None`` when the write is in-scope or outside Prostor scope.
+    Returns ``None`` when the write is in-scope or outside Hermes scope.
     All detectors are soft guards — the agent can override any by
     passing ``cross_profile=True`` to its write tool after explicit user
     direction. Defense-in-depth, NOT a security boundary — the terminal
@@ -454,7 +497,7 @@ def _check_cross_profile_path(filepath: str, task_id: str = "default") -> str | 
         return None
 
     # Resolve via the task's cwd so a relative ``skills/foo/SKILL.md``
-    # in a session that cd'd into ``~/.prostor/profiles/other/`` is
+    # in a session that cd'd into ``~/.hermes/profiles/other/`` is
     # classified against the right base.
     try:
         resolved = str(_resolve_path_for_task(filepath, task_id))
@@ -541,7 +584,6 @@ def _reset_patch_failures(task_id: str, resolved_paths: list) -> None:
             return
         for rp in resolved_paths:
             task_failures.pop(rp, None)
-
 
 # Per-task bounds for the containers inside each _read_tracker[task_id].
 # A CLI session uses one stable task_id for its lifetime; without these
@@ -641,6 +683,49 @@ def _is_internal_file_status_text(content: str) -> bool:
     return False
 
 
+def _looks_like_read_file_line_numbered_content(content: str) -> bool:
+    """Return True for content dominated by read_file's ``LINE_NUM|CONTENT`` display.
+
+    ``read_file`` intentionally returns line-numbered text to the model. If
+    that display format is echoed into ``write_file``, config/source files are
+    silently corrupted with prefixes like `` 1|``.  We reject writes where the
+    non-empty lines are mostly consecutive read_file-style numbered lines, while
+    allowing sparse literal pipe content such as a single ``1|value`` line.
+    """
+    if not isinstance(content, str):
+        return False
+
+    lines = [line for line in content.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+
+    numbered: list[int] = []
+    for line in lines:
+        stripped = line.lstrip()
+        prefix, sep, _rest = stripped.partition("|")
+        if sep and prefix.isdigit():
+            numbered.append(int(prefix))
+
+    if len(numbered) < 2:
+        return False
+    if len(numbered) / len(lines) < 0.6:
+        return False
+
+    consecutive_pairs = sum(
+        1 for prev, current in zip(numbered, numbered[1:])
+        if current == prev + 1
+    )
+    return consecutive_pairs >= len(numbered) - 1
+
+
+def _is_internal_file_tool_content(content: str) -> bool:
+    """Return True when content is file-tool display text, not intended file bytes."""
+    return (
+        _is_internal_file_status_text(content)
+        or _looks_like_read_file_line_numbered_content(content)
+    )
+
+
 def _get_file_ops(task_id: str = "default") -> ShellFileOperations:
     """Get or create ShellFileOperations for a terminal environment.
 
@@ -656,19 +741,14 @@ def _get_file_ops(task_id: str = "default") -> ShellFileOperations:
     parent's container and its cached file_ops. RL/benchmark task_ids with
     a registered env override keep their isolation.
     """
-    import time
-
     from tools.terminal_tool import (
-        _active_environments,
-        _create_environment,
+        _active_environments, _env_lock, _create_environment,
+        _get_env_config, _last_activity, _start_cleanup_thread,
         _creation_locks,
         _creation_locks_lock,
-        _env_lock,
-        _get_env_config,
-        _last_activity,
         _resolve_container_task_id,
-        _start_cleanup_thread,
     )
+    import time
 
     raw_task_id = task_id or "default"
     task_id = _resolve_container_task_id(raw_task_id)
@@ -796,7 +876,8 @@ def read_file_tool(path: str, offset: int = 1, limit: int = 500, task_id: str = 
         # ── Device path guard ─────────────────────────────────────────
         # Block paths that would hang the process (infinite output,
         # blocking on input).  Pure path check — no I/O.
-        if _is_blocked_device(path):
+        device_base = None if Path(path).expanduser().is_absolute() else _resolve_base_dir(task_id)
+        if _is_blocked_device(path, base_dir=device_base):
             return json.dumps({
                 "error": (
                     f"Cannot read '{path}': this is a device file that would "
@@ -863,11 +944,11 @@ def read_file_tool(path: str, offset: int = 1, limit: int = 500, task_id: str = 
                 ),
             })
 
-        # ── Prostor internal path guard ────────────────────────────────
+        # ── Hermes internal path guard ────────────────────────────────
         # Prevent prompt injection via catalog or hub metadata files,
-        # and block credential stores under PROSTOR_HOME.  Pass the
+        # and block credential stores under HERMES_HOME.  Pass the
         # already-resolved path so a relative-path read against
-        # TERMINAL_CWD == PROSTOR_HOME (e.g. "auth.json") still hits the
+        # TERMINAL_CWD == HERMES_HOME (e.g. "auth.json") still hits the
         # denylist — get_read_block_error's own resolve() runs against
         # the Python process cwd, which can differ.
         block_error = get_read_block_error(str(_resolved))
@@ -1051,6 +1132,8 @@ def read_file_tool(path: str, offset: int = 1, limit: int = 500, task_id: str = 
         return tool_error(str(e))
 
 
+
+
 def reset_file_dedup(task_id: str = None):
     """Clear the deduplication cache for file reads.
 
@@ -1187,7 +1270,7 @@ def write_file_tool(path: str, content: str, task_id: str = "default",
                     cross_profile: bool = False) -> str:
     """Write content to a file.
 
-    ``cross_profile`` opts out of the soft cross-Prostor-profile guard. The
+    ``cross_profile`` opts out of the soft cross-Hermes-profile guard. The
     guard fires only on writes that land in another profile's
     skills/plugins/cron/memories directory; everything else is unaffected.
     Pass ``True`` after explicit user direction — same shape as ``force``
@@ -1200,10 +1283,11 @@ def write_file_tool(path: str, content: str, task_id: str = "default",
         cross_warning = _check_cross_profile_path(path, task_id)
         if cross_warning:
             return tool_error(cross_warning)
-    if _is_internal_file_status_text(content):
+    if _is_internal_file_tool_content(content):
         return tool_error(
-            "Refusing to write internal read_file status text as file content. "
-            "Re-read the file or reconstruct the intended file contents before writing."
+            "Refusing to write internal read_file display text as file content. "
+            "Strip read_file line-number prefixes or reconstruct the intended "
+            "file contents before writing."
         )
     try:
         # Resolve once for the registry lock + stale check.  Failures here
@@ -1266,7 +1350,7 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
                task_id: str = "default", cross_profile: bool = False) -> str:
     """Patch a file using replace mode or V4A patch format.
 
-    ``cross_profile`` opts out of the soft cross-Prostor-profile guard for
+    ``cross_profile`` opts out of the soft cross-Hermes-profile guard for
     targets under another profile's skills/plugins/cron/memories
     directory. Same shape as ``write_file``'s flag.
     """
@@ -1276,7 +1360,6 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
         _paths_to_check.append(path)
     if mode == "patch" and patch:
         import re as _re
-
         from tools.path_security import has_traversal_component
         for _m in _re.finditer(r'^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s*(.+)$', patch, _re.MULTILINE):
             v4a_path = _m.group(1).strip()
@@ -1503,6 +1586,8 @@ def search_tool(pattern: str, target: str = "content", path: str = ".",
         return tool_error(str(e))
 
 
+
+
 # ---------------------------------------------------------------------------
 # Schemas + Registry
 # ---------------------------------------------------------------------------
@@ -1513,7 +1598,6 @@ def _check_file_reqs():
     """Lazy wrapper to avoid circular import with tools/__init__.py."""
     from tools import check_file_requirements
     return check_file_requirements()
-
 
 READ_FILE_SCHEMA = {
     "name": "read_file",
@@ -1539,7 +1623,7 @@ WRITE_FILE_SCHEMA = {
             "content": {"type": "string", "description": "Complete content to write to the file"},
             "cross_profile": {
                 "type": "boolean",
-                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Prostor profile's skills/plugins/cron/memories — by default these writes are blocked with a warning because they affect a different profile than the one this session is running under.",
+                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Hermes profile's skills/plugins/cron/memories — by default these writes are blocked with a warning because they affect a different profile than the one this session is running under.",
                 "default": False,
             },
         },
@@ -1590,7 +1674,7 @@ PATCH_SCHEMA = {
             },
             "cross_profile": {
                 "type": "boolean",
-                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Prostor profile's skills/plugins/cron/memories.",
+                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Hermes profile's skills/plugins/cron/memories.",
                 "default": False,
             },
         },
@@ -1635,7 +1719,7 @@ def _handle_write_file(args, **kw):
             "write_file: missing required field 'content'. The tool call included a "
             "path but no content argument — this is almost always a dropped-arg bug "
             "under context pressure. Re-emit the tool call with the full content "
-            "payload, or use execute_code with prostor_tools.write_file() for very "
+            "payload, or use execute_code with hermes_tools.write_file() for very "
             "large files."
         )
     if not isinstance(args["content"], str):
@@ -1670,7 +1754,7 @@ def _handle_search_files(args, **kw):
         output_mode=args.get("output_mode", "content"), context=args.get("context", 0), task_id=tid)
 
 
-registry.register(name="read_file", toolset="file", schema=READ_FILE_SCHEMA, handler=_handle_read_file, check_fn=_check_file_reqs, emoji="📖", max_result_size_chars=50_000)
-registry.register(name="write_file", toolset="file", schema=WRITE_FILE_SCHEMA, handler=_handle_write_file, check_fn=_check_file_reqs, emoji="✍️", max_result_size_chars=50_000)
-registry.register(name="patch", toolset="file", schema=PATCH_SCHEMA, handler=_handle_patch, check_fn=_check_file_reqs, emoji="🔧", max_result_size_chars=50_000)
-registry.register(name="search_files", toolset="file", schema=SEARCH_FILES_SCHEMA, handler=_handle_search_files, check_fn=_check_file_reqs, emoji="🔎", max_result_size_chars=50_000)
+registry.register(name="read_file", toolset="file", schema=READ_FILE_SCHEMA, handler=_handle_read_file, check_fn=_check_file_reqs, emoji="📖", max_result_size_chars=100_000)
+registry.register(name="write_file", toolset="file", schema=WRITE_FILE_SCHEMA, handler=_handle_write_file, check_fn=_check_file_reqs, emoji="✍️", max_result_size_chars=100_000)
+registry.register(name="patch", toolset="file", schema=PATCH_SCHEMA, handler=_handle_patch, check_fn=_check_file_reqs, emoji="🔧", max_result_size_chars=100_000)
+registry.register(name="search_files", toolset="file", schema=SEARCH_FILES_SCHEMA, handler=_handle_search_files, check_fn=_check_file_reqs, emoji="🔎", max_result_size_chars=100_000)

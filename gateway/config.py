@@ -8,16 +8,15 @@ Handles loading and validating configuration for:
 - Delivery preferences
 """
 
-import json
 import logging
 import os
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from enum import Enum
+import json
 from pathlib import Path
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Any, Callable
+from enum import Enum
 
-from prostor_core import get_prostor_home
+from hermes_cli.config import get_hermes_home
 from utils import env_int, is_truthy_value
 
 logger = logging.getLogger(__name__)
@@ -57,7 +56,7 @@ def _coerce_int(value: Any, default: int) -> int:
         return default
 
 
-def _coerce_optional_positive_int(value: Any, key: str) -> int | None:
+def _coerce_optional_positive_int(value: Any, key: str) -> Optional[int]:
     """Coerce an optional positive integer config value.
 
     ``None``/0/negative disable the setting. Malformed values are ignored with
@@ -131,7 +130,7 @@ def _ensure_platform_extra_dict(platforms_data: dict, name: str) -> tuple[dict, 
 
 # Module-level cache for bundled platform plugin names (lives outside the
 # enum so it doesn't become an accidental enum member).
-_Platform__bundled_plugin_names: set | None = None
+_Platform__bundled_plugin_names: Optional[set] = None
 
 
 class Platform(Enum):
@@ -166,7 +165,6 @@ class Platform(Enum):
     QQBOT = "qqbot"
     YUANBAO = "yuanbao"
     RELAY = "relay"  # generic relay adapter fronted by the connector (EXPERIMENTAL)
-
     @classmethod
     def _missing_(cls, value):
         """Accept unknown platform names only for known plugin adapters.
@@ -243,7 +241,7 @@ _BUILTIN_PLATFORM_VALUES = frozenset(m.value for m in Platform.__members__.value
 class HomeChannel:
     """
     Default destination for a platform.
-
+    
     When a cron job specifies deliver="telegram" without a specific chat ID,
     messages are sent to this home channel. Thread-aware platforms may also
     store a thread/topic ID so the bare platform target routes to the exact
@@ -252,9 +250,9 @@ class HomeChannel:
     platform: Platform
     chat_id: str
     name: str  # Human-readable name for display
-    thread_id: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
+    thread_id: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
         result = {
             "platform": self.platform.value,
             "chat_id": self.chat_id,
@@ -263,9 +261,9 @@ class HomeChannel:
         if self.thread_id:
             result["thread_id"] = self.thread_id
         return result
-
+    
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "HomeChannel":
+    def from_dict(cls, data: Dict[str, Any]) -> "HomeChannel":
         return cls(
             platform=Platform(data["platform"]),
             chat_id=str(data["chat_id"]),
@@ -278,7 +276,7 @@ class HomeChannel:
 class SessionResetPolicy:
     """
     Controls when sessions reset (lose context).
-
+    
     Modes:
     - "daily": Reset at a specific hour each day
     - "idle": Reset after N minutes of inactivity
@@ -290,8 +288,8 @@ class SessionResetPolicy:
     idle_minutes: int = 1440  # Minutes of inactivity before reset (24 hours)
     notify: bool = True  # Send a notification to the user when auto-reset occurs
     notify_exclude_platforms: tuple = ("api_server", "webhook")  # Platforms that don't get reset notifications
-
-    def to_dict(self) -> dict[str, Any]:
+    
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "mode": self.mode,
             "at_hour": self.at_hour,
@@ -299,9 +297,9 @@ class SessionResetPolicy:
             "notify": self.notify,
             "notify_exclude_platforms": list(self.notify_exclude_platforms),
         }
-
+    
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SessionResetPolicy":
+    def from_dict(cls, data: Dict[str, Any]) -> "SessionResetPolicy":
         # Handle both missing keys and explicit null values (YAML null → None)
         mode = data.get("mode")
         at_hour = data.get("at_hour")
@@ -321,10 +319,10 @@ class SessionResetPolicy:
 class PlatformConfig:
     """Configuration for a single messaging platform."""
     enabled: bool = False
-    token: str | None = None  # Bot token (Telegram, Discord)
-    api_key: str | None = None  # API key if different from token
-    home_channel: HomeChannel | None = None
-
+    token: Optional[str] = None  # Bot token (Telegram, Discord)
+    api_key: Optional[str] = None  # API key if different from token
+    home_channel: Optional[HomeChannel] = None
+    
     # Reply threading mode (Telegram/Slack)
     # - "off": Never thread replies to original message
     # - "first": Only first chunk threads to user's message (default)
@@ -339,9 +337,9 @@ class PlatformConfig:
     gateway_restart_notification: bool = True
 
     # Platform-specific settings
-    extra: dict[str, Any] = field(default_factory=dict)
+    extra: Dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         result = {
             "enabled": self.enabled,
             "extra": self.extra,
@@ -357,7 +355,7 @@ class PlatformConfig:
         return result
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlatformConfig":
+    def from_dict(cls, data: Dict[str, Any]) -> "PlatformConfig":
         home_channel = None
         if "home_channel" in data:
             home_channel = HomeChannel.from_dict(data["home_channel"])
@@ -424,7 +422,7 @@ class StreamingConfig:
     # the fresh-message replacement path; set >0 to opt in.
     fresh_final_after_seconds: float = 0.0
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "enabled": self.enabled,
             "transport": self.transport,
@@ -435,7 +433,7 @@ class StreamingConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "StreamingConfig":
+    def from_dict(cls, data: Dict[str, Any]) -> "StreamingConfig":
         if not data:
             return cls()
         return cls(
@@ -497,26 +495,26 @@ _PLATFORM_CONNECTED_CHECKERS: dict[Platform, Callable[[PlatformConfig], bool]] =
 class GatewayConfig:
     """
     Main gateway configuration.
-
+    
     Manages all platform connections, session policies, and delivery settings.
     """
     # Platform configurations
-    platforms: dict[Platform, PlatformConfig] = field(default_factory=dict)
-
+    platforms: Dict[Platform, PlatformConfig] = field(default_factory=dict)
+    
     # Session reset policies by type
     default_reset_policy: SessionResetPolicy = field(default_factory=SessionResetPolicy)
-    reset_by_type: dict[str, SessionResetPolicy] = field(default_factory=dict)
-    reset_by_platform: dict[Platform, SessionResetPolicy] = field(default_factory=dict)
-
+    reset_by_type: Dict[str, SessionResetPolicy] = field(default_factory=dict)
+    reset_by_platform: Dict[Platform, SessionResetPolicy] = field(default_factory=dict)
+    
     # Reset trigger commands
-    reset_triggers: list[str] = field(default_factory=lambda: ["/new", "/reset"])
+    reset_triggers: List[str] = field(default_factory=lambda: ["/new", "/reset"])
 
     # User-defined quick commands (slash commands that bypass the agent loop)
-    quick_commands: dict[str, Any] = field(default_factory=dict)
-
+    quick_commands: Dict[str, Any] = field(default_factory=dict)
+    
     # Storage paths
-    sessions_dir: Path = field(default_factory=lambda: get_prostor_home() / "sessions")
-
+    sessions_dir: Path = field(default_factory=lambda: get_hermes_home() / "sessions")
+    
     # Delivery settings
     always_log_local: bool = True  # Always save cron outputs to local files
     # Drop outbound "silence narration" messages (e.g. *(silent)*, 🔇, a bare
@@ -533,13 +531,13 @@ class GatewayConfig:
     # Session isolation in shared chats
     group_sessions_per_user: bool = True  # Isolate group/channel sessions per participant when user IDs are available
     thread_sessions_per_user: bool = False  # When False (default), threads are shared across all participants
-    max_concurrent_sessions: int | None = None  # Positive int caps simultaneous active chat sessions
+    max_concurrent_sessions: Optional[int] = None  # Positive int caps simultaneous active chat sessions
 
     # Multi-profile multiplexing (opt-in; default off preserves one-gateway-per-profile).
     # When True, the default profile's gateway serves inbound messages for every
     # profile on the host: profiles are stamped into session keys and (in later
     # phases) per-profile adapters/credentials are resolved. When False, the
-    # gateway behaves exactly as before — single PROSTOR_HOME, no profile stamping.
+    # gateway behaves exactly as before — single HERMES_HOME, no profile stamping.
     multiplex_profiles: bool = False
 
     # Unauthorized DM policy
@@ -555,7 +553,7 @@ class GatewayConfig:
     # fresh session exactly as if the reset policy had fired.  0 = disabled.
     session_store_max_age_days: int = 90
 
-    def get_connected_platforms(self) -> list[Platform]:
+    def get_connected_platforms(self) -> List[Platform]:
         """Return list of platforms that are enabled and configured."""
         connected = []
         for platform, config in self.platforms.items():
@@ -591,7 +589,7 @@ class GatewayConfig:
         try:
             from gateway.platform_registry import platform_registry
             try:
-                from prostor_cli.plugins import discover_plugins
+                from hermes_cli.plugins import discover_plugins
                 discover_plugins()
             except Exception:
                 pass
@@ -606,35 +604,35 @@ class GatewayConfig:
             pass  # Registry not yet initialised during early import
 
         return False
-
-    def get_home_channel(self, platform: Platform) -> HomeChannel | None:
+    
+    def get_home_channel(self, platform: Platform) -> Optional[HomeChannel]:
         """Get the home channel for a platform."""
         config = self.platforms.get(platform)
         if config:
             return config.home_channel
         return None
-
+    
     def get_reset_policy(
-        self,
-        platform: Platform | None = None,
-        session_type: str | None = None
+        self, 
+        platform: Optional[Platform] = None,
+        session_type: Optional[str] = None
     ) -> SessionResetPolicy:
         """
         Get the appropriate reset policy for a session.
-
+        
         Priority: platform override > type override > default
         """
         # Platform-specific override takes precedence
         if platform and platform in self.reset_by_platform:
             return self.reset_by_platform[platform]
-
+        
         # Type-specific override (dm, group, thread)
         if session_type and session_type in self.reset_by_type:
             return self.reset_by_type[session_type]
-
+        
         return self.default_reset_policy
-
-    def to_dict(self) -> dict[str, Any]:
+    
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "platforms": {
                 p.value: c.to_dict() for p, c in self.platforms.items()
@@ -660,9 +658,9 @@ class GatewayConfig:
             "streaming": self.streaming.to_dict(),
             "session_store_max_age_days": self.session_store_max_age_days,
         }
-
+    
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GatewayConfig":
+    def from_dict(cls, data: Dict[str, Any]) -> "GatewayConfig":
         platforms = {}
         for platform_name, platform_data in data.get("platforms", {}).items():
             try:
@@ -670,11 +668,11 @@ class GatewayConfig:
                 platforms[platform] = PlatformConfig.from_dict(platform_data)
             except ValueError:
                 pass  # Skip unknown platforms
-
+        
         reset_by_type = {}
         for type_name, policy_data in data.get("reset_by_type", {}).items():
             reset_by_type[type_name] = SessionResetPolicy.from_dict(policy_data)
-
+        
         reset_by_platform = {}
         for platform_name, policy_data in data.get("reset_by_platform", {}).items():
             try:
@@ -682,15 +680,15 @@ class GatewayConfig:
                 reset_by_platform[platform] = SessionResetPolicy.from_dict(policy_data)
             except ValueError:
                 pass
-
+        
         default_policy = SessionResetPolicy()
         if "default_reset_policy" in data:
             default_policy = SessionResetPolicy.from_dict(data["default_reset_policy"])
-
-        sessions_dir = get_prostor_home() / "sessions"
+        
+        sessions_dir = get_hermes_home() / "sessions"
         if "sessions_dir" in data:
             sessions_dir = Path(data["sessions_dir"])
-
+        
         quick_commands = data.get("quick_commands", {})
         if not isinstance(quick_commands, dict):
             quick_commands = {}
@@ -705,7 +703,7 @@ class GatewayConfig:
         nested_gateway = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
         if multiplex_profiles is None and isinstance(nested_gateway, dict):
             # Also honor gateway.multiplex_profiles written by
-            # ``prostor config set gateway.multiplex_profiles true``.
+            # ``hermes config set gateway.multiplex_profiles true``.
             multiplex_profiles = nested_gateway.get("multiplex_profiles")
         if "max_concurrent_sessions" in data:
             max_concurrent_raw = data.get("max_concurrent_sessions")
@@ -750,8 +748,13 @@ class GatewayConfig:
             session_store_max_age_days=session_store_max_age_days,
         )
 
-    def get_unauthorized_dm_behavior(self, platform: Platform | None = None) -> str:
-        """Return the effective unauthorized-DM behavior for a platform."""
+    def get_unauthorized_dm_behavior(self, platform: Optional[Platform] = None) -> str:
+        """Return the effective unauthorized-DM behavior for a platform.
+
+        Email is inbox-shaped, not chat-shaped, so it defaults to ``"ignore"``
+        unless ``platforms.email.unauthorized_dm_behavior`` explicitly opts
+        into pairing. A global default does not opt email into pairing.
+        """
         if platform:
             platform_cfg = self.platforms.get(platform)
             if platform_cfg and "unauthorized_dm_behavior" in platform_cfg.extra:
@@ -759,9 +762,11 @@ class GatewayConfig:
                     platform_cfg.extra.get("unauthorized_dm_behavior"),
                     self.unauthorized_dm_behavior,
                 )
+            if platform == Platform.EMAIL:
+                return "ignore"
         return self.unauthorized_dm_behavior
 
-    def get_notice_delivery(self, platform: Platform | None = None) -> str:
+    def get_notice_delivery(self, platform: Optional[Platform] = None) -> str:
         """Return the effective notice-delivery mode for a platform."""
         if platform:
             platform_cfg = self.platforms.get(platform)
@@ -779,11 +784,11 @@ def load_gateway_config() -> GatewayConfig:
 
     Priority (highest to lowest):
     1. Environment variables
-    2. ~/.prostor/config.yaml (primary user-facing config)
-    3. ~/.prostor/gateway.json (legacy — provides defaults under config.yaml)
+    2. ~/.hermes/config.yaml (primary user-facing config)
+    3. ~/.hermes/gateway.json (legacy — provides defaults under config.yaml)
     4. Built-in defaults
     """
-    _home = get_prostor_home()
+    _home = get_hermes_home()
     gw_data: dict = {}
 
     # Legacy fallback: gateway.json provides the base layer.
@@ -791,7 +796,7 @@ def load_gateway_config() -> GatewayConfig:
     gateway_json_path = _home / "gateway.json"
     if gateway_json_path.exists():
         try:
-            with open(gateway_json_path, encoding="utf-8") as f:
+            with open(gateway_json_path, "r", encoding="utf-8") as f:
                 gw_data = json.load(f) or {}
             logger.info(
                 "Loaded legacy %s — consider moving settings to config.yaml",
@@ -810,10 +815,10 @@ def load_gateway_config() -> GatewayConfig:
 
             # Managed scope: overlay administrator-pinned values so the gateway
             # honors them too. This loader builds its own dict instead of going
-            # through prostor_cli.config.load_config, so without this a managed
+            # through hermes_cli.config.load_config, so without this a managed
             # session_reset / quick_commands / stt / model would be ignored by
             # the messaging gateway. Fail-open via the shared helper.
-            from prostor_cli import managed_scope
+            from hermes_cli import managed_scope
             yaml_cfg = managed_scope.apply_managed_overlay(yaml_cfg)
 
             # Map config.yaml keys → GatewayConfig.from_dict() schema.
@@ -860,7 +865,7 @@ def load_gateway_config() -> GatewayConfig:
             streaming_cfg = yaml_cfg.get("streaming")
             if not isinstance(streaming_cfg, dict):
                 # Fall back to nested gateway.streaming written by
-                # ``prostor config set gateway.streaming.*``
+                # ``hermes config set gateway.streaming.*``
                 streaming_cfg = yaml_cfg.get("gateway", {}).get("streaming")
             if isinstance(streaming_cfg, dict):
                 gw_data["streaming"] = streaming_cfg
@@ -918,7 +923,7 @@ def load_gateway_config() -> GatewayConfig:
             # Iterate built-in platforms plus any registered plugin platforms
             # so plugin authors get the same shared-key bridging (#24836).
             try:
-                from prostor_cli.plugins import discover_plugins
+                from hermes_cli.plugins import discover_plugins
                 discover_plugins()  # idempotent
                 from gateway.platform_registry import platform_registry as _pr
             except Exception as e:
@@ -1135,7 +1140,7 @@ def load_gateway_config() -> GatewayConfig:
 
     # Override with environment variables
     _apply_env_overrides(config)
-
+    
     # --- Validate loaded values ---
     _validate_gateway_config(config)
 
@@ -1189,7 +1194,7 @@ def _validate_gateway_config(config: "GatewayConfig") -> None:
     # without changing placeholder values get a clear startup error instead
     # of a confusing "auth failed" from the platform API.
     try:
-        from prostor_cli.auth import has_usable_secret
+        from hermes_cli.auth import has_usable_secret
     except ImportError:
         has_usable_secret = None  # type: ignore[assignment]
 
@@ -1230,20 +1235,20 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         if not platform_config.enabled and not enabled_was_explicit:
             platform_config.enabled = True
         return platform_config
-
+    
     # Telegram
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if telegram_token:
         telegram_config = _enable_from_env(Platform.TELEGRAM)
         telegram_config.token = telegram_token
-
+    
     # Reply threading mode for Telegram (off/first/all)
     telegram_reply_mode = os.getenv("TELEGRAM_REPLY_TO_MODE", "").lower()
     if telegram_reply_mode in {"off", "first", "all"}:
         if Platform.TELEGRAM not in config.platforms:
             config.platforms[Platform.TELEGRAM] = PlatformConfig()
         config.platforms[Platform.TELEGRAM].reply_to_mode = telegram_reply_mode
-
+    
     telegram_fallback_ips = os.getenv("TELEGRAM_FALLBACK_IPS", "")
     if telegram_fallback_ips:
         if Platform.TELEGRAM not in config.platforms:
@@ -1260,13 +1265,13 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
             name=os.getenv("TELEGRAM_HOME_CHANNEL_NAME", "Home"),
             thread_id=os.getenv("TELEGRAM_HOME_CHANNEL_THREAD_ID") or None,
         )
-
+    
     # Discord
     discord_token = os.getenv("DISCORD_BOT_TOKEN")
     if discord_token:
         discord_config = _enable_from_env(Platform.DISCORD)
         discord_config.token = discord_token
-
+    
     discord_home = os.getenv("DISCORD_HOME_CHANNEL")
     if discord_home and Platform.DISCORD in config.platforms:
         config.platforms[Platform.DISCORD].home_channel = HomeChannel(
@@ -1275,14 +1280,14 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
             name=os.getenv("DISCORD_HOME_CHANNEL_NAME", "Home"),
             thread_id=os.getenv("DISCORD_HOME_CHANNEL_THREAD_ID") or None,
         )
-
+    
     # Reply threading mode for Discord (off/first/all)
     discord_reply_mode = os.getenv("DISCORD_REPLY_TO_MODE", "").lower()
     if discord_reply_mode in {"off", "first", "all"}:
         if Platform.DISCORD not in config.platforms:
             config.platforms[Platform.DISCORD] = PlatformConfig()
         config.platforms[Platform.DISCORD].reply_to_mode = discord_reply_mode
-
+    
     # WhatsApp (typically uses different auth mechanism)
     whatsapp_enabled = os.getenv("WHATSAPP_ENABLED", "").lower() in {"true", "1", "yes"}
     whatsapp_disabled_explicitly = os.getenv("WHATSAPP_ENABLED", "").lower() in {"false", "0", "no"}
@@ -1392,7 +1397,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
             name=os.getenv("SLACK_HOME_CHANNEL_NAME", ""),
             thread_id=os.getenv("SLACK_HOME_CHANNEL_THREAD_ID") or None,
         )
-
+    
     # Signal
     signal_url = os.getenv("SIGNAL_HTTP_URL")
     signal_account = os.getenv("SIGNAL_ACCOUNT")
@@ -1877,7 +1882,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
             config.default_reset_policy.idle_minutes = int(idle_minutes)
         except ValueError:
             pass
-
+    
     reset_hour = os.getenv("SESSION_RESET_HOUR")
     if reset_hour:
         try:
@@ -1904,17 +1909,15 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     # for the same bug class in commit 7849a3d73; this is the runtime
     # counterpart.
     try:
-        from prostor_cli.plugins import discover_plugins
+        from hermes_cli.plugins import discover_plugins
         discover_plugins()  # idempotent
         from gateway.platform_registry import platform_registry
         for entry in platform_registry.plugin_entries():
             try:
-                if not entry.check_fn():
-                    continue
+                platform = Platform(entry.name)
             except Exception as e:
-                logger.debug("check_fn for %s raised: %s", entry.name, e)
+                logger.debug("unknown platform name %r: %s", entry.name, e)
                 continue
-            platform = Platform(entry.name)
             existing_cfg = config.platforms.get(platform)
             # Respect an explicit ``enabled: false`` (YAML / gateway.json /
             # dashboard PUT).  ``_enabled_explicit`` is set in
@@ -1998,6 +2001,22 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
                             entry.name,
                         )
                         continue
+            # Verify dependencies LAST — only for platforms that are already
+            # enabled or passed the credential gate above.  For adapter plugins
+            # ``check_fn`` lazy-INSTALLS the platform SDK (pip) as a side
+            # effect, so running it as an unconditional sweep over every
+            # registered platform made ``load_gateway_config()`` pip-install
+            # Discord/Telegram/Slack/Feishu/Dingtalk on every call — including
+            # the desktop/dashboard readiness probe (``GET /api/status``, which
+            # awaits this synchronously) — even when the user configured none
+            # of them.  That blocked startup until every install finished and
+            # caused the desktop app to time out and boot-loop (stuck at 94%).
+            try:
+                if not entry.check_fn():
+                    continue
+            except Exception as e:
+                logger.debug("check_fn for %s raised: %s", entry.name, e)
+                continue
             if platform not in config.platforms:
                 config.platforms[platform] = PlatformConfig()
             config.platforms[platform].enabled = True

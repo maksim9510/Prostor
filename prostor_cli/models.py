@@ -1,27 +1,27 @@
 """
 Canonical model catalogs and lightweight validation helpers.
 
-Add, remove, or reorder entries here — both `prostor setup` and
-`prostor` provider-selection will pick up the change automatically.
+Add, remove, or reorder entries here — both `hermes setup` and
+`hermes` provider-selection will pick up the change automatically.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import time
-import urllib.error
 import urllib.parse
 import urllib.request
+import urllib.error
+import time
 from difflib import get_close_matches
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Optional
 
-from prostor_cli import __version__ as _PROSTOR_VERSION
+from hermes_cli import __version__ as _HERMES_VERSION
 
 # Identify ourselves so endpoints fronted by Cloudflare's Browser Integrity
 # Check (error 1010) don't reject the default ``Python-urllib/*`` signature.
-_PROSTOR_USER_AGENT = f"prostor-cli/{_PROSTOR_VERSION}"
+_HERMES_USER_AGENT = f"hermes-cli/{_HERMES_VERSION}"
 
 COPILOT_BASE_URL = "https://api.githubcopilot.com"
 COPILOT_MODELS_URL = f"{COPILOT_BASE_URL}/models"
@@ -34,72 +34,74 @@ COPILOT_REASONING_EFFORTS_O_SERIES = ["low", "medium", "high"]
 # (model_id, display description shown in menus)
 OPENROUTER_MODELS: list[tuple[str, str]] = [
     # Anthropic
-    ("anthropic/claude-opus-4.8", ""),
-    ("anthropic/claude-opus-4.8-fast", "2x price, higher output speed"),
-    ("anthropic/claude-sonnet-4.6", ""),
-    ("anthropic/claude-haiku-4.5", ""),
+    ("anthropic/claude-opus-4.8",              ""),
+    ("anthropic/claude-opus-4.8-fast",         "2x price, higher output speed"),
+    ("anthropic/claude-sonnet-4.6",            ""),
+    ("anthropic/claude-haiku-4.5",             ""),
     # OpenAI
-    ("openai/gpt-5.5", ""),
-    ("openai/gpt-5.5-pro", ""),
-    ("openai/gpt-5.4-mini", ""),
+    ("openai/gpt-5.5",                         ""),
+    ("openai/gpt-5.5-pro",                     ""),
+    ("openai/gpt-5.4-mini",                    ""),
     # Google
-    ("google/gemini-3-pro-preview", ""),
-    ("google/gemini-3.1-pro-preview", ""),
-    ("google/gemini-3.5-flash", ""),
+    ("google/gemini-3-pro-preview",            ""),
+    ("google/gemini-3.1-pro-preview",          ""),
+    ("google/gemini-3.5-flash",                ""),
     # xAI
-    ("x-ai/grok-4.3", ""),
+    ("x-ai/grok-4.3",                          ""),
     # DeepSeek
-    ("deepseek/deepseek-v4-pro", ""),
-    ("deepseek/deepseek-v4-flash", ""),
+    ("deepseek/deepseek-v4-pro",               ""),
+    ("deepseek/deepseek-v4-flash",             ""),
     # Qwen
-    ("qwen/qwen3.7-max", ""),
-    ("qwen/qwen3.7-plus", ""),
-    ("qwen/qwen3.6-35b-a3b", ""),
+    ("qwen/qwen3.7-max",                       ""),
+    ("qwen/qwen3.7-plus",                      ""),
+    ("qwen/qwen3.6-35b-a3b",                   ""),
     # MoonshotAI
-    ("moonshotai/kimi-k2.6", "recommended"),
-    ("moonshotai/kimi-k2.7-code", ""),
+    ("moonshotai/kimi-k2.6",                   "recommended"),
+    ("moonshotai/kimi-k2.7-code",              ""),
     # MiniMax
-    ("minimax/minimax-m3", ""),
+    ("minimax/minimax-m3",                     ""),
     # Z-AI
-    ("z-ai/glm-5.2", ""),
-    ("z-ai/glm-5.1", ""),
+    ("z-ai/glm-5.2",                           ""),
+    ("z-ai/glm-5.1",                           ""),
     # Xiaomi
-    ("xiaomi/mimo-v2.5-pro", ""),
+    ("xiaomi/mimo-v2.5-pro",                   ""),
     # Tencent
-    ("tencent/hy3-preview", ""),
+    ("tencent/hy3-preview",                    ""),
     # StepFun
-    ("stepfun/step-3.7-flash", ""),
+    ("stepfun/step-3.7-flash",                 ""),
     # NVIDIA
-    ("nvidia/nemotron-3-super-120b-a12b", ""),
+    ("nvidia/nemotron-3-super-120b-a12b",      ""),
     # OpenRouter routers
-    ("openrouter/pareto-code", "auto-routes to cheapest coder meeting openrouter.min_coding_score"),
+    ("openrouter/pareto-code",                 "auto-routes to cheapest coder meeting openrouter.min_coding_score"),
     # Free tier
-    ("openrouter/elephant-alpha", "free"),
-    ("openrouter/owl-alpha", "free"),
-    ("poolside/laguna-m.1:free", "free"),
-    ("tencent/hy3-preview:free", "free"),
+    ("openrouter/elephant-alpha",              "free"),
+    ("openrouter/owl-alpha",                   "free"),
+    ("poolside/laguna-m.1:free",               "free"),
+    ("tencent/hy3-preview:free",               "free"),
     ("nvidia/nemotron-3-super-120b-a12b:free", "free"),
     ("nvidia/nemotron-3-ultra-550b-a55b:free", "free"),
-    ("inclusionai/ring-2.6-1t:free", "free"),
+    ("inclusionai/ring-2.6-1t:free",           "free"),
 ]
 
 _openrouter_catalog_cache: list[tuple[str, str]] | None = None
+
+
 
 
 def _codex_curated_models() -> list[str]:
     """Derive the openai-codex curated list from codex_models.py.
 
     Single source of truth: DEFAULT_CODEX_MODELS + forward-compat synthesis.
-    This keeps the gateway /model picker in sync with the CLI `prostor model`
+    This keeps the gateway /model picker in sync with the CLI `hermes model`
     flow without maintaining a separate static list.
     """
-    from prostor_cli.codex_models import DEFAULT_CODEX_MODELS, _add_forward_compat_models
+    from hermes_cli.codex_models import DEFAULT_CODEX_MODELS, _add_forward_compat_models
     return _add_forward_compat_models(list(DEFAULT_CODEX_MODELS))
 
 
 # Static fallback for xAI when the models.dev disk cache is empty (fresh
 # install, offline first run, etc.). Mirrors the xAI-direct model IDs from
-# $PROSTOR_HOME/models_dev_cache.json as of 2026-04-28. Whenever xAI renames
+# $HERMES_HOME/models_dev_cache.json as of 2026-04-28. Whenever xAI renames
 # or retires a model, the disk cache picks it up on the next refresh and the
 # fallback here only matters until that refresh lands.
 #
@@ -132,7 +134,7 @@ def _xai_promote_top(ids: list[str]) -> list[str]:
 
 
 def _xai_merge_curated_extras(ids: list[str]) -> list[str]:
-    """Append Prostor-curated xAI models that are missing from models.dev."""
+    """Append Hermes-curated xAI models that are missing from models.dev."""
     out = list(ids)
     for extra in _XAI_CURATED_EXTRAS:
         if extra in out:
@@ -146,9 +148,9 @@ def _xai_merge_curated_extras(ids: list[str]) -> list[str]:
 def _xai_curated_models() -> list[str]:
     """Derive the xAI-direct curated list from models.dev disk cache.
 
-    Reads $PROSTOR_HOME/models_dev_cache.json directly (no network) so this
+    Reads $HERMES_HOME/models_dev_cache.json directly (no network) so this
     runs at import time without blocking. Falls back to ``_XAI_STATIC_FALLBACK``
-    when the cache is empty or unreadable. Prostor refreshes the cache from
+    when the cache is empty or unreadable. Hermes refreshes the cache from
     https://models.dev/api.json on normal use, so this list self-heals as
     xAI renames models.
 
@@ -262,17 +264,6 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "gemini-3-pro-preview",
         "gemini-3.5-flash",
         "gemini-3.1-flash-lite-preview",
-    ],
-    "google-gemini-cli": [
-        "gemini-3.1-pro-preview",
-        "gemini-3-pro-preview",
-        # Code Assist serves two flash slugs with different access gates
-        # (gemini-cli models.ts): gemini-3-flash-preview is the preview flash
-        # that subscription/free-tier OAuth users actually reach, while
-        # gemini-3.5-flash is GA-channel-gated. Offer both so non-GA users
-        # aren't stuck with a slug cloudcode-pa 404s for them.
-        "gemini-3-flash-preview",
-        "gemini-3.5-flash",
     ],
     "zai": [
         "glm-5.2",
@@ -611,7 +602,7 @@ def union_with_portal_free_recommendations(
 
     For free-tier users this is the source of truth: any model the Portal
     flags as free should be selectable, even if the user is running an
-    older Prostor that doesn't ship that model in its hardcoded curated
+    older Hermes that doesn't ship that model in its hardcoded curated
     list.  This function returns an augmented ``(model_ids, pricing)``
     pair where:
 
@@ -677,7 +668,7 @@ def union_with_portal_paid_recommendations(
     the docs-hosted catalog manifest has been rebuilt since the last release.
 
     For paid-tier users this lets newly-launched paid models surface in the
-    picker even if the user is running an older Prostor that doesn't ship
+    picker even if the user is running an older Hermes that doesn't ship
     them in its hardcoded curated list. This function returns an augmented
     ``(model_ids, pricing)`` pair where:
 
@@ -753,7 +744,7 @@ def check_nous_free_tier(*, force_fresh: bool = False) -> bool:
             return cached_result
 
     try:
-        from prostor_cli.nous_account import get_nous_portal_account_info
+        from hermes_cli.nous_account import get_nous_portal_account_info
 
         account_info = get_nous_portal_account_info(force_fresh=force_fresh)
         result = account_info.is_free_tier
@@ -790,10 +781,10 @@ _NOUS_RECOMMENDED_CACHE_TTL: int = 600  # seconds (10 minutes)
 _nous_recommended_cache: dict[str, tuple[dict[str, Any], float]] = {}
 
 
-def _nous_recommended_disk_path() -> Path:
+def _nous_recommended_disk_path() -> "Path":
     """Disk path for the persisted recommended-models cache."""
-    from prostor_constants import get_prostor_home
-    return get_prostor_home() / "cache" / "nous_recommended_cache.json"
+    from hermes_constants import get_hermes_home
+    return get_hermes_home() / "cache" / "nous_recommended_cache.json"
 
 
 def _read_nous_recommended_disk(base: str) -> dict[str, Any] | None:
@@ -862,7 +853,7 @@ def fetch_nous_recommended_models(
     ``force_refresh=True`` to bypass the in-process cache.
 
     A successful live fetch is also persisted to a per-base disk cache
-    (``$PROSTOR_HOME/cache/nous_recommended_cache.json``) as last-known-good.
+    (``$HERMES_HOME/cache/nous_recommended_cache.json``) as last-known-good.
     When the live fetch fails (network, parse, non-2xx) and the in-process
     cache is empty, the disk copy is returned instead of ``{}`` — so a
     transient Portal hiccup no longer silently drops the free/paid model
@@ -913,7 +904,7 @@ def fetch_nous_recommended_models(
 def _resolve_nous_portal_url() -> str:
     """Best-effort lookup of the Portal base URL the user is authed against."""
     try:
-        from prostor_cli.auth import (
+        from hermes_cli.auth import (
             DEFAULT_NOUS_PORTAL_URL,
             get_provider_auth_state,
         )
@@ -926,7 +917,7 @@ def _resolve_nous_portal_url() -> str:
         return "https://portal.nousresearch.com"
 
 
-def _extract_model_name(entry: Any) -> str | None:
+def _extract_model_name(entry: Any) -> Optional[str]:
     """Pull the ``modelName`` field from a recommended-model entry, else None."""
     if not isinstance(entry, dict):
         return None
@@ -939,10 +930,10 @@ def _extract_model_name(entry: Any) -> str | None:
 def get_nous_recommended_aux_model(
     *,
     vision: bool = False,
-    free_tier: bool | None = None,
+    free_tier: Optional[bool] = None,
     portal_base_url: str = "",
     force_refresh: bool = False,
-) -> str | None:
+) -> Optional[str]:
     """Return the Portal's recommended model name for an auxiliary task.
 
     Picks the best field from the Portal's recommended-models payload:
@@ -996,56 +987,54 @@ def get_nous_recommended_aux_model(
 # ---------------------------------------------------------------------------
 # Canonical provider list — single source of truth for provider identity.
 # Every code path that lists, displays, or iterates providers derives from
-# this list:  prostor model, /model, list_authenticated_providers.
+# this list:  hermes model, /model, list_authenticated_providers.
 #
 # Fields:
 #   slug        — internal provider ID (used in config.yaml, --provider flag)
 #   label       — short display name
-#   tui_desc    — longer description for the `prostor model` interactive picker
+#   tui_desc    — longer description for the `hermes model` interactive picker
 # ---------------------------------------------------------------------------
 
 class ProviderEntry(NamedTuple):
     slug: str
     label: str
-    tui_desc: str   # detailed description for `prostor model` TUI
-
+    tui_desc: str   # detailed description for `hermes model` TUI
 
 CANONICAL_PROVIDERS: list[ProviderEntry] = [
-    ProviderEntry("nous", "Nous Portal", "Nous Portal (Everything your agent needs, 300+ models with bundled tool use)"),
-    ProviderEntry("openrouter", "OpenRouter", "OpenRouter (Pay-per-use API aggregator)"),
-    ProviderEntry("novita", "NovitaAI", "NovitaAI (Cloud: Model API, Agent Sandbox, GPU Cloud)"),
-    ProviderEntry("lmstudio", "LM Studio", "LM Studio (Local desktop app with built-in model server)"),
-    ProviderEntry("anthropic", "Anthropic", "Anthropic (Claude models via API key or Claude Code)"),
-    ProviderEntry("openai-codex", "OpenAI Codex", "OpenAI Codex (Codex CLI via ChatGPT subscription or API key)"),
-    ProviderEntry("openai-api", "OpenAI API", "OpenAI API (api.openai.com, API key)"),
-    ProviderEntry("alibaba", "Qwen Cloud", "Qwen Cloud / DashScope (Qwen + multi-provider)"),
-    ProviderEntry("xai-oauth", "xAI Grok OAuth (SuperGrok / Premium+)", "xAI Grok OAuth (SuperGrok / Premium+ subscription)"),
-    ProviderEntry("xiaomi", "Xiaomi MiMo", "Xiaomi MiMo (MiMo-V2.5 and V2 models: pro, omni, flash)"),
-    ProviderEntry("tencent-tokenhub", "Tencent TokenHub", "Tencent TokenHub (Hy3 Preview via tokenhub.tencentmaas.com)"),
-    ProviderEntry("nvidia", "NVIDIA NIM", "NVIDIA NIM (Nemotron models via build.nvidia.com or local NIM)"),
-    ProviderEntry("copilot", "GitHub Copilot", "GitHub Copilot (Uses GITHUB_TOKEN or gh auth token)"),
-    ProviderEntry("copilot-acp", "GitHub Copilot ACP", "GitHub Copilot ACP (Spawns copilot --acp --stdio)"),
-    ProviderEntry("huggingface", "Hugging Face", "Hugging Face Inference Providers"),
-    ProviderEntry("gemini", "Google AI Studio", "Google AI Studio (Native Gemini API)"),
-    ProviderEntry("google-gemini-cli", "Google Gemini (OAuth)", "Google Gemini via OAuth + Code Assist (Code Assist OAuth flow)"),
-    ProviderEntry("deepseek", "DeepSeek", "DeepSeek (V3, R1, coder, direct API)"),
-    ProviderEntry("xai", "xAI", "xAI Grok (Direct API)"),
-    ProviderEntry("zai", "Z.AI / GLM", "Z.AI / GLM (Zhipu direct API)"),
-    ProviderEntry("kimi-coding", "Kimi / Kimi Coding Plan", "Kimi Coding Plan (api.kimi.com & Moonshot API)"),
-    ProviderEntry("kimi-coding-cn", "Kimi / Moonshot (China)", "Kimi / Moonshot China (Domestic direct API)"),
-    ProviderEntry("stepfun", "StepFun Step Plan", "StepFun Step Plan (Agent / coding models via Step Plan API)"),
-    ProviderEntry("minimax", "MiniMax", "MiniMax (Global direct API)"),
-    ProviderEntry("minimax-oauth", "MiniMax (OAuth)", "MiniMax via OAuth browser login (Coding Plan, minimax.io)"),
-    ProviderEntry("minimax-cn", "MiniMax (China)", "MiniMax China (Domestic direct API)"),
-    ProviderEntry("ollama-cloud", "Ollama Cloud", "Ollama Cloud (Cloud-hosted open models, ollama.com)"),
-    ProviderEntry("arcee", "Arcee AI", "Arcee AI (Trinity models, direct API)"),
-    ProviderEntry("gmi", "GMI Cloud", "GMI Cloud (Multi-model direct API)"),
-    ProviderEntry("kilocode", "Kilo Code", "Kilo Code (Kilo Gateway API)"),
-    ProviderEntry("opencode-zen", "OpenCode Zen", "OpenCode Zen (Curated models, pay-as-you-go)"),
-    ProviderEntry("opencode-go", "OpenCode Go", "OpenCode Go (Open models subscription)"),
-    ProviderEntry("bedrock", "AWS Bedrock", "AWS Bedrock (Claude, Nova, Llama, DeepSeek; IAM or API key)"),
-    ProviderEntry("azure-foundry", "Azure Foundry", "Azure Foundry (OpenAI-style or Anthropic-style endpoint, your Azure AI deployment)"),
-    ProviderEntry("qwen-oauth", "Qwen OAuth (Portal)", "Qwen OAuth (Reuses local Qwen CLI login)"),
+    ProviderEntry("nous",           "Nous Portal",              "Nous Portal (Everything your agent needs, 300+ models with bundled tool use)"),
+    ProviderEntry("openrouter",     "OpenRouter",               "OpenRouter (Pay-per-use API aggregator)"),
+    ProviderEntry("novita",         "NovitaAI",                 "NovitaAI (Cloud: Model API, Agent Sandbox, GPU Cloud)"),
+    ProviderEntry("lmstudio",       "LM Studio",                "LM Studio (Local desktop app with built-in model server)"),
+    ProviderEntry("anthropic",      "Anthropic",                "Anthropic (Claude models via API key or Claude Code)"),
+    ProviderEntry("openai-codex",   "OpenAI Codex",             "OpenAI Codex (Codex CLI via ChatGPT subscription or API key)"),
+    ProviderEntry("openai-api",     "OpenAI API",               "OpenAI API (api.openai.com, API key)"),
+    ProviderEntry("alibaba",        "Qwen Cloud",               "Qwen Cloud / DashScope (Qwen + multi-provider)"),
+    ProviderEntry("xai-oauth",      "xAI Grok OAuth (SuperGrok / Premium+)", "xAI Grok OAuth (SuperGrok / Premium+ subscription)"),
+    ProviderEntry("xiaomi",         "Xiaomi MiMo",              "Xiaomi MiMo (MiMo-V2.5 and V2 models: pro, omni, flash)"),
+    ProviderEntry("tencent-tokenhub", "Tencent TokenHub",       "Tencent TokenHub (Hy3 Preview via tokenhub.tencentmaas.com)"),
+    ProviderEntry("nvidia",         "NVIDIA NIM",               "NVIDIA NIM (Nemotron models via build.nvidia.com or local NIM)"),
+    ProviderEntry("copilot",        "GitHub Copilot",           "GitHub Copilot (Uses GITHUB_TOKEN or gh auth token)"),
+    ProviderEntry("copilot-acp",    "GitHub Copilot ACP",       "GitHub Copilot ACP (Spawns copilot --acp --stdio)"),
+    ProviderEntry("huggingface",    "Hugging Face",             "Hugging Face Inference Providers"),
+    ProviderEntry("gemini",         "Google AI Studio",         "Google AI Studio (Native Gemini API)"),
+    ProviderEntry("deepseek",       "DeepSeek",                 "DeepSeek (V3, R1, coder, direct API)"),
+    ProviderEntry("xai",            "xAI",                      "xAI Grok (Direct API)"),
+    ProviderEntry("zai",            "Z.AI / GLM",               "Z.AI / GLM (Zhipu direct API)"),
+    ProviderEntry("kimi-coding",    "Kimi / Kimi Coding Plan",  "Kimi Coding Plan (api.kimi.com & Moonshot API)"),
+    ProviderEntry("kimi-coding-cn", "Kimi / Moonshot (China)",  "Kimi / Moonshot China (Domestic direct API)"),
+    ProviderEntry("stepfun",        "StepFun Step Plan",       "StepFun Step Plan (Agent / coding models via Step Plan API)"),
+    ProviderEntry("minimax",        "MiniMax",                  "MiniMax (Global direct API)"),
+    ProviderEntry("minimax-oauth",  "MiniMax (OAuth)",          "MiniMax via OAuth browser login (Coding Plan, minimax.io)"),
+    ProviderEntry("minimax-cn",     "MiniMax (China)",          "MiniMax China (Domestic direct API)"),
+    ProviderEntry("ollama-cloud",   "Ollama Cloud",             "Ollama Cloud (Cloud-hosted open models, ollama.com)"),
+    ProviderEntry("arcee",          "Arcee AI",                 "Arcee AI (Trinity models, direct API)"),
+    ProviderEntry("gmi",            "GMI Cloud",                "GMI Cloud (Multi-model direct API)"),
+    ProviderEntry("kilocode",       "Kilo Code",                "Kilo Code (Kilo Gateway API)"),
+    ProviderEntry("opencode-zen",   "OpenCode Zen",             "OpenCode Zen (Curated models, pay-as-you-go)"),
+    ProviderEntry("opencode-go",    "OpenCode Go",              "OpenCode Go (Open models subscription)"),
+    ProviderEntry("bedrock",        "AWS Bedrock",              "AWS Bedrock (Claude, Nova, Llama, DeepSeek; IAM or API key)"),
+    ProviderEntry("azure-foundry",  "Azure Foundry",            "Azure Foundry (OpenAI-style or Anthropic-style endpoint, your Azure AI deployment)"),
+    ProviderEntry("qwen-oauth",     "Qwen OAuth (Portal)",      "Qwen OAuth (Reuses local Qwen CLI login)"),
 ]
 
 # Auto-extend CANONICAL_PROVIDERS with any provider registered in providers/
@@ -1075,9 +1064,9 @@ _PROVIDER_LABELS["custom"] = "Custom endpoint"  # special case: not a named prov
 # ---------------------------------------------------------------------------
 # Provider groups — DISPLAY ONLY
 #
-# Some vendors expose several Prostor provider slugs (one per endpoint /
+# Some vendors expose several Hermes provider slugs (one per endpoint /
 # auth method: global API, China API, OAuth coding plan, ...). Listing every
-# slug as a top-level row in the interactive `prostor model` / setup wizard /
+# slug as a top-level row in the interactive `hermes model` / setup wizard /
 # Telegram `/model` pickers makes that list long and noisy.
 #
 # These groups fold related slugs under one top-level row in INTERACTIVE
@@ -1096,12 +1085,12 @@ _PROVIDER_LABELS["custom"] = "Custom endpoint"  # special case: not a named prov
 # ---------------------------------------------------------------------------
 PROVIDER_GROUPS: dict[str, tuple[str, str, list[str]]] = {
     "kimi":     ("Kimi / Moonshot", "Coding Plan, Moonshot global & China endpoints", ["kimi-coding", "kimi-coding-cn"]),
-    "minimax":  ("MiniMax", "Global, OAuth Coding Plan & China endpoints", ["minimax", "minimax-oauth", "minimax-cn"]),
-    "xai":      ("xAI Grok", "Direct API or SuperGrok / Premium+ OAuth", ["xai", "xai-oauth"]),
-    "google":   ("Google Gemini", "AI Studio API or OAuth + Code Assist", ["gemini", "google-gemini-cli"]),
-    "openai":   ("OpenAI", "Codex CLI or direct OpenAI API", ["openai-codex", "openai-api"]),
-    "opencode": ("OpenCode", "Zen pay-as-you-go or Go subscription", ["opencode-zen", "opencode-go"]),
-    "copilot":  ("GitHub Copilot", "GitHub token API or copilot --acp process", ["copilot", "copilot-acp"]),
+    "minimax":  ("MiniMax",         "Global, OAuth Coding Plan & China endpoints",     ["minimax", "minimax-oauth", "minimax-cn"]),
+    "xai":      ("xAI Grok",        "Direct API or SuperGrok / Premium+ OAuth",        ["xai", "xai-oauth"]),
+    "google":   ("Google Gemini",   "Google AI Studio (API key)",                     ["gemini"]),
+    "openai":   ("OpenAI",          "Codex CLI or direct OpenAI API",                  ["openai-codex", "openai-api"]),
+    "opencode": ("OpenCode",        "Zen pay-as-you-go or Go subscription",            ["opencode-zen", "opencode-go"]),
+    "copilot":  ("GitHub Copilot",  "GitHub token API or copilot --acp process",       ["copilot", "copilot-acp"]),
 }
 
 # Reverse index: member slug -> group_id. Built once at import.
@@ -1118,7 +1107,7 @@ def provider_group_for_slug(slug: str) -> str:
 def group_providers(slugs):
     """Fold a flat ordered slug iterable into picker rows by provider group.
 
-    DISPLAY ONLY. Used by every interactive picker (``prostor model``, the
+    DISPLAY ONLY. Used by every interactive picker (``hermes model``, the
     setup wizard, the Telegram ``/model`` keyboard) so grouping is identical
     across surfaces.
 
@@ -1219,8 +1208,6 @@ _PROVIDER_ALIASES = {
     "qwen": "alibaba",
     "alibaba-cloud": "alibaba",
     "qwen-portal": "qwen-oauth",
-    "gemini-cli": "google-gemini-cli",
-    "gemini-oauth": "google-gemini-cli",
     "hf": "huggingface",
     "hugging-face": "huggingface",
     "huggingface-hub": "huggingface",
@@ -1267,9 +1254,9 @@ _PROVIDER_ALIASES = {
 # missing model can never escalate to the flagship.
 #
 # This is deliberately a fixed, side-effect-free default for the hot resolution
-# path. The *interactive* default (GUI onboarding / ``prostor model``) uses the
+# path. The *interactive* default (GUI onboarding / ``hermes model``) uses the
 # richer free/paid-tier-aware resolver — see ``get_recommended_default_model``
-# in prostor_cli/web_server.py and ``partition_nous_models_by_tier`` — which can
+# in hermes_cli/web_server.py and ``partition_nous_models_by_tier`` — which can
 # hit the Portal; this fallback must stay cheap and network-free.
 _PROVIDER_SILENT_DEFAULT_OVERRIDES: dict[str, str] = {
     "nous": "deepseek/deepseek-v4-flash",
@@ -1280,11 +1267,11 @@ def get_default_model_for_provider(provider: str) -> str:
     """Return a cost-safe default model for a provider, or "" if unknown.
 
     Used as a NON-INTERACTIVE fallback when a provider is configured but no
-    model was ever selected (e.g. ``prostor auth add openai-codex`` without
-    ``prostor model``, or a profile that sets ``provider`` with no ``model``).
+    model was ever selected (e.g. ``hermes auth add openai-codex`` without
+    ``hermes model``, or a profile that sets ``provider`` with no ``model``).
 
     For most providers this is the first entry in ``_PROVIDER_MODELS`` — the
-    same model the ``prostor model`` picker offers first. For metered aggregators
+    same model the ``hermes model`` picker offers first. For metered aggregators
     whose curated list is ordered most-capable-first, that entry is also the
     most EXPENSIVE one, so silently defaulting to it is a billing footgun. Such
     providers carry an explicit low-cost override in
@@ -1311,7 +1298,7 @@ def _openrouter_model_is_free(pricing: Any) -> bool:
 def _openrouter_model_supports_tools(item: Any) -> bool:
     """Return True when the model's ``supported_parameters`` advertise tool calling.
 
-    prostor-agent is tool-calling-first — every provider path assumes the model
+    hermes-agent is tool-calling-first — every provider path assumes the model
     can invoke tools. Models that don't advertise ``tools`` in their
     ``supported_parameters`` (e.g. image-only or completion-only models) cannot
     be driven by the agent loop and would fail at the first tool call.
@@ -1349,7 +1336,7 @@ def fetch_openrouter_models(
     # drive the picker; the OpenRouter live /v1/models filter (tool support,
     # free pricing) is applied on top either way.
     try:
-        from prostor_cli.model_catalog import get_curated_openrouter_models
+        from hermes_cli.model_catalog import get_curated_openrouter_models
         remote = get_curated_openrouter_models()
     except Exception:
         remote = None
@@ -1384,7 +1371,7 @@ def fetch_openrouter_models(
         live_item = live_by_id.get(preferred_id)
         if live_item is None:
             continue
-        # Hide models that don't advertise tool-calling support — prostor-agent
+        # Hide models that don't advertise tool-calling support — hermes-agent
         # requires it and surfacing them leads to immediate runtime failures
         # when the user selects them. Ported from Kilo-Org/kilocode#9068.
         if not _openrouter_model_supports_tools(live_item):
@@ -1415,7 +1402,7 @@ def get_curated_nous_model_ids() -> list[str]:
     unreachable. Always returns a list (never None).
     """
     try:
-        from prostor_cli.model_catalog import get_curated_nous_models
+        from hermes_cli.model_catalog import get_curated_nous_models
         remote = get_curated_nous_models()
     except Exception:
         remote = None
@@ -1475,7 +1462,7 @@ def fetch_models_with_pricing(
     url = cache_key.rstrip("/") + "/v1/models"
     headers: dict[str, str] = {
         "Accept": "application/json",
-        "User-Agent": _PROSTOR_USER_AGENT,
+        "User-Agent": _HERMES_USER_AGENT,
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -1528,7 +1515,7 @@ def _resolve_nous_pricing_credentials() -> tuple[str, str]:
     look broken ("No free models currently available").
     """
     try:
-        from prostor_cli.auth import resolve_nous_runtime_credentials
+        from hermes_cli.auth import resolve_nous_runtime_credentials
         creds = resolve_nous_runtime_credentials()
         if creds:
             return (creds.get("api_key", ""), creds.get("base_url", ""))
@@ -1591,7 +1578,7 @@ def _fetch_novita_pricing(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept": "application/json",
-        "User-Agent": _PROSTOR_USER_AGENT,
+        "User-Agent": _HERMES_USER_AGENT,
     }
 
     try:
@@ -1637,7 +1624,7 @@ def list_available_providers() -> list[dict[str, str]]:
     Checks which providers have valid credentials configured.
 
     Derives the provider list from :data:`CANONICAL_PROVIDERS` (single
-    source of truth shared with ``prostor model``, ``/model``, etc.).
+    source of truth shared with ``hermes model``, ``/model``, etc.).
     """
     # Derive display order from canonical list + custom
     provider_order = [p.slug for p in CANONICAL_PROVIDERS] + ["custom"]
@@ -1654,7 +1641,7 @@ def list_available_providers() -> list[dict[str, str]]:
         # Check if this provider has credentials available
         has_creds = False
         try:
-            from prostor_cli.auth import get_auth_status, has_usable_secret
+            from hermes_cli.auth import get_auth_status, has_usable_secret
             if pid == "custom":
                 custom_base_url = _get_custom_base_url() or ""
                 has_creds = bool(custom_base_url.strip())
@@ -1680,7 +1667,7 @@ def parse_model_input(raw: str, current_provider: str) -> tuple[str, str]:
     Supports ``provider:model`` syntax to switch providers at runtime::
 
         openrouter:anthropic/claude-sonnet-4.5  →  ("openrouter", "anthropic/claude-sonnet-4.5")
-        nous:prostor-3                           →  ("nous", "prostor-3")
+        nous:hermes-3                           →  ("nous", "hermes-3")
         anthropic/claude-sonnet-4.5             →  (current_provider, "anthropic/claude-sonnet-4.5")
         gpt-5.4                                 →  (current_provider, "gpt-5.4")
 
@@ -1719,7 +1706,7 @@ def _get_custom_base_url() -> str:
 def _get_model_config_dict() -> dict[str, Any]:
     """Return the main model config mapping, or an empty dict."""
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         config = load_config()
         model_cfg = config.get("model", {})
         if isinstance(model_cfg, dict):
@@ -1737,7 +1724,7 @@ def _base_url_looks_like_anthropic_messages(base_url: str) -> bool:
     return path.endswith("/anthropic") or path.endswith("/anthropic/v1")
 
 
-def _anthropic_models_url(base_url: str | None = None) -> str:
+def _anthropic_models_url(base_url: Optional[str] = None) -> str:
     endpoint = str(base_url or "https://api.anthropic.com").strip().rstrip("/")
     if endpoint.endswith("/v1"):
         return endpoint + "/models"
@@ -1745,7 +1732,7 @@ def _anthropic_models_url(base_url: str | None = None) -> str:
 
 
 def curated_models_for_provider(
-    provider: str | None,
+    provider: Optional[str],
     *,
     force_refresh: bool = False,
 ) -> list[tuple[str, str]]:
@@ -1787,14 +1774,20 @@ _AGGREGATOR_PROVIDERS = frozenset(
     {"nous", "openrouter", "copilot", "kilocode"}
 )
 
+# Subscription/OAuth providers whose catalogs RE-EXPOSE other vendors' models
+# would be listed here (tried only as a last resort for bare short-alias
+# resolution, after every native-vendor catalog, so they never hijack an alias
+# away from the model's native vendor). None are currently defined.
+_BORROWED_MODEL_PROVIDERS: frozenset[str] = frozenset()
+
 
 def _resolve_static_model_alias(
     name_lower: str,
     current_keys: set[str],
-) -> tuple[str, str] | None:
+) -> Optional[tuple[str, str]]:
     """Resolve short aliases (e.g. sonnet/opus) using static catalogs only."""
     try:
-        from prostor_cli.model_switch import MODEL_ALIASES
+        from hermes_cli.model_switch import MODEL_ALIASES
     except Exception:
         return None
 
@@ -1805,7 +1798,7 @@ def _resolve_static_model_alias(
     vendor = identity.vendor
     family = identity.family
 
-    def _match(provider: str) -> str | None:
+    def _match(provider: str) -> Optional[str]:
         models = _PROVIDER_MODELS.get(provider, [])
         if not models:
             return None
@@ -1824,12 +1817,23 @@ def _resolve_static_model_alias(
             return provider, matched
 
     for provider in _PROVIDER_MODELS:
-        if provider in current_keys or provider in _AGGREGATOR_PROVIDERS:
+        if (
+            provider in current_keys
+            or provider in _AGGREGATOR_PROVIDERS
+            or provider in _BORROWED_MODEL_PROVIDERS
+        ):
             continue
         if matched := _match(provider):
             return provider, matched
 
     for provider in _AGGREGATOR_PROVIDERS:
+        if provider in current_keys and (matched := _match(provider)):
+            return provider, matched
+
+    # Last resort: providers that re-expose other vendors' models. Only reached
+    # when no native-vendor catalog matched — so `sonnet` resolves to anthropic.
+    # None are currently defined (_BORROWED_MODEL_PROVIDERS is empty).
+    for provider in _BORROWED_MODEL_PROVIDERS:
         if provider in current_keys and (matched := _match(provider)):
             return provider, matched
 
@@ -1839,7 +1843,7 @@ def _resolve_static_model_alias(
 def detect_static_provider_for_model(
     model_name: str,
     current_provider: str,
-) -> tuple[str, str] | None:
+) -> Optional[tuple[str, str]]:
     """Auto-detect a provider from static catalogs only.
 
     Returns ``(provider_id, model_name)``. The model name may be remapped
@@ -1878,10 +1882,32 @@ def detect_static_provider_for_model(
         return None
 
     # --- Step 1: check static provider catalogs for a direct match ---
+    # If the current provider is a custom endpoint (custom or custom:*), never
+    # auto-switch away from it based on a static catalog match — the user
+    # explicitly configured their own endpoint and the same model name may be
+    # served there (#48305).
+    _is_custom_current = (
+        current_provider == "custom"
+        or current_provider.startswith("custom:")
+    )
     for pid, models in _PROVIDER_MODELS.items():
-        if pid in current_keys or pid in _AGGREGATOR_PROVIDERS:
+        if (
+            pid in current_keys
+            or pid in _AGGREGATOR_PROVIDERS
+            or pid in _BORROWED_MODEL_PROVIDERS
+        ):
+            continue
+        if _is_custom_current:
             continue
         if any(name_lower == m.lower() for m in models):
+            return (pid, name)
+
+    # Borrow-list providers (re-expose other vendors' models) only after every
+    # native-vendor catalog, and only when one is the current provider.
+    for pid in _BORROWED_MODEL_PROVIDERS:
+        if pid in current_keys:
+            continue
+        if any(name_lower == m.lower() for m in _PROVIDER_MODELS.get(pid, [])):
             return (pid, name)
 
     return None
@@ -1890,7 +1916,7 @@ def detect_static_provider_for_model(
 def detect_provider_for_model(
     model_name: str,
     current_provider: str,
-) -> tuple[str, str] | None:
+) -> Optional[tuple[str, str]]:
     """Auto-detect the best provider for a model name.
 
     Returns ``(provider_id, model_name)`` — the model name may be remapped
@@ -1926,7 +1952,7 @@ def detect_provider_for_model(
     return None
 
 
-def _find_openrouter_slug(model_name: str) -> str | None:
+def _find_openrouter_slug(model_name: str) -> Optional[str]:
     """Find the full OpenRouter model slug for a bare or partial model name.
 
     Handles:
@@ -1953,18 +1979,18 @@ def _find_openrouter_slug(model_name: str) -> str | None:
     return None
 
 
-def normalize_provider(provider: str | None) -> str:
-    """Normalize provider aliases to Prostor' canonical provider ids.
+def normalize_provider(provider: Optional[str]) -> str:
+    """Normalize provider aliases to Hermes' canonical provider ids.
 
     Note: ``"auto"`` passes through unchanged — use
-    ``prostor_cli.auth.resolve_provider()`` to resolve it to a concrete
+    ``hermes_cli.auth.resolve_provider()`` to resolve it to a concrete
     provider based on credentials and environment.
     """
     normalized = (provider or "openrouter").strip().lower()
     return _PROVIDER_ALIASES.get(normalized, normalized)
 
 
-def provider_label(provider: str | None) -> str:
+def provider_label(provider: Optional[str]) -> str:
     """Return a human-friendly label for a provider id or alias."""
     original = (provider or "openrouter").strip()
     normalized = original.lower()
@@ -1991,7 +2017,7 @@ _OPENAI_FAST_MODE_PREFIXES: tuple[str, ...] = (
 )
 
 
-def _is_openai_fast_model(model_id: str | None) -> bool:
+def _is_openai_fast_model(model_id: Optional[str]) -> bool:
     """Return True if the model is an OpenAI flagship eligible for Priority Processing."""
     raw = _strip_vendor_prefix(str(model_id or ""))
     base = raw.split(":")[0]
@@ -2021,12 +2047,12 @@ def _strip_vendor_prefix(model_id: str) -> str:
     return raw
 
 
-def model_supports_fast_mode(model_id: str | None) -> bool:
-    """Return whether Prostor should expose the /fast toggle for this model."""
+def model_supports_fast_mode(model_id: Optional[str]) -> bool:
+    """Return whether Hermes should expose the /fast toggle for this model."""
     return _is_anthropic_fast_model(model_id) or _is_openai_fast_model(model_id)
 
 
-def _is_anthropic_fast_model(model_id: str | None) -> bool:
+def _is_anthropic_fast_model(model_id: Optional[str]) -> bool:
     """Return True if the model accepts the Anthropic Fast Mode ``speed`` param.
 
     This gates the *speed=fast request parameter*, which Anthropic supports on
@@ -2045,7 +2071,7 @@ def _is_anthropic_fast_model(model_id: str | None) -> bool:
     return "opus-4-6" in base or "opus-4.6" in base
 
 
-def resolve_fast_mode_overrides(model_id: str | None) -> dict[str, Any] | None:
+def resolve_fast_mode_overrides(model_id: Optional[str]) -> dict[str, Any] | None:
     """Return request_overrides for fast/priority mode, or None if unsupported.
 
     Returns provider-appropriate overrides:
@@ -2073,8 +2099,8 @@ def _resolve_copilot_catalog_api_key() -> str:
       2. ``read_credential_pool("copilot")`` — a token (typically a
          ``gho_*`` from device-code login, or a fine-grained PAT) stored in
          ``auth.json`` under ``credential_pool.copilot[]``. The pool is
-         populated by ``prostor auth add copilot`` and by ``_seed_from_env``
-         when the env var is set in ``~/.prostor/.env``.
+         populated by ``hermes auth add copilot`` and by ``_seed_from_env``
+         when the env var is set in ``~/.hermes/.env``.
 
     Without (2), users whose only Copilot credential is in the pool see
     the ``/model`` picker fall back to a stale hardcoded list because the
@@ -2084,7 +2110,7 @@ def _resolve_copilot_catalog_api_key() -> str:
     later valid entry is reachable when an earlier one is unsupported.
     """
     try:
-        from prostor_cli.auth import resolve_api_key_provider_credentials
+        from hermes_cli.auth import resolve_api_key_provider_credentials
 
         creds = resolve_api_key_provider_credentials("copilot")
         api_key = str(creds.get("api_key") or "").strip()
@@ -2094,8 +2120,8 @@ def _resolve_copilot_catalog_api_key() -> str:
         pass
 
     try:
-        from prostor_cli.auth import read_credential_pool
-        from prostor_cli.copilot_auth import (
+        from hermes_cli.auth import read_credential_pool
+        from hermes_cli.copilot_auth import (
             exchange_copilot_token,
             validate_copilot_token,
         )
@@ -2191,28 +2217,28 @@ def _merge_with_models_dev(provider: str, curated: list[str]) -> list[str]:
     return merged
 
 
-def provider_model_ids(provider: str | None, *, force_refresh: bool = False) -> list[str]:
+def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) -> list[str]:
     """Return the best known model catalog for a provider.
 
     Tries live API endpoints for providers that support them (Codex, Nous),
     falling back to static lists. For providers in ``_MODELS_DEV_PREFERRED``
     (opencode-go/zen, xiaomi, deepseek, smaller inference providers, etc.),
     models.dev entries are merged on top of curated so new models released
-    on the platform appear in ``/model`` without a Prostor release.
+    on the platform appear in ``/model`` without a Hermes release.
     """
     normalized = normalize_provider(provider)
     if normalized == "openrouter":
         return model_ids(force_refresh=force_refresh)
     if normalized == "openai-codex":
-        from prostor_cli.codex_models import get_codex_model_ids
+        from hermes_cli.codex_models import get_codex_model_ids
 
         # Pass the live OAuth access token so the picker matches whatever
         # ChatGPT lists for this account right now (new models appear without
-        # a Prostor release). Falls back to the hardcoded catalog if no token
+        # a Hermes release). Falls back to the hardcoded catalog if no token
         # or the endpoint is unreachable.
         access_token = None
         try:
-            from prostor_cli.auth import resolve_codex_runtime_credentials
+            from hermes_cli.auth import resolve_codex_runtime_credentials
 
             creds = resolve_codex_runtime_credentials(refresh_if_expiring=True)
             access_token = creds.get("api_key")
@@ -2233,7 +2259,7 @@ def provider_model_ids(provider: str | None, *, force_refresh: bool = False) -> 
     if normalized == "nous":
         # Try live Nous Portal /models endpoint
         try:
-            from prostor_cli.auth import fetch_nous_models, resolve_nous_runtime_credentials
+            from hermes_cli.auth import fetch_nous_models, resolve_nous_runtime_credentials
             creds = resolve_nous_runtime_credentials()
             if creds:
                 live = fetch_nous_models(api_key=creds.get("api_key", ""), inference_base_url=creds.get("base_url", ""))
@@ -2243,13 +2269,13 @@ def provider_model_ids(provider: str | None, *, force_refresh: bool = False) -> 
             pass
         # Live failed (or no creds). Fall back to the docs-hosted manifest
         # — NOT the in-repo _PROVIDER_MODELS["nous"] snapshot — so newly
-        # added Portal models still surface without a Prostor release.
+        # added Portal models still surface without a Hermes release.
         manifest_ids = get_curated_nous_model_ids()
         if manifest_ids:
             return manifest_ids
     if normalized == "stepfun":
         try:
-            from prostor_cli.auth import resolve_api_key_provider_credentials
+            from hermes_cli.auth import resolve_api_key_provider_credentials
 
             creds = resolve_api_key_provider_credentials("stepfun")
             api_key = str(creds.get("api_key") or "").strip()
@@ -2305,7 +2331,7 @@ def provider_model_ids(provider: str | None, *, force_refresh: bool = False) -> 
             # is 120+ entries of embeddings, whisper, tts, dall-e, moderation and
             # legacy chat models — none of which belong in the agent model picker.
             # For the default endpoint, intersect the live list with our curated
-            # agentic catalog so ``/model`` matches what ``prostor model`` shows.
+            # agentic catalog so ``/model`` matches what ``hermes model`` shows.
             is_default_openai = base.rstrip("/") in (
                 "https://api.openai.com/v1",
                 "https://api.openai.com",
@@ -2330,7 +2356,7 @@ def provider_model_ids(provider: str | None, *, force_refresh: bool = False) -> 
                 pass
     if normalized == "gmi":
         try:
-            from prostor_cli.auth import resolve_api_key_provider_credentials
+            from hermes_cli.auth import resolve_api_key_provider_credentials
 
             creds = resolve_api_key_provider_credentials("gmi")
             api_key = str(creds.get("api_key") or "").strip()
@@ -2373,8 +2399,8 @@ def provider_model_ids(provider: str | None, *, force_refresh: bool = False) -> 
     # Handles any provider registered in providers/ with auth_type="api_key".
     # Replaces per-provider copy-paste blocks (stepfun, gmi, zai, etc.).
     try:
-        from prostor_cli.auth import resolve_api_key_provider_credentials
         from providers import get_provider_profile
+        from hermes_cli.auth import resolve_api_key_provider_credentials
 
         _p = get_provider_profile(normalized)
         if _p and _p.auth_type == "api_key" and _p.base_url:
@@ -2428,7 +2454,7 @@ def provider_model_ids(provider: str | None, *, force_refresh: bool = False) -> 
 # HTTP roundtrips just to render the provider list.
 #
 # Cache strategy:
-#   - One JSON file at $PROSTOR_HOME/provider_models_cache.json
+#   - One JSON file at $HERMES_HOME/provider_models_cache.json
 #   - Per-provider entries keyed by (provider, credential fingerprint)
 #   - Credential fingerprint = sha256 of env-var values that the provider
 #     normally reads. Swap your OPENAI_API_KEY and the entry invalidates.
@@ -2443,8 +2469,8 @@ _PROVIDER_MODELS_CACHE_TTL = 3600  # 1h
 
 
 def _provider_models_cache_path() -> Path:
-    from prostor_constants import get_prostor_home
-    return get_prostor_home() / "provider_models_cache.json"
+    from hermes_constants import get_hermes_home
+    return get_hermes_home() / "provider_models_cache.json"
 
 
 def _credential_fingerprint(provider: str) -> str:
@@ -2455,7 +2481,7 @@ def _credential_fingerprint(provider: str) -> str:
     for that provider. We hash AT LEAST the api-key + base-url env vars
     declared in ``PROVIDER_REGISTRY``. For OAuth-backed providers
     (codex, copilot, anthropic-via-claude-code, nous portal), the
-    relevant tokens live in ``$PROSTOR_HOME/auth.json`` and external
+    relevant tokens live in ``$HERMES_HOME/auth.json`` and external
     credential files. Rather than parse every shape, we additionally
     fold the mtime of those files into the fingerprint so refreshes
     after re-auth bust the cache.
@@ -2467,7 +2493,7 @@ def _credential_fingerprint(provider: str) -> str:
 
     # Env vars from PROVIDER_REGISTRY for this slug
     try:
-        from prostor_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.auth import PROVIDER_REGISTRY
         pcfg = PROVIDER_REGISTRY.get(provider)
         if pcfg is not None:
             for ev in getattr(pcfg, "api_key_env_vars", ()) or ():
@@ -2480,9 +2506,9 @@ def _credential_fingerprint(provider: str) -> str:
 
     # OAuth / external-file mtimes that change on re-auth
     try:
-        from prostor_constants import get_prostor_home
+        from hermes_constants import get_hermes_home
         for rel in ("auth.json", "credentials.json"):
-            p = get_prostor_home() / rel
+            p = get_hermes_home() / rel
             try:
                 parts.append(f"{rel}@{p.stat().st_mtime_ns}")
             except FileNotFoundError:
@@ -2543,7 +2569,7 @@ def _save_provider_models_cache(data: dict) -> None:
 
 
 def cached_provider_model_ids(
-    provider: str | None,
+    provider: Optional[str],
     *,
     force_refresh: bool = False,
     ttl_seconds: int = _PROVIDER_MODELS_CACHE_TTL,
@@ -2596,12 +2622,12 @@ def cached_provider_model_ids(
     return list(live or [])
 
 
-def clear_provider_models_cache(provider: str | None = None) -> None:
+def clear_provider_models_cache(provider: Optional[str] = None) -> None:
     """Drop a single provider's cache entry, or wipe the whole cache.
 
     ``provider=None`` wipes everything; otherwise only that provider's
     entry is removed. Used by ``/model --refresh`` and
-    ``prostor model --refresh``.
+    ``hermes model --refresh``.
     """
     try:
         if provider is None:
@@ -2621,9 +2647,9 @@ def clear_provider_models_cache(provider: str | None = None) -> None:
 def _fetch_anthropic_models(
     timeout: float = 5.0,
     *,
-    base_url: str | None = None,
-    api_key: str | None = None,
-) -> list[str] | None:
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Optional[list[str]]:
     """Fetch available models from the Anthropic /v1/models endpoint.
 
     Uses resolve_anthropic_token() to find credentials (env vars or
@@ -2631,7 +2657,7 @@ def _fetch_anthropic_models(
     Returns sorted model IDs or None.
     """
     try:
-        from agent.anthropic_adapter import _is_oauth_token, resolve_anthropic_token
+        from agent.anthropic_adapter import resolve_anthropic_token, _is_oauth_token
     except ImportError:
         return None
 
@@ -2643,7 +2669,7 @@ def _fetch_anthropic_models(
     is_oauth = _is_oauth_token(token)
     if is_oauth:
         headers["Authorization"] = f"Bearer {token}"
-        from agent.anthropic_adapter import _COMMON_BETAS, _CONTEXT_1M_BETA, _OAUTH_ONLY_BETAS
+        from agent.anthropic_adapter import _COMMON_BETAS, _OAUTH_ONLY_BETAS, _CONTEXT_1M_BETA
         headers["anthropic-beta"] = ",".join(_COMMON_BETAS + _OAUTH_ONLY_BETAS)
     else:
         headers["x-api-key"] = token
@@ -2713,12 +2739,12 @@ def copilot_default_headers() -> dict[str, str]:
     Copilot CLI send on every request.
     """
     try:
-        from prostor_cli.copilot_auth import copilot_request_headers
+        from hermes_cli.copilot_auth import copilot_request_headers
         return copilot_request_headers(is_agent_turn=True)
     except ImportError:
         return {
             "Editor-Version": COPILOT_EDITOR_VERSION,
-            "User-Agent": "ProstorAgent/1.0",
+            "User-Agent": "HermesAgent/1.0",
             "Openai-Intent": "conversation-edits",
             "x-initiator": "agent",
         }
@@ -2754,8 +2780,8 @@ def _copilot_catalog_item_is_text_model(item: dict[str, Any]) -> bool:
 
 
 def fetch_github_model_catalog(
-    api_key: str | None = None, timeout: float = 5.0
-) -> list[dict[str, Any]] | None:
+    api_key: Optional[str] = None, timeout: float = 5.0
+) -> Optional[list[dict[str, Any]]]:
     """Fetch the live GitHub Copilot model catalog for this account."""
     attempts: list[dict[str, str]] = []
     if api_key:
@@ -2796,7 +2822,7 @@ _copilot_context_cache_time: float = 0.0
 _COPILOT_CONTEXT_CACHE_TTL = 3600  # 1 hour
 
 
-def get_copilot_model_context(model_id: str, api_key: str | None = None) -> int | None:
+def get_copilot_model_context(model_id: str, api_key: Optional[str] = None) -> Optional[int]:
     """Look up max_prompt_tokens for a Copilot model from the live /models API.
 
     Results are cached in-process for 1 hour to avoid repeated API calls.
@@ -2833,7 +2859,7 @@ def get_copilot_model_context(model_id: str, api_key: str | None = None) -> int 
     return cache.get(model_id)
 
 
-def _is_github_models_base_url(base_url: str | None) -> bool:
+def _is_github_models_base_url(base_url: Optional[str]) -> bool:
     normalized = (base_url or "").strip().rstrip("/").lower()
     return (
         normalized.startswith(COPILOT_BASE_URL)
@@ -2842,7 +2868,7 @@ def _is_github_models_base_url(base_url: str | None) -> bool:
     )
 
 
-def _lmstudio_server_root(base_url: str | None) -> str | None:
+def _lmstudio_server_root(base_url: Optional[str]) -> Optional[str]:
     """Strip ``/v1`` suffix from an LM Studio base URL to get the native API root.
 
     Returns ``None`` when the base URL is empty/invalid.
@@ -2853,9 +2879,9 @@ def _lmstudio_server_root(base_url: str | None) -> str | None:
     return root or None
 
 
-def _lmstudio_request_headers(api_key: str | None = None) -> dict:
+def _lmstudio_request_headers(api_key: Optional[str] = None) -> dict:
     """Build HTTP headers for LM Studio native API requests."""
-    headers = {"User-Agent": _PROSTOR_USER_AGENT}
+    headers = {"User-Agent": _HERMES_USER_AGENT}
     token = str(api_key or "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -2863,10 +2889,10 @@ def _lmstudio_request_headers(api_key: str | None = None) -> dict:
 
 
 def _lmstudio_fetch_raw_models(
-    api_key: str | None = None,
-    base_url: str | None = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
     timeout: float = 5.0,
-) -> list[dict] | None:
+) -> Optional[list[dict]]:
     """Fetch the raw model list from LM Studio's ``/api/v1/models``.
 
     Returns the ``models`` list of dicts on success, ``None`` on network
@@ -2883,7 +2909,7 @@ def _lmstudio_fetch_raw_models(
             payload = json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         if exc.code in {401, 403}:
-            from prostor_cli.auth import AuthError
+            from hermes_cli.auth import AuthError
             raise AuthError(
                 f"LM Studio rejected the request with HTTP {exc.code}.",
                 provider="lmstudio",
@@ -2913,10 +2939,10 @@ def _lmstudio_fetch_raw_models(
 
 
 def probe_lmstudio_models(
-    api_key: str | None = None,
-    base_url: str | None = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
     timeout: float = 5.0,
-) -> list[str] | None:
+) -> Optional[list[str]]:
     """Probe LM Studio's model listing.
 
     Returns chat-capable model keys on success, including the valid empty-list
@@ -2944,8 +2970,8 @@ def probe_lmstudio_models(
 
 
 def fetch_lmstudio_models(
-    api_key: str | None = None,
-    base_url: str | None = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
     timeout: float = 5.0,
 ) -> list[str]:
     """Fetch LM Studio chat-capable model keys from native ``/api/v1/models``.
@@ -2964,11 +2990,11 @@ def fetch_lmstudio_models(
 
 def ensure_lmstudio_model_loaded(
     model: str,
-    base_url: str | None,
-    api_key: str | None,
+    base_url: Optional[str],
+    api_key: Optional[str],
     target_context_length: int,
     timeout: float = 120.0,
-) -> int | None:
+) -> Optional[int]:
     """Ensure LM Studio has ``model`` loaded with at least ``target_context_length``.
 
     No-op when an instance is already loaded with sufficient context. Otherwise
@@ -3033,8 +3059,8 @@ def ensure_lmstudio_model_loaded(
 
 def lmstudio_model_reasoning_options(
     model: str,
-    base_url: str | None,
-    api_key: str | None = None,
+    base_url: Optional[str],
+    api_key: Optional[str] = None,
     timeout: float = 5.0,
 ) -> list[str]:
     """Return the reasoning ``allowed_options`` LM Studio publishes for ``model``.
@@ -3064,7 +3090,7 @@ def lmstudio_model_reasoning_options(
     return []
 
 
-def _fetch_github_models(api_key: str | None = None, timeout: float = 5.0) -> list[str] | None:
+def _fetch_github_models(api_key: Optional[str] = None, timeout: float = 5.0) -> Optional[list[str]]:
     catalog = fetch_github_model_catalog(api_key=api_key, timeout=timeout)
     if not catalog:
         return None
@@ -3092,7 +3118,7 @@ _COPILOT_MODEL_ALIASES = {
     "anthropic/claude-sonnet-4": "claude-sonnet-4",
     "anthropic/claude-sonnet-4.5": "claude-sonnet-4.5",
     "anthropic/claude-haiku-4.5": "claude-haiku-4.5",
-    # Dash-notation fallbacks: Prostor' default Claude IDs elsewhere use
+    # Dash-notation fallbacks: Hermes' default Claude IDs elsewhere use
     # hyphens (anthropic native format), but Copilot's API only accepts
     # dot-notation.  Accept both so users who configure copilot + a
     # default hyphenated Claude model don't hit HTTP 400
@@ -3111,8 +3137,8 @@ _COPILOT_MODEL_ALIASES = {
 
 
 def _copilot_catalog_ids(
-    catalog: list[dict[str, Any]] | None = None,
-    api_key: str | None = None,
+    catalog: Optional[list[dict[str, Any]]] = None,
+    api_key: Optional[str] = None,
 ) -> set[str]:
     if catalog is None and api_key:
         catalog = fetch_github_model_catalog(api_key=api_key)
@@ -3126,10 +3152,10 @@ def _copilot_catalog_ids(
 
 
 def normalize_copilot_model_id(
-    model_id: str | None,
+    model_id: Optional[str],
     *,
-    catalog: list[dict[str, Any]] | None = None,
-    api_key: str | None = None,
+    catalog: Optional[list[dict[str, Any]]] = None,
+    api_key: Optional[str] = None,
 ) -> str:
     raw = str(model_id or "").strip()
     if not raw:
@@ -3194,10 +3220,10 @@ def _should_use_copilot_responses_api(model_id: str) -> bool:
 
 
 def copilot_model_api_mode(
-    model_id: str | None,
+    model_id: Optional[str],
     *,
-    catalog: list[dict[str, Any]] | None = None,
-    api_key: str | None = None,
+    catalog: Optional[list[dict[str, Any]]] = None,
+    api_key: Optional[str] = None,
 ) -> str:
     """Determine the API mode for a Copilot model.
 
@@ -3251,7 +3277,7 @@ _AZURE_FOUNDRY_RESPONSES_PREFIXES = (
 )
 
 
-def azure_foundry_model_api_mode(model_name: str | None) -> str | None:
+def azure_foundry_model_api_mode(model_name: Optional[str]) -> Optional[str]:
     """Infer Azure Foundry api_mode from a deployment/model name.
 
     Returns ``"codex_responses"`` when the model name matches a family that
@@ -3280,7 +3306,7 @@ def azure_foundry_model_api_mode(model_name: str | None) -> str | None:
     return None
 
 
-def normalize_opencode_model_id(provider_id: str | None, model_id: str | None) -> str:
+def normalize_opencode_model_id(provider_id: Optional[str], model_id: Optional[str]) -> str:
     """Normalize OpenCode config IDs to the bare model slug used in API requests."""
     provider = normalize_provider(provider_id)
     current = str(model_id or "").strip()
@@ -3293,7 +3319,7 @@ def normalize_opencode_model_id(provider_id: str | None, model_id: str | None) -
     return current
 
 
-def opencode_model_api_mode(provider_id: str | None, model_id: str | None) -> str:
+def opencode_model_api_mode(provider_id: Optional[str], model_id: Optional[str]) -> str:
     """Determine the API mode for an OpenCode Zen / Go model.
 
     OpenCode routes different models behind different API surfaces:
@@ -3330,10 +3356,10 @@ def opencode_model_api_mode(provider_id: str | None, model_id: str | None) -> st
 
 
 def github_model_reasoning_efforts(
-    model_id: str | None,
+    model_id: Optional[str],
     *,
-    catalog: list[dict[str, Any]] | None = None,
-    api_key: str | None = None,
+    catalog: Optional[list[dict[str, Any]]] = None,
+    api_key: Optional[str] = None,
 ) -> list[str]:
     """Return supported reasoning-effort levels for a Copilot-visible model."""
     normalized = normalize_copilot_model_id(model_id, catalog=catalog, api_key=api_key)
@@ -3374,10 +3400,10 @@ def github_model_reasoning_efforts(
 
 
 def probe_api_models(
-    api_key: str | None,
-    base_url: str | None,
+    api_key: Optional[str],
+    base_url: Optional[str],
     timeout: float = 5.0,
-    api_mode: str | None = None,
+    api_mode: Optional[str] = None,
 ) -> dict[str, Any]:
     """Probe a ``/models`` endpoint with light URL heuristics.
 
@@ -3416,7 +3442,7 @@ def probe_api_models(
         candidates.append((alternate_base, True))
 
     tried: list[str] = []
-    headers: dict[str, str] = {"User-Agent": _PROSTOR_USER_AGENT}
+    headers: dict[str, str] = {"User-Agent": _HERMES_USER_AGENT}
     if api_key and api_mode == "anthropic_messages":
         headers["x-api-key"] = api_key
         headers["anthropic-version"] = "2023-06-01"
@@ -3452,11 +3478,11 @@ def probe_api_models(
 
 
 def fetch_api_models(
-    api_key: str | None,
-    base_url: str | None,
+    api_key: Optional[str],
+    base_url: Optional[str],
     timeout: float = 5.0,
-    api_mode: str | None = None,
-) -> list[str] | None:
+    api_mode: Optional[str] = None,
+) -> Optional[list[str]]:
     """Fetch the list of available model IDs from the provider's ``/models`` endpoint.
 
     Returns a list of model ID strings, or ``None`` if the endpoint could not
@@ -3468,6 +3494,7 @@ def fetch_api_models(
 # ---------------------------------------------------------------------------
 # Ollama Cloud — merged model discovery with disk cache
 # ---------------------------------------------------------------------------
+
 
 
 _OLLAMA_CLOUD_CACHE_TTL = 3600  # 1 hour
@@ -3488,11 +3515,11 @@ def _strip_ollama_cloud_suffix(model_id: str) -> str:
 
 def _ollama_cloud_cache_path() -> Path:
     """Return the path for the Ollama Cloud model cache."""
-    from prostor_constants import get_prostor_home
-    return get_prostor_home() / "ollama_cloud_models_cache.json"
+    from hermes_constants import get_hermes_home
+    return get_hermes_home() / "ollama_cloud_models_cache.json"
 
 
-def _load_ollama_cloud_cache(*, ignore_ttl: bool = False) -> dict | None:
+def _load_ollama_cloud_cache(*, ignore_ttl: bool = False) -> Optional[dict]:
     """Load cached Ollama Cloud models from disk.
 
     Args:
@@ -3531,8 +3558,8 @@ def _save_ollama_cloud_cache(models: list[str]) -> None:
 
 
 def fetch_ollama_cloud_models(
-    api_key: str | None = None,
-    base_url: str | None = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
     *,
     force_refresh: bool = False,
 ) -> list[str]:
@@ -3599,11 +3626,11 @@ def fetch_ollama_cloud_models(
 
 def validate_requested_model(
     model_name: str,
-    provider: str | None,
+    provider: Optional[str],
     *,
-    api_key: str | None = None,
-    base_url: str | None = None,
-    api_mode: str | None = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_mode: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Validate a ``/model`` value for the active provider.
@@ -3645,7 +3672,7 @@ def validate_requested_model(
         }
 
     if normalized == "lmstudio":
-        from prostor_cli.auth import AuthError
+        from hermes_cli.auth import AuthError
         # Use probe_lmstudio_models so we can distinguish None (unreachable
         # / malformed response) from [] (reachable, but no chat-capable models
         # are loaded). fetch_lmstudio_models collapses both to [].
@@ -3730,7 +3757,7 @@ def validate_requested_model(
 
         message = (
             f"Note: could not reach this custom endpoint's model listing at `{probe.get('probed_url')}`. "
-            f"Prostor will still save `{requested}`, but the endpoint should expose `/models` for verification."
+            f"Hermes will still save `{requested}`, but the endpoint should expose `/models` for verification."
         )
         if api_mode == "anthropic_messages":
             message += (
@@ -3776,6 +3803,37 @@ def validate_requested_model(
             if suggestions:
                 suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
             provider_label = "OpenAI Codex" if normalized == "openai-codex" else "xAI Grok OAuth (SuperGrok / Premium+)"
+            # Plausibility gate (#45006): the soft-accept (#16172 / #19729) exists
+            # for entitlement-gated *hidden* slugs the curated listing hasn't
+            # caught up with — but those are always the provider's own family
+            # (openai-codex -> gpt-*; xai-oauth -> grok-*). Accepting an
+            # unrelated typed name (e.g. `qwen3.5-4b`, `llama-3.1-8b`) here turns
+            # what should be an actionable "did you mean --provider <x>?" error
+            # into a confusing success that 400s on the next turn. Only soft-
+            # accept names that share the provider's family prefix; reject the
+            # rest with guidance to pin the right provider.
+            _family_prefixes = {
+                "openai-codex": ("gpt-", "codex-", "o1", "o3", "o4"),
+                "xai-oauth": ("grok-",),
+            }.get(normalized, ())
+            _lower = requested_for_lookup.strip().lower()
+            _plausible = (not _family_prefixes) or any(
+                _lower.startswith(p) for p in _family_prefixes
+            )
+            if not _plausible:
+                return {
+                    "accepted": False,
+                    "persist": False,
+                    "recognized": False,
+                    "message": (
+                        f"`{requested}` doesn't look like a {provider_label} model "
+                        f"and isn't in its listing, so it was not accepted. If it "
+                        f"belongs to another configured provider, switch with "
+                        f"`--provider <slug>` (or select it from the `/model` "
+                        f"picker)."
+                        f"{suggestion_text}"
+                    ),
+                }
             return {
                 "accepted": True,
                 "persist": True,
@@ -3827,7 +3885,7 @@ def validate_requested_model(
                 "message": (
                     f"Note: `{requested}` was not found in the MiniMax catalog."
                     f"{suggestion_text}"
-                    "\n  MiniMax does not expose a /models endpoint, so Prostor cannot verify the model name."
+                    "\n  MiniMax does not expose a /models endpoint, so Hermes cannot verify the model name."
                     "\n  The model may still work if it exists on the server."
                 ),
             }
@@ -3963,7 +4021,7 @@ def validate_requested_model(
             # before rejecting.  Providers may omit models from their live
             # listing that are still valid (stale cache, partial rollout,
             # gated previews).  Use the pure-catalog helper (no extra live
-            # fetch) so we only accept models Prostor actually ships.  (#46850)
+            # fetch) so we only accept models Hermes actually ships.  (#46850)
             if _model_in_provider_catalog(
                 requested_for_lookup.lower(), _provider_keys(normalized)
             ):

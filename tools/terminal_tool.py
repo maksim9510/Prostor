@@ -19,7 +19,7 @@ Features:
 
 Cloud sandbox note:
 - Persistent filesystems preserve working state across sandbox recreation
-- Persistent filesystems do NOT guarantee the same live sandbox or long-running processes survive cleanup, idle reaping, or Prostor exit
+- Persistent filesystems do NOT guarantee the same live sandbox or long-running processes survive cleanup, idle reaping, or Hermes exit
 
 Usage:
     from terminal_tool import terminal_tool
@@ -31,19 +31,19 @@ Usage:
     result = terminal_tool("python server.py", background=True)
 """
 
-import atexit
 import importlib.util
 import json
 import logging
 import os
 import platform
 import re
+import time
+import threading
+import atexit
 import shutil
 import subprocess
-import threading
-import time
 from pathlib import Path
-from typing import Any
+from typing import Optional, Dict, Any, List
 
 from utils import env_var_enabled
 
@@ -55,13 +55,18 @@ logger = logging.getLogger(__name__)
 # The terminal tool polls this during command execution so it can kill
 # long-running subprocesses immediately instead of blocking until timeout.
 # ---------------------------------------------------------------------------
-# display_prostor_home imported lazily at call site (stale-module safety during prostor update)
+from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — re-exported
+# display_hermes_home imported lazily at call site (stale-module safety during hermes update)
+
+
+
+
 # =============================================================================
 # Custom Singularity Environment with more space
 # =============================================================================
+
 # Singularity helpers (scratch dir, SIF cache) now live in tools/environments/singularity.py
 from tools.environments.singularity import _get_scratch_dir
-from tools.interrupt import _interrupt_event, is_interrupted  # noqa: F401 — re-exported
 from tools.tool_backend_helpers import (
     coerce_modal_mode,
     has_direct_modal_credentials,
@@ -120,24 +125,24 @@ def _check_disk_usage_warning():
     try:
         scratch_dir = _get_scratch_dir()
 
-        # Get total size of prostor directories
+        # Get total size of hermes directories
         total_bytes = 0
         import glob
-        for path in glob.glob(str(scratch_dir / "prostor-*")):
+        for path in glob.glob(str(scratch_dir / "hermes-*")):
             for f in Path(path).rglob('*'):
                 if f.is_file():
                     try:
                         total_bytes += f.stat().st_size
                     except OSError as e:
                         logger.debug("Could not stat file %s: %s", f, e)
-
+        
         total_gb = total_bytes / (1024 ** 3)
-
+        
         if total_gb > DISK_USAGE_WARNING_THRESHOLD_GB:
             logger.warning("Disk usage (%.1fGB) exceeds threshold (%.0fGB). Consider running cleanup_all_environments().",
                            total_gb, DISK_USAGE_WARNING_THRESHOLD_GB)
             return True
-
+        
         return False
     except Exception as e:
         logger.debug("Disk usage warning check failed: %s", e, exc_info=True)
@@ -200,9 +205,9 @@ def _get_sudo_password_cache_scope() -> str:
     try:
         from gateway.session_context import get_session_env
 
-        session_key = get_session_env("PROSTOR_SESSION_KEY", "")
+        session_key = get_session_env("HERMES_SESSION_KEY", "")
     except Exception:
-        session_key = os.getenv("PROSTOR_SESSION_KEY", "")
+        session_key = os.getenv("HERMES_SESSION_KEY", "")
     if session_key:
         return f"session:{session_key}"
 
@@ -241,7 +246,6 @@ def _reset_cached_sudo_passwords() -> None:
     """
     with _sudo_password_cache_lock:
         _sudo_password_cache.clear()
-
 
 # =============================================================================
 # Dangerous Command Approval System
@@ -291,45 +295,45 @@ def _validate_workdir(workdir: str) -> str | None:
 def _handle_sudo_failure(output: str, env_type: str) -> str:
     """
     Check for sudo failure and add helpful message for messaging contexts.
-
+    
     Returns enhanced output if sudo failed in messaging context, else original.
     """
-    is_gateway = env_var_enabled("PROSTOR_GATEWAY_SESSION")
-
+    is_gateway = env_var_enabled("HERMES_GATEWAY_SESSION")
+    
     if not is_gateway:
         return output
-
+    
     # Check for sudo failure indicators
     sudo_failures = [
         "sudo: a password is required",
         "sudo: no tty present",
         "sudo: a terminal is required",
     ]
-
+    
     for failure in sudo_failures:
         if failure in output:
-            from prostor_constants import display_prostor_home as _dhh
+            from hermes_constants import display_hermes_home as _dhh
             return output + f"\n\n💡 Tip: To enable sudo over messaging, add SUDO_PASSWORD to {_dhh()}/.env on the agent machine."
-
+    
     return output
 
 
 def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
     """
     Prompt user for sudo password with timeout.
-
+    
     Returns the password if entered, or empty string if:
     - User presses Enter without input (skip)
     - Timeout expires (45s default)
     - Any error occurs
-
-    Only works in interactive mode (PROSTOR_INTERACTIVE=1).
+    
+    Only works in interactive mode (HERMES_INTERACTIVE=1).
     If a _sudo_password_callback is registered (by the CLI), delegates to it
     so the prompt integrates with prompt_toolkit's UI.  Otherwise reads
     directly from /dev/tty with echo disabled.
     """
     import sys
-
+    
     # Use the registered callback when available (prompt_toolkit-compatible)
     _sudo_cb = _get_sudo_password_callback()
     if _sudo_cb is not None:
@@ -339,7 +343,7 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
             return ""
 
     result = {"password": None, "done": False}
-
+    
     def read_password_thread():
         """Read password with echo disabled. Uses msvcrt on Windows, /dev/tty on Unix."""
         tty_fd = None
@@ -387,11 +391,11 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
                 except Exception as e:
                     logger.debug("Failed to close tty fd: %s", e)
             result["done"] = True
-
+    
     try:
-        os.environ["PROSTOR_SPINNER_PAUSE"] = "1"
+        os.environ["HERMES_SPINNER_PAUSE"] = "1"
         time.sleep(0.2)
-
+        
         print()
         print("┌" + "─" * 58 + "┐")
         print("│  🔐 SUDO PASSWORD REQUIRED" + " " * 30 + "│")
@@ -402,11 +406,11 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
         print("└" + "─" * 58 + "┘")
         print()
         print("  Password (hidden): ", end="", flush=True)
-
+        
         password_thread = threading.Thread(target=read_password_thread, daemon=True)
         password_thread.start()
         password_thread.join(timeout=timeout_seconds)
-
+        
         if result["done"]:
             password = result["password"] or ""
             print()  # newline after hidden input
@@ -423,7 +427,7 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
             print()
             sys.stdout.flush()
             return ""
-
+            
     except (EOFError, KeyboardInterrupt):
         print()
         print("  ⏭ Cancelled - continuing without sudo")
@@ -435,9 +439,8 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
         sys.stdout.flush()
         return ""
     finally:
-        if "PROSTOR_SPINNER_PAUSE" in os.environ:
-            del os.environ["PROSTOR_SPINNER_PAUSE"]
-
+        if "HERMES_SPINNER_PAUSE" in os.environ:
+            del os.environ["HERMES_SPINNER_PAUSE"]
 
 def _safe_command_preview(command: Any, limit: int = 200) -> str:
     """Return a log-safe preview for possibly-invalid command values."""
@@ -449,7 +452,6 @@ def _safe_command_preview(command: Any, limit: int = 200) -> str:
         return repr(command)[:limit]
     except Exception:
         return f"<{type(command).__name__}>"
-
 
 def _looks_like_env_assignment(token: str) -> bool:
     """Return True when *token* is a leading shell environment assignment."""
@@ -776,7 +778,7 @@ def _transform_sudo_command(command: str | None) -> tuple[str | None, str | None
     methods for how they handle the non-None sudo_stdin case.
 
     If SUDO_PASSWORD is not set and an interactive UI is available
-    (PROSTOR_INTERACTIVE=1 or a registered sudo password callback):
+    (HERMES_INTERACTIVE=1 or a registered sudo password callback):
       Prompts user for password with 45s timeout, caches for session.
 
     If SUDO_PASSWORD is not set and NOT interactive:
@@ -796,17 +798,17 @@ def _transform_sudo_command(command: str | None) -> tuple[str | None, str | None
     )
 
     # Local hosts with sudoers NOPASSWD should not be forced through the
-    # interactive Prostor password prompt or the sudo -S password-pipe path.
+    # interactive Hermes password prompt or the sudo -S password-pipe path.
     # Scoped to the local terminal backend so Docker/SSH/Modal/etc. can't
     # inherit host sudo state. Re-probes every call (no process-lifetime
     # cache) so an expired sudo timestamp doesn't make a later command block
-    # silently without Prostor prompting.
+    # silently without Hermes prompting.
     if not has_configured_password and not sudo_password and _sudo_nopasswd_works():
         return command, None
 
     has_sudo_prompt_callback = _get_sudo_password_callback() is not None
     should_prompt_for_sudo = (
-        env_var_enabled("PROSTOR_INTERACTIVE") or has_sudo_prompt_callback
+        env_var_enabled("HERMES_INTERACTIVE") or has_sudo_prompt_callback
     )
     if not has_configured_password and not sudo_password and should_prompt_for_sudo:
         sudo_password = _prompt_for_sudo_password(timeout_seconds=45)
@@ -821,15 +823,15 @@ def _transform_sudo_command(command: str | None) -> tuple[str | None, str | None
 
 
 # Environment classes now live in tools/environments/
-import sys
-
-from tools.environments.docker import DockerEnvironment as _DockerEnvironment
 from tools.environments.local import LocalEnvironment as _LocalEnvironment
-from tools.environments.managed_modal import ManagedModalEnvironment as _ManagedModalEnvironment
-from tools.environments.modal import ModalEnvironment as _ModalEnvironment
 from tools.environments.singularity import SingularityEnvironment as _SingularityEnvironment
 from tools.environments.ssh import SSHEnvironment as _SSHEnvironment
+from tools.environments.docker import DockerEnvironment as _DockerEnvironment
+from tools.environments.modal import ModalEnvironment as _ModalEnvironment
+from tools.environments.managed_modal import ManagedModalEnvironment as _ManagedModalEnvironment
 from tools.managed_tool_gateway import is_managed_tool_gateway_ready
+import sys
+
 
 # Tool description for LLM
 TERMINAL_TOOL_DESCRIPTION = """Execute shell commands on a Linux environment. Filesystem, current working directory, and exported environment variables persist between calls.
@@ -846,7 +848,7 @@ Foreground (default): Commands return INSTANTLY when done, even if the timeout i
 Background: Set background=true to get a session_id. Almost always pair with notify_on_complete=true — bg without notify runs SILENTLY and you have no way to learn it finished short of calling process(action='poll') yourself. Two legitimate uses:
   (1) Long-lived processes that never exit (servers, watchers, daemons) — silent is correct, there's no exit to notify on.
   (2) Long-running bounded tasks (tests, builds, deploys, CI pollers, batch jobs) — MUST set notify_on_complete=true. Without it you'll either forget to poll or sit blocked waiting for the user to surface the result.
-For servers/watchers, do NOT use shell-level background wrappers (nohup/disown/setsid/trailing '&') in foreground mode. Use background=true so Prostor can track lifecycle and output.
+For servers/watchers, do NOT use shell-level background wrappers (nohup/disown/setsid/trailing '&') in foreground mode. Use background=true so Hermes can track lifecycle and output.
 After starting a server, verify readiness with a health check or log signal, then run tests in a separate terminal() call. Avoid blind sleep loops.
 Use process(action="poll") for progress checks, process(action="wait") to block until done.
 Working directory: Use 'workdir' for per-command cwd.
@@ -856,10 +858,10 @@ Do NOT use vim/nano/interactive tools without pty=true — they hang without a p
 """
 
 # Global state for environment lifecycle management
-_active_environments: dict[str, Any] = {}
-_last_activity: dict[str, float] = {}
+_active_environments: Dict[str, Any] = {}
+_last_activity: Dict[str, float] = {}
 _env_lock = threading.Lock()
-_creation_locks: dict[str, threading.Lock] = {}  # Per-task locks for sandbox creation
+_creation_locks: Dict[str, threading.Lock] = {}  # Per-task locks for sandbox creation
 _creation_locks_lock = threading.Lock()  # Protects _creation_locks dict itself
 _cleanup_thread = None
 _cleanup_running = False
@@ -871,12 +873,12 @@ _docker_orphan_reaper_ran = False
 _docker_orphan_reaper_lock = threading.Lock()
 
 
-def _maybe_reap_docker_orphans(container_config: dict[str, Any]) -> None:
+def _maybe_reap_docker_orphans(container_config: Dict[str, Any]) -> None:
     """Run the docker orphan reaper once per process, if enabled.
 
-    Sweeps long-Exited containers labeled ``prostor-agent=1`` for the current
+    Sweeps long-Exited containers labeled ``hermes-agent=1`` for the current
     profile that match the issue #20561 leak class — containers left behind
-    by Prostor processes that exited without firing ``atexit`` (SIGKILL,
+    by Hermes processes that exited without firing ``atexit`` (SIGKILL,
     OOM, terminal-window-close). The reaper is conservative by default:
     only Exited containers older than ``2 × lifetime_seconds`` and scoped to
     the current profile.
@@ -885,7 +887,7 @@ def _maybe_reap_docker_orphans(container_config: dict[str, Any]) -> None:
 
     * ``terminal.docker_orphan_reaper: false`` disables it entirely (the
       operator opted out — usually because they're running multiple
-      Prostor processes in the same profile and don't trust the
+      Hermes processes in the same profile and don't trust the
       conservative defaults).
     * ``_docker_orphan_reaper_ran`` flag — sweep runs once per Python
       interpreter, not on every subagent / RL-rollout / parallel
@@ -903,7 +905,7 @@ def _maybe_reap_docker_orphans(container_config: dict[str, Any]) -> None:
             return
         _docker_orphan_reaper_ran = True
 
-    # 2 × lifetime_seconds gives sibling Prostor processes a generous grace
+    # 2 × lifetime_seconds gives sibling Hermes processes a generous grace
     # window. Floor at 60s so an operator with TERMINAL_LIFETIME_SECONDS=0
     # doesn't get an instant-reap that races their own setup.
     # ``container_config`` only carries container_* keys, so read
@@ -917,8 +919,7 @@ def _maybe_reap_docker_orphans(container_config: dict[str, Any]) -> None:
 
     try:
         from tools.environments.docker import (
-            _get_active_profile_name,
-            reap_orphan_containers,
+            reap_orphan_containers, _get_active_profile_name,
         )
     except ImportError:
         return
@@ -945,10 +946,10 @@ def _maybe_reap_docker_orphans(container_config: dict[str, Any]) -> None:
 #
 # This is never exposed to the model -- only infrastructure code calls it.
 # Thread-safe because each task_id is unique per rollout.
-_task_env_overrides: dict[str, dict[str, Any]] = {}
+_task_env_overrides: Dict[str, Dict[str, Any]] = {}
 
 
-def register_task_env_overrides(task_id: str, overrides: dict[str, Any]):
+def register_task_env_overrides(task_id: str, overrides: Dict[str, Any]):
     """
     Register environment overrides for a specific task/rollout.
 
@@ -998,7 +999,7 @@ def clear_task_env_overrides(task_id: str):
     _task_env_overrides.pop(task_id, None)
 
 
-def _resolve_container_task_id(task_id: str | None) -> str:
+def _resolve_container_task_id(task_id: Optional[str]) -> str:
     """
     Map a tool-call ``task_id`` to the container/sandbox key used by
     ``_active_environments``.
@@ -1010,7 +1011,7 @@ def _resolve_container_task_id(task_id: str | None) -> str:
     ``"default"`` here so subagents share the parent's long-lived container
     (one bash, one /workspace, one set of installed packages).
 
-    Exception: RL / benchmark environments (TerminalBench2, ProstorSweEnv, ...)
+    Exception: RL / benchmark environments (TerminalBench2, HermesSweEnv, ...)
     call ``register_task_env_overrides(task_id, {...})`` to request a
     per-task Docker/Modal image. When an override is registered for a
     task_id, we honour it by returning the task_id unchanged -- those
@@ -1033,7 +1034,7 @@ def _resolve_container_task_id(task_id: str | None) -> str:
     return "default"
 
 
-def resolve_task_overrides(task_id: str | None) -> dict[str, Any]:
+def resolve_task_overrides(task_id: Optional[str]) -> Dict[str, Any]:
     """Return the env overrides for *task_id*, raw key first then collapsed.
 
     ``register_task_env_overrides`` writes under the *raw* task/session id, but
@@ -1067,7 +1068,7 @@ def _parse_env_var(name: str, default: str, converter: Any = int, type_label: st
     except (ValueError, json.JSONDecodeError):
         raise ValueError(
             f"Invalid value for {name}: {raw!r} (expected {type_label}). "
-            f"Check ~/.prostor/.env or environment variables."
+            f"Check ~/.hermes/.env or environment variables."
         )
 
 
@@ -1085,12 +1086,12 @@ def _safe_getcwd() -> str:
         return os.getenv("TERMINAL_CWD") or os.path.expanduser("~")
 
 
-def _get_env_config() -> dict[str, Any]:
+def _get_env_config() -> Dict[str, Any]:
     """Get terminal environment configuration from environment variables."""
     # Default image with Python and Node.js for maximum compatibility
     default_image = "nikolaik/python-nodejs:python3.11-nodejs20"
     env_type = os.getenv("TERMINAL_ENV", "local")
-
+    
     mount_docker_cwd = os.getenv("TERMINAL_DOCKER_MOUNT_CWD_TO_WORKSPACE", "false").lower() in {"true", "1", "yes"}
     container_backend = env_type in {"docker", "singularity", "modal", "daytona"}
     docker_backend = env_type == "docker"
@@ -1202,7 +1203,7 @@ def _get_env_config() -> dict[str, Any]:
         "docker_persist_across_processes": os.getenv(
             "TERMINAL_DOCKER_PERSIST_ACROSS_PROCESSES", "true"
         ).lower() in {"true", "1", "yes"},
-        # Startup orphan reaper for prostor-tagged containers left behind by
+        # Startup orphan reaper for hermes-tagged containers left behind by
         # crashed / SIGKILL'd previous processes that bypassed atexit.
         # Conservative: only sweeps Exited containers older than 2× the
         # idle-reap window AND scoped to the current profile. Issue #20561.
@@ -1212,7 +1213,7 @@ def _get_env_config() -> dict[str, Any]:
     }
 
 
-def _get_modal_backend_state(modal_mode: object | None) -> dict[str, Any]:
+def _get_modal_backend_state(modal_mode: object | None) -> Dict[str, Any]:
     """Resolve direct vs managed Modal backend selection."""
     return resolve_modal_backend_state(
         modal_mode,
@@ -1228,7 +1229,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
                         host_cwd: str = None):
     """
     Create an execution environment for sandboxed command execution.
-
+    
     Args:
         env_type: One of "local", "docker", "singularity", "modal",
             "daytona", "ssh"
@@ -1239,7 +1240,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
         container_config: Resource config for container backends (cpu, memory, disk, persistent)
         task_id: Task identifier for environment reuse and snapshot keying
         host_cwd: Optional host working directory to bind into Docker when explicitly enabled
-
+        
     Returns:
         Environment instance with execute() method
     """
@@ -1255,10 +1256,10 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
 
     if env_type == "local":
         return _LocalEnvironment(cwd=cwd, timeout=timeout)
-
+    
     elif env_type == "docker":
         # One-shot orphan reaper: clean up labeled containers left behind by
-        # prior Prostor processes that hit SIGKILL / OOM / a closed terminal
+        # prior Hermes processes that hit SIGKILL / OOM / a closed terminal
         # before the atexit cleanup hook could run.  Gated to once per
         # process so concurrent _create_environment calls (parallel
         # subagents, RL benchmarks) don't run the reaper N times.
@@ -1277,14 +1278,14 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
             extra_args=docker_extra_args,
             persist_across_processes=cc.get("docker_persist_across_processes", True),
         )
-
+    
     elif env_type == "singularity":
         return _SingularityEnvironment(
             image=image, cwd=cwd, timeout=timeout,
             cpu=cpu, memory=memory, disk=disk,
             persistent_filesystem=persistent, task_id=task_id,
         )
-
+    
     elif env_type == "modal":
         sandbox_kwargs = {}
         if cpu > 0:
@@ -1293,9 +1294,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
             sandbox_kwargs["memory"] = memory
         if disk > 0:
             try:
-                import inspect
-
-                import modal
+                import inspect, modal
                 if "ephemeral_disk" in inspect.signature(modal.Sandbox.create).parameters:
                     sandbox_kwargs["ephemeral_disk"] = disk
             except Exception:
@@ -1344,7 +1343,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
             modal_sandbox_kwargs=sandbox_kwargs,
             persistent_filesystem=persistent, task_id=task_id,
         )
-
+    
     elif env_type == "daytona":
         # Lazy import so daytona SDK is only required when backend is selected.
         from tools.environments.daytona import DaytonaEnvironment as _DaytonaEnvironment
@@ -1496,28 +1495,30 @@ def is_persistent_env(task_id: str) -> bool:
     return bool(getattr(env, "_persistent", False))
 
 
+
+
 def cleanup_all_environments():
     """Clean up ALL active environments. Use with caution."""
     task_ids = list(_active_environments.keys())
     cleaned = 0
-
+    
     for task_id in task_ids:
         try:
             cleanup_vm(task_id)
             cleaned += 1
         except Exception as e:
             logger.error("Error cleaning %s: %s", task_id, e, exc_info=True)
-
+    
     # Also clean any orphaned directories
     scratch_dir = _get_scratch_dir()
     import glob
-    for path in glob.glob(str(scratch_dir / "prostor-*")):
+    for path in glob.glob(str(scratch_dir / "hermes-*")):
         try:
             shutil.rmtree(path, ignore_errors=True)
             logger.info("Removed orphaned: %s", path)
         except OSError as e:
             logger.debug("Failed to remove orphaned path %s: %s", path, e)
-
+    
     if cleaned > 0:
         logger.info("Cleaned %d environments", cleaned)
     return cleaned
@@ -1614,7 +1615,6 @@ def _atexit_cleanup():
                 wait_fn(timeout=15.0)
             except Exception as e:  # never block shutdown on a bad backend
                 logger.debug("wait_for_cleanup raised on exit: %s", e)
-
 
 atexit.register(_atexit_cleanup)
 
@@ -1768,7 +1768,7 @@ def _foreground_background_guidance(command: str) -> str | None:
     if _SHELL_LEVEL_BACKGROUND_RE.search(unquoted):
         return (
             "Foreground command uses shell-level background wrappers (nohup/disown/setsid). "
-            "Use terminal(background=true) so Prostor can track the process, then run "
+            "Use terminal(background=true) so Hermes can track the process, then run "
             "readiness checks and tests in separate commands."
         )
 
@@ -1818,7 +1818,7 @@ def _resolve_notification_flag_conflict(
 
 def _resolve_command_cwd(
     *,
-    workdir: str | None,
+    workdir: Optional[str],
     env: Any,
     default_cwd: str,
 ) -> str:
@@ -1843,13 +1843,13 @@ def _resolve_command_cwd(
 def terminal_tool(
     command: str,
     background: bool = False,
-    timeout: int | None = None,
-    task_id: str | None = None,
+    timeout: Optional[int] = None,
+    task_id: Optional[str] = None,
     force: bool = False,
-    workdir: str | None = None,
+    workdir: Optional[str] = None,
     pty: bool = False,
     notify_on_complete: bool = False,
-    watch_patterns: list[str] | None = None,
+    watch_patterns: Optional[List[str]] = None,
 ) -> str:
     """
     Execute a command in the configured terminal environment.
@@ -1877,7 +1877,7 @@ def terminal_tool(
 
         # With custom timeout
         >>> result = terminal_tool(command="long_task.sh", timeout=300)
-
+        
         # Force run after user confirmation
         # Note: force parameter is internal only, not exposed to model API
     """
@@ -1911,7 +1911,7 @@ def terminal_tool(
         # ``"default"``) is still found under its originating session id while
         # isolation-keyed RL/benchmark overrides keep resolving as before.
         overrides = resolve_task_overrides(task_id)
-
+        
         # Select image based on env type, with per-task override support
         if env_type == "docker":
             image = overrides.get("docker_image") or config["docker_image"]
@@ -2058,15 +2058,15 @@ def terminal_tool(
                         env = new_env
                     logger.info("%s environment ready for task %s", env_type, effective_task_id[:8])
 
-        # Hard-block: gateway lifecycle commands (systemctl/launchctl/prostor
-        # restart|stop targeting prostor-gateway) must never run inside the
+        # Hard-block: gateway lifecycle commands (systemctl/launchctl/hermes
+        # restart|stop targeting hermes-gateway) must never run inside the
         # gateway process itself. The restart would SIGTERM the gateway, which
         # kills this very subprocess before it can complete — the service may
-        # never restart. This mirrors the `prostor gateway restart` guard in
-        # prostor_cli/gateway.py and the cron-path guard in prostor_cli/cron.py,
+        # never restart. This mirrors the `hermes gateway restart` guard in
+        # hermes_cli/gateway.py and the cron-path guard in hermes_cli/cron.py,
         # but applies unconditionally (force=True cannot help here).
-        if os.environ.get("_PROSTOR_GATEWAY") == "1":
-            from prostor_cli.cron import _contains_gateway_lifecycle_command
+        if os.environ.get("_HERMES_GATEWAY") == "1":
+            from hermes_cli.cron import _contains_gateway_lifecycle_command
             if _contains_gateway_lifecycle_command(command):
                 return json.dumps({
                     "output": "",
@@ -2075,7 +2075,7 @@ def terminal_tool(
                         "Blocked: cannot restart or stop the gateway from inside the "
                         "gateway process. The gateway would kill this command before "
                         "it could complete (SIGTERM propagates to child processes). "
-                        "Run `prostor gateway restart` from a separate shell outside "
+                        "Run `hermes gateway restart` from a separate shell outside "
                         "the running gateway."
                     ),
                     "status": "error",
@@ -2217,7 +2217,7 @@ def terminal_tool(
                 # Nudge: homebrewed CI watcher built from `gh pr view`
                 # `--json statusCheckRollup` or `gh pr checks` piped through
                 # `jq` is the #1 cause of silent CI-watcher failures in
-                # prostor-agent dev work. May 2026 PRs that surfaced this
+                # hermes-agent dev work. May 2026 PRs that surfaced this
                 # exact failure mode: #31329, #31448, #31695, #31709, #31745,
                 # #32264, #33131. Failure modes seen:
                 #   * `gh pr view --json statusCheckRollup --jq ...` with
@@ -2265,7 +2265,7 @@ def terminal_tool(
                             "This looks like a homebrewed CI poller built from "
                             "`gh pr view --json statusCheckRollup` and/or "
                             "`gh pr checks | jq`. That shape has burned us "
-                            "repeatedly in prostor-agent dev work (PRs #31329, "
+                            "repeatedly in hermes-agent dev work (PRs #31329, "
                             "#31448, #31695, #31709, #31745, #32264, #33131) — "
                             "stdout buffering kills output capture, jq null-key "
                             "edge cases silently exit the loop, conclusion-vs-"
@@ -2279,7 +2279,7 @@ def terminal_tool(
                             "awk-on-tabs poller "
                             "(`awk -F\"\\t\" \"$2==\\\"pending\\\"\"`) for "
                             "sharded matrices. Load skill_view("
-                            "name='github/prostor-agent-dev', "
+                            "name='github/hermes-agent-dev', "
                             "file_path='references/green-ci-policy.md') for "
                             "the verbatim snippets. If you must roll a custom "
                             "loop with rich structured output, write each tick "
@@ -2297,20 +2297,47 @@ def terminal_tool(
                 # watch-pattern and completion notifications can be
                 # routed back to the correct chat/thread.
                 if background and (notify_on_complete or watch_patterns):
-                    from gateway.session_context import get_session_env as _gse
-                    _gw_platform = _gse("PROSTOR_SESSION_PLATFORM", "")
-                    if _gw_platform:
-                        _gw_chat_id = _gse("PROSTOR_SESSION_CHAT_ID", "")
-                        _gw_thread_id = _gse("PROSTOR_SESSION_THREAD_ID", "")
-                        _gw_user_id = _gse("PROSTOR_SESSION_USER_ID", "")
-                        _gw_user_name = _gse("PROSTOR_SESSION_USER_NAME", "")
-                        _gw_message_id = _gse("PROSTOR_SESSION_MESSAGE_ID", "")
-                        proc_session.watcher_platform = _gw_platform
-                        proc_session.watcher_chat_id = _gw_chat_id
-                        proc_session.watcher_user_id = _gw_user_id
-                        proc_session.watcher_user_name = _gw_user_name
-                        proc_session.watcher_thread_id = _gw_thread_id
-                        proc_session.watcher_message_id = _gw_message_id
+                    from gateway.session_context import (
+                        async_delivery_supported as _async_ok,
+                        get_session_env as _gse,
+                    )
+
+                    # Stateless request/response sessions (the API server /
+                    # WebUI path) cannot route a completion back to the agent
+                    # after the turn ends — there is no persistent channel and
+                    # send() is a no-op. Registering a watcher there silently
+                    # no-ops (issue #10760). Refuse the promise instead: drop
+                    # the flags and tell the agent to poll.
+                    if not _async_ok():
+                        notify_on_complete = False
+                        watch_patterns = None
+                        result_data["notify_on_complete"] = False
+                        result_data["notify_unsupported"] = (
+                            "notify_on_complete / watch_patterns are not available on "
+                            "this endpoint (stateless HTTP API — no channel to deliver "
+                            "an async completion after the turn ends). The process is "
+                            "running in the background; retrieve its result with "
+                            "process(action='poll') or process(action='wait')."
+                        )
+                        logger.info(
+                            "background proc %s: async delivery unsupported on this "
+                            "session; notify_on_complete/watch_patterns disabled",
+                            proc_session.id,
+                        )
+                    else:
+                        _gw_platform = _gse("HERMES_SESSION_PLATFORM", "")
+                        if _gw_platform:
+                            _gw_chat_id = _gse("HERMES_SESSION_CHAT_ID", "")
+                            _gw_thread_id = _gse("HERMES_SESSION_THREAD_ID", "")
+                            _gw_user_id = _gse("HERMES_SESSION_USER_ID", "")
+                            _gw_user_name = _gse("HERMES_SESSION_USER_NAME", "")
+                            _gw_message_id = _gse("HERMES_SESSION_MESSAGE_ID", "")
+                            proc_session.watcher_platform = _gw_platform
+                            proc_session.watcher_chat_id = _gw_chat_id
+                            proc_session.watcher_user_id = _gw_user_id
+                            proc_session.watcher_user_name = _gw_user_name
+                            proc_session.watcher_thread_id = _gw_thread_id
+                            proc_session.watcher_message_id = _gw_message_id
 
                 # Mutual exclusion: if both notify_on_complete and watch_patterns
                 # are set, drop watch_patterns. The combination produces duplicate
@@ -2368,7 +2395,7 @@ def terminal_tool(
             max_retries = 3
             retry_count = 0
             result = None
-
+            
             while retry_count <= max_retries:
                 try:
                     execute_kwargs = {
@@ -2388,7 +2415,7 @@ def terminal_tool(
                             "exit_code": 124,
                             "error": f"Command timed out after {effective_timeout} seconds"
                         }, ensure_ascii=False)
-
+                    
                     # Retry on transient errors
                     if retry_count < max_retries:
                         retry_count += 1
@@ -2397,7 +2424,7 @@ def terminal_tool(
                                        wait_time, retry_count, max_retries, _safe_command_preview(command), type(e).__name__, e, effective_task_id, env_type)
                         time.sleep(wait_time)
                         continue
-
+                    
                     logger.error("Execution failed after %d retries - Command: %s - Error: %s: %s - Task: %s, Backend: %s",
                                  max_retries, _safe_command_preview(command), type(e).__name__, e, effective_task_id, env_type)
                     return json.dumps({
@@ -2405,10 +2432,10 @@ def terminal_tool(
                         "exit_code": -1,
                         "error": f"Command execution failed: {type(e).__name__}: {str(e)}"
                     }, ensure_ascii=False)
-
+                
                 # Got a result
                 break
-
+            
             # Extract output
             output = result.get("output", "")
             returncode = result.get("returncode", 0)
@@ -2421,7 +2448,7 @@ def terminal_tool(
             # replace it by returning a string from transform_terminal_output.
             # The hook is fail-open, and the first valid string return wins.
             try:
-                from prostor_cli.plugins import invoke_hook
+                from hermes_cli.plugins import invoke_hook
                 hook_results = invoke_hook(
                     "transform_terminal_output",
                     command=command,
@@ -2436,7 +2463,7 @@ def terminal_tool(
                         break
             except Exception:
                 pass
-
+            
             # Truncate output if too long, keeping both head and tail
             from tools.tool_output_limits import get_max_bytes
             MAX_OUTPUT_CHARS = get_max_bytes()
@@ -2602,7 +2629,7 @@ if __name__ == "__main__":
     # Simple test when run directly
     print("Terminal Tool Module")
     print("=" * 50)
-
+    
     config = _get_env_config()
     print("\nCurrent Configuration:")
     print(f"  Environment type: {config['env_type']}")
@@ -2639,7 +2666,7 @@ if __name__ == "__main__":
     print(f"  TERMINAL_MODAL_IMAGE: {os.getenv('TERMINAL_MODAL_IMAGE', default_img)}")
     print(f"  TERMINAL_DAYTONA_IMAGE: {os.getenv('TERMINAL_DAYTONA_IMAGE', default_img)}")
     print(f"  TERMINAL_CWD: {os.getenv('TERMINAL_CWD', _safe_getcwd())}")
-    from prostor_constants import display_prostor_home as _dhh
+    from hermes_constants import display_hermes_home as _dhh
     print(f"  TERMINAL_SANDBOX_DIR: {os.getenv('TERMINAL_SANDBOX_DIR', f'{_dhh()}/sandboxes')}")
     print(f"  TERMINAL_TIMEOUT: {os.getenv('TERMINAL_TIMEOUT', '60')}")
     print(f"  TERMINAL_LIFETIME_SECONDS: {os.getenv('TERMINAL_LIFETIME_SECONDS', '300')}")

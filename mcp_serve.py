@@ -1,5 +1,5 @@
 """
-Prostor MCP Server — expose messaging conversations as MCP tools.
+Hermes MCP Server — expose messaging conversations as MCP tools.
 
 Starts a stdio MCP server that lets any MCP client (Claude Code, Cursor, Codex,
 etc.) list conversations, read message history, send messages, poll for live
@@ -10,17 +10,17 @@ Matches OpenClaw's 9-tool MCP channel bridge surface:
   events_poll, events_wait, messages_send, permissions_list_open,
   permissions_respond
 
-Plus: channels_list (Prostor-specific extra)
+Plus: channels_list (Hermes-specific extra)
 
 Usage:
-    prostor mcp serve
-    prostor mcp serve --verbose
+    hermes mcp serve
+    hermes mcp serve --verbose
 
 MCP client config (e.g. claude_desktop_config.json):
     {
         "mcpServers": {
-            "prostor": {
-                "command": "prostor",
+            "hermes": {
+                "command": "hermes",
                 "args": ["mcp", "serve"]
             }
         }
@@ -38,8 +38,9 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Dict, List, Optional
 
-logger = logging.getLogger("prostor.mcp_serve")
+logger = logging.getLogger("hermes.mcp_serve")
 
 # ---------------------------------------------------------------------------
 # Lazy MCP SDK import
@@ -59,18 +60,18 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 def _get_sessions_dir() -> Path:
-    """Return the sessions directory using PROSTOR_HOME."""
+    """Return the sessions directory using HERMES_HOME."""
     try:
-        from prostor_constants import get_prostor_home
-        return get_prostor_home() / "sessions"
+        from hermes_constants import get_hermes_home
+        return get_hermes_home() / "sessions"
     except ImportError:
-        return Path(os.environ.get("PROSTOR_HOME", Path.home() / ".prostor")) / "sessions"
+        return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes")) / "sessions"
 
 
 def _get_session_db():
     """Get a SessionDB instance for reading message transcripts."""
     try:
-        from prostor_state import SessionDB
+        from hermes_state import SessionDB
         return SessionDB()
     except Exception as e:
         logger.debug("SessionDB unavailable: %s", e)
@@ -87,8 +88,15 @@ def _load_sessions_index() -> dict:
     if not sessions_file.exists():
         return {}
     try:
-        with open(sessions_file, encoding="utf-8") as f:
-            return json.load(f)
+        with open(sessions_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Drop documentation/metadata sentinels (keys starting with "_", e.g.
+        # the "_README" note the gateway writes into the index). They are not
+        # session entries and would break consumers that treat every value as
+        # an entry dict.
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if not str(k).startswith("_")}
+        return {}
     except Exception as e:
         logger.debug("Failed to load sessions.json: %s", e)
         return {}
@@ -97,17 +105,17 @@ def _load_sessions_index() -> dict:
 def _load_channel_directory() -> dict:
     """Load the cached channel directory for available targets."""
     try:
-        from prostor_constants import get_prostor_home
-        directory_file = get_prostor_home() / "channel_directory.json"
+        from hermes_constants import get_hermes_home
+        directory_file = get_hermes_home() / "channel_directory.json"
     except ImportError:
         directory_file = Path(
-            os.environ.get("PROSTOR_HOME", Path.home() / ".prostor")
+            os.environ.get("HERMES_HOME", Path.home() / ".hermes")
         ) / "channel_directory.json"
 
     if not directory_file.exists():
         return {}
     try:
-        with open(directory_file, encoding="utf-8") as f:
+        with open(directory_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         logger.debug("Failed to load channel_directory.json: %s", e)
@@ -145,7 +153,7 @@ def _extract_message_content(msg: dict) -> str:
     return str(content) if content else ""
 
 
-def _extract_attachments(msg: dict) -> list[dict]:
+def _extract_attachments(msg: dict) -> List[dict]:
     """Extract non-text attachments from a message.
 
     Finds: multi-part image/file content blocks, MEDIA: tags in text,
@@ -168,7 +176,7 @@ def _extract_attachments(msg: dict) -> list[dict]:
                 url = part.get("url", part.get("source", {}).get("url", ""))
                 if url:
                     attachments.append({"type": "image", "url": url})
-            elif ptype not in {"text", }:
+            elif ptype not in {"text",}:
                 # Unknown non-text content type
                 attachments.append({"type": ptype, "data": part})
 
@@ -204,20 +212,20 @@ class EventBridge:
     """Background poller that watches SessionDB for new messages and
     maintains an in-memory event queue with waiter support.
 
-    This is the Prostor equivalent of OpenClaw's WebSocket gateway bridge.
+    This is the Hermes equivalent of OpenClaw's WebSocket gateway bridge.
     Instead of WebSocket events, we poll the SQLite database for changes.
     """
 
     def __init__(self):
-        self._queue: list[QueueEvent] = []
+        self._queue: List[QueueEvent] = []
         self._cursor = 0
         self._lock = threading.Lock()
         self._new_event = threading.Event()
         self._running = False
-        self._thread: threading.Thread | None = None
-        self._last_poll_timestamps: dict[str, float] = {}  # session_key -> unix timestamp
+        self._thread: Optional[threading.Thread] = None
+        self._last_poll_timestamps: Dict[str, float] = {}  # session_key -> unix timestamp
         # In-memory approval tracking (populated from events)
-        self._pending_approvals: dict[str, dict] = {}
+        self._pending_approvals: Dict[str, dict] = {}
         # mtime cache — skip expensive work when files haven't changed
         self._sessions_json_mtime: float = 0.0
         self._state_db_mtime: float = 0.0
@@ -243,7 +251,7 @@ class EventBridge:
     def poll_events(
         self,
         after_cursor: int = 0,
-        session_key: str | None = None,
+        session_key: Optional[str] = None,
         limit: int = 20,
     ) -> dict:
         """Return events since after_cursor, optionally filtered by session_key."""
@@ -267,9 +275,9 @@ class EventBridge:
     def wait_for_event(
         self,
         after_cursor: int = 0,
-        session_key: str | None = None,
+        session_key: Optional[str] = None,
         timeout_ms: int = 30000,
-    ) -> dict | None:
+    ) -> Optional[dict]:
         """Block until a matching event arrives or timeout expires."""
         deadline = time.monotonic() + (timeout_ms / 1000.0)
 
@@ -292,7 +300,7 @@ class EventBridge:
 
         return None
 
-    def list_pending_approvals(self) -> list[dict]:
+    def list_pending_approvals(self) -> List[dict]:
         """List approval requests observed during this bridge session."""
         with self._lock:
             return sorted(
@@ -361,10 +369,10 @@ class EventBridge:
 
         # Check if state.db has changed
         try:
-            from prostor_constants import get_prostor_home
-            db_file = get_prostor_home() / "state.db"
+            from hermes_constants import get_hermes_home
+            db_file = get_hermes_home() / "state.db"
         except ImportError:
-            db_file = Path(os.environ.get("PROSTOR_HOME", Path.home() / ".prostor")) / "state.db"
+            db_file = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes")) / "state.db"
 
         try:
             db_mtime = db_file.stat().st_mtime if db_file.exists() else 0.0
@@ -446,8 +454,8 @@ class EventBridge:
 # MCP Server
 # ---------------------------------------------------------------------------
 
-def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
-    """Create and return the Prostor MCP server with all tools registered."""
+def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
+    """Create and return the Hermes MCP server with all tools registered."""
     if not _MCP_SERVER_AVAILABLE:
         raise ImportError(
             "MCP server requires the 'mcp' package. "
@@ -455,9 +463,9 @@ def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
         )
 
     mcp = FastMCP(
-        "prostor",
+        "hermes",
         instructions=(
-            "Prostor Agent messaging bridge. Use these tools to interact with "
+            "Hermes Agent messaging bridge. Use these tools to interact with "
             "conversations across Telegram, Discord, Slack, WhatsApp, Signal, "
             "Matrix, and other connected platforms."
         ),
@@ -469,9 +477,9 @@ def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
 
     @mcp.tool()
     def conversations_list(
-        platform: str | None = None,
+        platform: Optional[str] = None,
         limit: int = 50,
-        search: str | None = None,
+        search: Optional[str] = None,
     ) -> str:
         """List active messaging conversations across connected platforms.
 
@@ -669,7 +677,7 @@ def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
     @mcp.tool()
     def events_poll(
         after_cursor: int = 0,
-        session_key: str | None = None,
+        session_key: Optional[str] = None,
         limit: int = 20,
     ) -> str:
         """Poll for new conversation events since a cursor position.
@@ -698,7 +706,7 @@ def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
     @mcp.tool()
     def events_wait(
         after_cursor: int = 0,
-        session_key: str | None = None,
+        session_key: Optional[str] = None,
         timeout_ms: int = 30000,
     ) -> str:
         """Wait for the next conversation event (long-poll).
@@ -766,7 +774,7 @@ def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
     # -- channels_list -----------------------------------------------------
 
     @mcp.tool()
-    def channels_list(platform: str | None = None) -> str:
+    def channels_list(platform: Optional[str] = None) -> str:
         """List available messaging channels and targets across platforms.
 
         Returns channels that you can send messages to. The target strings
@@ -780,7 +788,7 @@ def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
             entries = _load_sessions_index()
             targets = []
             seen = set()
-            for _key, entry in entries.items():
+            for key, entry in entries.items():
                 origin = entry.get("origin", {})
                 p = entry.get("platform") or origin.get("platform", "")
                 chat_id = origin.get("chat_id", "")
@@ -863,7 +871,7 @@ def create_mcp_server(event_bridge: EventBridge | None = None) -> FastMCP:
 # ---------------------------------------------------------------------------
 
 def run_mcp_server(verbose: bool = False) -> None:
-    """Start the Prostor MCP server on stdio."""
+    """Start the Hermes MCP server on stdio."""
     if not _MCP_SERVER_AVAILABLE:
         print(
             "Error: MCP server requires the 'mcp' package.\n"

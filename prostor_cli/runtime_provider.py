@@ -5,34 +5,33 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Any
 from urllib.parse import urlparse
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+from hermes_cli import auth as auth_mod
 from agent.credential_pool import CredentialPool, PooledCredential, get_custom_provider_pool_key, load_pool
 from agent.secret_scope import get_secret as _get_secret
-from prostor_cli import auth as auth_mod
-from prostor_cli.auth import (
+from hermes_cli.auth import (
+    AuthError,
     DEFAULT_CODEX_BASE_URL,
     DEFAULT_QWEN_BASE_URL,
     DEFAULT_XAI_OAUTH_BASE_URL,
     PROVIDER_REGISTRY,
-    AuthError,
     _agent_key_is_usable,
     format_auth_error,
-    has_usable_secret,
-    resolve_api_key_provider_credentials,
-    resolve_codex_runtime_credentials,
-    resolve_external_process_provider_credentials,
-    resolve_gemini_oauth_runtime_credentials,
-    resolve_nous_runtime_credentials,
     resolve_provider,
-    resolve_qwen_runtime_credentials,
+    resolve_nous_runtime_credentials,
+    resolve_codex_runtime_credentials,
     resolve_xai_oauth_runtime_credentials,
+    resolve_qwen_runtime_credentials,
+    resolve_api_key_provider_credentials,
+    resolve_external_process_provider_credentials,
+    has_usable_secret,
 )
-from prostor_cli.config import get_compatible_custom_providers, load_config
-from prostor_constants import OPENROUTER_BASE_URL
+from hermes_cli.config import get_compatible_custom_providers, load_config
+from hermes_constants import OPENROUTER_BASE_URL
 from utils import base_url_host_matches, base_url_hostname, env_int
 
 
@@ -77,7 +76,7 @@ def _config_base_url_trustworthy_for_bare_custom(cfg_base_url: str, cfg_provider
     # is, otherwise a legit LAN/WireGuard ollama endpoint silently falls
     # through to OpenRouter.
     try:
-        from prostor_cli.auth import resolve_provider as _resolve_provider
+        from hermes_cli.auth import resolve_provider as _resolve_provider
 
         if _resolve_provider(cfg_provider_norm) == "custom":
             return True
@@ -88,7 +87,7 @@ def _config_base_url_trustworthy_for_bare_custom(cfg_base_url: str, cfg_provider
     return _loopback_hostname(base_url_hostname(bu))
 
 
-def _detect_api_mode_for_url(base_url: str) -> str | None:
+def _detect_api_mode_for_url(base_url: str) -> Optional[str]:
     """Auto-detect api_mode from the resolved base URL.
 
     - Direct api.openai.com endpoints need the Responses API for GPT-5.x
@@ -196,7 +195,7 @@ def _auto_detect_local_model(base_url: str) -> str:
     return ""
 
 
-def _get_model_config() -> dict[str, Any]:
+def _get_model_config() -> Dict[str, Any]:
     config = load_config()
     model_cfg = config.get("model")
     if isinstance(model_cfg, dict):
@@ -218,7 +217,7 @@ def _get_model_config() -> dict[str, Any]:
     return {}
 
 
-def _provider_supports_explicit_api_mode(provider: str | None, configured_provider: str | None = None) -> bool:
+def _provider_supports_explicit_api_mode(provider: Optional[str], configured_provider: Optional[str] = None) -> bool:
     """Check whether a persisted api_mode should be honored for a given provider.
 
     Prevents stale api_mode from a previous provider leaking into a
@@ -235,7 +234,7 @@ def _provider_supports_explicit_api_mode(provider: str | None, configured_provid
     return normalized_configured == normalized_provider
 
 
-def _copilot_runtime_api_mode(model_cfg: dict[str, Any], api_key: str) -> str:
+def _copilot_runtime_api_mode(model_cfg: Dict[str, Any], api_key: str) -> str:
     configured_provider = str(model_cfg.get("provider") or "").strip().lower()
     configured_mode = _parse_api_mode(model_cfg.get("api_mode"))
     if configured_mode and _provider_supports_explicit_api_mode("copilot", configured_provider):
@@ -246,7 +245,7 @@ def _copilot_runtime_api_mode(model_cfg: dict[str, Any], api_key: str) -> str:
         return "chat_completions"
 
     try:
-        from prostor_cli.models import copilot_model_api_mode
+        from hermes_cli.models import copilot_model_api_mode
 
         return copilot_model_api_mode(model_name, api_key=api_key)
     except Exception:
@@ -260,14 +259,14 @@ _VALID_API_MODES = {
     "bedrock_converse",
     # Optional opt-in: hand the entire turn to a `codex app-server` subprocess
     # so terminal/file-ops/patching/sandboxing run inside Codex's own runtime
-    # instead of Prostor' tool dispatch. Gated behind config key
+    # instead of Hermes' tool dispatch. Gated behind config key
     # `model.openai_runtime == "codex_app_server"` AND provider in
     # {"openai", "openai-codex"}. Default is unchanged.
     "codex_app_server",
 }
 
 
-def _parse_api_mode(raw: Any) -> str | None:
+def _parse_api_mode(raw: Any) -> Optional[str]:
     """Validate an api_mode value from config. Returns None if invalid."""
     if isinstance(raw, str):
         normalized = raw.strip().lower()
@@ -280,7 +279,7 @@ def _maybe_apply_codex_app_server_runtime(
     *,
     provider: str,
     api_mode: str,
-    model_cfg: dict[str, Any] | None,
+    model_cfg: Optional[Dict[str, Any]],
 ) -> str:
     """Optional opt-in: rewrite api_mode → "codex_app_server" for OpenAI/Codex
     providers when the user has explicitly enabled that runtime via
@@ -307,10 +306,10 @@ def _resolve_runtime_from_pool_entry(
     provider: str,
     entry: PooledCredential,
     requested_provider: str,
-    model_cfg: dict[str, Any] | None = None,
-    pool: CredentialPool | None = None,
-    target_model: str | None = None,
-) -> dict[str, Any]:
+    model_cfg: Optional[Dict[str, Any]] = None,
+    pool: Optional[CredentialPool] = None,
+    target_model: Optional[str] = None,
+) -> Dict[str, Any]:
     model_cfg = model_cfg or _get_model_config()
     # When the caller is resolving for a specific target model (e.g. a /model
     # mid-session switch), prefer that over the persisted model.default. This
@@ -331,9 +330,6 @@ def _resolve_runtime_from_pool_entry(
     elif provider == "qwen-oauth":
         api_mode = "chat_completions"
         base_url = base_url or DEFAULT_QWEN_BASE_URL
-    elif provider == "google-gemini-cli":
-        api_mode = "chat_completions"
-        base_url = base_url or "cloudcode-pa://google"
     elif provider == "minimax-oauth":
         # MiniMax OAuth tokens are valid only against the Anthropic Messages
         # compatible endpoint. Do not honor stale model.api_mode values from a
@@ -374,7 +370,7 @@ def _resolve_runtime_from_pool_entry(
         # explicitly picked anthropic_messages (Anthropic-style endpoint).
         if effective_model and api_mode != "anthropic_messages":
             try:
-                from prostor_cli.models import azure_foundry_model_api_mode
+                from hermes_cli.models import azure_foundry_model_api_mode
 
                 inferred = azure_foundry_model_api_mode(effective_model)
             except Exception:
@@ -403,7 +399,7 @@ def _resolve_runtime_from_pool_entry(
             # anthropic_messages and chat_completions models, so the previous
             # session's mode must not leak across /model switches.
             # Refs #16878.
-            from prostor_cli.models import opencode_model_api_mode
+            from hermes_cli.models import opencode_model_api_mode
             api_mode = opencode_model_api_mode(provider, effective_model)
         elif configured_mode and _provider_supports_explicit_api_mode(provider, configured_provider):
             api_mode = configured_mode
@@ -439,7 +435,7 @@ def _resolve_runtime_from_pool_entry(
     }
 
 
-def resolve_requested_provider(requested: str | None = None) -> str:
+def resolve_requested_provider(requested: Optional[str] = None) -> str:
     """Resolve provider request from explicit arg, config, then env."""
     if requested and requested.strip():
         return requested.strip().lower()
@@ -451,7 +447,7 @@ def resolve_requested_provider(requested: str | None = None) -> str:
 
     # Prefer the persisted config selection over any stale shell/.env
     # provider override so chat uses the endpoint the user last saved.
-    env_provider = _getenv("PROSTOR_INFERENCE_PROVIDER", "").strip().lower()
+    env_provider = _getenv("HERMES_INFERENCE_PROVIDER", "").strip().lower()
     if env_provider:
         return env_provider
 
@@ -461,9 +457,9 @@ def resolve_requested_provider(requested: str | None = None) -> str:
 def _try_resolve_from_custom_pool(
     base_url: str,
     provider_label: str,
-    api_mode_override: str | None = None,
-    provider_name: str | None = None,
-) -> dict[str, Any] | None:
+    api_mode_override: Optional[str] = None,
+    provider_name: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """Check if a credential pool exists for a custom endpoint and return a runtime dict if so."""
     pool_key = get_custom_provider_pool_key(base_url, provider_name=provider_name)
     if not pool_key:
@@ -490,7 +486,7 @@ def _try_resolve_from_custom_pool(
         return None
 
 
-def _lift_max_output_tokens(entry: dict[str, Any], result: dict[str, Any]) -> None:
+def _lift_max_output_tokens(entry: Dict[str, Any], result: Dict[str, Any]) -> None:
     """Propagate a per-provider output cap onto the resolved runtime dict.
 
     Accepts ``max_output_tokens`` or ``max_tokens`` on a ``custom_providers``
@@ -505,7 +501,7 @@ def _lift_max_output_tokens(entry: dict[str, Any], result: dict[str, Any]) -> No
             return
 
 
-def _get_named_custom_provider(requested_provider: str) -> dict[str, Any] | None:
+def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, Any]]:
     requested_norm = _normalize_custom_provider_name(requested_provider or "")
     if not requested_norm:
         return None
@@ -539,13 +535,13 @@ def _get_named_custom_provider(requested_provider: str) -> dict[str, Any] | None
             # the request.  We only defer to the built-in when the raw name is
             # the canonical provider itself (``nous``, ``openrouter``, …) so
             # accidentally shadowing a canonical provider still resolves to
-            # the built-in. See tests/prostor_cli/test_runtime_provider_resolution.py
+            # the built-in. See tests/hermes_cli/test_runtime_provider_resolution.py
             # ``test_named_custom_provider_does_not_shadow_builtin_provider``.
             if (canonical or "").strip().lower() == requested_norm:
                 return None
 
     config = load_config()
-
+    
     # First check providers: dict (new-style user-defined providers)
     providers = config.get("providers")
     if isinstance(providers, dict):
@@ -615,7 +611,7 @@ def _get_named_custom_provider(requested_provider: str) -> dict[str, Any] | None
         logger.warning(
             "custom_providers in config.yaml is a dict, not a list. "
             "Each entry must be prefixed with '-' in YAML. "
-            "Run 'prostor doctor' for details."
+            "Run 'hermes doctor' for details."
         )
         return None
 
@@ -676,7 +672,7 @@ def has_named_custom_provider(requested_provider: str) -> bool:
         return False
 
 
-def find_custom_provider_identity(base_url: str) -> str | None:
+def find_custom_provider_identity(base_url: str) -> Optional[str]:
     """Map an endpoint URL back to its canonical ``custom:<name>`` menu key.
 
     Returns the ``custom:<normalized-name>`` slug of the first ``providers:``
@@ -729,9 +725,9 @@ def find_custom_provider_identity(base_url: str) -> str | None:
 
 def canonical_custom_identity(
     *,
-    base_url: str | None = None,
-    config_provider: str | None = None,
-) -> str | None:
+    base_url: Optional[str] = None,
+    config_provider: Optional[str] = None,
+) -> Optional[str]:
     """Recover a routable ``custom:<name>`` identity for a bare custom provider.
 
     The bare string ``"custom"`` is the *resolved billing class* shared by
@@ -749,7 +745,7 @@ def canonical_custom_identity(
        (the one fact that always survives the persistence round-trip when a
        URL was recorded).
     2. ``config_provider`` — the active ``config.model.provider`` (or its
-       ``provider``/``PROSTOR_INFERENCE_PROVIDER`` equivalent). When the agent
+       ``provider``/``HERMES_INFERENCE_PROVIDER`` equivalent). When the agent
        was built without a base_url on the override (the recurring
        Desktop/TUI regression vector), the configured provider is the only
        durable identity left, so fall back to it when it names a real entry.
@@ -772,7 +768,7 @@ def canonical_custom_identity(
         except Exception:
             candidate = ""
     if not candidate:
-        candidate = os.environ.get("PROSTOR_INFERENCE_PROVIDER", "").strip()
+        candidate = os.environ.get("HERMES_INFERENCE_PROVIDER", "").strip()
 
     candidate_norm = _normalize_custom_provider_name(candidate)
     # A bare/non-routable candidate cannot heal a bare custom override.
@@ -794,7 +790,7 @@ def _normalize_base_url_for_match(value) -> str:
     return str(value or "").strip().rstrip("/").lower()
 
 
-def _custom_provider_request_overrides(custom_provider: dict[str, Any]) -> dict[str, Any]:
+def _custom_provider_request_overrides(custom_provider: Dict[str, Any]) -> Dict[str, Any]:
     extra_body = custom_provider.get("extra_body")
     if not isinstance(extra_body, dict) or not extra_body:
         return {}
@@ -804,9 +800,9 @@ def _custom_provider_request_overrides(custom_provider: dict[str, Any]) -> dict[
 def _resolve_named_custom_runtime(
     *,
     requested_provider: str,
-    explicit_api_key: str | None = None,
-    explicit_base_url: str | None = None,
-) -> dict[str, Any] | None:
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     # Bare `provider="custom"` with an explicit base_url (e.g. propagated
     # from a `model_aliases:` direct-alias resolution) — build a runtime
     # directly so the alias's base_url actually takes effect.
@@ -818,7 +814,7 @@ def _resolve_named_custom_runtime(
     requested_norm = (requested_provider or "").strip().lower()
     if requested_norm and requested_norm != "custom":
         try:
-            from prostor_cli.auth import resolve_provider as _resolve_provider
+            from hermes_cli.auth import resolve_provider as _resolve_provider
 
             if _resolve_provider(requested_norm) == "custom":
                 requested_norm = "custom"
@@ -833,13 +829,13 @@ def _resolve_named_custom_runtime(
         if pool_result:
             pool_result["source"] = "direct-alias"
             return pool_result
-        _da_is_openai_url = base_url_host_matches(base_url, "openai.com") or base_url_host_matches(base_url, "openai.azure.com")
-        _da_is_openrouter = base_url_host_matches(base_url, "openrouter.ai")
+        _da_is_openai_url   = base_url_host_matches(base_url, "openai.com") or base_url_host_matches(base_url, "openai.azure.com")
+        _da_is_openrouter   = base_url_host_matches(base_url, "openrouter.ai")
         api_key_candidates = [
             (explicit_api_key or "").strip(),
             # Gate env key fallbacks on authoritative hosts (#28660)
-            (_getenv("OPENAI_API_KEY", "").strip() if _da_is_openai_url else ""),
-            (_getenv("OPENROUTER_API_KEY", "").strip() if _da_is_openrouter else ""),
+            (_getenv("OPENAI_API_KEY", "").strip()     if _da_is_openai_url else ""),
+            (_getenv("OPENROUTER_API_KEY", "").strip() if _da_is_openrouter  else ""),
             # Bonus (#28660): derive `<VENDOR>_API_KEY` from the host so users
             # who set DEEPSEEK_API_KEY / GROQ_API_KEY / MISTRAL_API_KEY get the
             # intuitive match without configuring `custom_providers` first.
@@ -887,16 +883,16 @@ def _resolve_named_custom_runtime(
             }
         return pool_result
 
-    _cp_is_openai_url = base_url_host_matches(base_url, "openai.com") or base_url_host_matches(base_url, "openai.azure.com")
-    _cp_is_openrouter = base_url_host_matches(base_url, "openrouter.ai")
+    _cp_is_openai_url   = base_url_host_matches(base_url, "openai.com") or base_url_host_matches(base_url, "openai.azure.com")
+    _cp_is_openrouter   = base_url_host_matches(base_url, "openrouter.ai")
     api_key_candidates = [
         (explicit_api_key or "").strip(),
         str(custom_provider.get("api_key", "") or "").strip(),
         _getenv(str(custom_provider.get("key_env", "") or "").strip(), "").strip(),
         # Gate provider env keys on their authoritative hosts — sending
         # OPENAI_API_KEY to a local-llm endpoint leaks credentials (#28660).
-        (_getenv("OPENAI_API_KEY", "").strip() if _cp_is_openai_url else ""),
-        (_getenv("OPENROUTER_API_KEY", "").strip() if _cp_is_openrouter else ""),
+        (_getenv("OPENAI_API_KEY", "").strip()     if _cp_is_openai_url  else ""),
+        (_getenv("OPENROUTER_API_KEY", "").strip() if _cp_is_openrouter  else ""),
         # Bonus (#28660): derive `<VENDOR>_API_KEY` from the host as a final
         # fallback when key_env wasn't set explicitly.
         _host_derived_api_key(base_url),
@@ -927,9 +923,9 @@ def _resolve_named_custom_runtime(
 def _resolve_openrouter_runtime(
     *,
     requested_provider: str,
-    explicit_api_key: str | None = None,
-    explicit_base_url: str | None = None,
-) -> dict[str, Any]:
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
+) -> Dict[str, Any]:
     model_cfg = _get_model_config()
     cfg_base_url = model_cfg.get("base_url") if isinstance(model_cfg.get("base_url"), str) else ""
     cfg_provider = model_cfg.get("provider") if isinstance(model_cfg.get("provider"), str) else ""
@@ -948,7 +944,7 @@ def _resolve_openrouter_runtime(
     # gate up the stack — alias-aware without duplicating the alias map.
     if requested_norm and requested_norm != "custom":
         try:
-            from prostor_cli.auth import resolve_provider as _resolve_provider
+            from hermes_cli.auth import resolve_provider as _resolve_provider
 
             if _resolve_provider(requested_norm) == "custom":
                 requested_norm = "custom"
@@ -1007,9 +1003,9 @@ def _resolve_openrouter_runtime(
         # "ollama.com" (e.g. http://127.0.0.1/ollama.com/v1) or whose
         # hostname is a look-alike (ollama.com.attacker.test) must not
         # receive the Ollama credential. See GHSA-76xc-57q6-vm5m.
-        _is_ollama_url = base_url_host_matches(base_url, "ollama.com")
-        _is_openai_url = base_url_host_matches(base_url, "openai.com")
-        _is_openai_azure = base_url_host_matches(base_url, "openai.azure.com")
+        _is_ollama_url    = base_url_host_matches(base_url, "ollama.com")
+        _is_openai_url    = base_url_host_matches(base_url, "openai.com")
+        _is_openai_azure  = base_url_host_matches(base_url, "openai.azure.com")
         # Gate each provider key on its own host — sending OPENAI_API_KEY or
         # OPENROUTER_API_KEY to an unrelated custom endpoint (DeepSeek, Groq,
         # Mistral, …) leaks credentials and causes 401s (issue #28660).
@@ -1017,9 +1013,9 @@ def _resolve_openrouter_runtime(
         api_key_candidates = [
             explicit_api_key,
             (cfg_api_key if use_config_base_url else ""),
-            (_getenv("OLLAMA_API_KEY") if _is_ollama_url else ""),
-            (_getenv("OPENAI_API_KEY") if (_is_openai_url or _is_openai_azure) else ""),
-            (_getenv("OPENROUTER_API_KEY") if _is_openrouter_url else ""),
+            (_getenv("OLLAMA_API_KEY")     if _is_ollama_url                       else ""),
+            (_getenv("OPENAI_API_KEY")     if (_is_openai_url or _is_openai_azure) else ""),
+            (_getenv("OPENROUTER_API_KEY") if _is_openrouter_url                   else ""),
             # Bonus (#28660): derive `<VENDOR>_API_KEY` from the host so users
             # who set DEEPSEEK_API_KEY / GROQ_API_KEY / MISTRAL_API_KEY get the
             # intuitive match. Helper returns "" for IPs/loopback and for env
@@ -1067,11 +1063,11 @@ def _resolve_openrouter_runtime(
 def _resolve_azure_foundry_runtime(
     *,
     requested_provider: str,
-    model_cfg: dict[str, Any],
-    explicit_api_key: str | None = None,
-    explicit_base_url: str | None = None,
-    target_model: str | None = None,
-) -> dict[str, Any]:
+    model_cfg: Dict[str, Any],
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
+    target_model: Optional[str] = None,
+) -> Dict[str, Any]:
     """Resolve an Azure Foundry runtime entry.
 
     Reads ``model.base_url`` + ``model.api_mode`` from config.yaml (or
@@ -1097,7 +1093,7 @@ def _resolve_azure_foundry_runtime(
     cfg_base_url = ""
     cfg_api_mode = "chat_completions"
     cfg_auth_mode = "api_key"
-    cfg_entra: dict[str, Any] = {}
+    cfg_entra: Dict[str, Any] = {}
     if cfg_provider == "azure-foundry":
         cfg_base_url = str(model_cfg.get("base_url") or "").strip().rstrip("/")
         cfg_api_mode = _parse_api_mode(model_cfg.get("api_mode")) or "chat_completions"
@@ -1114,7 +1110,7 @@ def _resolve_azure_foundry_runtime(
     effective_model = str(target_model or model_cfg.get("default") or "").strip()
     if effective_model and cfg_api_mode != "anthropic_messages":
         try:
-            from prostor_cli.models import azure_foundry_model_api_mode
+            from hermes_cli.models import azure_foundry_model_api_mode
 
             inferred = azure_foundry_model_api_mode(effective_model)
         except Exception:
@@ -1126,7 +1122,7 @@ def _resolve_azure_foundry_runtime(
     base_url = explicit_base_url_clean or cfg_base_url or env_base_url
     if not base_url:
         raise AuthError(
-            "Azure Foundry requires a base URL. Set it via 'prostor model' or "
+            "Azure Foundry requires a base URL. Set it via 'hermes model' or "
             "the AZURE_FOUNDRY_BASE_URL environment variable."
         )
 
@@ -1159,8 +1155,8 @@ def _resolve_azure_foundry_runtime(
         else:
             try:
                 from agent.azure_identity_adapter import (
-                    SCOPE_AI_AZURE_DEFAULT,
                     EntraIdentityConfig,
+                    SCOPE_AI_AZURE_DEFAULT,
                     build_token_provider,
                 )
             except Exception as exc:
@@ -1206,7 +1202,7 @@ def _resolve_azure_foundry_runtime(
     api_key = explicit_api_key
     if not api_key:
         try:
-            from prostor_cli.config import get_env_value
+            from hermes_cli.config import get_env_value
             api_key = get_env_value("AZURE_FOUNDRY_API_KEY") or ""
         except Exception:
             api_key = ""
@@ -1215,10 +1211,10 @@ def _resolve_azure_foundry_runtime(
     if not api_key:
         raise AuthError(
             "Azure Foundry requires an API key. Set AZURE_FOUNDRY_API_KEY in "
-            "~/.prostor/.env or run 'prostor model' to configure. To use "
+            "~/.hermes/.env or run 'hermes model' to configure. To use "
             "keyless Microsoft Entra ID auth instead, set "
             "model.auth_mode: entra_id in config.yaml (or pick "
-            "'Microsoft Entra ID' in 'prostor model')."
+            "'Microsoft Entra ID' in 'hermes model')."
         )
 
     source = "explicit" if (explicit_api_key or explicit_base_url) else "config"
@@ -1237,10 +1233,10 @@ def _resolve_explicit_runtime(
     *,
     provider: str,
     requested_provider: str,
-    model_cfg: dict[str, Any],
-    explicit_api_key: str | None = None,
-    explicit_base_url: str | None = None,
-) -> dict[str, Any] | None:
+    model_cfg: Dict[str, Any],
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     explicit_api_key = str(explicit_api_key or "").strip()
     explicit_base_url = str(explicit_base_url or "").strip().rstrip("/")
     if not explicit_api_key and not explicit_base_url:
@@ -1304,14 +1300,14 @@ def _resolve_explicit_runtime(
             str(state.get("agent_key") or "").strip()
             if _agent_key_is_usable(
                 state,
-                max(60, env_int("PROSTOR_NOUS_MIN_KEY_TTL_SECONDS", 1800)),
+                max(60, env_int("HERMES_NOUS_MIN_KEY_TTL_SECONDS", 1800)),
             )
             else ""
         )
         expires_at = state.get("agent_key_expires_at") or state.get("expires_at")
         if not api_key:
             creds = resolve_nous_runtime_credentials(
-                timeout_seconds=float(_getenv("PROSTOR_NOUS_TIMEOUT_SECONDS", "15")),
+                timeout_seconds=float(_getenv("HERMES_NOUS_TIMEOUT_SECONDS", "15")),
             )
             api_key = creds.get("api_key", "")
             expires_at = creds.get("expires_at")
@@ -1387,11 +1383,11 @@ def _resolve_explicit_runtime(
 
 def resolve_runtime_provider(
     *,
-    requested: str | None = None,
-    explicit_api_key: str | None = None,
-    explicit_base_url: str | None = None,
-    target_model: str | None = None,
-) -> dict[str, Any]:
+    requested: Optional[str] = None,
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
+    target_model: Optional[str] = None,
+) -> Dict[str, Any]:
     """Resolve runtime provider credentials for agent execution.
 
     target_model: Optional override for model_cfg.get("default") when
@@ -1499,19 +1495,37 @@ def resolve_runtime_provider(
         # For Nous, the pool entry's runtime_api_key is the agent_key
         # compatibility field. It must be an invoke JWT. The pool doesn't
         # refresh it during selection (that would trigger network calls in
-        # non-runtime contexts like `prostor auth list`).  If the key is
-        # expired, clear pool_api_key so we fall through to
-        # resolve_nous_runtime_credentials() which handles refresh.
-        if provider == "nous" and entry is not None and pool_api_key:
-            min_ttl = max(60, env_int("PROSTOR_NOUS_MIN_KEY_TTL_SECONDS", 1800))
+        # non-runtime contexts like `hermes auth list`). If the key is
+        # expired/missing, refresh the selected pool entry before falling back
+        # to singleton auth resolution.
+        if provider == "nous" and entry is not None:
+            min_ttl = max(60, env_int("HERMES_NOUS_MIN_KEY_TTL_SECONDS", 1800))
             nous_state = {
                 "agent_key": getattr(entry, "agent_key", None),
                 "agent_key_expires_at": getattr(entry, "agent_key_expires_at", None),
                 "scope": getattr(entry, "scope", None),
             }
             if not _agent_key_is_usable(nous_state, min_ttl):
-                logger.debug("Nous pool entry agent_key expired/missing, falling through to runtime resolution")
-                pool_api_key = ""
+                logger.debug("Nous pool entry agent_key expired/missing, refreshing selected pool entry")
+                try:
+                    refreshed = pool.try_refresh_current()
+                except Exception as exc:
+                    logger.debug("Nous pool entry refresh failed: %s", exc)
+                    refreshed = None
+                if refreshed is not None:
+                    entry = refreshed
+                    pool_api_key = (
+                        getattr(entry, "runtime_api_key", None)
+                        or getattr(entry, "access_token", "")
+                    )
+                    nous_state = {
+                        "agent_key": getattr(entry, "agent_key", None),
+                        "agent_key_expires_at": getattr(entry, "agent_key_expires_at", None),
+                        "scope": getattr(entry, "scope", None),
+                    }
+                if not pool_api_key or not _agent_key_is_usable(nous_state, min_ttl):
+                    logger.debug("Nous pool entry agent_key still unavailable, falling through to runtime resolution")
+                    pool_api_key = ""
         if entry is not None and pool_api_key:
             return _resolve_runtime_from_pool_entry(
                 provider=provider,
@@ -1525,7 +1539,7 @@ def resolve_runtime_provider(
     if provider == "nous":
         try:
             creds = resolve_nous_runtime_credentials(
-                timeout_seconds=float(_getenv("PROSTOR_NOUS_TIMEOUT_SECONDS", "15")),
+                timeout_seconds=float(_getenv("HERMES_NOUS_TIMEOUT_SECONDS", "15")),
             )
             return {
                 "provider": "nous",
@@ -1552,7 +1566,7 @@ def resolve_runtime_provider(
                 "api_mode": "codex_responses",
                 "base_url": creds.get("base_url", "").rstrip("/"),
                 "api_key": creds.get("api_key", ""),
-                "source": creds.get("source", "prostor-auth-store"),
+                "source": creds.get("source", "hermes-auth-store"),
                 "last_refresh": creds.get("last_refresh"),
                 "requested_provider": requested_provider,
             }
@@ -1572,7 +1586,7 @@ def resolve_runtime_provider(
                 "api_mode": "codex_responses",
                 "base_url": (creds.get("base_url") or "").rstrip("/") or DEFAULT_XAI_OAUTH_BASE_URL,
                 "api_key": creds.get("api_key", ""),
-                "source": creds.get("source", "prostor-auth-store"),
+                "source": creds.get("source", "hermes-auth-store"),
                 "last_refresh": creds.get("last_refresh"),
                 "requested_provider": requested_provider,
             }
@@ -1603,7 +1617,7 @@ def resolve_runtime_provider(
     if provider == "minimax-oauth":
         pconfig = PROVIDER_REGISTRY.get(provider)
         if pconfig and pconfig.auth_type == "oauth_minimax":
-            from prostor_cli.auth import resolve_minimax_oauth_runtime_credentials
+            from hermes_cli.auth import resolve_minimax_oauth_runtime_credentials
             creds = resolve_minimax_oauth_runtime_credentials()
             return {
                 "provider": provider,
@@ -1613,26 +1627,6 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "oauth"),
                 "requested_provider": requested_provider,
             }
-
-    if provider == "google-gemini-cli":
-        try:
-            creds = resolve_gemini_oauth_runtime_credentials()
-            return {
-                "provider": "google-gemini-cli",
-                "api_mode": "chat_completions",
-                "base_url": creds.get("base_url", ""),
-                "api_key": creds.get("api_key", ""),
-                "source": creds.get("source", "google-oauth"),
-                "expires_at_ms": creds.get("expires_at_ms"),
-                "email": creds.get("email", ""),
-                "project_id": creds.get("project_id", ""),
-                "requested_provider": requested_provider,
-            }
-        except AuthError:
-            if requested_provider != "auto":
-                raise
-            logger.info("Google Gemini OAuth credentials failed; "
-                        "falling through to next provider.")
 
     if provider == "copilot-acp":
         creds = resolve_external_process_provider_credentials(provider)
@@ -1670,9 +1664,9 @@ def resolve_runtime_provider(
         if _is_azure_endpoint:
             # Honor user-specified env var hints on the model config before
             # falling back to the built-in AZURE_ANTHROPIC_KEY / ANTHROPIC_API_KEY
-            # chain.  Accept both `key_env` (Prostor canonical — matches the
+            # chain.  Accept both `key_env` (Hermes canonical — matches the
             # custom_providers field name) and `api_key_env` (documented in the
-            # Azure Foundry guide and read by most Prostor-compatible importers).
+            # Azure Foundry guide and read by most Hermes-compatible importers).
             # Matches the config.yaml examples in website/docs/guides/azure-foundry.md.
             token = ""
             for hint_key in ("key_env", "api_key_env"):
@@ -1718,9 +1712,9 @@ def resolve_runtime_provider(
     if provider == "bedrock":
         from agent.bedrock_adapter import (
             has_aws_credentials,
-            is_anthropic_bedrock_model,
             resolve_aws_auth_env_var,
             resolve_bedrock_region,
+            is_anthropic_bedrock_model,
         )
         # When the user explicitly selected bedrock (not auto-detected),
         # trust boto3's credential chain — it handles IMDS, ECS task roles,
@@ -1756,7 +1750,7 @@ def resolve_runtime_provider(
         # Dual-path routing: Claude models use AnthropicBedrock SDK for full
         # feature parity (prompt caching, thinking budgets, adaptive thinking).
         # Non-Claude models use the Converse API for multi-model support.
-        _current_model = str(model_cfg.get("default") or "").strip()
+        _current_model = str(target_model or model_cfg.get("default") or "").strip()
         if is_anthropic_bedrock_model(_current_model):
             # Claude on Bedrock → AnthropicBedrock SDK → anthropic_messages path
             runtime = {
@@ -1815,7 +1809,7 @@ def resolve_runtime_provider(
                 # otherwise carry the previous mode forward, stripping /v1
                 # from base_url for chat_completions models and 404'ing.
                 # Refs #16878.
-                from prostor_cli.models import opencode_model_api_mode
+                from hermes_cli.models import opencode_model_api_mode
                 _effective = target_model or model_cfg.get("default", "")
                 api_mode = opencode_model_api_mode(provider, _effective)
             elif configured_mode and _provider_supports_explicit_api_mode(provider, configured_provider):

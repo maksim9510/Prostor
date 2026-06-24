@@ -2,6 +2,7 @@ import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
+import { getProfiles, transcribeAudio } from '@/hermes'
 import { translateNow, type Translations, useI18n } from '@/i18n'
 import { stripAnsi } from '@/lib/ansi'
 import { branchGroupForUser, type ChatMessage, chatMessageText, textPart } from '@/lib/chat-messages'
@@ -26,7 +27,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { setMutableRef } from '@/lib/mutable-ref'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { setSessionYolo } from '@/lib/yolo-session'
-import { getProfiles, transcribeAudio } from '@/prostor'
+import { openCommandPalettePage } from '@/store/command-palette'
 import {
   $composerAttachments,
   clearComposerAttachments,
@@ -37,8 +38,10 @@ import {
   updateComposerAttachment
 } from '@/store/composer'
 import { resetSessionBackground } from '@/store/composer-status'
+import { clearPreviewArtifacts } from '@/store/preview-status'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
 import { requestDesktopOnboarding } from '@/store/onboarding'
+import { setPetScale } from '@/store/pet-gallery'
 import { $activeGatewayProfile, $newChatProfile, ensureGatewayProfile, normalizeProfileKey } from '@/store/profile'
 import {
   $busy,
@@ -169,7 +172,7 @@ function imageFilenameFromPath(filePath: string): string {
 async function readImageForRemoteAttach(
   filePath: string
 ): Promise<{ contentBase64: string; filename: string } | null> {
-  const dataUrl = await window.prostorDesktop?.readFileDataUrl(filePath)
+  const dataUrl = await window.hermesDesktop?.readFileDataUrl(filePath)
   const contentBase64 = dataUrl ? base64FromDataUrl(dataUrl) : ''
 
   return contentBase64 ? { contentBase64, filename: imageFilenameFromPath(filePath) } : null
@@ -178,7 +181,7 @@ async function readImageForRemoteAttach(
 // Read a non-image file as a data URL for upload via file.attach. Returns null
 // when the desktop bridge can't read the file (e.g. it was moved/deleted).
 async function readFileDataUrlForAttach(filePath: string): Promise<string | null> {
-  const reader = window.prostorDesktop?.readFileDataUrl
+  const reader = window.hermesDesktop?.readFileDataUrl
 
   if (!reader) {
     return null
@@ -792,7 +795,7 @@ export function usePromptActions({
 
   // Queue a handoff of this session to a messaging platform and watch it to
   // a terminal state. We only write the request through the gateway; the
-  // separate `prostor gateway` process performs the actual transfer, so we
+  // separate `hermes gateway` process performs the actual transfer, so we
   // poll `handoff.state` (mirror of the CLI's block-poll) for the result.
   const handoffSession = useCallback(
     async (
@@ -1174,6 +1177,35 @@ export function usePromptActions({
           } catch (err) {
             renderSlashOutput(`error: ${err instanceof Error ? err.message : String(err)}`)
           }
+        },
+        pet: async ctx => {
+          const [sub = '', rawValue = ''] = ctx.arg.trim().split(/\s+/)
+          const lower = sub.toLowerCase()
+
+          if (lower === 'list' || lower === 'gallery' || lower === 'browse' || lower === 'all') {
+            openCommandPalettePage('pets')
+
+            return
+          }
+
+          // `/pet scale <n>` resizes the floating pet locally (instant) and
+          // persists via the store — no round-trip to the slash worker.
+          if (lower === 'scale') {
+            const value = Number(rawValue)
+
+            if (!rawValue || Number.isNaN(value)) {
+              const resolved = await withSlashOutput(ctx)
+              resolved?.render('usage: /pet scale <factor>  (e.g. /pet scale 0.5)')
+
+              return
+            }
+
+            setPetScale(requestGateway, value)
+
+            return
+          }
+
+          await runExec(ctx)
         },
         // /browser connect|disconnect|status manages the live CDP connection on
         // the gateway host, mirroring the TUI's browser.manage RPC. It mutates
@@ -1644,6 +1676,7 @@ export function usePromptActions({
       // rows (and kill the live processes) before the fresh run repopulates.
       clearSessionTodos(sessionId)
       resetSessionBackground(sessionId)
+      clearPreviewArtifacts(sessionId)
 
       clearNotifications()
       setMutableRef(busyRef, true)
@@ -1706,6 +1739,7 @@ export function usePromptActions({
       // processes) before the re-run repopulates them.
       clearSessionTodos(sessionId)
       resetSessionBackground(sessionId)
+      clearPreviewArtifacts(sessionId)
 
       clearNotifications()
       setMutableRef(busyRef, true)

@@ -3,22 +3,25 @@
 from __future__ import annotations
 
 import logging
+import os
 import random
-import re
 import threading
 import time
 import uuid
+import re
 from dataclasses import dataclass, fields, replace
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-import prostor_cli.auth as auth_mod
+from hermes_constants import OPENROUTER_BASE_URL
+from hermes_cli.config import load_env
+from agent.secret_scope import get_secret as _get_secret
 from agent.credential_persistence import (
     is_borrowed_credential_source,
     sanitize_borrowed_credential_payload,
 )
-from agent.secret_scope import get_secret as _get_secret
-from prostor_cli.auth import (
+import hermes_cli.auth as auth_mod
+from hermes_cli.auth import (
     CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
     PROVIDER_REGISTRY,
     _auth_store_lock,
@@ -34,16 +37,14 @@ from prostor_cli.auth import (
     read_credential_pool,
     write_credential_pool,
 )
-from prostor_cli.config import load_env
-from prostor_constants import OPENROUTER_BASE_URL
 
 logger = logging.getLogger(__name__)
 
 
-def _load_config_safe() -> dict | None:
+def _load_config_safe() -> Optional[dict]:
     """Load config.yaml, returning None on any error."""
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
 
         return load_config()
     except Exception:
@@ -71,14 +72,14 @@ _TERMINAL_AUTH_REASONS = frozenset({
     "invalid_token",        # RFC 6750: bearer token is malformed/expired/revoked
     "invalid_grant",        # RFC 6749: refresh_token rejected during refresh
     "unauthorized_client",  # RFC 6749: client no longer authorized
-    "refresh_token_reused",  # Single-use refresh token consumed by another process
+    "refresh_token_reused", # Single-use refresh token consumed by another process
 })
 
 # How long a DEAD manual credential is preserved before being pruned.
 # Manual entries (``manual:*``) are independent credentials with no singleton
 # to re-seed from, so pruning them after a quiet window cleans up dead state
 # without losing recoverability — the user always has the option to re-add
-# via ``prostor auth add``.
+# via ``hermes auth add``.
 #
 # Singleton-seeded entries (``device_code``, ``loopback_pkce``, ``claude_code``)
 # are NOT pruned because ``_seed_from_singletons`` would just re-create them
@@ -135,22 +136,22 @@ class PooledCredential:
     priority: int
     source: str
     access_token: str
-    refresh_token: str | None = None
-    last_status: str | None = None
-    last_status_at: float | None = None
-    last_error_code: int | None = None
-    last_error_reason: str | None = None
-    last_error_message: str | None = None
-    last_error_reset_at: float | None = None
-    base_url: str | None = None
-    expires_at: str | None = None
-    expires_at_ms: int | None = None
-    last_refresh: str | None = None
-    inference_base_url: str | None = None
-    agent_key: str | None = None
-    agent_key_expires_at: str | None = None
+    refresh_token: Optional[str] = None
+    last_status: Optional[str] = None
+    last_status_at: Optional[float] = None
+    last_error_code: Optional[int] = None
+    last_error_reason: Optional[str] = None
+    last_error_message: Optional[str] = None
+    last_error_reset_at: Optional[float] = None
+    base_url: Optional[str] = None
+    expires_at: Optional[str] = None
+    expires_at_ms: Optional[int] = None
+    last_refresh: Optional[str] = None
+    inference_base_url: Optional[str] = None
+    agent_key: Optional[str] = None
+    agent_key_expires_at: Optional[str] = None
     request_count: int = 0
-    extra: dict[str, Any] = None  # type: ignore[assignment]
+    extra: Dict[str, Any] = None  # type: ignore[assignment]
 
     def __post_init__(self):
         if self.extra is None:
@@ -162,7 +163,7 @@ class PooledCredential:
         raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
 
     @classmethod
-    def from_dict(cls, provider: str, payload: dict[str, Any]) -> PooledCredential:
+    def from_dict(cls, provider: str, payload: Dict[str, Any]) -> "PooledCredential":
         field_names = {f.name for f in fields(cls) if f.name != "provider"}
         data = {k: payload.get(k) for k in field_names if k in payload}
         # Rehydrated last_status_at may be an ISO string from to_dict() — normalize to float epoch
@@ -178,7 +179,7 @@ class PooledCredential:
         data.setdefault("access_token", "")
         return cls(provider=provider, **data)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         _ALWAYS_EMIT = {
             "last_status",
             "last_status_at",
@@ -187,7 +188,7 @@ class PooledCredential:
             "last_error_message",
             "last_error_reset_at",
         }
-        result: dict[str, Any] = {}
+        result: Dict[str, Any] = {}
         for field_def in fields(self):
             if field_def.name in {"provider", "extra"}:
                 continue
@@ -222,7 +223,7 @@ class PooledCredential:
         return str(self.access_token or "")
 
     @property
-    def runtime_base_url(self) -> str | None:
+    def runtime_base_url(self) -> Optional[str]:
         if self.provider == "nous":
             return self.inference_base_url or self.base_url
         return self.base_url
@@ -237,7 +238,7 @@ def label_from_token(token: str, fallback: str) -> str:
     return fallback
 
 
-def _next_priority(entries: list[PooledCredential]) -> int:
+def _next_priority(entries: List[PooledCredential]) -> int:
     return max((entry.priority for entry in entries), default=-1) + 1
 
 
@@ -246,7 +247,7 @@ def _is_manual_source(source: str) -> bool:
     return normalized == SOURCE_MANUAL or normalized.startswith(f"{SOURCE_MANUAL}:")
 
 
-def _exhausted_ttl(error_code: int | None) -> int:
+def _exhausted_ttl(error_code: Optional[int]) -> int:
     """Return cooldown seconds based on the HTTP status that caused exhaustion."""
     if error_code == 401:
         return EXHAUSTED_TTL_401_SECONDS
@@ -255,7 +256,7 @@ def _exhausted_ttl(error_code: int | None) -> int:
     return EXHAUSTED_TTL_DEFAULT_SECONDS
 
 
-def _parse_absolute_timestamp(value: Any) -> float | None:
+def _parse_absolute_timestamp(value: Any) -> Optional[float]:
     """Best-effort parse for provider reset timestamps.
 
     Accepts epoch seconds, epoch milliseconds, and ISO-8601 strings.
@@ -285,7 +286,7 @@ def _parse_absolute_timestamp(value: Any) -> float | None:
     return None
 
 
-def _extract_retry_delay_seconds(message: str) -> float | None:
+def _extract_retry_delay_seconds(message: str) -> Optional[float]:
     if not message:
         return None
     delay_match = re.search(r"quotaResetDelay[:\s\"]+(\d+(?:\.\d+)?)(ms|s)", message, re.IGNORECASE)
@@ -308,10 +309,10 @@ def _extract_retry_delay_seconds(message: str) -> float | None:
     return None
 
 
-def _normalize_error_context(error_context: dict[str, Any] | None) -> dict[str, Any]:
+def _normalize_error_context(error_context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(error_context, dict):
         return {}
-    normalized: dict[str, Any] = {}
+    normalized: Dict[str, Any] = {}
     reason = error_context.get("reason")
     if isinstance(reason, str) and reason.strip():
         normalized["reason"] = reason.strip()
@@ -333,7 +334,7 @@ def _normalize_error_context(error_context: dict[str, Any] | None) -> dict[str, 
     return normalized
 
 
-def _exhausted_until(entry: PooledCredential) -> float | None:
+def _exhausted_until(entry: PooledCredential) -> Optional[float]:
     if entry.last_status != STATUS_EXHAUSTED:
         return None
     reset_at = _parse_absolute_timestamp(getattr(entry, "last_error_reset_at", None))
@@ -349,7 +350,7 @@ def _normalize_custom_pool_name(name: str) -> str:
     return name.strip().lower().replace(" ", "-")
 
 
-def _iter_custom_providers(config: dict | None = None):
+def _iter_custom_providers(config: Optional[dict] = None):
     """Yield (normalized_name, entry_dict) for each valid custom_providers entry."""
     if config is None:
         config = _load_config_safe()
@@ -359,7 +360,7 @@ def _iter_custom_providers(config: dict | None = None):
     if not isinstance(custom_providers, list):
         # Fall back to the v12+ providers dict via the compatibility layer
         try:
-            from prostor_cli.config import get_compatible_custom_providers
+            from hermes_cli.config import get_compatible_custom_providers
 
             custom_providers = get_compatible_custom_providers(config)
         except Exception:
@@ -375,7 +376,7 @@ def _iter_custom_providers(config: dict | None = None):
         yield _normalize_custom_pool_name(name), entry
 
 
-def get_custom_provider_pool_key(base_url: str | None, provider_name: str | None = None) -> str | None:
+def get_custom_provider_pool_key(base_url: Optional[str], provider_name: Optional[str] = None) -> Optional[str]:
     """Look up the custom_providers list in config.yaml and return 'custom:<name>' for a matching base_url.
 
     When provider_name is given, prefer matching by name first (solving the case where
@@ -405,7 +406,7 @@ def get_custom_provider_pool_key(base_url: str | None, provider_name: str | None
     return None
 
 
-def list_custom_pool_providers() -> list[str]:
+def list_custom_pool_providers() -> List[str]:
     """Return all 'custom:*' pool keys that have entries in auth.json."""
     pool_data = read_credential_pool(None)
     return sorted(
@@ -416,7 +417,7 @@ def list_custom_pool_providers() -> list[str]:
     )
 
 
-def _get_custom_provider_config(pool_key: str) -> dict[str, Any] | None:
+def _get_custom_provider_config(pool_key: str) -> Optional[Dict[str, Any]]:
     """Return the custom_providers config entry matching a pool key like 'custom:together.ai'."""
     if not pool_key.startswith(CUSTOM_POOL_PREFIX):
         return None
@@ -447,13 +448,13 @@ DEFAULT_MAX_CONCURRENT_PER_CREDENTIAL = 1
 
 
 class CredentialPool:
-    def __init__(self, provider: str, entries: list[PooledCredential]):
+    def __init__(self, provider: str, entries: List[PooledCredential]):
         self.provider = provider
         self._entries = sorted(entries, key=lambda entry: entry.priority)
-        self._current_id: str | None = None
+        self._current_id: Optional[str] = None
         self._strategy = get_pool_strategy(provider)
         self._lock = threading.Lock()
-        self._active_leases: dict[str, int] = {}
+        self._active_leases: Dict[str, int] = {}
         self._max_concurrent = DEFAULT_MAX_CONCURRENT_PER_CREDENTIAL
 
     def has_credentials(self) -> bool:
@@ -463,10 +464,10 @@ class CredentialPool:
         """True if at least one entry is not currently in exhaustion cooldown."""
         return bool(self._available_entries())
 
-    def entries(self) -> list[PooledCredential]:
+    def entries(self) -> List[PooledCredential]:
         return list(self._entries)
 
-    def current(self) -> PooledCredential | None:
+    def current(self) -> Optional[PooledCredential]:
         if not self._current_id:
             return None
         return next((entry for entry in self._entries if entry.id == self._current_id), None)
@@ -486,8 +487,8 @@ class CredentialPool:
 
     def _is_terminal_auth_failure(
         self,
-        status_code: int | None,
-        normalized_error: dict[str, Any],
+        status_code: Optional[int],
+        normalized_error: Dict[str, Any],
     ) -> bool:
         """Detect upstream-permanent OAuth failures that won't recover on TTL.
 
@@ -510,8 +511,8 @@ class CredentialPool:
     def _mark_exhausted(
         self,
         entry: PooledCredential,
-        status_code: int | None,
-        error_context: dict[str, Any] | None = None,
+        status_code: Optional[int],
+        error_context: Optional[Dict[str, Any]] = None,
     ) -> PooledCredential:
         normalized_error = _normalize_error_context(error_context)
         # Permanent OAuth failures (token_invalidated, token_revoked, etc.)
@@ -581,7 +582,7 @@ class CredentialPool:
         When a Codex OAuth access token expires (or the ChatGPT account hits
         its 5h/weekly quota), the pool entry gets marked ``STATUS_EXHAUSTED``
         with a ``last_error_reset_at`` that can be many hours in the future.
-        Meanwhile the user may run ``prostor model`` / ``prostor auth`` which
+        Meanwhile the user may run ``hermes model`` / ``hermes auth`` which
         performs a fresh device-code login and writes new tokens to
         ``auth.json`` under ``_auth_store_lock``.  Without this sync the pool
         entry stays frozen until ``last_error_reset_at`` elapses — even
@@ -619,7 +620,7 @@ class CredentialPool:
                     "(refreshed by another process)",
                     entry.id,
                 )
-                field_updates: dict[str, Any] = {
+                field_updates: Dict[str, Any] = {
                     "access_token": store_access,
                     "refresh_token": store_refresh or entry.refresh_token,
                     "last_status": None,
@@ -642,7 +643,7 @@ class CredentialPool:
     def _sync_xai_oauth_entry_from_auth_store(self, entry: PooledCredential) -> PooledCredential:
         """Sync an xAI OAuth pool entry from auth.json if tokens differ.
 
-        xAI OAuth refresh tokens are single-use.  When another Prostor process
+        xAI OAuth refresh tokens are single-use.  When another Hermes process
         (or another profile sharing the same auth.json) refreshes the token,
         it writes the new pair to ``providers["xai-oauth"]["tokens"]`` under
         ``_auth_store_lock``.  Without this resync, our in-memory pool entry
@@ -677,7 +678,7 @@ class CredentialPool:
                     "(refreshed by another process)",
                     entry.id,
                 )
-                field_updates: dict[str, Any] = {
+                field_updates: Dict[str, Any] = {
                     "access_token": store_access,
                     "refresh_token": store_refresh or entry.refresh_token,
                     "last_status": None,
@@ -734,7 +735,7 @@ class CredentialPool:
                     "Pool entry %s: syncing Nous state from auth.json",
                     entry.id,
                 )
-                field_updates: dict[str, Any] = {
+                field_updates: Dict[str, Any] = {
                     "last_status": None,
                     "last_status_at": None,
                     "last_error_code": None,
@@ -786,8 +787,8 @@ class CredentialPool:
         Using ``_save_provider_state`` (which sets ``active_provider``)
         here would mean every Nous/Codex/xAI refresh in a multi-provider
         setup silently flips the ``active_provider`` flag — the next
-        ``prostor`` invocation that defaults to the active provider
-        (e.g. setup wizard, ``prostor auth status``) would land on
+        ``hermes`` invocation that defaults to the active provider
+        (e.g. setup wizard, ``hermes auth status``) would land on
         whatever provider happened to refresh last, not whatever the
         user actually chose.
         """
@@ -857,7 +858,7 @@ class CredentialPool:
         except Exception as exc:
             logger.debug("Failed to sync %s pool entry back to auth store: %s", self.provider, exc)
 
-    def _refresh_entry(self, entry: PooledCredential, *, force: bool) -> PooledCredential | None:
+    def _refresh_entry(self, entry: PooledCredential, *, force: bool) -> Optional[PooledCredential]:
         if entry.auth_type != AUTH_TYPE_OAUTH or not entry.refresh_token:
             if force:
                 self._mark_exhausted(entry, None)
@@ -869,7 +870,7 @@ class CredentialPool:
 
                 refreshed = refresh_anthropic_oauth_pure(
                     entry.refresh_token,
-                    use_json=entry.source.endswith("prostor_pkce"),
+                    use_json=entry.source.endswith("hermes_pkce"),
                 )
                 updated = replace(
                     entry,
@@ -892,7 +893,7 @@ class CredentialPool:
                         logger.debug("Failed to write refreshed token to credentials file: %s", wexc)
             elif self.provider == "openai-codex":
                 # Adopt fresher tokens from auth.json before spending the
-                # refresh_token — single-use tokens consumed by another Prostor
+                # refresh_token — single-use tokens consumed by another Hermes
                 # process sharing the same auth.json singleton would otherwise
                 # trigger ``refresh_token_reused`` on the next POST.
                 synced = self._sync_codex_entry_from_auth_store(entry)
@@ -950,7 +951,7 @@ class CredentialPool:
                         from agent.anthropic_adapter import refresh_anthropic_oauth_pure
                         refreshed = refresh_anthropic_oauth_pure(
                             synced.refresh_token,
-                            use_json=synced.source.endswith("prostor_pkce"),
+                            use_json=synced.source.endswith("hermes_pkce"),
                         )
                         updated = replace(
                             synced,
@@ -1031,7 +1032,7 @@ class CredentialPool:
                                             "message": str(exc),
                                             "reason": "credential_pool_refresh_failure",
                                             "relogin_required": True,
-                                            "at": datetime.now(UTC).isoformat(),
+                                            "at": datetime.now(timezone.utc).isoformat(),
                                         }
                                         _save_provider_state(auth_store, "xai-oauth", state)
                                         _save_auth_store(auth_store)
@@ -1047,7 +1048,7 @@ class CredentialPool:
                         self._current_id = None
                     self._persist()
                     return None
-            # For openai-codex: same race as xAI/nous — another Prostor process
+            # For openai-codex: same race as xAI/nous — another Hermes process
             # may have consumed the refresh token between our proactive sync
             # and the HTTP call.  Re-check auth.json and adopt the fresh tokens
             # if they have rotated since.
@@ -1097,7 +1098,7 @@ class CredentialPool:
                                             "message": str(exc),
                                             "reason": "credential_pool_refresh_failure",
                                             "relogin_required": True,
-                                            "at": datetime.now(UTC).isoformat(),
+                                            "at": datetime.now(timezone.utc).isoformat(),
                                         }
                                         _save_provider_state(auth_store, "openai-codex", state)
                                         _save_auth_store(auth_store)
@@ -1220,11 +1221,11 @@ class CredentialPool:
             return False
         return False
 
-    def select(self) -> PooledCredential | None:
+    def select(self) -> Optional[PooledCredential]:
         with self._lock:
             return self._select_unlocked()
 
-    def _available_entries(self, *, clear_expired: bool = False, refresh: bool = False) -> list[PooledCredential]:
+    def _available_entries(self, *, clear_expired: bool = False, refresh: bool = False) -> List[PooledCredential]:
         """Return entries not currently in exhaustion cooldown.
 
         When *clear_expired* is True, entries whose cooldown has elapsed are
@@ -1233,12 +1234,12 @@ class CredentialPool:
         """
         now = time.time()
         cleared_any = False
-        entries_to_prune: list[str] = []
-        available: list[PooledCredential] = []
+        entries_to_prune: List[str] = []
+        available: List[PooledCredential] = []
         for entry in self._entries:
             # For anthropic claude_code entries, sync from the credentials file
             # before any status/refresh checks. This picks up tokens refreshed
-            # by other processes (Claude Code CLI, other Prostor profiles).
+            # by other processes (Claude Code CLI, other Hermes profiles).
             if (self.provider == "anthropic" and entry.source == "claude_code"
                     and entry.last_status in {STATUS_EXHAUSTED, STATUS_DEAD}):
                 synced = self._sync_anthropic_entry_from_credentials_file(entry)
@@ -1257,7 +1258,7 @@ class CredentialPool:
                     entry = synced
                     cleared_any = True
             # For openai-codex entries, same pattern: the user may have
-            # re-authed via `prostor model` / `prostor auth` after a 429/401,
+            # re-authed via `hermes model` / `hermes auth` after a 429/401,
             # leaving fresh tokens on disk while the pool entry is still
             # frozen behind last_error_reset_at (can be hours in the
             # future for ChatGPT weekly windows).
@@ -1270,7 +1271,7 @@ class CredentialPool:
                     cleared_any = True
             # For xai-oauth singleton-seeded entries, identical pattern:
             # an entry frozen as exhausted may simply be holding stale
-            # tokens that another process (or a fresh `prostor model` ->
+            # tokens that another process (or a fresh `hermes model` ->
             # xAI Grok OAuth login) has since rotated in auth.json.
             if (self.provider == "xai-oauth"
                     and entry.source == "loopback_pkce"
@@ -1282,7 +1283,7 @@ class CredentialPool:
             if entry.last_status == STATUS_DEAD:
                 # Manual DEAD credentials get pruned after a 24h quiet window
                 # so the pool doesn't accumulate dead entries forever.  The
-                # user can always re-add via ``prostor auth add``.  Singleton-
+                # user can always re-add via ``hermes auth add``.  Singleton-
                 # seeded DEAD entries are kept so the audit trail (label,
                 # last_error_reason, timestamps) stays visible — pruning them
                 # would just be undone by ``_seed_from_singletons`` on the
@@ -1293,7 +1294,7 @@ class CredentialPool:
                         _label = entry.label or entry.id[:8]
                         logger.warning(
                             "credential pool: pruning DEAD manual entry %s "
-                            "(reason=%s, age=%.1fh) — re-add via `prostor auth add %s`",
+                            "(reason=%s, age=%.1fh) — re-add via `hermes auth add %s`",
                             _label,
                             entry.last_error_reason or "unknown",
                             (now - dead_at) / 3600.0,
@@ -1339,7 +1340,7 @@ class CredentialPool:
             self._persist()
         return available
 
-    def _select_unlocked(self) -> PooledCredential | None:
+    def _select_unlocked(self) -> Optional[PooledCredential]:
         available = self._available_entries(clear_expired=True, refresh=True)
         if not available:
             self._current_id = None
@@ -1372,7 +1373,7 @@ class CredentialPool:
         self._current_id = entry.id
         return entry
 
-    def peek(self) -> PooledCredential | None:
+    def peek(self) -> Optional[PooledCredential]:
         current = self.current()
         if current is not None:
             return current
@@ -1382,10 +1383,10 @@ class CredentialPool:
     def mark_exhausted_and_rotate(
         self,
         *,
-        status_code: int | None,
-        error_context: dict[str, Any] | None = None,
-        api_key_hint: str | None = None,
-    ) -> PooledCredential | None:
+        status_code: Optional[int],
+        error_context: Optional[Dict[str, Any]] = None,
+        api_key_hint: Optional[str] = None,
+    ) -> Optional[PooledCredential]:
         with self._lock:
             entry = None
             if api_key_hint:
@@ -1425,7 +1426,7 @@ class CredentialPool:
                 logger.info("credential pool: rotated to %s", _next_label)
             return next_entry
 
-    def acquire_lease(self, credential_id: str | None = None) -> str | None:
+    def acquire_lease(self, credential_id: Optional[str] = None) -> Optional[str]:
         """Acquire a soft lease on a credential.
 
         If a specific credential_id is provided, lease that entry directly.
@@ -1465,11 +1466,11 @@ class CredentialPool:
             else:
                 self._active_leases[credential_id] = count - 1
 
-    def try_refresh_current(self) -> PooledCredential | None:
+    def try_refresh_current(self) -> Optional[PooledCredential]:
         with self._lock:
             return self._try_refresh_current_unlocked()
 
-    def _try_refresh_current_unlocked(self) -> PooledCredential | None:
+    def _try_refresh_current_unlocked(self) -> Optional[PooledCredential]:
         entry = self.current()
         if entry is None:
             return None
@@ -1502,7 +1503,7 @@ class CredentialPool:
             self._persist()
         return count
 
-    def remove_index(self, index: int) -> PooledCredential | None:
+    def remove_index(self, index: int) -> Optional[PooledCredential]:
         if index < 1 or index > len(self._entries):
             return None
         removed = self._entries.pop(index - 1)
@@ -1515,7 +1516,7 @@ class CredentialPool:
             self._current_id = None
         return removed
 
-    def resolve_target(self, target: Any) -> tuple[int | None, PooledCredential | None, str | None]:
+    def resolve_target(self, target: Any) -> Tuple[Optional[int], Optional[PooledCredential], Optional[str]]:
         raw = str(target or "").strip()
         if not raw:
             return None, None, "No credential target provided."
@@ -1547,7 +1548,7 @@ class CredentialPool:
         return entry
 
 
-def _upsert_entry(entries: list[PooledCredential], provider: str, source: str, payload: dict[str, Any]) -> bool:
+def _upsert_entry(entries: List[PooledCredential], provider: str, source: str, payload: Dict[str, Any]) -> bool:
     existing_idx = None
     for idx, entry in enumerate(entries):
         if entry.source == source:
@@ -1588,14 +1589,14 @@ def _upsert_entry(entries: list[PooledCredential], provider: str, source: str, p
     return False
 
 
-def _normalize_pool_priorities(provider: str, entries: list[PooledCredential]) -> bool:
+def _normalize_pool_priorities(provider: str, entries: List[PooledCredential]) -> bool:
     if provider != "anthropic":
         return False
 
     source_rank = {
         "env:ANTHROPIC_TOKEN": 0,
         "env:CLAUDE_CODE_OAUTH_TOKEN": 1,
-        "prostor_pkce": 2,
+        "hermes_pkce": 2,
         "claude_code": 3,
         "env:ANTHROPIC_API_KEY": 4,
     }
@@ -1622,47 +1623,47 @@ def _normalize_pool_priorities(provider: str, entries: list[PooledCredential]) -
     return changed
 
 
-def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tuple[bool, set[str]]:
+def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tuple[bool, Set[str]]:
     changed = False
-    active_sources: set[str] = set()
+    active_sources: Set[str] = set()
     auth_store = _load_auth_store()
 
     # Shared suppression gate — used at every upsert site so
-    # `prostor auth remove <provider> <N>` is stable across all source types.
+    # `hermes auth remove <provider> <N>` is stable across all source types.
     try:
-        from prostor_cli.auth import is_source_suppressed as _is_suppressed
+        from hermes_cli.auth import is_source_suppressed as _is_suppressed
     except ImportError:
         def _is_suppressed(_p, _s):  # type: ignore[misc]
             return False
 
     if provider == "anthropic":
-        # Only auto-discover external credentials (Claude Code, Prostor PKCE)
+        # Only auto-discover external credentials (Claude Code, Hermes PKCE)
         # when the user has explicitly configured anthropic as their provider.
         # Without this gate, auxiliary client fallback chains silently read
         # ~/.claude/.credentials.json without user consent.  See PR #4210.
         try:
-            from prostor_cli.auth import is_provider_explicitly_configured
+            from hermes_cli.auth import is_provider_explicitly_configured
             if not is_provider_explicitly_configured("anthropic"):
                 return changed, active_sources
         except ImportError:
             pass
 
-        # API-key vs OAuth is a user-visible choice at `prostor setup` ("Claude
+        # API-key vs OAuth is a user-visible choice at `hermes setup` ("Claude
         # Pro/Max subscription" vs "Anthropic API key").  The signal that the
         # user picked the API-key path is: ANTHROPIC_API_KEY set in the env,
         # AND no OAuth env vars set — `save_anthropic_api_key()` writes the
         # API key and zeros ANTHROPIC_TOKEN; `save_anthropic_oauth_token()`
         # does the inverse.  When that signal is present we MUST NOT seed
         # autodiscovered OAuth tokens (~/.claude/.credentials.json from the
-        # Claude Code CLI, prostor_pkce creds from a previous OAuth login)
+        # Claude Code CLI, hermes_pkce creds from a previous OAuth login)
         # into the anthropic pool — otherwise rotation on a 401/429 silently
         # flips the session onto an OAuth credential, which forces the Claude
         # Code identity injection, `mcp_` tool-name rewrite, and claude-cli
         # User-Agent header (`agent/anthropic_adapter.py:2128`).  Users who
         # explicitly opted into the API-key path are explicitly opting OUT of
-        # that masquerade.  Prefer ~/.prostor/.env over os.environ for the
+        # that masquerade.  Prefer ~/.hermes/.env over os.environ for the
         # same reason `_seed_from_env` does — that's the authoritative file
-        # that `prostor setup` writes.
+        # that `hermes setup` writes.
         _env_file = load_env()
 
         def _env_val(key: str) -> str:
@@ -1682,17 +1683,17 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
             # transient 401 could revive them.
             retained = [
                 entry for entry in entries
-                if entry.source not in {"prostor_pkce", "claude_code"}
+                if entry.source not in {"hermes_pkce", "claude_code"}
             ]
             if len(retained) != len(entries):
                 entries[:] = retained
                 changed = True
             return changed, active_sources
 
-        from agent.anthropic_adapter import read_claude_code_credentials, read_prostor_oauth_credentials
+        from agent.anthropic_adapter import read_claude_code_credentials, read_hermes_oauth_credentials
 
         for source_name, creds in (
-            ("prostor_pkce", read_prostor_oauth_credentials()),
+            ("hermes_pkce", read_hermes_oauth_credentials()),
             ("claude_code", read_claude_code_credentials()),
         ):
             if creds and creds.get("accessToken"):
@@ -1734,7 +1735,7 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
             active_sources.add("device_code")
             # Prefer a user-supplied label embedded in the singleton state
             # (set by persist_nous_credentials(label=...) when the user ran
-            # `prostor auth add nous --label <name>`).  Fall back to the
+            # `hermes auth add nous --label <name>`).  Fall back to the
             # auto-derived token fingerprint for logins that didn't supply one.
             custom_label = str(state.get("label") or "").strip()
             seeded_label = custom_label or label_from_token(
@@ -1779,7 +1780,7 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
         # env vars (COPILOT_GITHUB_TOKEN / GH_TOKEN).  They don't live in
         # the auth store or credential pool, so we resolve them here.
         try:
-            from prostor_cli.copilot_auth import get_copilot_api_token, resolve_copilot_token
+            from hermes_cli.copilot_auth import resolve_copilot_token, get_copilot_api_token
             token, source = resolve_copilot_token()
             if token:
                 api_token = get_copilot_api_token(token)
@@ -1805,11 +1806,11 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
     elif provider == "qwen-oauth":
         # Qwen OAuth tokens live in ~/.qwen/oauth_creds.json, written by
         # the Qwen CLI (`qwen auth qwen-oauth`).  They aren't in the
-        # Prostor auth store or env vars, so resolve them here.
+        # Hermes auth store or env vars, so resolve them here.
         # Use refresh_if_expiring=False to avoid network calls during
         # pool loading / provider discovery.
         try:
-            from prostor_cli.auth import resolve_qwen_runtime_credentials
+            from hermes_cli.auth import resolve_qwen_runtime_credentials
             creds = resolve_qwen_runtime_credentials(refresh_if_expiring=False)
             token = creds.get("api_key", "")
             if token:
@@ -1833,14 +1834,14 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
             logger.debug("Qwen OAuth token seed failed: %s", exc)
 
     elif provider == "minimax-oauth":
-        # MiniMax OAuth tokens live in ~/.prostor/auth.json providers.minimax-oauth.
+        # MiniMax OAuth tokens live in ~/.hermes/auth.json providers.minimax-oauth.
         # Seed the pool so `/auth list` reflects the logged-in state and the
-        # standard `prostor auth remove minimax-oauth <N>` flow works.
+        # standard `hermes auth remove minimax-oauth <N>` flow works.
         # Use refresh_if_expiring=False equivalent: resolve_minimax_oauth_runtime_credentials
         # always refreshes on expiry, so instead read raw state here to avoid
         # surprise network calls during provider discovery.
         try:
-            from prostor_cli.auth import get_provider_auth_state
+            from hermes_cli.auth import get_provider_auth_state
             state = get_provider_auth_state("minimax-oauth")
             if state and state.get("access_token"):
                 source_name = "oauth"
@@ -1875,21 +1876,21 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
             logger.debug("MiniMax OAuth token seed failed: %s", exc)
 
     elif provider == "openai-codex":
-        # Respect user suppression — `prostor auth remove openai-codex` marks
+        # Respect user suppression — `hermes auth remove openai-codex` marks
         # the device_code source as suppressed so it won't be re-seeded from
-        # the Prostor auth store.  Without this gate the removal is instantly
+        # the Hermes auth store.  Without this gate the removal is instantly
         # undone on the next load_pool() call.
         if _is_suppressed(provider, "device_code"):
             return changed, active_sources
 
         state = _load_provider_state(auth_store, "openai-codex")
         tokens = state.get("tokens") if isinstance(state, dict) else None
-        # Prostor owns its own Codex auth state — we do NOT auto-import from
+        # Hermes owns its own Codex auth state — we do NOT auto-import from
         # ~/.codex/auth.json at pool-load time.  OAuth refresh tokens are
         # single-use, so sharing them with Codex CLI / VS Code causes
         # refresh_token_reused race failures.  Users who want to adopt
         # existing Codex CLI credentials get a one-time, explicit prompt
-        # via `prostor auth openai-codex`.
+        # via `hermes auth openai-codex`.
         if isinstance(tokens, dict) and tokens.get("access_token"):
             active_sources.add("device_code")
             custom_label = str(state.get("label") or "").strip()
@@ -1909,10 +1910,10 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
             )
 
     elif provider == "xai-oauth":
-        # When the user logs in via ``prostor model`` -> xAI Grok OAuth,
+        # When the user logs in via ``hermes model`` -> xAI Grok OAuth,
         # tokens are written to the auth.json singleton
         # (``providers["xai-oauth"]``).  Surface them in the pool too so
-        # ``prostor auth list`` reflects the logged-in state and so the pool
+        # ``hermes auth list`` reflects the logged-in state and so the pool
         # is the single source of truth for refresh during runtime resolution.
         if _is_suppressed(provider, "loopback_pkce"):
             return changed, active_sources
@@ -1921,7 +1922,7 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
         tokens = state.get("tokens") if isinstance(state, dict) else None
         if isinstance(tokens, dict) and tokens.get("access_token"):
             active_sources.add("loopback_pkce")
-            from prostor_cli.auth import DEFAULT_XAI_OAUTH_BASE_URL
+            from hermes_cli.auth import DEFAULT_XAI_OAUTH_BASE_URL
 
             base_url = DEFAULT_XAI_OAUTH_BASE_URL
             changed |= _upsert_entry(
@@ -1942,12 +1943,12 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
     return changed, active_sources
 
 
-def _seed_from_env(provider: str, entries: list[PooledCredential]) -> tuple[bool, set[str]]:
+def _seed_from_env(provider: str, entries: List[PooledCredential]) -> Tuple[bool, Set[str]]:
     changed = False
-    active_sources: set[str] = set()
+    active_sources: Set[str] = set()
 
-    # Prefer ~/.prostor/.env over os.environ — the user's config file is the
-    # authoritative source for Prostor credentials. Stale env vars from parent
+    # Prefer ~/.hermes/.env over os.environ — the user's config file is the
+    # authoritative source for Hermes credentials. Stale env vars from parent
     # processes (Codex CLI, test scripts, etc.) should not override deliberate
     # changes to the .env file.
     def _get_env_prefer_dotenv(key: str) -> str:
@@ -1955,20 +1956,20 @@ def _seed_from_env(provider: str, entries: list[PooledCredential]) -> tuple[bool
         val = env_file.get(key) or _get_secret(key, "") or ""
         return val.strip()
 
-    # Honour user suppression — `prostor auth remove <provider> <N>` for an
+    # Honour user suppression — `hermes auth remove <provider> <N>` for an
     # env-seeded credential marks the env:<VAR> source as suppressed so it
-    # won't be re-seeded from the user's shell environment or ~/.prostor/.env.
+    # won't be re-seeded from the user's shell environment or ~/.hermes/.env.
     # Without this gate the removal is silently undone on the next
     # load_pool() call whenever the var is still exported by the shell.
     try:
-        from prostor_cli.auth import is_source_suppressed as _is_source_suppressed
+        from hermes_cli.auth import is_source_suppressed as _is_source_suppressed
     except ImportError:
         def _is_source_suppressed(_p, _s):  # type: ignore[misc]
             return False
 
-    def _secret_source_for_env(env_var: str) -> str | None:
+    def _secret_source_for_env(env_var: str) -> Optional[str]:
         try:
-            from prostor_cli.env_loader import get_secret_source
+            from hermes_cli.env_loader import get_secret_source
             source_label = get_secret_source(env_var)
         except Exception:
             source_label = None
@@ -1981,8 +1982,8 @@ def _seed_from_env(provider: str, entries: list[PooledCredential]) -> tuple[bool
         token: str,
         base_url: str,
         auth_type: str = AUTH_TYPE_API_KEY,
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
             "source": source,
             "auth_type": auth_type,
             "access_token": token,
@@ -1995,7 +1996,7 @@ def _seed_from_env(provider: str, entries: list[PooledCredential]) -> tuple[bool
         return payload
 
     if provider == "openrouter":
-        # Prefer ~/.prostor/.env over os.environ
+        # Prefer ~/.hermes/.env over os.environ
         token = _get_env_prefer_dotenv("OPENROUTER_API_KEY")
         if token:
             source = "env:OPENROUTER_API_KEY"
@@ -2032,7 +2033,7 @@ def _seed_from_env(provider: str, entries: list[PooledCredential]) -> tuple[bool
         ]
 
     for env_var in env_vars:
-        # Prefer ~/.prostor/.env over os.environ
+        # Prefer ~/.hermes/.env over os.environ
         token = _get_env_prefer_dotenv(env_var)
         if not token:
             continue
@@ -2061,19 +2062,34 @@ def _seed_from_env(provider: str, entries: list[PooledCredential]) -> tuple[bool
     return changed, active_sources
 
 
-def _prune_stale_seeded_entries(entries: list[PooledCredential], active_sources: set[str]) -> bool:
+def _prune_stale_seeded_entries(
+    entries: List[PooledCredential],
+    active_sources: Set[str],
+    *,
+    prune_env_sources: bool = True,
+) -> bool:
+    def _is_prunable(entry: PooledCredential) -> bool:
+        # ``env:*`` entries are persisted references that get re-hydrated from
+        # the environment on every load. A process that merely lacks the env
+        # var this call must NOT delete the on-disk entry for every other
+        # process — that destructive read is the bug behind #9331. Only prune
+        # an env source when ``prune_env_sources`` is explicitly requested
+        # (e.g. an `hermes auth` command that confirmed the source is gone).
+        if entry.source.startswith("env:"):
+            return prune_env_sources
+        # File-backed singletons (device-code OAuth, claude_code) and Hermes
+        # PKCE should disappear from the pool when their backing file is gone.
+        return (
+            is_borrowed_credential_source(entry.source, entry.provider)
+            or entry.source == "hermes_pkce"
+        )
+
     retained = [
         entry
         for entry in entries
         if _is_manual_source(entry.source)
         or entry.source in active_sources
-        or not (
-            is_borrowed_credential_source(entry.source, entry.provider)
-            # Prostor PKCE is Prostor-owned/persistable while present, but it is
-            # still a file-backed singleton and should disappear from the pool
-            # when the backing OAuth file is gone.
-            or entry.source == "prostor_pkce"
-        )
+        or not _is_prunable(entry)
     ]
     if len(retained) == len(entries):
         return False
@@ -2081,14 +2097,14 @@ def _prune_stale_seeded_entries(entries: list[PooledCredential], active_sources:
     return True
 
 
-def _seed_custom_pool(pool_key: str, entries: list[PooledCredential]) -> tuple[bool, set[str]]:
+def _seed_custom_pool(pool_key: str, entries: List[PooledCredential]) -> Tuple[bool, Set[str]]:
     """Seed a custom endpoint pool from custom_providers config and model config."""
     changed = False
-    active_sources: set[str] = set()
+    active_sources: Set[str] = set()
 
     # Shared suppression gate — same pattern as _seed_from_env/_seed_from_singletons.
     try:
-        from prostor_cli.auth import is_source_suppressed as _is_suppressed
+        from hermes_cli.auth import is_source_suppressed as _is_suppressed
     except ImportError:
         def _is_suppressed(_p, _s):  # type: ignore[misc]
             return False
@@ -2173,7 +2189,15 @@ def load_pool(provider: str) -> CredentialPool:
         singleton_changed, singleton_sources = _seed_from_singletons(provider, entries)
         env_changed, env_sources = _seed_from_env(provider, entries)
         changed = raw_needs_sanitization or singleton_changed or env_changed
-        changed |= _prune_stale_seeded_entries(entries, singleton_sources | env_sources)
+        # ``load_pool()`` is a non-destructive read for env-seeded entries: a
+        # process missing a provider env var must not delete the persisted
+        # pool entry for every other process (#9331). File-backed singletons
+        # still prune when their backing file is gone.
+        changed |= _prune_stale_seeded_entries(
+            entries,
+            singleton_sources | env_sources,
+            prune_env_sources=False,
+        )
         changed |= _normalize_pool_priorities(provider, entries)
 
     if changed:

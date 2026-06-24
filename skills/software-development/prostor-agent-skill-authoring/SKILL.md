@@ -1,30 +1,30 @@
 ---
-name: prostor-agent-skill-authoring
-description: "Author in-repo SKILL.md: frontmatter, validator, structure."
-version: 1.0.0
-author: Prostor Agent
+name: hermes-agent-skill-authoring
+description: "Author in-repo SKILL.md: frontmatter, validator, structure, and writing-quality principles."
+version: 1.1.0
+author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  prostor:
-    tags: [skills, authoring, prostor-agent, conventions, skill-md]
+  hermes:
+    tags: [skills, authoring, hermes-agent, conventions, skill-md]
     related_skills: [plan, requesting-code-review]
 ---
 
-# Authoring Prostor-Agent Skills (in-repo)
+# Authoring Hermes-Agent Skills (in-repo)
 
 ## Overview
 
 There are two places a SKILL.md can live:
 
-1. **User-local:** `~/.prostor/skills/<maybe-category>/<name>/SKILL.md` — personal, not shared. Created via `skill_manage(action='create')`.
-2. **In-repo (this skill is about this case):** `/home/bb/prostor-agent/skills/<category>/<name>/SKILL.md` — committed, shipped with the package. Use `write_file` + `git add`. `skill_manage(action='create')` does NOT target this tree.
+1. **User-local:** `~/.hermes/skills/<maybe-category>/<name>/SKILL.md` — personal, not shared. Created via `skill_manage(action='create')`.
+2. **In-repo (this skill is about this case):** `/home/bb/hermes-agent/skills/<category>/<name>/SKILL.md` — committed, shipped with the package. Use `write_file` + `git add`. `skill_manage(action='create')` does NOT target this tree.
 
 ## When to Use
 
 - User asks you to add a skill "in this branch / repo / commit"
-- You're committing a reusable workflow that should ship with prostor-agent
-- You're editing an existing skill under `/home/bb/prostor-agent/skills/` (use `patch` for small edits, `write_file` for rewrites; `skill_manage` still works for patch on in-repo skills, but not for `create`)
+- You're committing a reusable workflow that should ship with hermes-agent
+- You're editing an existing skill under `/home/bb/hermes-agent/skills/` (use `patch` for small edits, `write_file` for rewrites; `skill_manage` still works for patch on in-repo skills, but not for `create`)
 
 ## Required Frontmatter
 
@@ -43,11 +43,11 @@ Peer-matched shape used by every skill under `skills/software-development/`:
 ---
 name: my-skill-name               # lowercase, hyphens, ≤64 chars (MAX_NAME_LENGTH)
 description: Use when <trigger>. <one-line behavior>.
-version: 1.0.0
-author: Prostor Agent
+version: 1.1.0
+author: Hermes Agent
 license: MIT
 metadata:
-  prostor:
+  hermes:
     tags: [short, descriptive, tags]
     related_skills: [other-skill, another-skill]
 ---
@@ -60,6 +60,29 @@ metadata:
 - Description: ≤ 1024 chars (enforced).
 - Full SKILL.md: ≤ 100,000 chars (enforced as `MAX_SKILL_CONTENT_CHARS`, ~36k tokens).
 - Peer skills in `software-development/` sit at **8-14k chars**. Aim for that range. If you're pushing past 20k, split into `references/*.md` and reference them from SKILL.md.
+
+## Writing Quality Principles
+
+A skill exists to make the agent's process more predictable. Predictability does **not** mean identical output every run; it means the agent reliably follows the same useful discipline.
+
+Use these quality checks when writing or editing any skill:
+
+1. **Optimize for process predictability.** Ask: what behavior should change when this skill loads? If a line does not change behavior, cut it.
+2. **Choose the right context load.** A model-invoked Hermes skill pays for its description every turn. Keep descriptions focused on trigger classes and the skill's distinctive behavior. Put details in the body or linked references.
+3. **Use an information hierarchy.** Put always-needed steps in `SKILL.md`; put branch-specific or bulky reference material in `references/`, `templates/`, or `scripts/` and point to it only when needed.
+4. **End steps with completion criteria.** Each ordered step should say how the agent knows it is done. Good criteria are checkable and, when it matters, exhaustive: "every modified file accounted for" beats "summarize changes."
+5. **Co-locate rules with the concept they govern.** Avoid scattering one idea across the file. Keep definition, caveats, examples, and verification near each other.
+6. **Use strong leading words.** Prefer compact concepts the model already knows — e.g. "tight loop," "tracer bullet," "root cause," "regression test" — over long repeated explanations. A good leading word saves tokens and anchors behavior.
+7. **Prune duplication and no-ops.** Keep each meaning in one source of truth. Sentence by sentence, ask whether the sentence changes agent behavior versus the default. If not, delete it rather than polishing it.
+8. **Watch for premature completion.** If agents tend to rush a step, first sharpen that step's completion criterion. Split the sequence only when later steps distract from doing the current step well.
+
+Common quality failures:
+
+- **Premature completion** — the skill lets the agent move on before the work is genuinely done.
+- **Duplication** — the same rule appears in multiple places and drifts.
+- **Sediment** — stale lines remain because adding felt safer than deleting.
+- **Sprawl** — too much always-visible material; push branch-specific reference behind pointers.
+- **No-op prose** — generic advice the agent would already follow without the skill.
 
 ## Peer-Matched Structure
 
@@ -78,7 +101,7 @@ One or two paragraphs: what and why.
 ## <Topic sections specific to the skill>
 - Quick-reference tables are common
 - Code blocks with exact commands
-- Prostor-specific recipes (tests via scripts/run_tests.sh, ui-tui paths, etc.)
+- Hermes-specific recipes (tests via scripts/run_tests.sh, ui-tui paths, etc.)
 
 ## Common Pitfalls
 Numbered list of mistakes and their fixes.
@@ -127,7 +150,7 @@ Pick the closest existing category. Don't invent new top-level categories casual
 
 ## Cross-Referencing Other Skills
 
-`metadata.prostor.related_skills` unions both trees (`skills/` in-repo and `~/.prostor/skills/`) at load time. You CAN reference a user-local skill from an in-repo skill, but it won't resolve for other users who clone the repo fresh. Prefer referencing only in-repo skills from in-repo skills. If a frequently-referenced skill lives only in `~/.prostor/skills/`, consider promoting it to the repo.
+`metadata.hermes.related_skills` unions both trees (`skills/` in-repo and `~/.hermes/skills/`) at load time. You CAN reference a user-local skill from an in-repo skill, but it won't resolve for other users who clone the repo fresh. Prefer referencing only in-repo skills from in-repo skills. If a frequently-referenced skill lives only in `~/.hermes/skills/`, consider promoting it to the repo.
 
 ## Editing Existing In-Repo Skills
 
@@ -138,7 +161,7 @@ Pick the closest existing category. Don't invent new top-level categories casual
 
 ## Common Pitfalls
 
-1. **Using `skill_manage(action='create')` for an in-repo skill.** It writes to `~/.prostor/skills/`, not the repo tree. Use `write_file` for in-repo creation.
+1. **Using `skill_manage(action='create')` for an in-repo skill.** It writes to `~/.hermes/skills/`, not the repo tree. Use `write_file` for in-repo creation.
 
 2. **Leading whitespace before `---`.** The validator checks `content.startswith("---")`; any leading blank line or BOM fails validation.
 
@@ -150,16 +173,24 @@ Pick the closest existing category. Don't invent new top-level categories casual
 
 6. **Expecting the current session to see the new skill.** It won't. The skill loader is initialized at session start. Verify in a fresh session or via `skill_view` using the exact path.
 
-7. **Linking to skills that don't exist in-repo.** `related_skills: [some-user-local-skill]` works for you but breaks for other clones. Prefer only in-repo links.
+7. **Letting skills accumulate sediment.** A skill should get shorter or sharper over time. When adding a rule, remove the old wording it replaces; don't layer advice forever.
+
+8. **Writing no-op prose.** "Be careful," "be thorough," and "use best practices" rarely change model behavior. Replace with a checkable completion criterion or a stronger leading word.
+
+9. **Linking to skills that don't exist in-repo.** `related_skills: [some-user-local-skill]` works for you but breaks for other clones. Prefer only in-repo links.
 
 ## Verification Checklist
 
-- [ ] File is at `skills/<category>/<name>/SKILL.md` (not in `~/.prostor/skills/`)
+- [ ] File is at `skills/<category>/<name>/SKILL.md` (not in `~/.hermes/skills/`)
 - [ ] Frontmatter starts at byte 0 with `---`, closes with `\n---\n`
-- [ ] `name`, `description`, `version`, `author`, `license`, `metadata.prostor.{tags, related_skills}` all present
+- [ ] `name`, `description`, `version`, `author`, `license`, `metadata.hermes.{tags, related_skills}` all present
 - [ ] Name ≤ 64 chars, lowercase + hyphens
 - [ ] Description ≤ 1024 chars and starts with "Use when ..."
 - [ ] Total file ≤ 100,000 chars (aim for 8-15k)
 - [ ] Structure: `# Title` → `## Overview` → `## When to Use` → body → `## Common Pitfalls` → `## Verification Checklist`
+- [ ] Each ordered step has a checkable completion criterion
+- [ ] Description is trigger-focused and avoids duplicated body content
+- [ ] Bulky or branch-specific reference is progressively disclosed in linked files
+- [ ] No-op prose and duplicated rules removed
 - [ ] `related_skills` references resolve in-repo (or are explicitly OK to be user-local)
 - [ ] `git add skills/<category>/<name>/ && git commit` completed on the intended branch

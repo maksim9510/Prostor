@@ -1,5 +1,5 @@
 """
-Cron job management tools for Prostor Agent.
+Cron job management tools for Hermes Agent.
 
 Expose a single compressed action-oriented tool to avoid schema/context bloat.
 Compatibility wrappers remain for direct Python callers and legacy tests.
@@ -10,9 +10,9 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
-from prostor_constants import display_prostor_home
+from hermes_constants import display_hermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +21,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from cron.jobs import (
     AmbiguousJobReference,
+    claim_job_for_fire,
     create_job,
+    get_job,
     list_jobs,
+    mark_job_run,
     parse_schedule,
     pause_job,
     remove_job,
     resolve_job_ref,
     resume_job,
-    trigger_job,
     update_job,
 )
 
@@ -51,15 +53,15 @@ def _notify_provider_jobs_changed_safe() -> None:
 #
 #   1. User-supplied cron prompt (small, written as a directive).
 #      Strict scanning is appropriate — a legit cron prompt has no business
-#      saying "cat ~/.prostor/.env" or "rm -rf /". `_scan_cron_prompt()` runs
+#      saying "cat ~/.hermes/.env" or "rm -rf /". `_scan_cron_prompt()` runs
 #      against this at create/update time and as a runtime defense-in-depth.
 #
 #   2. Assembled prompt that includes loaded skill content (large markdown
 #      bodies, often security docs, postmortems, runbooks discussing attack
 #      patterns in PROSE). Reusing the strict patterns here false-positives
 #      every time a skill *describes* a command — see #3968 follow-up: the
-#      `prostor-agent-dev` skill contains a security postmortem mentioning
-#      `cat ~/.prostor/.env`, which tripped `read_secrets` and silently
+#      `hermes-agent-dev` skill contains a security postmortem mentioning
+#      `cat ~/.hermes/.env`, which tripped `read_secrets` and silently
 #      killed all PR-scout jobs.
 #
 #      Skill bodies are user-curated and scanned at install time by
@@ -276,12 +278,12 @@ def _scan_cron_skill_assembled(assembled: str) -> tuple[str, str]:
     return cleaned, ""
 
 
-def _origin_from_env() -> dict[str, str] | None:
+def _origin_from_env() -> Optional[Dict[str, str]]:
     from gateway.session_context import get_session_env
-    origin_platform = get_session_env("PROSTOR_SESSION_PLATFORM")
-    origin_chat_id = get_session_env("PROSTOR_SESSION_CHAT_ID")
+    origin_platform = get_session_env("HERMES_SESSION_PLATFORM")
+    origin_chat_id = get_session_env("HERMES_SESSION_CHAT_ID")
     if origin_platform and origin_chat_id:
-        thread_id = get_session_env("PROSTOR_SESSION_THREAD_ID") or None
+        thread_id = get_session_env("HERMES_SESSION_THREAD_ID") or None
         if thread_id:
             logger.debug(
                 "Cron origin captured thread_id=%s for %s:%s",
@@ -290,13 +292,50 @@ def _origin_from_env() -> dict[str, str] | None:
         return {
             "platform": origin_platform,
             "chat_id": origin_chat_id,
-            "chat_name": get_session_env("PROSTOR_SESSION_CHAT_NAME") or None,
+            "chat_name": get_session_env("HERMES_SESSION_CHAT_NAME") or None,
             "thread_id": thread_id,
         }
     return None
 
 
-def _repeat_display(job: dict[str, Any]) -> str:
+def _local_delivery_notice(job: Dict[str, Any], user_deliver: Optional[str]) -> Optional[str]:
+    """Return an informational notice when a created job won't deliver anywhere.
+
+    TUI/CLI sessions cannot be captured as a cron ``origin`` (no
+    ``HERMES_SESSION_PLATFORM``/``CHAT_ID`` is set for them), so a
+    ``deliver="origin"`` request — or an omitted ``deliver`` that defaults to
+    origin-or-local — produces a job that runs and saves output to
+    ``last_output`` but is never delivered back into the session. This is by
+    design (there is no live-delivery channel for local sessions), but silently
+    dropping the user's "tell me when it runs" intent is the trap reported in
+    #51568. Surface it at create time so the agent can relay it instead of
+    promising a delivery that never happens.
+
+    Returns ``None`` when the user explicitly asked for ``local`` (no surprise),
+    or when the job resolves to a real delivery target.
+    """
+    # An explicit local request is exactly what the user asked for — no notice.
+    if (user_deliver or "").strip().lower() == "local":
+        return None
+    try:
+        from cron.scheduler import _resolve_delivery_targets
+
+        if _resolve_delivery_targets(job):
+            return None  # Will actually deliver somewhere — nothing to flag.
+    except Exception:
+        # If resolution can't be evaluated, fall back to the origin signal.
+        if job.get("origin"):
+            return None
+    return (
+        "This is a local-only cron job: its output is saved (view it with "
+        "cronjob(action='list')) but will NOT be delivered back into this "
+        "session — CLI/TUI sessions have no live-delivery channel. To be "
+        "notified when it runs, recreate or update the job with deliver set to "
+        "a gateway-connected platform, e.g. deliver='telegram' or deliver='all'."
+    )
+
+
+def _repeat_display(job: Dict[str, Any]) -> str:
     times = (job.get("repeat") or {}).get("times")
     completed = (job.get("repeat") or {}).get("completed", 0)
     if times is None:
@@ -306,7 +345,7 @@ def _repeat_display(job: dict[str, Any]) -> str:
     return f"{completed}/{times}" if completed else f"{times} times"
 
 
-def _canonical_skills(skill: str | None = None, skills: Any | None = None) -> list[str]:
+def _canonical_skills(skill: Optional[str] = None, skills: Optional[Any] = None) -> List[str]:
     if skills is None:
         raw_items = [skill] if skill else []
     elif isinstance(skills, str):
@@ -314,7 +353,7 @@ def _canonical_skills(skill: str | None = None, skills: Any | None = None) -> li
     else:
         raw_items = list(skills)
 
-    normalized: list[str] = []
+    normalized: List[str] = []
     for item in raw_items:
         text = str(item or "").strip()
         if text and text not in normalized:
@@ -322,11 +361,13 @@ def _canonical_skills(skill: str | None = None, skills: Any | None = None) -> li
     return normalized
 
 
-def _resolve_model_override(model_obj: dict[str, Any] | None) -> tuple:
+
+
+def _resolve_model_override(model_obj: Optional[Dict[str, Any]]) -> tuple:
     """Resolve a model override object into (provider, model) for job storage.
 
     If provider is omitted, pins the current main provider from config so the
-    job doesn't drift when the user later changes their default via prostor model.
+    job doesn't drift when the user later changes their default via hermes model.
 
     Returns (provider_str_or_none, model_str_or_none).
     """
@@ -346,7 +387,7 @@ def _resolve_model_override(model_obj: dict[str, Any] | None) -> tuple:
     # silently hijacks a job that meant to use the configured custom endpoint.
     if provider_name == "custom":
         try:
-            from prostor_cli.runtime_provider import has_named_custom_provider
+            from hermes_cli.runtime_provider import has_named_custom_provider
             if not has_named_custom_provider("custom"):
                 provider_name = None
         except Exception:
@@ -354,7 +395,7 @@ def _resolve_model_override(model_obj: dict[str, Any] | None) -> tuple:
     if model_name and not provider_name:
         # Pin to the current main provider so the job is stable
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             cfg = load_config()
             model_cfg = cfg.get("model", {})
             if isinstance(model_cfg, dict):
@@ -364,7 +405,7 @@ def _resolve_model_override(model_obj: dict[str, Any] | None) -> tuple:
     return (provider_name, model_name)
 
 
-def _normalize_optional_job_value(value: Any | None, *, strip_trailing_slash: bool = False) -> str | None:
+def _normalize_optional_job_value(value: Optional[Any], *, strip_trailing_slash: bool = False) -> Optional[str]:
     if value is None:
         return None
     text = str(value).strip()
@@ -373,7 +414,7 @@ def _normalize_optional_job_value(value: Any | None, *, strip_trailing_slash: bo
     return text or None
 
 
-def _normalize_deliver_param(value: Any) -> str | None:
+def _normalize_deliver_param(value: Any) -> Optional[str]:
     """Normalize a user-supplied ``deliver`` value to the canonical string form.
 
     The cron schema documents ``deliver`` as a string (``"local"``, ``"origin"``,
@@ -394,10 +435,10 @@ def _normalize_deliver_param(value: Any) -> str | None:
     return text or None
 
 
-def _validate_cron_script_path(script: str | None) -> str | None:
+def _validate_cron_script_path(script: Optional[str]) -> Optional[str]:
     """Validate a cron job script path at the API boundary.
 
-    Scripts must be relative paths that resolve within PROSTOR_HOME/scripts/.
+    Scripts must be relative paths that resolve within HERMES_HOME/scripts/.
     Absolute paths and ~ expansion are rejected to prevent arbitrary script
     execution via prompt injection.
 
@@ -406,23 +447,23 @@ def _validate_cron_script_path(script: str | None) -> str | None:
     if not script or not script.strip():
         return None  # empty/None = clearing the field, always OK
 
-    from prostor_constants import get_prostor_home
+    from hermes_constants import get_hermes_home
 
     raw = script.strip()
 
     # Reject absolute paths and ~ expansion at the API boundary.
-    # Only relative paths within ~/.prostor/scripts/ are allowed.
+    # Only relative paths within ~/.hermes/scripts/ are allowed.
     if raw.startswith(("/", "~")) or (len(raw) >= 2 and raw[1] == ":"):
         return (
-            f"Script path must be relative to ~/.prostor/scripts/. "
+            f"Script path must be relative to ~/.hermes/scripts/. "
             f"Got absolute or home-relative path: {raw!r}. "
-            f"Place scripts in ~/.prostor/scripts/ and use just the filename."
+            f"Place scripts in ~/.hermes/scripts/ and use just the filename."
         )
 
     # Validate containment after resolution
     from tools.path_security import validate_within_dir
 
-    scripts_dir = get_prostor_home() / "scripts"
+    scripts_dir = get_hermes_home() / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     containment_error = validate_within_dir(scripts_dir / raw, scripts_dir)
     if containment_error:
@@ -433,7 +474,7 @@ def _validate_cron_script_path(script: str | None) -> str | None:
     return None
 
 
-def _format_job(job: dict[str, Any]) -> dict[str, Any]:
+def _format_job(job: Dict[str, Any]) -> Dict[str, Any]:
     prompt = str(job.get("prompt") or "")
     skills = _canonical_skills(job.get("skill"), job.get("skills"))
     job_id = str(job.get("id") or "unknown")
@@ -470,26 +511,71 @@ def _format_job(job: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _execute_job_now(job: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute a cron job immediately, outside the scheduler tick.
+
+    Atomically claims the job first via ``claim_job_for_fire`` — the same
+    at-most-once CAS the scheduler/external-provider fire path uses — so a
+    concurrently-running gateway ticker cannot also fire it (the claim both
+    blocks a duplicate fire and advances ``next_run_at`` for recurring jobs).
+    If the claim is lost (another fire is in flight), this is a no-op.
+
+    The actual firing is delegated to ``run_one_job`` — the single shared
+    execute→save→deliver→mark body the ticker and external providers use — so
+    failure delivery, ``[SILENT]`` handling, and live-adapter delivery stay
+    identical across paths and can't drift.
+
+    Returns {"claimed": bool, "success": bool, "error": str|None}.
+    """
+    job_id = job["id"]
+    try:
+        from cron.scheduler import run_one_job
+
+        # At-most-once claim: bail without running if a tick/other fire owns it.
+        if not claim_job_for_fire(job_id):
+            return {"claimed": False, "success": False,
+                    "error": "Job is already being fired by the scheduler; not run again."}
+
+        # run_one_job records last_run_at/last_status via mark_job_run (which
+        # also clears the fire claim) and returns True iff it processed the job.
+        processed = run_one_job(job)
+        refreshed = get_job(job_id) or {}
+        ok = refreshed.get("last_status") == "ok"
+        return {
+            "claimed": True,
+            "success": bool(processed and ok),
+            "error": refreshed.get("last_error"),
+        }
+
+    except Exception as e:
+        logger.error("Failed to execute cron job %s immediately: %s", job_id, e)
+        try:
+            mark_job_run(job_id, False, str(e))
+        except Exception:
+            pass
+        return {"claimed": True, "success": False, "error": str(e)}
+
+
 def cronjob(
     action: str,
-    job_id: str | None = None,
-    prompt: str | None = None,
-    schedule: str | None = None,
-    name: str | None = None,
-    repeat: int | None = None,
-    deliver: str | None = None,
+    job_id: Optional[str] = None,
+    prompt: Optional[str] = None,
+    schedule: Optional[str] = None,
+    name: Optional[str] = None,
+    repeat: Optional[int] = None,
+    deliver: Optional[str] = None,
     include_disabled: bool = False,
-    skill: str | None = None,
-    skills: list[str] | None = None,
-    model: str | None = None,
-    provider: str | None = None,
-    base_url: str | None = None,
-    reason: str | None = None,
-    script: str | None = None,
-    context_from: str | list[str] | None = None,
-    enabled_toolsets: list[str] | None = None,
-    workdir: str | None = None,
-    no_agent: bool | None = None,
+    skill: Optional[str] = None,
+    skills: Optional[List[str]] = None,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    base_url: Optional[str] = None,
+    reason: Optional[str] = None,
+    script: Optional[str] = None,
+    context_from: Optional[Union[str, List[str]]] = None,
+    enabled_toolsets: Optional[List[str]] = None,
+    workdir: Optional[str] = None,
+    no_agent: Optional[bool] = None,
     task_id: str = None,
 ) -> str:
     """Unified cron job management tool."""
@@ -558,6 +644,10 @@ def cronjob(
                 no_agent=_no_agent,
             )
             _notify_provider_jobs_changed_safe()
+            _create_message = f"Cron job '{job['name']}' created."
+            _local_notice = _local_delivery_notice(job, _normalize_deliver_param(deliver))
+            if _local_notice:
+                _create_message = f"{_create_message} {_local_notice}"
             return json.dumps(
                 {
                     "success": True,
@@ -570,7 +660,7 @@ def cronjob(
                     "deliver": job.get("deliver", "local"),
                     "next_run_at": job["next_run_at"],
                     "job": _format_job(job),
-                    "message": f"Cron job '{job['name']}' created.",
+                    "message": _create_message,
                 },
                 indent=2,
             )
@@ -638,11 +728,26 @@ def cronjob(
             return json.dumps({"success": True, "job": _format_job(updated)}, indent=2)
 
         if normalized in {"run", "run_now", "trigger"}:
-            updated = trigger_job(job_id)
-            return json.dumps({"success": True, "job": _format_job(updated)}, indent=2)
+            # Execute the job immediately rather than only scheduling it for the
+            # next scheduler tick — a manual `run` should actually run, even when
+            # no gateway/ticker is active (the #41037 case). The claim inside
+            # _execute_job_now advances next_run_at and blocks a concurrent tick
+            # from double-firing.
+            exec_result = _execute_job_now(job)
+            # Re-read so the response reflects the post-run last_run_at/last_status.
+            result = _format_job(get_job(job_id) or {"id": job_id})
+            result["executed"] = exec_result.get("claimed", False)
+            result["execution_success"] = exec_result.get("success", False)
+            if not exec_result.get("claimed", False):
+                result["execution_skipped"] = (
+                    "Already being fired by the scheduler; not run again."
+                )
+            elif exec_result.get("error"):
+                result["execution_error"] = exec_result["error"]
+            return json.dumps({"success": True, "job": result}, indent=2)
 
         if normalized == "update":
-            updates: dict[str, Any] = {}
+            updates: Dict[str, Any] = {}
             if prompt is not None:
                 scan_error = _scan_cron_prompt(prompt)
                 if scan_error:
@@ -732,6 +837,7 @@ def cronjob(
         return tool_error(str(e), success=False)
 
 
+
 CRONJOB_SCHEMA = {
     "name": "cronjob",
     "description": """Manage scheduled cron jobs with a single compressed tool.
@@ -804,7 +910,7 @@ Important safety rule: cron-run sessions should not recursively schedule more cr
             },
             "script": {
                 "type": "string",
-                "description": f"Optional path to a script that runs each tick. In the default mode its stdout is injected into the agent's prompt as context (data-collection / change-detection pattern). With no_agent=True, the script IS the job and its stdout is delivered verbatim (classic watchdog pattern). Relative paths resolve under {display_prostor_home()}/scripts/. ``.sh``/``.bash`` extensions run via bash, everything else via Python. On update, pass empty string to clear."
+                "description": f"Optional path to a script that runs each tick. In the default mode its stdout is injected into the agent's prompt as context (data-collection / change-detection pattern). With no_agent=True, the script IS the job and its stdout is delivered verbatim (classic watchdog pattern). Relative paths resolve under {display_hermes_home()}/scripts/. ``.sh``/``.bash`` extensions run via bash, everything else via Python. On update, pass empty string to clear."
             },
             "no_agent": {
                 "type": "boolean",
@@ -868,9 +974,9 @@ def check_cronjob_requirements() -> bool:
     from utils import env_var_enabled
 
     return (
-        env_var_enabled("PROSTOR_INTERACTIVE")
-        or env_var_enabled("PROSTOR_GATEWAY_SESSION")
-        or env_var_enabled("PROSTOR_EXEC_ASK")
+        env_var_enabled("HERMES_INTERACTIVE")
+        or env_var_enabled("HERMES_GATEWAY_SESSION")
+        or env_var_enabled("HERMES_EXEC_ASK")
     )
 
 

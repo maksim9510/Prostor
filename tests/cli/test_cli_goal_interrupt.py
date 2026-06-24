@@ -6,7 +6,7 @@ Covers:
 - Clean response without interrupt still drives the judge + enqueues.
 
 These tests exercise ``_maybe_continue_goal_after_turn`` directly on a
-minimal ``ProstorCLI`` stub (pattern used elsewhere in tests/cli).
+minimal ``HermesCLI`` stub (pattern used elsewhere in tests/cli).
 """
 
 from __future__ import annotations
@@ -18,32 +18,33 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+
 # ──────────────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
-def prostor_home(tmp_path, monkeypatch):
-    """Isolated PROSTOR_HOME so SessionDB.state_meta writes stay hermetic."""
-    home = tmp_path / ".prostor"
+def hermes_home(tmp_path, monkeypatch):
+    """Isolated HERMES_HOME so SessionDB.state_meta writes stay hermetic."""
+    home = tmp_path / ".hermes"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    monkeypatch.setenv("PROSTOR_HOME", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home))
 
-    # Bust the goal module's DB cache so it re-resolves PROSTOR_HOME each test.
-    from prostor_cli import goals
+    # Bust the goal module's DB cache so it re-resolves HERMES_HOME each test.
+    from hermes_cli import goals
     goals._DB_CACHE.clear()
     yield home
     goals._DB_CACHE.clear()
 
 
 def _make_cli_with_goal(session_id: str, goal_text: str = "build a thing"):
-    """Build a minimal ProstorCLI stub with an active goal wired in."""
-    from cli import ProstorCLI
-    from prostor_cli.goals import GoalManager
+    """Build a minimal HermesCLI stub with an active goal wired in."""
+    from cli import HermesCLI
+    from hermes_cli.goals import GoalManager
 
-    cli = ProstorCLI.__new__(ProstorCLI)
+    cli = HermesCLI.__new__(HermesCLI)
     # State the hook + helpers touch directly.
     cli._pending_input = queue.Queue()
     cli._last_turn_interrupted = False
@@ -66,7 +67,7 @@ def _make_cli_with_goal(session_id: str, goal_text: str = "build a thing"):
 
 
 class TestInterruptAutoPause:
-    def test_interrupted_turn_pauses_goal_and_skips_continuation(self, prostor_home):
+    def test_interrupted_turn_pauses_goal_and_skips_continuation(self, hermes_home):
         """Ctrl+C mid-turn must auto-pause the goal, not queue another round."""
         sid = f"sid-interrupt-{uuid.uuid4().hex}"
         cli, mgr = _make_cli_with_goal(sid)
@@ -79,7 +80,7 @@ class TestInterruptAutoPause:
 
         # Judge MUST NOT run on an interrupted turn. If it does, we've
         # regressed — fail loudly instead of silently querying a mock.
-        with patch("prostor_cli.goals.judge_goal") as judge_mock:
+        with patch("hermes_cli.goals.judge_goal") as judge_mock:
             judge_mock.side_effect = AssertionError(
                 "judge_goal called on an interrupted turn"
             )
@@ -96,7 +97,7 @@ class TestInterruptAutoPause:
         assert state.status == "paused"
         assert "interrupt" in (state.paused_reason or "").lower()
 
-    def test_interrupted_turn_is_resumable(self, prostor_home):
+    def test_interrupted_turn_is_resumable(self, hermes_home):
         """After auto-pause from Ctrl+C, /goal resume puts it back to active."""
         sid = f"sid-resume-{uuid.uuid4().hex}"
         cli, mgr = _make_cli_with_goal(sid)
@@ -104,7 +105,7 @@ class TestInterruptAutoPause:
         cli.conversation_history = [
             {"role": "assistant", "content": "partial"},
         ]
-        with patch("prostor_cli.goals.judge_goal"):
+        with patch("hermes_cli.goals.judge_goal"):
             cli._maybe_continue_goal_after_turn()
         assert mgr.state.status == "paused"
 
@@ -113,7 +114,7 @@ class TestInterruptAutoPause:
 
 
 class TestEmptyResponseSkip:
-    def test_empty_response_does_not_invoke_judge(self, prostor_home):
+    def test_empty_response_does_not_invoke_judge(self, hermes_home):
         """Whitespace-only replies skip judging (transient failure guard)."""
         sid = f"sid-empty-{uuid.uuid4().hex}"
         cli, mgr = _make_cli_with_goal(sid)
@@ -123,7 +124,7 @@ class TestEmptyResponseSkip:
             {"role": "assistant", "content": "   \n\n   "},
         ]
 
-        with patch("prostor_cli.goals.judge_goal") as judge_mock:
+        with patch("hermes_cli.goals.judge_goal") as judge_mock:
             judge_mock.side_effect = AssertionError(
                 "judge_goal called on an empty response"
             )
@@ -133,7 +134,7 @@ class TestEmptyResponseSkip:
         assert cli._pending_input.empty()
         assert mgr.state.status == "active"
 
-    def test_no_assistant_message_skipped(self, prostor_home):
+    def test_no_assistant_message_skipped(self, hermes_home):
         """Conversation with zero assistant replies must not trip the judge."""
         sid = f"sid-noassistant-{uuid.uuid4().hex}"
         cli, mgr = _make_cli_with_goal(sid)
@@ -142,7 +143,7 @@ class TestEmptyResponseSkip:
             {"role": "user", "content": "go"},
         ]
 
-        with patch("prostor_cli.goals.judge_goal") as judge_mock:
+        with patch("hermes_cli.goals.judge_goal") as judge_mock:
             judge_mock.side_effect = AssertionError(
                 "judge_goal called without an assistant response"
             )
@@ -154,7 +155,7 @@ class TestEmptyResponseSkip:
 
 class TestHealthyTurnStillRuns:
     def test_clean_response_enqueues_continuation_when_judge_says_continue(
-        self, prostor_home,
+        self, hermes_home,
     ):
         """Sanity check: the hook still works in the happy path."""
         sid = f"sid-healthy-{uuid.uuid4().hex}"
@@ -167,8 +168,8 @@ class TestHealthyTurnStillRuns:
 
         # Force the judge to say "continue" without touching the network.
         with patch(
-            "prostor_cli.goals.judge_goal",
-            return_value=("continue", "needs more steps", False),
+            "hermes_cli.goals.judge_goal",
+            return_value=("continue", "needs more steps", False, None),
         ):
             cli._maybe_continue_goal_after_turn()
 
@@ -178,7 +179,7 @@ class TestHealthyTurnStillRuns:
         assert "Continuing toward your standing goal" in queued
         assert mgr.state.status == "active"
 
-    def test_clean_response_marks_done_when_judge_says_done(self, prostor_home):
+    def test_clean_response_marks_done_when_judge_says_done(self, hermes_home):
         sid = f"sid-done-{uuid.uuid4().hex}"
         cli, mgr = _make_cli_with_goal(sid)
         cli._last_turn_interrupted = False
@@ -187,8 +188,8 @@ class TestHealthyTurnStillRuns:
         ]
 
         with patch(
-            "prostor_cli.goals.judge_goal",
-            return_value=("done", "goal satisfied", False),
+            "hermes_cli.goals.judge_goal",
+            return_value=("done", "goal satisfied", False, None),
         ):
             cli._maybe_continue_goal_after_turn()
 
@@ -197,7 +198,7 @@ class TestHealthyTurnStillRuns:
 
 
 class TestInterruptFlagLifecycle:
-    def test_chat_resets_flag_at_entry(self, prostor_home):
+    def test_chat_resets_flag_at_entry(self, hermes_home):
         """chat() must reset _last_turn_interrupted at the top of each turn.
 
         This guards against stale flag state: if turn N was interrupted and
@@ -206,11 +207,10 @@ class TestInterruptFlagLifecycle:
         # We can't run chat() end-to-end here, but we can assert the reset
         # is the first thing after the secret-capture registration by
         # inspecting the source shape.
+        from cli import HermesCLI
         import inspect
 
-        from cli import ProstorCLI
-
-        src = inspect.getsource(ProstorCLI.chat)
+        src = inspect.getsource(HermesCLI.chat)
         # Look for an explicit reset near the top of chat().
         head = src.split("if not self._ensure_runtime_credentials", 1)[0]
         assert "self._last_turn_interrupted = False" in head, (

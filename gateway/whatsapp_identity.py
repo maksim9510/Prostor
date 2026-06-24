@@ -25,7 +25,7 @@ Public helpers:
 Plugins that need per-sender behaviour on WhatsApp (role-based routing,
 per-contact authorisation, policy gating in a gateway hook) should use
 ``canonical_whatsapp_identifier`` so their bookkeeping lines up with
-Prostor' own session keys.
+Hermes' own session keys.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import Set
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 # full-width digits / Unicode word chars can't sneak through.
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9@.+\-]+$")
 
-from prostor_core import get_prostor_home
+from hermes_constants import get_hermes_home
 
 
 def normalize_whatsapp_identifier(value: str) -> str:
@@ -66,11 +67,62 @@ def normalize_whatsapp_identifier(value: str) -> str:
     )
 
 
-def expand_whatsapp_aliases(identifier: str) -> set[str]:
+# A target that is "just a phone number" — optional leading ``+`` then digits
+# and the usual human separators (spaces, dots, dashes, parens). Anything that
+# already carries an ``@`` is a fully-qualified JID and must pass through
+# untouched (group ``@g.us``, LID ``@lid``, ``status@broadcast`` etc.).
+_BARE_PHONE_RE = re.compile(r"^\+?[\d\s().\-]+$")
+
+
+def to_whatsapp_jid(value: str) -> str:
+    """Normalize an *outbound* WhatsApp target to a bridge-safe JID.
+
+    Baileys' ``jidDecode`` crashes on a bare phone number — it expects a
+    fully-qualified JID such as ``50766715226@s.whatsapp.net``. This helper
+    is the inverse of :func:`normalize_whatsapp_identifier`: instead of
+    stripping a JID down to its numeric core for comparison, it *builds* the
+    JID a send must use.
+
+    Behaviour:
+
+    - ``"+50766715226"`` / ``"50766715226"`` → ``"50766715226@s.whatsapp.net"``
+    - ``"50766715226@s.whatsapp.net"`` → unchanged
+    - ``"group-id@g.us"`` / ``"130631430344750@lid"`` → unchanged
+    - ``"user:device@s.whatsapp.net"`` style colon-before-``@`` → ``@`` form
+    - anything that isn't a recognizable bare phone → returned unchanged so
+      the bridge can surface a meaningful error rather than us mangling it.
+
+    Returns ``""`` for an empty/whitespace input.
+    """
+    if not value:
+        return ""
+
+    normalized = str(value).strip()
+    # Drop a device suffix before the domain: ``user:device@domain`` is a
+    # legacy Baileys shape whose ``:device`` part is not addressable — collapse
+    # it to ``user@domain``. (Mirrors normalize_whatsapp_identifier, which
+    # splits the bare id on ``:`` for the same reason.)
+    if ":" in normalized and "@" in normalized:
+        prefix, _, domain = normalized.partition("@")
+        normalized = f"{prefix.split(':', 1)[0]}@{domain}"
+
+    # Already a fully-qualified JID — leave it alone.
+    if "@" in normalized:
+        return normalized
+
+    if _BARE_PHONE_RE.fullmatch(normalized):
+        digits = re.sub(r"\D+", "", normalized)
+        if digits:
+            return f"{digits}@s.whatsapp.net"
+
+    return normalized
+
+
+def expand_whatsapp_aliases(identifier: str) -> Set[str]:
     """Resolve WhatsApp phone/LID aliases via bridge session mapping files.
 
     Returns the set of all identifiers transitively reachable through the
-    bridge's ``$PROSTOR_HOME/whatsapp/session/lid-mapping-*.json`` files,
+    bridge's ``$HERMES_HOME/whatsapp/session/lid-mapping-*.json`` files,
     starting from ``identifier``. The result always includes the
     normalized input itself, so callers can safely ``in`` check against
     the return value without a separate fallback branch.
@@ -81,8 +133,8 @@ def expand_whatsapp_aliases(identifier: str) -> set[str]:
     if not normalized:
         return set()
 
-    session_dir = get_prostor_home() / "whatsapp" / "session"
-    resolved: set[str] = set()
+    session_dir = get_hermes_home() / "whatsapp" / "session"
+    resolved: Set[str] = set()
     queue = [normalized]
 
     while queue:
@@ -132,11 +184,11 @@ def canonical_whatsapp_identifier(identifier: str) -> str:
     (numeric-preferred) alias as the canonical identity.
     :func:`gateway.session.build_session_key` uses this for both WhatsApp
     DM chat_ids and WhatsApp group participant_ids, so callers get the
-    same session-key identity Prostor itself uses.
+    same session-key identity Hermes itself uses.
 
     Plugins that need per-sender behaviour (role-based routing,
     authorisation, per-contact policy) should use this so their
-    bookkeeping lines up with Prostor' session bookkeeping even when
+    bookkeeping lines up with Hermes' session bookkeeping even when
     the bridge reshuffles aliases.
 
     Returns an empty string if ``identifier`` normalizes to empty. If no

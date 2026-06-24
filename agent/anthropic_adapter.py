@@ -1,6 +1,6 @@
-"""Anthropic Messages API adapter for Prostor Agent.
+"""Anthropic Messages API adapter for Hermes Agent.
 
-Translates between Prostor's internal OpenAI-style message format and
+Translates between Hermes's internal OpenAI-style message format and
 Anthropic's Messages API. Follows the same pattern as the codex_responses
 adapter — all provider-specific logic is isolated here.
 
@@ -19,10 +19,10 @@ import secrets
 import stat
 import subprocess
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
-from prostor_core import get_prostor_home
+from hermes_constants import get_hermes_home
+from typing import Any, Dict, List, Optional, Tuple
 from utils import base_url_host_matches, normalize_proxy_env_vars
 
 # NOTE: `import anthropic` is deliberately NOT at module top — the SDK pulls
@@ -53,11 +53,10 @@ def _get_anthropic_sdk():
             _anthropic_sdk = None
     return _anthropic_sdk
 
-
 logger = logging.getLogger(__name__)
 
 THINKING_BUDGET = {"xhigh": 32000, "high": 16000, "medium": 8000, "low": 4000}
-# Prostor effort → Anthropic adaptive-thinking effort (output_config.effort).
+# Hermes effort → Anthropic adaptive-thinking effort (output_config.effort).
 # Anthropic exposes 5 levels on 4.7+: low, medium, high, xhigh, max.
 # Opus/Sonnet 4.6 only expose 4 levels: low, medium, high, max — no xhigh.
 # We preserve xhigh as xhigh on 4.7+ (the recommended default for coding/
@@ -183,7 +182,7 @@ def _get_anthropic_max_output(model: str) -> int:
     return best_val
 
 
-def _resolve_positive_anthropic_max_tokens(value) -> int | None:
+def _resolve_positive_anthropic_max_tokens(value) -> Optional[int]:
     """Return ``value`` floored to a positive int, or ``None`` if it is not a
     finite positive number. Ported from openclaw/openclaw#66664.
 
@@ -212,7 +211,7 @@ def _resolve_positive_anthropic_max_tokens(value) -> int | None:
 def _resolve_anthropic_messages_max_tokens(
     requested,
     model: str,
-    context_length: int | None = None,
+    context_length: Optional[int] = None,
 ) -> int:
     """Resolve the ``max_tokens`` budget for an Anthropic Messages call.
 
@@ -344,7 +343,7 @@ _OAUTH_ONLY_BETAS = [
 # The version must stay reasonably current — Anthropic rejects OAuth requests
 # when the spoofed user-agent version is too far behind the actual release.
 _CLAUDE_CODE_VERSION_FALLBACK = "2.1.74"
-_claude_code_version_cache: str | None = None
+_claude_code_version_cache: Optional[str] = None
 
 
 def _detect_claude_code_version() -> str:
@@ -490,7 +489,7 @@ def _is_kimi_family_endpoint(base_url: str | None, model: str | None = None) -> 
 
     Used to decide whether to drop Anthropic's ``thinking`` kwarg and to
     preserve unsigned reasoning_content-derived thinking blocks on replay.
-    See prostor-agent#13848, #17057.
+    See hermes-agent#13848, #17057.
     """
     if _is_kimi_coding_endpoint(base_url):
         return True
@@ -519,7 +518,7 @@ def _is_deepseek_anthropic_endpoint(base_url: str | None) -> bool:
     policy used for Kimi's ``/coding`` endpoint.  The match is pinned to
     the ``/anthropic`` path so the OpenAI-compatible ``api.deepseek.com``
     base URL (which never reaches this adapter) is not misclassified.
-    See prostor-agent#16748.
+    See hermes-agent#16748.
     """
     if not base_url_host_matches(base_url or "", "api.deepseek.com"):
         return False
@@ -658,7 +657,6 @@ def _build_anthropic_client_with_bearer_hook(
     normalize_proxy_env_vars()
 
     from httpx import Timeout
-
     from agent.azure_identity_adapter import build_bearer_http_client
 
     _read_timeout = timeout if (isinstance(timeout, (int, float)) and timeout > 0) else 900.0
@@ -782,7 +780,7 @@ def build_anthropic_client(
         kwargs["api_key"] = api_key
         kwargs["default_headers"] = {
             "User-Agent": "claude-code/0.1.0",
-            **({"anthropic-beta": ",".join(common_betas)} if common_betas else {})
+            **( {"anthropic-beta": ",".join(common_betas)} if common_betas else {} )
         }
     elif _requires_bearer_auth(normalized_base_url):
         # Some Anthropic-compatible providers (e.g. MiniMax) expect the API key in
@@ -858,7 +856,7 @@ def build_anthropic_bedrock_client(region: str):
     )
 
 
-def _read_claude_code_credentials_from_keychain() -> dict[str, Any] | None:
+def _read_claude_code_credentials_from_keychain() -> Optional[Dict[str, Any]]:
     """Read Claude Code OAuth credentials from the macOS Keychain.
 
     Claude Code >=2.1.114 stores credentials in the macOS Keychain under the
@@ -916,7 +914,7 @@ def _read_claude_code_credentials_from_keychain() -> dict[str, Any] | None:
     return None
 
 
-def read_claude_code_credentials() -> dict[str, Any] | None:
+def read_claude_code_credentials() -> Optional[Dict[str, Any]]:
     """Read refreshable Claude Code OAuth credentials.
 
     Checks two sources in order:
@@ -950,13 +948,13 @@ def read_claude_code_credentials() -> dict[str, Any] | None:
                         "expiresAt": oauth_data.get("expiresAt", 0),
                         "source": "claude_code_credentials_file",
                     }
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError, IOError) as e:
             logger.debug("Failed to read ~/.claude/.credentials.json: %s", e)
 
     return None
 
 
-def is_claude_code_token_valid(creds: dict[str, Any]) -> bool:
+def is_claude_code_token_valid(creds: Dict[str, Any]) -> bool:
     """Check if Claude Code credentials have a non-expired access token."""
     import time
 
@@ -971,7 +969,7 @@ def is_claude_code_token_valid(creds: dict[str, Any]) -> bool:
     return now_ms < (expires_at - 60_000)
 
 
-def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) -> dict[str, Any]:
+def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) -> Dict[str, Any]:
     """Refresh an Anthropic OAuth token without mutating local credential files."""
     import time
     import urllib.parse
@@ -1035,7 +1033,7 @@ def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) 
     raise ValueError("Anthropic token refresh failed")
 
 
-def _refresh_oauth_token(creds: dict[str, Any]) -> str | None:
+def _refresh_oauth_token(creds: Dict[str, Any]) -> Optional[str]:
     """Attempt to refresh an expired Claude Code OAuth token."""
     refresh_token = creds.get("refreshToken", "")
     if not refresh_token:
@@ -1061,7 +1059,7 @@ def _write_claude_code_credentials(
     refresh_token: str,
     expires_at_ms: int,
     *,
-    scopes: list | None = None,
+    scopes: Optional[list] = None,
 ) -> None:
     """Write refreshed credentials back to ~/.claude/.credentials.json.
 
@@ -1077,7 +1075,7 @@ def _write_claude_code_credentials(
         if cred_path.exists():
             existing = json.loads(cred_path.read_text(encoding="utf-8"))
 
-        oauth_data: dict[str, Any] = {
+        oauth_data: Dict[str, Any] = {
             "accessToken": access_token,
             "refreshToken": refresh_token,
             "expiresAt": expires_at_ms,
@@ -1120,11 +1118,11 @@ def _write_claude_code_credentials(
             except OSError:
                 pass
             raise
-    except OSError as e:
+    except (OSError, IOError) as e:
         logger.debug("Failed to write refreshed credentials: %s", e)
 
 
-def _resolve_claude_code_token_from_credentials(creds: dict[str, Any] | None = None) -> str | None:
+def _resolve_claude_code_token_from_credentials(creds: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """Resolve a token from Claude Code credential files, refreshing if needed."""
     creds = creds or read_claude_code_credentials()
     if creds and is_claude_code_token_valid(creds):
@@ -1139,10 +1137,10 @@ def _resolve_claude_code_token_from_credentials(creds: dict[str, Any] | None = N
     return None
 
 
-def _prefer_refreshable_claude_code_token(env_token: str, creds: dict[str, Any] | None) -> str | None:
+def _prefer_refreshable_claude_code_token(env_token: str, creds: Optional[Dict[str, Any]]) -> Optional[str]:
     """Prefer Claude Code creds when a persisted env OAuth token would shadow refresh.
 
-    Prostor historically persisted setup tokens into ANTHROPIC_TOKEN. That makes
+    Hermes historically persisted setup tokens into ANTHROPIC_TOKEN. That makes
     later refresh impossible because the static env token wins before we ever
     inspect Claude Code's refreshable credential file. If we have a refreshable
     Claude Code credential record, prefer it over the static env OAuth token.
@@ -1161,21 +1159,62 @@ def _prefer_refreshable_claude_code_token(env_token: str, creds: dict[str, Any] 
     return None
 
 
-def resolve_anthropic_token() -> str | None:
+def _resolve_anthropic_pool_token() -> Optional[str]:
+    """Return the first available Anthropic OAuth token from credential_pool.
+
+    Read-only: enumerates with ``clear_expired=False, refresh=False`` so a bare
+    token *resolve* (which runs from diagnostic/read-only call sites such as
+    ``account_usage`` and ``hermes models``) never mutates ``~/.hermes/auth.json``
+    or makes a network refresh call. Refresh-on-expiry is owned by the API call
+    path's pool recovery, not the resolver.
+    """
+    try:
+        from agent.credential_pool import AUTH_TYPE_OAUTH, load_pool
+    except Exception:
+        return None
+
+    try:
+        pool = load_pool("anthropic")
+        # Enumerate read-only (clear_expired=False, refresh=False): never persist
+        # to auth.json or trigger a network refresh from a bare resolve. select()
+        # is deliberately NOT used — it runs clear_expired=True, refresh=True,
+        # which would violate this read-only contract.
+        entries = pool._available_entries(clear_expired=False, refresh=False)
+    except Exception:
+        logger.debug("Failed to read Anthropic credential_pool", exc_info=True)
+        return None
+
+    for entry in entries:
+        if getattr(entry, "auth_type", None) != AUTH_TYPE_OAUTH:
+            continue
+        # access_token is a declared field but a persisted entry can carry an
+        # explicit null (or a partially-written OAuth entry), so coerce before
+        # strip — a bare None.strip() here would escape the try/excepts above
+        # and crash the whole resolver, taking down the source #5 fallback too.
+        # Matches the aux-client analog (auxiliary_client.py: str(key or "")).
+        token = (getattr(entry, "access_token", None) or "").strip()
+        if token:
+            return token
+
+    return None
+
+
+def resolve_anthropic_token() -> Optional[str]:
     """Resolve an Anthropic token from all available sources.
 
     Priority:
-      1. ANTHROPIC_TOKEN env var (OAuth/setup token saved by Prostor)
+      1. ANTHROPIC_TOKEN env var (OAuth/setup token saved by Hermes)
       2. CLAUDE_CODE_OAUTH_TOKEN env var
       3. Claude Code credentials (~/.claude.json or ~/.claude/.credentials.json)
          — with automatic refresh if expired and a refresh token is available
-      4. ANTHROPIC_API_KEY env var (regular API key, or legacy fallback)
+      4. Anthropic credential_pool OAuth entry (~/.hermes/auth.json)
+      5. ANTHROPIC_API_KEY env var (regular API key, or legacy fallback)
 
     Returns the token string or None.
     """
     creds = read_claude_code_credentials()
 
-    # 1. Prostor-managed OAuth/setup token env var
+    # 1. Hermes-managed OAuth/setup token env var
     token = os.getenv("ANTHROPIC_TOKEN", "").strip()
     if token:
         preferred = _prefer_refreshable_claude_code_token(token, creds)
@@ -1196,8 +1235,13 @@ def resolve_anthropic_token() -> str | None:
     if resolved_claude_token:
         return resolved_claude_token
 
-    # 4. Regular API key, or a legacy OAuth token saved in ANTHROPIC_API_KEY.
-    # This remains as a compatibility fallback for pre-migration Prostor configs.
+    # 4. Hermes credential_pool OAuth entry.
+    resolved_pool_token = _resolve_anthropic_pool_token()
+    if resolved_pool_token:
+        return resolved_pool_token
+
+    # 5. Regular API key, or a legacy OAuth token saved in ANTHROPIC_API_KEY.
+    # This remains as a compatibility fallback for pre-migration Hermes configs.
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     if api_key:
         return api_key
@@ -1205,7 +1249,7 @@ def resolve_anthropic_token() -> str | None:
     return None
 
 
-def run_oauth_setup_token() -> str | None:
+def run_oauth_setup_token() -> Optional[str]:
     """Run 'claude setup-token' interactively and return the resulting token.
 
     Checks multiple sources after the subprocess completes:
@@ -1248,15 +1292,23 @@ def run_oauth_setup_token() -> str | None:
     return None
 
 
-# ── Prostor-native PKCE OAuth flow ────────────────────────────────────────
+# ── Hermes-native PKCE OAuth flow ────────────────────────────────────────
 # Mirrors the flow used by Claude Code, pi-ai, and OpenCode.
-# Stores credentials in ~/.prostor/.anthropic_oauth.json (our own file).
+# Stores credentials in ~/.hermes/.anthropic_oauth.json (our own file).
 
 _OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-_OAUTH_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
+# Anthropic migrated the OAuth token endpoint to platform.claude.com;
+# console.anthropic.com now 404s. Callers should iterate _OAUTH_TOKEN_URLS
+# (new host first, console fallback). _OAUTH_TOKEN_URL is kept as the primary
+# for backward compatibility with existing imports and now points at the live host.
+_OAUTH_TOKEN_URLS = [
+    "https://platform.claude.com/v1/oauth/token",
+    "https://console.anthropic.com/v1/oauth/token",
+]
+_OAUTH_TOKEN_URL = _OAUTH_TOKEN_URLS[0]
 _OAUTH_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback"
 _OAUTH_SCOPES = "org:create_api_key user:profile user:inference"
-_PROSTOR_OAUTH_FILE = get_prostor_home() / ".anthropic_oauth.json"
+_HERMES_OAUTH_FILE = get_hermes_home() / ".anthropic_oauth.json"
 
 
 def _generate_pkce() -> tuple:
@@ -1272,8 +1324,8 @@ def _generate_pkce() -> tuple:
     return verifier, challenge
 
 
-def run_prostor_oauth_login_pure() -> dict[str, Any] | None:
-    """Run Prostor-native OAuth PKCE flow and return credential state."""
+def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
+    """Run Hermes-native OAuth PKCE flow and return credential state."""
     import secrets
     import time
     import webbrowser
@@ -1296,7 +1348,7 @@ def run_prostor_oauth_login_pure() -> dict[str, Any] | None:
     auth_url = f"https://claude.ai/oauth/authorize?{urlencode(params)}"
 
     print()
-    print("Authorize Prostor with your Claude Pro/Max subscription.")
+    print("Authorize Hermes with your Claude Pro/Max subscription.")
     print()
     print("╭─ Claude Pro/Max Authorization ────────────────────╮")
     print("│                                                   │")
@@ -1307,7 +1359,7 @@ def run_prostor_oauth_login_pure() -> dict[str, Any] | None:
     print()
 
     try:
-        from prostor_cli.auth import _can_open_graphical_browser as _can_open_gui
+        from hermes_cli.auth import _can_open_graphical_browser as _can_open_gui
     except Exception:
         _can_open_gui = lambda: True  # noqa: E731 — degrade to prior behavior
 
@@ -1351,18 +1403,34 @@ def run_prostor_oauth_login_pure() -> dict[str, Any] | None:
             "code_verifier": verifier,
         }).encode()
 
-        req = urllib.request.Request(
-            _OAUTH_TOKEN_URL,
-            data=exchange_data,
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": f"claude-cli/{_get_claude_code_version()} (external, cli)",
-            },
-            method="POST",
-        )
+        # Anthropic migrated the OAuth token endpoint to platform.claude.com;
+        # console.anthropic.com now 404s. Try the new host first, then fall
+        # back to console for older deployments (mirrors the refresh path).
+        result = None
+        last_error = None
+        for endpoint in _OAUTH_TOKEN_URLS:
+            req = urllib.request.Request(
+                endpoint,
+                data=exchange_data,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": f"claude-cli/{_get_claude_code_version()} (external, cli)",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    result = json.loads(resp.read().decode())
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.debug("Anthropic token exchange failed at %s: %s", endpoint, exc)
+                continue
 
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            result = json.loads(resp.read().decode())
+        if result is None:
+            raise last_error if last_error is not None else ValueError(
+                "Anthropic token exchange failed"
+            )
     except Exception as e:
         print(f"Token exchange failed: {e}")
         return None
@@ -1383,15 +1451,15 @@ def run_prostor_oauth_login_pure() -> dict[str, Any] | None:
     }
 
 
-def read_prostor_oauth_credentials() -> dict[str, Any] | None:
-    """Read Prostor-managed OAuth credentials from ~/.prostor/.anthropic_oauth.json."""
-    if _PROSTOR_OAUTH_FILE.exists():
+def read_hermes_oauth_credentials() -> Optional[Dict[str, Any]]:
+    """Read Hermes-managed OAuth credentials from ~/.hermes/.anthropic_oauth.json."""
+    if _HERMES_OAUTH_FILE.exists():
         try:
-            data = json.loads(_PROSTOR_OAUTH_FILE.read_text(encoding="utf-8"))
+            data = json.loads(_HERMES_OAUTH_FILE.read_text(encoding="utf-8"))
             if data.get("accessToken"):
                 return data
-        except (json.JSONDecodeError, OSError) as e:
-            logger.debug("Failed to read Prostor OAuth credentials: %s", e)
+        except (json.JSONDecodeError, OSError, IOError) as e:
+            logger.debug("Failed to read Hermes OAuth credentials: %s", e)
     return None
 
 
@@ -1462,7 +1530,7 @@ def _sanitize_tool_id(tool_id: str) -> str:
     return sanitized or "tool_0"
 
 
-def _normalize_tool_input_schema(schema: Any) -> dict[str, Any]:
+def _normalize_tool_input_schema(schema: Any) -> Dict[str, Any]:
     """Normalize tool schemas before sending them to Anthropic.
 
     Anthropic's tool schema validator rejects nullable unions such as
@@ -1503,7 +1571,7 @@ def _normalize_tool_input_schema(schema: Any) -> dict[str, Any]:
     return normalized
 
 
-def convert_tools_to_anthropic(tools: list[dict]) -> list[dict]:
+def convert_tools_to_anthropic(tools: List[Dict]) -> List[Dict]:
     """Convert OpenAI tool definitions to Anthropic format."""
     if not tools:
         return []
@@ -1524,7 +1592,7 @@ def convert_tools_to_anthropic(tools: list[dict]) -> list[dict]:
             continue
         if name:
             seen_names.add(name)
-        anthropic_tool: dict[str, Any] = {
+        anthropic_tool: Dict[str, Any] = {
             "name": name,
             "description": fn.get("description", ""),
             "input_schema": _normalize_tool_input_schema(
@@ -1541,7 +1609,7 @@ def convert_tools_to_anthropic(tools: list[dict]) -> list[dict]:
     return result
 
 
-def _image_source_from_openai_url(url: str) -> dict[str, str]:
+def _image_source_from_openai_url(url: str) -> Dict[str, str]:
     """Convert an OpenAI-style image URL/data URL into Anthropic image source."""
     url = str(url or "").strip()
     if not url:
@@ -1563,7 +1631,7 @@ def _image_source_from_openai_url(url: str) -> dict[str, str]:
     return {"type": "url", "url": url}
 
 
-def _convert_content_part_to_anthropic(part: Any) -> dict[str, Any] | None:
+def _convert_content_part_to_anthropic(part: Any) -> Optional[Dict[str, Any]]:
     """Convert a single OpenAI-style content part to Anthropic format."""
     if part is None:
         return None
@@ -1575,7 +1643,7 @@ def _convert_content_part_to_anthropic(part: Any) -> dict[str, Any] | None:
     ptype = part.get("type")
 
     if ptype == "input_text":
-        block: dict[str, Any] = {"type": "text", "text": part.get("text", "")}
+        block: Dict[str, Any] = {"type": "text", "text": part.get("text", "")}
     elif ptype == "text":
         # A stored Anthropic text block. Rebuild from whitelisted fields only —
         # SDK response text blocks carry output-only siblings (parsed_output,
@@ -1597,7 +1665,7 @@ def _convert_content_part_to_anthropic(part: Any) -> dict[str, Any] | None:
     return block
 
 
-def _to_plain_data(value: Any, *, _depth: int = 0, _path: set | None = None) -> Any:
+def _to_plain_data(value: Any, *, _depth: int = 0, _path: Optional[set] = None) -> Any:
     """Recursively convert SDK objects to plain Python data structures.
 
     Guards against circular references (``_path`` tracks ``id()`` of objects
@@ -1643,13 +1711,13 @@ def _to_plain_data(value: Any, *, _depth: int = 0, _path: set | None = None) -> 
     return value
 
 
-def _extract_preserved_thinking_blocks(message: dict[str, Any]) -> list[dict[str, Any]]:
+def _extract_preserved_thinking_blocks(message: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Return Anthropic thinking blocks previously preserved on the message."""
     raw_details = message.get("reasoning_details")
     if not isinstance(raw_details, list):
         return []
 
-    preserved: list[dict[str, Any]] = []
+    preserved: List[Dict[str, Any]] = []
     for detail in raw_details:
         if not isinstance(detail, dict):
             continue
@@ -1673,7 +1741,7 @@ def _convert_content_to_anthropic(content: Any) -> Any:
     return converted
 
 
-def _content_parts_to_anthropic_blocks(parts: Any) -> list[dict[str, Any]]:
+def _content_parts_to_anthropic_blocks(parts: Any) -> List[Dict[str, Any]]:
     """Convert OpenAI-style tool-message content parts → Anthropic tool_result inner blocks.
 
     Used for multimodal tool results (e.g. computer_use screenshots). Each
@@ -1682,7 +1750,7 @@ def _content_parts_to_anthropic_blocks(parts: Any) -> list[dict[str, Any]]:
     """
     if not isinstance(parts, list):
         return []
-    out: list[dict[str, Any]] = []
+    out: List[Dict[str, Any]] = []
     for part in parts:
         block = _convert_content_part_to_anthropic(part)
         if not block:
@@ -1699,7 +1767,7 @@ def _content_parts_to_anthropic_blocks(parts: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _sanitize_replay_block(b: dict[str, Any]) -> dict[str, Any] | None:
+def _sanitize_replay_block(b: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Strip output-only fields from a stored Anthropic content block so it is
     valid as REQUEST input on replay.
 
@@ -1716,7 +1784,7 @@ def _sanitize_replay_block(b: dict[str, Any]) -> dict[str, Any] | None:
         return None
     btype = b.get("type")
     if btype == "text":
-        out: dict[str, Any] = {"type": "text", "text": b.get("text", "")}
+        out: Dict[str, Any] = {"type": "text", "text": b.get("text", "")}
         # citations is input-valid ONLY when it's a non-empty list; the SDK
         # emits citations=None on responses, which the input schema rejects.
         cits = b.get("citations")
@@ -1751,7 +1819,7 @@ def _sanitize_replay_block(b: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _convert_assistant_message(m: dict[str, Any]) -> dict[str, Any]:
+def _convert_assistant_message(m: Dict[str, Any]) -> Dict[str, Any]:
     """Convert an assistant message to Anthropic content blocks.
 
     Handles thinking blocks, regular content, tool calls, and
@@ -1780,7 +1848,7 @@ def _convert_assistant_message(m: dict[str, Any]) -> dict[str, Any]:
         # in history. Keying by sanitized tool id preserves interleave order
         # (the reason this channel exists) while swapping in the redacted
         # input. Adapted from #36071 (replay-time tool-input re-sourcing).
-        redacted_input_by_id: dict[str, Any] = {}
+        redacted_input_by_id: Dict[str, Any] = {}
         for tc in m.get("tool_calls", []) or []:
             if not isinstance(tc, dict):
                 continue
@@ -1791,7 +1859,7 @@ def _convert_assistant_message(m: dict[str, Any]) -> dict[str, Any]:
             except (json.JSONDecodeError, ValueError):
                 parsed_args = {}
             redacted_input_by_id[_sanitize_tool_id(tc.get("id", ""))] = parsed_args
-        replayed: list[dict[str, Any]] = []
+        replayed: List[Dict[str, Any]] = []
         for b in ordered_blocks:
             clean = _sanitize_replay_block(b)
             if clean is None:
@@ -1833,7 +1901,7 @@ def _convert_assistant_message(m: dict[str, Any]) -> dict[str, Any]:
     # Kimi's /coding endpoint (Anthropic protocol) requires assistant
     # tool-call messages to carry reasoning_content when thinking is
     # enabled server-side.  Preserve it as a thinking block so Kimi
-    # can validate the message history.  See prostor-agent#13848.
+    # can validate the message history.  See hermes-agent#13848.
     #
     # Accept empty string "" — _copy_reasoning_content_for_api()
     # injects "" as a tier-3 fallback for Kimi tool-call messages
@@ -1863,7 +1931,7 @@ def _convert_assistant_message(m: dict[str, Any]) -> dict[str, Any]:
 
 
 def _convert_tool_message_to_result(
-    result: list[dict[str, Any]], m: dict[str, Any]
+    result: List[Dict[str, Any]], m: Dict[str, Any]
 ) -> None:
     """Convert a tool message to an Anthropic tool_result, merging consecutive
     results into one user message.
@@ -1872,7 +1940,7 @@ def _convert_tool_message_to_result(
     the trailing user message's tool_result list.
     """
     content = m.get("content", "")
-    multimodal_blocks: list[dict[str, Any]] | None = None
+    multimodal_blocks: Optional[List[Dict[str, Any]]] = None
     if isinstance(content, dict) and content.get("_multimodal"):
         multimodal_blocks = _content_parts_to_anthropic_blocks(
             content.get("content") or []
@@ -1924,7 +1992,7 @@ def _convert_tool_message_to_result(
         result.append({"role": "user", "content": [tool_result]})
 
 
-def _convert_user_message(content: Any) -> dict[str, Any]:
+def _convert_user_message(content: Any) -> Dict[str, Any]:
     """Validate and convert a user message to anthropic format."""
     if isinstance(content, list):
         converted_blocks = _convert_content_to_anthropic(content)
@@ -1941,7 +2009,7 @@ def _convert_user_message(content: Any) -> dict[str, Any]:
         return {"role": "user", "content": content}
 
 
-def _strip_orphaned_tool_blocks(result: list[dict[str, Any]]) -> None:
+def _strip_orphaned_tool_blocks(result: List[Dict[str, Any]]) -> None:
     """Strip tool_use blocks with no matching tool_result, and vice versa.
 
     Context compression or session truncation can remove either side of a
@@ -1969,7 +2037,7 @@ def _strip_orphaned_tool_blocks(result: list[dict[str, Any]]) -> None:
             # Anthropic rejects the replayed turn with HTTP 400 "thinking blocks in
             # the latest assistant message cannot be modified".  Flag the turn so
             # _manage_thinking_signatures can demote the dead signature instead of
-            # replaying it verbatim.  See prostor-agent: extended-thinking + parallel
+            # replaying it verbatim.  See hermes-agent: extended-thinking + parallel
             # tool batch interrupted mid-flight → non-retryable 400 crash-loop.
             if len(kept) != len(m["content"]) and any(
                 isinstance(b, dict) and b.get("type") in {"thinking", "redacted_thinking"}
@@ -1998,7 +2066,7 @@ def _strip_orphaned_tool_blocks(result: list[dict[str, Any]]) -> None:
                 m["content"] = [{"type": "text", "text": "(tool result removed)"}]
 
 
-def _merge_consecutive_roles(result: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _merge_consecutive_roles(result: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Merge consecutive same-role messages to enforce Anthropic alternation.
 
     Returns a new list (caller must rebind ``result``).
@@ -2051,7 +2119,7 @@ def _merge_consecutive_roles(result: list[dict[str, Any]]) -> list[dict[str, Any
 
 
 def _manage_thinking_signatures(
-    result: list[dict[str, Any]], base_url: str | None, model: str | None
+    result: List[Dict[str, Any]], base_url: str | None, model: str | None
 ) -> None:
     """Strip or preserve thinking blocks based on endpoint type.
 
@@ -2065,8 +2133,8 @@ def _manage_thinking_signatures(
     and will reject them outright.  Kimi's /coding and DeepSeek's /anthropic
     endpoints speak the Anthropic protocol upstream but require unsigned
     thinking blocks (synthesised from ``reasoning_content``) to round-trip on
-    replayed assistant tool-call messages.  See prostor-agent#13848 (Kimi) and
-    prostor-agent#16748 (DeepSeek).
+    replayed assistant tool-call messages.  See hermes-agent#13848 (Kimi) and
+    hermes-agent#16748 (DeepSeek).
 
     Mutates ``result`` in place.
     """
@@ -2156,7 +2224,7 @@ def _manage_thinking_signatures(
         m.pop("_thinking_signature_invalidated", None)
 
 
-def _evict_old_screenshots(result: list[dict[str, Any]]) -> None:
+def _evict_old_screenshots(result: List[Dict[str, Any]]) -> None:
     """Keep only the most recent ``_MAX_KEEP_IMAGES`` computer-use screenshots.
 
     Base64 images cost ~1,465 tokens each and accumulate across tool calls.
@@ -2192,10 +2260,10 @@ def _evict_old_screenshots(result: list[dict[str, Any]]) -> None:
 
 
 def convert_messages_to_anthropic(
-    messages: list[dict],
+    messages: List[Dict],
     base_url: str | None = None,
     model: str | None = None,
-) -> tuple[Any | None, list[dict]]:
+) -> Tuple[Optional[Any], List[Dict]]:
     """Convert OpenAI-format messages to Anthropic format.
 
     Returns (system_prompt, anthropic_messages).
@@ -2214,7 +2282,7 @@ def convert_messages_to_anthropic(
     if empty.
     """
     system = None
-    result: list[dict[str, Any]] = []
+    result: List[Dict[str, Any]] = []
 
     for m in messages:
         role = m.get("role", "user")
@@ -2257,18 +2325,18 @@ def convert_messages_to_anthropic(
 
 def build_anthropic_kwargs(
     model: str,
-    messages: list[dict],
-    tools: list[dict] | None,
-    max_tokens: int | None,
-    reasoning_config: dict[str, Any] | None,
-    tool_choice: str | None = None,
+    messages: List[Dict],
+    tools: Optional[List[Dict]],
+    max_tokens: Optional[int],
+    reasoning_config: Optional[Dict[str, Any]],
+    tool_choice: Optional[str] = None,
     is_oauth: bool = False,
     preserve_dots: bool = False,
-    context_length: int | None = None,
+    context_length: Optional[int] = None,
     base_url: str | None = None,
     fast_mode: bool = False,
     drop_context_1m_beta: bool = False,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Build kwargs for anthropic.messages.create().
 
     Naming note — two distinct concepts, easily confused:
@@ -2345,9 +2413,9 @@ def build_anthropic_kwargs(
         for block in system:
             if isinstance(block, dict) and block.get("type") == "text":
                 text = block.get("text", "")
-                text = text.replace("Prostor Agent", "Claude Code")
-                text = text.replace("Prostor agent", "Claude Code")
-                text = text.replace("prostor-agent", "claude-code")
+                text = text.replace("Hermes Agent", "Claude Code")
+                text = text.replace("Hermes agent", "Claude Code")
+                text = text.replace("hermes-agent", "claude-code")
                 text = text.replace("Nous Research", "Anthropic")
                 block["text"] = text
 
@@ -2360,7 +2428,7 @@ def build_anthropic_kwargs(
         #    from plan-billing to the extra-usage lane; ``mcp__foo`` is accepted).
         #
         #    Two cases, both must land on the double-underscore ``mcp__`` form:
-        #      a) bare Prostor-native tools (``read_file``)  -> ``mcp__read_file``
+        #      a) bare Hermes-native tools (``read_file``)  -> ``mcp__read_file``
         #      b) native MCP server tools registered under their full
         #         single-underscore ``mcp_<server>_<tool>`` name
         #         (``mcp_linear_get_issue``) -> ``mcp__linear_get_issue``
@@ -2394,7 +2462,7 @@ def build_anthropic_kwargs(
                         elif block.get("type") == "tool_result" and "tool_use_id" in block:
                             pass  # tool_result uses ID, not name
 
-    kwargs: dict[str, Any] = {
+    kwargs: Dict[str, Any] = {
         "model": model,
         "messages": anthropic_messages,
         "max_tokens": effective_max_tokens,
@@ -2437,7 +2505,7 @@ def build_anthropic_kwargs(
     # extra_body in the ChatCompletionsTransport — see #13503.)
     #
     # On 4.7+ the `thinking.display` field defaults to "omitted", which
-    # silently hides reasoning text that Prostor surfaces in its CLI. We
+    # silently hides reasoning text that Hermes surfaces in its CLI. We
     # request "summarized" so the reasoning blocks stay populated — matching
     # 4.6 behavior and preserving the activity-feed UX during long tool runs.
     _is_kimi_coding = _is_kimi_family_endpoint(base_url, model)

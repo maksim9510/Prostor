@@ -1,9 +1,9 @@
 """
-Multi-provider authentication system for Prostor Agent.
+Multi-provider authentication system for Hermes Agent.
 
 Supports OAuth device code flows (Nous Portal, future: OpenAI Codex) and
 traditional API key providers (OpenRouter, custom endpoints). Auth state
-is persisted in ~/.prostor/auth.json with cross-process file locking.
+is persisted in ~/.hermes/auth.json with cross-process file locking.
 
 Architecture:
 - ProviderConfig registry defines known OAuth providers
@@ -18,35 +18,34 @@ Nous authentication paths:
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import logging
 import os
-import shlex
 import shutil
+import shlex
 import ssl
 import stat
-import subprocess
 import sys
+import base64
+import hashlib
+import subprocess
 import threading
 import time
 import uuid
 import webbrowser
-from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Tuple
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
+from hermes_cli.config import get_hermes_home, get_config_path, read_raw_config
+from hermes_constants import OPENROUTER_BASE_URL, secure_parent_dir
 from agent.credential_persistence import sanitize_borrowed_credential_payload
-from prostor_cli.config import get_config_path, get_prostor_home, read_raw_config
-from prostor_constants import OPENROUTER_BASE_URL, secure_parent_dir
 from utils import atomic_replace, atomic_yaml_write, env_float, is_truthy_value
 
 logger = logging.getLogger(__name__)
@@ -70,7 +69,7 @@ AUTH_LOCK_TIMEOUT_SECONDS = 15.0
 # Nous Portal defaults
 DEFAULT_NOUS_PORTAL_URL = "https://portal.nousresearch.com"
 DEFAULT_NOUS_INFERENCE_URL = "https://inference-api.nousresearch.com/v1"
-DEFAULT_NOUS_CLIENT_ID = "prostor-cli"
+DEFAULT_NOUS_CLIENT_ID = "hermes-cli"
 NOUS_INFERENCE_INVOKE_SCOPE = "inference:invoke"
 NOUS_BILLING_MANAGE_SCOPE = "billing:manage"
 DEFAULT_NOUS_SCOPE = NOUS_INFERENCE_INVOKE_SCOPE
@@ -117,12 +116,12 @@ QWEN_ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 120
 DEFAULT_SPOTIFY_ACCOUNTS_BASE_URL = "https://accounts.spotify.com"
 DEFAULT_SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
 DEFAULT_SPOTIFY_REDIRECT_URI = "http://127.0.0.1:43827/spotify/callback"
-SPOTIFY_DOCS_URL = "https://github.com/maksim9510/Prostor/docs/user-guide/features/spotify"
+SPOTIFY_DOCS_URL = "https://hermes-agent.nousresearch.com/docs/user-guide/features/spotify"
 SPOTIFY_DASHBOARD_URL = "https://developer.spotify.com/dashboard"
 SPOTIFY_ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 120
 
-XAI_OAUTH_DOCS_URL = "https://github.com/maksim9510/Prostor/docs/guides/xai-grok-oauth"
-OAUTH_OVER_SSH_DOCS_URL = "https://github.com/maksim9510/Prostor/docs/guides/oauth-over-ssh"
+XAI_OAUTH_DOCS_URL = "https://hermes-agent.nousresearch.com/docs/guides/xai-grok-oauth"
+OAUTH_OVER_SSH_DOCS_URL = "https://hermes-agent.nousresearch.com/docs/guides/oauth-over-ssh"
 DEFAULT_SPOTIFY_SCOPE = " ".join((
     "user-modify-playback-state",
     "user-read-playback-state",
@@ -135,13 +134,9 @@ DEFAULT_SPOTIFY_SCOPE = " ".join((
     "user-library-read",
     "user-library-modify",
 ))
-SERVICE_PROVIDER_NAMES: dict[str, str] = {
+SERVICE_PROVIDER_NAMES: Dict[str, str] = {
     "spotify": "Spotify",
 }
-
-# Google Gemini OAuth (google-gemini-cli provider, Cloud Code Assist backend)
-DEFAULT_GEMINI_CLOUDCODE_BASE_URL = "cloudcode-pa://google"
-GEMINI_OAUTH_ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 60  # refresh 60s before expiry
 
 # LM Studio's default no-auth mode still requires *some* non-empty bearer for
 # the API-key code paths (auxiliary_client, runtime resolver) to treat the
@@ -164,14 +159,14 @@ class ProviderConfig:
     inference_base_url: str = ""
     client_id: str = ""
     scope: str = ""
-    extra: dict[str, Any] = field(default_factory=dict)
+    extra: Dict[str, Any] = field(default_factory=dict)
     # For API-key providers: env vars to check (in priority order)
     api_key_env_vars: tuple = ()
     # Optional env var for base URL override
     base_url_env_var: str = ""
 
 
-PROVIDER_REGISTRY: dict[str, ProviderConfig] = {
+PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
     "nous": ProviderConfig(
         id="nous",
         name="Nous Portal",
@@ -206,12 +201,6 @@ PROVIDER_REGISTRY: dict[str, ProviderConfig] = {
         name="Qwen OAuth",
         auth_type="oauth_external",
         inference_base_url=DEFAULT_QWEN_BASE_URL,
-    ),
-    "google-gemini-cli": ProviderConfig(
-        id="google-gemini-cli",
-        name="Google Gemini (OAuth)",
-        auth_type="oauth_external",
-        inference_base_url=DEFAULT_GEMINI_CLOUDCODE_BASE_URL,
     ),
     "lmstudio": ProviderConfig(
         id="lmstudio",
@@ -496,7 +485,7 @@ def get_anthropic_key() -> str:
 
         ANTHROPIC_API_KEY -> ANTHROPIC_TOKEN -> CLAUDE_CODE_OAUTH_TOKEN
     """
-    from prostor_cli.config import get_env_value
+    from hermes_cli.config import get_env_value
 
     for var in PROVIDER_REGISTRY["anthropic"].api_key_env_vars:
         value = get_env_value(var) or os.getenv(var, "")
@@ -538,6 +527,7 @@ def _resolve_kimi_base_url(api_key: str, default_url: str, env_override: str) ->
     return default_url
 
 
+
 _PLACEHOLDER_SECRET_VALUES = {
     "*",
     "**",
@@ -573,7 +563,7 @@ def _resolve_api_key_provider_secret(
     if provider_id == "copilot":
         # Use the dedicated copilot auth module for proper token validation
         try:
-            from prostor_cli.copilot_auth import get_copilot_api_token, resolve_copilot_token
+            from hermes_cli.copilot_auth import resolve_copilot_token, get_copilot_api_token
             token, source = resolve_copilot_token()
             if token:
                 return get_copilot_api_token(token), source
@@ -583,9 +573,9 @@ def _resolve_api_key_provider_secret(
             pass
         return "", ""
 
-    from prostor_cli.config import get_env_value
+    from hermes_cli.config import get_env_value
     for env_var in pconfig.api_key_env_vars:
-        # Check both os.environ and ~/.prostor/.env file
+        # Check both os.environ and ~/.hermes/.env file
         val = (get_env_value(env_var) or "").strip()
         if has_usable_secret(val):
             return val, env_var
@@ -620,14 +610,14 @@ def _resolve_api_key_provider_secret(
 
 ZAI_ENDPOINTS = [
     # (id, base_url, probe_models, label)
-    ("global", "https://api.z.ai/api/paas/v4", ["glm-5"], "Global"),
-    ("cn", "https://open.bigmodel.cn/api/paas/v4", ["glm-5"], "China"),
-    ("coding-global", "https://api.z.ai/api/coding/paas/v4", ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "Global (Coding Plan)"),
-    ("coding-cn", "https://open.bigmodel.cn/api/coding/paas/v4", ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "China (Coding Plan)"),
+    ("global",        "https://api.z.ai/api/paas/v4",        ["glm-5"],   "Global"),
+    ("cn",            "https://open.bigmodel.cn/api/paas/v4", ["glm-5"],   "China"),
+    ("coding-global", "https://api.z.ai/api/coding/paas/v4",  ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "Global (Coding Plan)"),
+    ("coding-cn",     "https://open.bigmodel.cn/api/coding/paas/v4", ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "China (Coding Plan)"),
 ]
 
 
-def detect_zai_endpoint(api_key: str, timeout: float = 8.0) -> dict[str, str] | None:
+def detect_zai_endpoint(api_key: str, timeout: float = 8.0) -> Optional[Dict[str, str]]:
     """Probe z.ai endpoints to find one that accepts this API key.
 
     Returns {"id": ..., "base_url": ..., "model": ..., "label": ...} for the
@@ -732,7 +722,7 @@ class AuthError(RuntimeError):
         message: str,
         *,
         provider: str = "",
-        code: str | None = None,
+        code: Optional[str] = None,
         relogin_required: bool = False,
     ) -> None:
         super().__init__(message)
@@ -747,7 +737,7 @@ def is_rate_limited_auth_error(error: Exception) -> bool:
 
     These failures are transient — re-authenticating cannot resolve them — so
     callers should surface a "retry later" notice and prefer a fallback chain
-    instead of prompting the operator to run ``prostor auth``.
+    instead of prompting the operator to run ``hermes auth``.
     """
     return (
         isinstance(error, AuthError)
@@ -756,7 +746,7 @@ def is_rate_limited_auth_error(error: Exception) -> bool:
     )
 
 
-def _parse_retry_after_seconds(headers: Any) -> int | None:
+def _parse_retry_after_seconds(headers: Any) -> Optional[int]:
     """Best-effort parse of a ``Retry-After`` header into whole seconds.
 
     Supports the delta-seconds form (e.g. ``"120"``). HTTP-date forms and
@@ -788,7 +778,7 @@ def format_auth_error(error: Exception) -> str:
         return str(error)
 
     if error.relogin_required:
-        return f"{error} Run `prostor model` to re-authenticate."
+        return f"{error} Run `hermes model` to re-authenticate."
 
     if error.code == "subscription_required":
         if error.provider == "nous":
@@ -812,7 +802,7 @@ def format_auth_error(error: Exception) -> str:
 
 def _format_nous_entitlement_auth_error(error: AuthError) -> str:
     try:
-        from prostor_cli.nous_account import (
+        from hermes_cli.nous_account import (
             format_nous_portal_entitlement_message,
             get_nous_portal_account_info,
         )
@@ -829,7 +819,7 @@ def _format_nous_entitlement_auth_error(error: AuthError) -> str:
     return f"{error} Check credits or billing in Nous Portal, then retry."
 
 
-def _token_fingerprint(token: Any) -> str | None:
+def _token_fingerprint(token: Any) -> Optional[str]:
     """Return a short hash fingerprint for telemetry without leaking token bytes."""
     if not isinstance(token, str):
         return None
@@ -840,14 +830,14 @@ def _token_fingerprint(token: Any) -> str | None:
 
 
 def _oauth_trace_enabled() -> bool:
-    raw = os.getenv("PROSTOR_OAUTH_TRACE", "").strip().lower()
+    raw = os.getenv("HERMES_OAUTH_TRACE", "").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 
-def _oauth_trace(event: str, *, sequence_id: str | None = None, **fields: Any) -> None:
+def _oauth_trace(event: str, *, sequence_id: Optional[str] = None, **fields: Any) -> None:
     if not _oauth_trace_enabled():
         return
-    payload: dict[str, Any] = {"event": event}
+    payload: Dict[str, Any] = {"event": event}
     if sequence_id:
         payload["sequence_id"] = sequence_id
     payload.update(fields)
@@ -855,18 +845,18 @@ def _oauth_trace(event: str, *, sequence_id: str | None = None, **fields: Any) -
 
 
 # =============================================================================
-# Auth Store — persistence layer for ~/.prostor/auth.json
+# Auth Store — persistence layer for ~/.hermes/auth.json
 # =============================================================================
 
 def _auth_file_path() -> Path:
-    path = get_prostor_home() / "auth.json"
-    # Seat belt: if pytest is running and PROSTOR_HOME resolves to the real
+    path = get_hermes_home() / "auth.json"
+    # Seat belt: if pytest is running and HERMES_HOME resolves to the real
     # user's auth store, refuse rather than silently corrupt it. This catches
-    # tests that forgot to monkeypatch PROSTOR_HOME, tests invoked without the
+    # tests that forgot to monkeypatch HERMES_HOME, tests invoked without the
     # hermetic conftest, or sandbox escapes via threads/subprocesses. In
     # production (no PYTEST_CURRENT_TEST) this is a single dict lookup.
     if os.environ.get("PYTEST_CURRENT_TEST"):
-        real_home_auth = (Path.home() / ".prostor" / "auth.json").resolve(strict=False)
+        real_home_auth = (Path.home() / ".hermes" / "auth.json").resolve(strict=False)
         try:
             resolved = path.resolve(strict=False)
         except Exception:
@@ -874,28 +864,28 @@ def _auth_file_path() -> Path:
         if resolved == real_home_auth:
             raise RuntimeError(
                 f"Refusing to touch real user auth store during test run: {path}. "
-                "Set PROSTOR_HOME to a tmp_path in your test fixture, or run "
+                "Set HERMES_HOME to a tmp_path in your test fixture, or run "
                 "via scripts/run_tests.sh for hermetic CI-parity env."
             )
     return path
 
 
-def _global_auth_file_path() -> Path | None:
+def _global_auth_file_path() -> Optional[Path]:
     """Return the global-root auth.json when the process is in profile mode.
 
     Returns ``None`` when the profile and global root resolve to the same
-    directory (classic mode, or custom PROSTOR_HOME that is not a profile).
+    directory (classic mode, or custom HERMES_HOME that is not a profile).
     Used by read-only fallback paths so providers authed at the root are
     visible to profile processes that haven't configured them locally.
 
     See issue #18594 follow-up (credential_pool shadowing).
     """
     try:
-        from prostor_constants import get_default_prostor_root
-        global_root = get_default_prostor_root()
+        from hermes_constants import get_default_hermes_root
+        global_root = get_default_hermes_root()
     except Exception:
         return None
-    profile_home = get_prostor_home()
+    profile_home = get_hermes_home()
     try:
         if profile_home.resolve(strict=False) == global_root.resolve(strict=False):
             return None
@@ -911,16 +901,16 @@ def _global_auth_file_path() -> Path | None:
     return global_root / "auth.json"
 
 
-def _load_global_auth_store() -> dict[str, Any]:
+def _load_global_auth_store() -> Dict[str, Any]:
     """Load the global-root auth store (read-only fallback).
 
     Returns an empty dict when no global fallback exists (classic mode,
     or the global auth.json is absent). Never raises on missing file.
 
     Seat belt: under pytest, refuses to read the real user's
-    ``~/.prostor/auth.json`` even when PROSTOR_HOME is set to a profile
+    ``~/.hermes/auth.json`` even when HERMES_HOME is set to a profile
     path. The hermetic conftest does not redirect ``HOME``, so
-    ``get_default_prostor_root()`` for a profile-shaped PROSTOR_HOME can
+    ``get_default_hermes_root()`` for a profile-shaped HERMES_HOME can
     still resolve to the real user's home on a dev machine. That would
     leak real credentials into tests. This guard uses the unmodified
     ``HOME`` env var (what ``os.path.expanduser('~')`` would resolve to),
@@ -933,7 +923,7 @@ def _load_global_auth_store() -> dict[str, Any]:
     if os.environ.get("PYTEST_CURRENT_TEST"):
         real_home_env = os.environ.get("HOME", "")
         if real_home_env:
-            real_root = Path(real_home_env) / ".prostor" / "auth.json"
+            real_root = Path(real_home_env) / ".hermes" / "auth.json"
             try:
                 if global_path.resolve(strict=False) == real_root.resolve(strict=False):
                     return {}
@@ -1016,13 +1006,13 @@ def _file_lock(
             if fcntl:
                 try:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-                except OSError:
+                except (OSError, IOError):
                     pass
             elif msvcrt:
                 try:
                     lock_file.seek(0)
                     msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-                except OSError:
+                except (OSError, IOError):
                     pass
 
 
@@ -1045,7 +1035,7 @@ def _auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
         yield
 
 
-def _load_auth_store(auth_file: Path | None = None) -> dict[str, Any]:
+def _load_auth_store(auth_file: Optional[Path] = None) -> Dict[str, Any]:
     auth_file = auth_file or _auth_file_path()
     if not auth_file.exists():
         return {"version": AUTH_STORE_VERSION, "providers": {}}
@@ -1085,7 +1075,7 @@ def _load_auth_store(auth_file: Path | None = None) -> dict[str, Any]:
     return {"version": AUTH_STORE_VERSION, "providers": {}}
 
 
-def _save_auth_store(auth_store: dict[str, Any], target_path: Path | None = None) -> Path:
+def _save_auth_store(auth_store: Dict[str, Any], target_path: Optional[Path] = None) -> Path:
     # target_path=None preserves the existing contract (write the active
     # store at _auth_file_path()). An explicit path lets callers persist a
     # specific store — e.g. the global-root write-through for rotating xAI
@@ -1098,7 +1088,7 @@ def _save_auth_store(auth_store: dict[str, Any], target_path: Path | None = None
     # secure_parent_dir refuses to chmod / or top-level dirs (#25821).
     secure_parent_dir(auth_file)
     auth_store["version"] = AUTH_STORE_VERSION
-    auth_store["updated_at"] = datetime.now(UTC).isoformat()
+    auth_store["updated_at"] = datetime.now(timezone.utc).isoformat()
     payload = json.dumps(auth_store, indent=2) + "\n"
     tmp_path = auth_file.with_name(f"{auth_file.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}")
     try:
@@ -1139,14 +1129,14 @@ def _save_auth_store(auth_store: dict[str, Any], target_path: Path | None = None
     return auth_file
 
 
-def _load_provider_state(auth_store: dict[str, Any], provider_id: str) -> dict[str, Any] | None:
+def _load_provider_state(auth_store: Dict[str, Any], provider_id: str) -> Optional[Dict[str, Any]]:
     """Return a provider's persisted state.
 
     In profile mode, falls back to the global-root ``auth.json`` when the
     profile has no entry for ``provider_id``. This mirrors the per-provider
     shadowing already used by ``read_credential_pool``: workers spawned in a
     profile can see providers (e.g. ``nous``) that were only authenticated at
-    global scope. Once the user runs ``prostor auth login <provider>`` inside
+    global scope. Once the user runs ``hermes auth login <provider>`` inside
     the profile, the profile state fully shadows the global state on the next
     read. See issue #18594 follow-up.
     """
@@ -1168,7 +1158,7 @@ def _load_provider_state(auth_store: dict[str, Any], provider_id: str) -> dict[s
     return None
 
 
-def _save_provider_state(auth_store: dict[str, Any], provider_id: str, state: dict[str, Any]) -> None:
+def _save_provider_state(auth_store: Dict[str, Any], provider_id: str, state: Dict[str, Any]) -> None:
     providers = auth_store.setdefault("providers", {})
     if not isinstance(providers, dict):
         auth_store["providers"] = {}
@@ -1178,9 +1168,9 @@ def _save_provider_state(auth_store: dict[str, Any], provider_id: str, state: di
 
 
 def _store_provider_state(
-    auth_store: dict[str, Any],
+    auth_store: Dict[str, Any],
     provider_id: str,
-    state: dict[str, Any],
+    state: Dict[str, Any],
     *,
     set_active: bool = True,
 ) -> None:
@@ -1196,7 +1186,7 @@ def _store_provider_state(
 def mark_provider_active_if_unset(provider_id: str) -> None:
     """Set ``active_provider`` to *provider_id* only when none is set yet.
 
-    Used by ``prostor auth add`` OAuth paths that create credential-pool
+    Used by ``hermes auth add`` OAuth paths that create credential-pool
     entries directly (no singleton ``providers.<id>`` block). Adding the
     very first credential for a provider should make it the active provider
     so the setup wizard's ``_model_section_has_credentials()`` check (which
@@ -1223,7 +1213,7 @@ def get_auth_provider_display_name(provider_id: str) -> str:
     return SERVICE_PROVIDER_NAMES.get(normalized, provider_id)
 
 
-def read_credential_pool(provider_id: str | None = None) -> dict[str, Any]:
+def read_credential_pool(provider_id: Optional[str] = None) -> Dict[str, Any]:
     """Return the persisted credential pool, or one provider slice.
 
     In profile mode, the profile's credential pool is authoritative. If a
@@ -1233,7 +1223,7 @@ def read_credential_pool(provider_id: str | None = None) -> dict[str, Any]:
 
     Profile entries always win: the global fallback only applies per-provider
     when the profile has zero entries for that provider. Once the user runs
-    ``prostor auth add <provider>`` inside the profile, profile entries
+    ``hermes auth add <provider>`` inside the profile, profile entries
     fully shadow global for that provider on the next read.
 
     Writes always go to the profile (``write_credential_pool`` is unchanged).
@@ -1244,7 +1234,7 @@ def read_credential_pool(provider_id: str | None = None) -> dict[str, Any]:
     if not isinstance(pool, dict):
         pool = {}
 
-    global_pool: dict[str, Any] = {}
+    global_pool: Dict[str, Any] = {}
     global_store = _load_global_auth_store()
     maybe_global_pool = global_store.get("credential_pool") if global_store else None
     if isinstance(maybe_global_pool, dict):
@@ -1270,7 +1260,7 @@ def read_credential_pool(provider_id: str | None = None) -> dict[str, Any]:
     return list(global_entries) if isinstance(global_entries, list) else []
 
 
-def write_credential_pool(provider_id: str, entries: list[dict[str, Any]]) -> Path:
+def write_credential_pool(provider_id: str, entries: List[Dict[str, Any]]) -> Path:
     """Persist one provider's credential pool under auth.json.
 
     This is the final disk-boundary guard for borrowed/reference-only
@@ -1334,7 +1324,7 @@ def unsuppress_credential_source(provider_id: str, source: str) -> bool:
         return True
 
 
-def get_provider_auth_state(provider_id: str) -> dict[str, Any] | None:
+def get_provider_auth_state(provider_id: str) -> Optional[Dict[str, Any]]:
     """Return persisted auth state for a provider, or None.
 
     In profile mode, ``_load_provider_state`` already falls back to the
@@ -1351,7 +1341,7 @@ def get_provider_auth_state(provider_id: str) -> dict[str, Any] | None:
     return _load_provider_state(auth_store, provider_id)
 
 
-def get_active_provider() -> str | None:
+def get_active_provider() -> Optional[str]:
     """Return the currently active provider ID from auth store."""
     auth_store = _load_auth_store()
     return auth_store.get("active_provider")
@@ -1383,7 +1373,7 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
 
     # 2. Check config.yaml model.provider
     try:
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         cfg = load_config()
         model_cfg = cfg.get("model")
         if isinstance(model_cfg, dict):
@@ -1395,7 +1385,7 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
 
     # 3. Check provider-specific env vars
     # Exclude CLAUDE_CODE_OAUTH_TOKEN — it's set by Claude Code itself,
-    # not by the user explicitly configuring anthropic in Prostor.
+    # not by the user explicitly configuring anthropic in Hermes.
     _IMPLICIT_ENV_VARS = {"CLAUDE_CODE_OAUTH_TOKEN"}
     pconfig = PROVIDER_REGISTRY.get(normalized)
     if pconfig and pconfig.auth_type == "api_key":
@@ -1408,9 +1398,9 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
     return False
 
 
-def clear_provider_auth(provider_id: str | None = None) -> bool:
+def clear_provider_auth(provider_id: Optional[str] = None) -> bool:
     """
-    Clear auth state for a provider. Used by `prostor logout`.
+    Clear auth state for a provider. Used by `hermes logout`.
     If provider_id is None, clears the active provider.
     Returns True if something was cleared.
     """
@@ -1472,12 +1462,12 @@ def _get_config_hint_for_unknown_provider(provider_name: str) -> str:
     and returns a human-readable diagnostic, or empty string if nothing found.
     """
     try:
-        from prostor_cli.config import validate_config_structure
+        from hermes_cli.config import validate_config_structure
         issues = validate_config_structure()
         if not issues:
             return ""
 
-        lines = ["Config issue detected — run 'prostor doctor' for full diagnostics:"]
+        lines = ["Config issue detected — run 'hermes doctor' for full diagnostics:"]
         for ci in issues:
             prefix = "ERROR" if ci.severity == "error" else "WARNING"
             lines.append(f"  [{prefix}] {ci.message}")
@@ -1491,10 +1481,10 @@ def _get_config_hint_for_unknown_provider(provider_name: str) -> str:
 
 
 def resolve_provider(
-    requested: str | None = None,
+    requested: Optional[str] = None,
     *,
-    explicit_api_key: str | None = None,
-    explicit_base_url: str | None = None,
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
 ) -> str:
     """
     Determine which inference provider to use.
@@ -1529,7 +1519,7 @@ def resolve_provider(
         "github-models": "copilot", "github-model": "copilot",
         "github-copilot-acp": "copilot-acp", "copilot-acp-agent": "copilot-acp",
         "opencode": "opencode-zen", "zen": "opencode-zen",
-        "qwen-portal": "qwen-oauth", "qwen-cli": "qwen-oauth", "qwen-oauth": "qwen-oauth", "google-gemini-cli": "google-gemini-cli", "gemini-cli": "google-gemini-cli", "gemini-oauth": "google-gemini-cli",
+        "qwen-portal": "qwen-oauth", "qwen-cli": "qwen-oauth", "qwen-oauth": "qwen-oauth",
         "hf": "huggingface", "hugging-face": "huggingface", "huggingface-hub": "huggingface",
         "mimo": "xiaomi", "xiaomi-mimo": "xiaomi",
         "tencent": "tencent-tokenhub", "tokenhub": "tencent-tokenhub",
@@ -1569,7 +1559,7 @@ def resolve_provider(
         if _config_hint:
             msg += f"\n\n{_config_hint}"
         else:
-            msg += " Check 'prostor model' for available providers, or run 'prostor doctor' to diagnose config issues."
+            msg += " Check 'hermes model' for available providers, or run 'hermes doctor' to diagnose config issues."
         raise AuthError(msg, code="invalid_provider")
 
     # Explicit one-off CLI creds always mean openrouter/custom
@@ -1590,10 +1580,10 @@ def resolve_provider(
     if has_usable_secret(os.getenv("OPENAI_API_KEY")) or has_usable_secret(os.getenv("OPENROUTER_API_KEY")):
         return "openrouter"
 
-    # Auto-detect an OpenRouter credential added via `prostor auth add openrouter`
+    # Auto-detect an OpenRouter credential added via `hermes auth add openrouter`
     # (manual pool entry, no env var). Without this, a key that only lives in
     # the credential pool is invisible to auto-detection — the user sees
-    # `prostor auth list` showing the credential while requests go out with no
+    # `hermes auth list` showing the credential while requests go out with no
     # Authorization header ("HTTP 401: Missing Authentication header"). The
     # env-var check above only covers keys exported as OPENROUTER_API_KEY /
     # OPENAI_API_KEY. See issue #42130.
@@ -1631,9 +1621,9 @@ def resolve_provider(
         pass  # boto3 not installed — skip Bedrock auto-detection
 
     raise AuthError(
-        "No inference provider configured. Run 'prostor model' to choose a "
+        "No inference provider configured. Run 'hermes model' to choose a "
         "provider and model, or set an API key (OPENROUTER_API_KEY, "
-        "OPENAI_API_KEY, etc.) in ~/.prostor/.env.",
+        "OPENAI_API_KEY, etc.) in ~/.hermes/.env.",
         code="no_provider_configured",
     )
 
@@ -1642,7 +1632,7 @@ def resolve_provider(
 # Timestamp / TTL helpers
 # =============================================================================
 
-def _parse_iso_timestamp(value: Any) -> float | None:
+def _parse_iso_timestamp(value: Any) -> Optional[float]:
     if not isinstance(value, str) or not value:
         return None
     text = value.strip()
@@ -1655,7 +1645,7 @@ def _parse_iso_timestamp(value: Any) -> float | None:
     except Exception:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
+        parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.timestamp()
 
 
@@ -1674,7 +1664,7 @@ def _coerce_ttl_seconds(expires_in: Any) -> int:
     return max(0, ttl)
 
 
-def _optional_base_url(value: Any) -> str | None:
+def _optional_base_url(value: Any) -> Optional[str]:
     if not isinstance(value, str):
         return None
     cleaned = value.strip().rstrip("/")
@@ -1689,12 +1679,12 @@ def _optional_base_url(value: Any) -> str | None:
 # (NOUS_INFERENCE_BASE_URL) bypass validation — that's the documented
 # dev/staging escape hatch and the env source is already trusted (the
 # user set it themselves).
-_ALLOWED_NOUS_INFERENCE_HOSTS: frozenset[str] = frozenset({
+_ALLOWED_NOUS_INFERENCE_HOSTS: FrozenSet[str] = frozenset({
     "inference-api.nousresearch.com",
 })
 
 
-def _validate_nous_inference_url_from_network(url: str | None) -> str | None:
+def _validate_nous_inference_url_from_network(url: Optional[str]) -> Optional[str]:
     """Validate a Portal-returned inference URL against the host allowlist.
 
     Returns ``url`` (normalised by stripping trailing slashes) if it's a
@@ -1741,7 +1731,7 @@ def _validate_nous_inference_url_from_network(url: str | None) -> str | None:
     return cleaned.rstrip("/")
 
 
-def _decode_jwt_claims(token: Any) -> dict[str, Any]:
+def _decode_jwt_claims(token: Any) -> Dict[str, Any]:
     if not isinstance(token, str) or token.count(".") != 2:
         return {}
     payload = token.split(".")[1]
@@ -1776,7 +1766,7 @@ def _nous_invoke_jwt_status(
     scope: Any = None,
     expires_at: Any = None,
     min_ttl_seconds: int = NOUS_INVOKE_JWT_MIN_TTL_SECONDS,
-) -> str | None:
+) -> Optional[str]:
     """Return None when the token can be used for inference, else a reason."""
     claims = _decode_jwt_claims(token)
     if not claims:
@@ -1818,7 +1808,7 @@ def _nous_invoke_jwt_is_usable(
 
 
 def _assert_nous_inference_jwt_usable(
-    state: dict[str, Any],
+    state: Dict[str, Any],
     *,
     access_token: Any = None,
 ) -> None:
@@ -1832,7 +1822,7 @@ def _assert_nous_inference_jwt_usable(
         return
     raise AuthError(
         "Nous Portal access token is not a usable inference JWT "
-        f"({reason}). Re-authenticate with: prostor auth add nous",
+        f"({reason}). Re-authenticate with: hermes auth add nous",
         provider="nous",
         code=reason,
         relogin_required=True,
@@ -1842,7 +1832,7 @@ def _assert_nous_inference_jwt_usable(
 def _log_nous_invoke_jwt_selected(
     *,
     access_token: Any,
-    sequence_id: str | None = None,
+    sequence_id: Optional[str] = None,
 ) -> None:
     logger.info("Nous inference auth: using NAS invoke JWT")
     _oauth_trace(
@@ -1852,26 +1842,26 @@ def _log_nous_invoke_jwt_selected(
     )
 
 
-def _nous_jwt_expires_at(token: Any, fallback_expires_at: Any = None) -> str | None:
+def _nous_jwt_expires_at(token: Any, fallback_expires_at: Any = None) -> Optional[str]:
     claims = _decode_jwt_claims(token)
     exp = claims.get("exp")
     if isinstance(exp, (int, float)):
         try:
-            return datetime.fromtimestamp(float(exp), tz=UTC).isoformat()
+            return datetime.fromtimestamp(float(exp), tz=timezone.utc).isoformat()
         except Exception:
             pass
     return fallback_expires_at if isinstance(fallback_expires_at, str) else None
 
 
 def _set_nous_agent_key_from_invoke_jwt(
-    state: dict[str, Any],
+    state: Dict[str, Any],
     *,
-    obtained_at: str | None = None,
+    obtained_at: Optional[str] = None,
 ) -> None:
     access_token = state.get("access_token")
     if not isinstance(access_token, str) or not access_token.strip():
         return
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     existing_obtained_at = state.get("agent_key_obtained_at")
     if obtained_at:
         effective_obtained_at = obtained_at
@@ -1902,10 +1892,10 @@ def _set_nous_agent_key_from_invoke_jwt(
 
 
 def _select_nous_invoke_jwt(
-    state: dict[str, Any],
+    state: Dict[str, Any],
     *,
     access_token: Any = None,
-    sequence_id: str | None = None,
+    sequence_id: Optional[str] = None,
 ) -> None:
     if isinstance(access_token, str) and access_token.strip():
         state["access_token"] = access_token
@@ -1925,7 +1915,7 @@ _NOUS_EFFECTIVE_STATE_IGNORED_KEYS = frozenset({
 })
 
 
-def _nous_effective_provider_state(state: dict[str, Any]) -> dict[str, Any]:
+def _nous_effective_provider_state(state: Dict[str, Any]) -> Dict[str, Any]:
     return {
         key: value
         for key, value in state.items()
@@ -1945,7 +1935,7 @@ def _qwen_cli_auth_path() -> Path:
     return Path.home() / ".qwen" / "oauth_creds.json"
 
 
-def _read_qwen_cli_tokens() -> dict[str, Any]:
+def _read_qwen_cli_tokens() -> Dict[str, Any]:
     auth_path = _qwen_cli_auth_path()
     if not auth_path.exists():
         raise AuthError(
@@ -1970,7 +1960,7 @@ def _read_qwen_cli_tokens() -> dict[str, Any]:
     return data
 
 
-def _save_qwen_cli_tokens(tokens: dict[str, Any]) -> Path:
+def _save_qwen_cli_tokens(tokens: Dict[str, Any]) -> Path:
     auth_path = _qwen_cli_auth_path()
     auth_path.parent.mkdir(parents=True, exist_ok=True)
     # secure_parent_dir refuses to chmod / or top-level dirs (#25821).
@@ -2009,7 +1999,7 @@ def _qwen_access_token_is_expiring(expiry_date_ms: Any, skew_seconds: int = QWEN
     return (time.time() + max(0, int(skew_seconds))) * 1000 >= expiry_ms
 
 
-def _refresh_qwen_cli_tokens(tokens: dict[str, Any], timeout_seconds: float = 20.0) -> dict[str, Any]:
+def _refresh_qwen_cli_tokens(tokens: Dict[str, Any], timeout_seconds: float = 20.0) -> Dict[str, Any]:
     refresh_token = str(tokens.get("refresh_token", "") or "").strip()
     if not refresh_token:
         raise AuthError(
@@ -2081,7 +2071,7 @@ def _refresh_qwen_cli_tokens(tokens: dict[str, Any], timeout_seconds: float = 20
     return refreshed
 
 
-def _mark_qwen_oauth_active(creds: dict[str, Any]) -> None:
+def _mark_qwen_oauth_active(creds: Dict[str, Any]) -> None:
     """Set active_provider to qwen-oauth in auth.json.
 
     Qwen OAuth tokens live in the Qwen CLI credential file managed by
@@ -2093,7 +2083,7 @@ def _mark_qwen_oauth_active(creds: dict[str, Any]) -> None:
     """
     with _auth_store_lock():
         auth_store = _load_auth_store()
-        state: dict[str, Any] = {}
+        state: Dict[str, Any] = {}
         if creds.get("base_url"):
             state["base_url"] = str(creds["base_url"])
         _save_provider_state(auth_store, "qwen-oauth", state)
@@ -2105,7 +2095,7 @@ def resolve_qwen_runtime_credentials(
     force_refresh: bool = False,
     refresh_if_expiring: bool = True,
     refresh_skew_seconds: int = QWEN_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     tokens = _read_qwen_cli_tokens()
     access_token = str(tokens.get("access_token", "") or "").strip()
     should_refresh = bool(force_refresh)
@@ -2121,7 +2111,7 @@ def resolve_qwen_runtime_credentials(
             code="qwen_access_token_missing",
         )
 
-    base_url = os.getenv("PROSTOR_QWEN_BASE_URL", "").strip().rstrip("/") or DEFAULT_QWEN_BASE_URL
+    base_url = os.getenv("HERMES_QWEN_BASE_URL", "").strip().rstrip("/") or DEFAULT_QWEN_BASE_URL
     return {
         "provider": "qwen-oauth",
         "base_url": base_url,
@@ -2132,12 +2122,12 @@ def resolve_qwen_runtime_credentials(
     }
 
 
-def get_qwen_auth_status() -> dict[str, Any]:
+def get_qwen_auth_status() -> Dict[str, Any]:
     auth_path = _qwen_cli_auth_path()
     try:
         # Validate the runtime credentials, including refresh when the cached
         # CLI token is expired. Otherwise stale tokens show up as "logged in"
-        # and `prostor model` walks users into a broken Qwen setup flow.
+        # and `hermes model` walks users into a broken Qwen setup flow.
         creds = resolve_qwen_runtime_credentials(refresh_if_expiring=True)
         return {
             "logged_in": True,
@@ -2155,106 +2145,15 @@ def get_qwen_auth_status() -> dict[str, Any]:
 
 
 # =============================================================================
-# Google Gemini OAuth (google-gemini-cli) — PKCE flow + Cloud Code Assist.
-#
-# Tokens live in ~/.prostor/auth/google_oauth.json (managed by agent.google_oauth).
-# The `base_url` here is the marker "cloudcode-pa://google" that run_agent.py
-# uses to construct a GeminiCloudCodeClient instead of the default OpenAI SDK.
-# Actual HTTP traffic goes to https://cloudcode-pa.googleapis.com/v1internal:*.
-# =============================================================================
-
-def _mark_google_gemini_cli_active(creds: dict[str, Any]) -> None:
-    """Set active_provider to google-gemini-cli in auth.json.
-
-    The actual OAuth tokens live in the Google credential file managed by
-    agent.google_oauth. This function only writes a minimal provider-state
-    entry (email for display) and sets active_provider so that
-    get_active_provider() and _model_section_has_credentials() detect the
-    provider for the setup wizard and status commands.
-    """
-    with _auth_store_lock():
-        auth_store = _load_auth_store()
-        state: dict[str, Any] = {}
-        if creds.get("email"):
-            state["email"] = str(creds["email"])
-        _save_provider_state(auth_store, "google-gemini-cli", state)
-        _save_auth_store(auth_store)
-
-
-def resolve_gemini_oauth_runtime_credentials(
-    *,
-    force_refresh: bool = False,
-) -> dict[str, Any]:
-    """Resolve runtime OAuth creds for google-gemini-cli."""
-    try:
-        from agent.google_oauth import (
-            GoogleOAuthError,
-            _credentials_path,
-            get_valid_access_token,
-            load_credentials,
-        )
-    except ImportError as exc:
-        raise AuthError(
-            f"agent.google_oauth is not importable: {exc}",
-            provider="google-gemini-cli",
-            code="google_oauth_module_missing",
-        ) from exc
-
-    try:
-        access_token = get_valid_access_token(force_refresh=force_refresh)
-    except GoogleOAuthError as exc:
-        raise AuthError(
-            str(exc),
-            provider="google-gemini-cli",
-            code=exc.code,
-        ) from exc
-
-    creds = load_credentials()
-    base_url = DEFAULT_GEMINI_CLOUDCODE_BASE_URL
-    return {
-        "provider": "google-gemini-cli",
-        "base_url": base_url,
-        "api_key": access_token,
-        "source": "google-oauth",
-        "expires_at_ms": (creds.expires_ms if creds else None),
-        "auth_file": str(_credentials_path()),
-        "email": (creds.email if creds else "") or "",
-        "project_id": (creds.project_id if creds else "") or "",
-    }
-
-
-def get_gemini_oauth_auth_status() -> dict[str, Any]:
-    """Return a status dict for `prostor auth list` / `prostor status`."""
-    try:
-        from agent.google_oauth import _credentials_path, load_credentials
-    except ImportError:
-        return {"logged_in": False, "error": "agent.google_oauth unavailable"}
-    auth_path = _credentials_path()
-    creds = load_credentials()
-    if creds is None or not creds.access_token:
-        return {
-            "logged_in": False,
-            "auth_file": str(auth_path),
-            "error": "not logged in",
-        }
-    return {
-        "logged_in": True,
-        "auth_file": str(auth_path),
-        "source": "google-oauth",
-        "api_key": creds.access_token,
-        "expires_at_ms": creds.expires_ms,
-        "email": creds.email,
-        "project_id": creds.project_id,
-    }
-# Spotify auth — PKCE tokens stored in ~/.prostor/auth.json
+# Spotify auth — PKCE tokens stored in ~/.hermes/auth.json
 # =============================================================================
 
 
-def _spotify_scope_list(raw_scope: str | None = None) -> list[str]:
+def _spotify_scope_list(raw_scope: Optional[str] = None) -> List[str]:
     scope_text = (raw_scope or DEFAULT_SPOTIFY_SCOPE).strip()
     scopes = [part for part in scope_text.split() if part]
     seen: set[str] = set()
-    ordered: list[str] = []
+    ordered: List[str] = []
     for scope in scopes:
         if scope not in seen:
             seen.add(scope)
@@ -2262,19 +2161,19 @@ def _spotify_scope_list(raw_scope: str | None = None) -> list[str]:
     return ordered
 
 
-def _spotify_scope_string(raw_scope: str | None = None) -> str:
+def _spotify_scope_string(raw_scope: Optional[str] = None) -> str:
     return " ".join(_spotify_scope_list(raw_scope))
 
 
 def _spotify_client_id(
-    explicit: str | None = None,
-    state: dict[str, Any] | None = None,
+    explicit: Optional[str] = None,
+    state: Optional[Dict[str, Any]] = None,
 ) -> str:
-    from prostor_cli.config import get_env_value
+    from hermes_cli.config import get_env_value
 
     candidates = (
         explicit,
-        get_env_value("PROSTOR_SPOTIFY_CLIENT_ID"),
+        get_env_value("HERMES_SPOTIFY_CLIENT_ID"),
         get_env_value("SPOTIFY_CLIENT_ID"),
         state.get("client_id") if isinstance(state, dict) else None,
     )
@@ -2283,21 +2182,21 @@ def _spotify_client_id(
         if cleaned:
             return cleaned
     raise AuthError(
-        "Spotify client_id is required. Set PROSTOR_SPOTIFY_CLIENT_ID or pass --client-id.",
+        "Spotify client_id is required. Set HERMES_SPOTIFY_CLIENT_ID or pass --client-id.",
         provider="spotify",
         code="spotify_client_id_missing",
     )
 
 
 def _spotify_redirect_uri(
-    explicit: str | None = None,
-    state: dict[str, Any] | None = None,
+    explicit: Optional[str] = None,
+    state: Optional[Dict[str, Any]] = None,
 ) -> str:
-    from prostor_cli.config import get_env_value
+    from hermes_cli.config import get_env_value
 
     candidates = (
         explicit,
-        get_env_value("PROSTOR_SPOTIFY_REDIRECT_URI"),
+        get_env_value("HERMES_SPOTIFY_REDIRECT_URI"),
         get_env_value("SPOTIFY_REDIRECT_URI"),
         state.get("redirect_uri") if isinstance(state, dict) else None,
         DEFAULT_SPOTIFY_REDIRECT_URI,
@@ -2309,11 +2208,11 @@ def _spotify_redirect_uri(
     return DEFAULT_SPOTIFY_REDIRECT_URI
 
 
-def _spotify_api_base_url(state: dict[str, Any] | None = None) -> str:
-    from prostor_cli.config import get_env_value
+def _spotify_api_base_url(state: Optional[Dict[str, Any]] = None) -> str:
+    from hermes_cli.config import get_env_value
 
     candidates = (
-        get_env_value("PROSTOR_SPOTIFY_API_BASE_URL"),
+        get_env_value("HERMES_SPOTIFY_API_BASE_URL"),
         state.get("api_base_url") if isinstance(state, dict) else None,
         DEFAULT_SPOTIFY_API_BASE_URL,
     )
@@ -2324,11 +2223,11 @@ def _spotify_api_base_url(state: dict[str, Any] | None = None) -> str:
     return DEFAULT_SPOTIFY_API_BASE_URL
 
 
-def _spotify_accounts_base_url(state: dict[str, Any] | None = None) -> str:
-    from prostor_cli.config import get_env_value
+def _spotify_accounts_base_url(state: Optional[Dict[str, Any]] = None) -> str:
+    from hermes_cli.config import get_env_value
 
     candidates = (
-        get_env_value("PROSTOR_SPOTIFY_ACCOUNTS_BASE_URL"),
+        get_env_value("HERMES_SPOTIFY_ACCOUNTS_BASE_URL"),
         state.get("accounts_base_url") if isinstance(state, dict) else None,
         DEFAULT_SPOTIFY_ACCOUNTS_BASE_URL,
     )
@@ -2505,7 +2404,7 @@ def _xai_validate_loopback_redirect_uri(redirect_uri: str) -> tuple[str, int, st
     return host, parsed.port, parsed.path or "/"
 
 
-def _xai_callback_cors_origin(origin: str | None) -> str:
+def _xai_callback_cors_origin(origin: Optional[str]) -> str:
     # CORS allowlist for the loopback callback.  Only xAI's own auth origins
     # are accepted; the redirect_uri itself is bound to 127.0.0.1 and gated by
     # PKCE+state, so additional dev/3p origins are not needed here.
@@ -2558,11 +2457,11 @@ def _make_xai_callback_handler(expected_path: str) -> tuple[type[BaseHTTPRequest
             }
 
             # Diagnostic logging — emits at INFO so reporters of loopback bugs
-            # (#27385 — "callback received but Prostor times out") can produce
+            # (#27385 — "callback received but Hermes times out") can produce
             # actionable evidence without a code change.  Logged values are
             # fingerprints / booleans only; no actual code/state strings leak
-            # into the log file.  Run with ``PROSTOR_LOG_LEVEL=INFO`` (or check
-            # ``~/.prostor/logs/agent.log`` which captures INFO+ unconditionally).
+            # into the log file.  Run with ``HERMES_LOG_LEVEL=INFO`` (or check
+            # ``~/.hermes/logs/agent.log`` which captures INFO+ unconditionally).
             try:
                 logger.info(
                     "xAI loopback callback received: path=%s has_code=%s has_state=%s has_error=%s "
@@ -2599,7 +2498,7 @@ def _make_xai_callback_handler(expected_path: str) -> tuple[type[BaseHTTPRequest
                     "<h1>xAI authorization not received.</h1>"
                     "<p>No authorization code was present in this callback URL. "
                     "Return to the terminal and re-run "
-                    "<code>prostor auth add xai-oauth</code> to retry.</p>"
+                    "<code>hermes auth add xai-oauth</code> to retry.</p>"
                     "</body></html>"
                 )
                 self.wfile.write(body.encode("utf-8"))
@@ -2645,7 +2544,7 @@ def _xai_start_callback_server(
     if preferred_port != 0:
         ports_to_try.append(0)
     server = None
-    last_error: OSError | None = None
+    last_error: Optional[OSError] = None
     for port in ports_to_try:
         try:
             server = _ReuseHTTPServer((host, port), handler_cls)
@@ -2676,7 +2575,7 @@ def _xai_wait_for_callback(
     result: dict[str, Any],
     *,
     timeout_seconds: float = 180.0,
-    manual_paste_redirect_uri: str | None = None,
+    manual_paste_redirect_uri: Optional[str] = None,
 ) -> dict[str, Any]:
     deadline = time.monotonic() + max(5.0, timeout_seconds)
     if manual_paste_redirect_uri and sys.stdin.isatty():
@@ -2716,7 +2615,7 @@ def _xai_wait_for_callback(
     )
 
 
-def _read_ready_stdin_line() -> str | None:
+def _read_ready_stdin_line() -> Optional[str]:
     """Return one pending stdin line without blocking, if the terminal has one."""
     try:
         if not sys.stdin.isatty():
@@ -2732,18 +2631,18 @@ def _read_ready_stdin_line() -> str | None:
 
 
 def _spotify_token_payload_to_state(
-    token_payload: dict[str, Any],
+    token_payload: Dict[str, Any],
     *,
     client_id: str,
     redirect_uri: str,
     requested_scope: str,
     accounts_base_url: str,
     api_base_url: str,
-    previous_state: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    now = datetime.now(UTC)
+    previous_state: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc)
     expires_in = _coerce_ttl_seconds(token_payload.get("expires_in", 0))
-    expires_at = datetime.fromtimestamp(now.timestamp() + expires_in, tz=UTC)
+    expires_at = datetime.fromtimestamp(now.timestamp() + expires_in, tz=timezone.utc)
     state = dict(previous_state or {})
     state.update({
         "client_id": client_id,
@@ -2775,7 +2674,7 @@ def _spotify_exchange_code_for_tokens(
     code_verifier: str,
     accounts_base_url: str,
     timeout_seconds: float = 20.0,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     try:
         response = httpx.post(
             f"{accounts_base_url}/api/token",
@@ -2815,14 +2714,14 @@ def _spotify_exchange_code_for_tokens(
 
 
 def _refresh_spotify_oauth_state(
-    state: dict[str, Any],
+    state: Dict[str, Any],
     *,
     timeout_seconds: float = 20.0,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     refresh_token = str(state.get("refresh_token", "") or "").strip()
     if not refresh_token:
         raise AuthError(
-            "Spotify refresh token missing. Run `prostor auth spotify` again.",
+            "Spotify refresh token missing. Run `hermes auth spotify` again.",
             provider="spotify",
             code="spotify_refresh_token_missing",
             relogin_required=True,
@@ -2851,7 +2750,7 @@ def _refresh_spotify_oauth_state(
     if response.status_code >= 400:
         detail = response.text.strip()
         raise AuthError(
-            "Spotify token refresh failed. Run `prostor auth spotify` again."
+            "Spotify token refresh failed. Run `hermes auth spotify` again."
             + (f" Response: {detail}" if detail else ""),
             provider="spotify",
             code="spotify_refresh_failed",
@@ -2883,13 +2782,13 @@ def resolve_spotify_runtime_credentials(
     force_refresh: bool = False,
     refresh_if_expiring: bool = True,
     refresh_skew_seconds: int = SPOTIFY_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     with _auth_store_lock():
         auth_store = _load_auth_store()
         state = _load_provider_state(auth_store, "spotify")
         if not state:
             raise AuthError(
-                "Spotify is not authenticated. Run `prostor auth spotify` first.",
+                "Spotify is not authenticated. Run `hermes auth spotify` first.",
                 provider="spotify",
                 code="spotify_auth_missing",
                 relogin_required=True,
@@ -2899,14 +2798,36 @@ def resolve_spotify_runtime_credentials(
         if not should_refresh and refresh_if_expiring:
             should_refresh = _is_expiring(state.get("expires_at"), refresh_skew_seconds)
         if should_refresh:
-            state = _refresh_spotify_oauth_state(state)
-            _store_provider_state(auth_store, "spotify", state, set_active=False)
-            _save_auth_store(auth_store)
+            try:
+                state = _refresh_spotify_oauth_state(state)
+                _store_provider_state(auth_store, "spotify", state, set_active=False)
+                _save_auth_store(auth_store)
+            except AuthError as exc:
+                if exc.relogin_required and state.get("refresh_token"):
+                    # Terminal refresh failure — clear dead tokens from auth.json
+                    # so subsequent calls fail fast without a network retry.
+                    # Mirrors the Nous / xAI-OAuth / Codex-OAuth / MiniMax pattern.
+                    for _k in ("access_token", "refresh_token", "expires_at", "expires_in", "obtained_at"):
+                        state.pop(_k, None)
+                    state["last_auth_error"] = {
+                        "provider": "spotify",
+                        "code": exc.code or "refresh_failed",
+                        "message": str(exc),
+                        "reason": "runtime_refresh_failure",
+                        "relogin_required": True,
+                        "at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    try:
+                        _store_provider_state(auth_store, "spotify", state, set_active=False)
+                        _save_auth_store(auth_store)
+                    except Exception as _save_exc:
+                        logger.debug("Spotify OAuth: failed to persist quarantined state: %s", _save_exc)
+                raise
 
     access_token = str(state.get("access_token", "") or "").strip()
     if not access_token:
         raise AuthError(
-            "Spotify access token missing. Run `prostor auth spotify` again.",
+            "Spotify access token missing. Run `hermes auth spotify` again.",
             provider="spotify",
             code="spotify_access_token_missing",
             relogin_required=True,
@@ -2926,7 +2847,7 @@ def resolve_spotify_runtime_credentials(
     }
 
 
-def get_spotify_auth_status() -> dict[str, Any]:
+def get_spotify_auth_status() -> Dict[str, Any]:
     state = get_provider_auth_state("spotify")
     if not state:
         return {"logged_in": False}
@@ -2947,11 +2868,11 @@ def get_spotify_auth_status() -> dict[str, Any]:
 
 def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     """Walk the user through creating a Spotify developer app, persist the
-    resulting client_id to ~/.prostor/.env, and return it.
+    resulting client_id to ~/.hermes/.env, and return it.
 
     Raises SystemExit if the user aborts or submits an empty value.
     """
-    from prostor_cli.config import save_env_value
+    from hermes_cli.config import save_env_value
 
     print()
     print("=" * 70)
@@ -2967,7 +2888,7 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     print("Steps:")
     print(f"  1. Opening {SPOTIFY_DASHBOARD_URL} in your browser...")
     print("  2. Click 'Create app' and fill in:")
-    print("       App name:     anything (e.g. prostor-agent)")
+    print("       App name:     anything (e.g. hermes-agent)")
     print("       Description:  anything")
     print(f"       Redirect URI: {redirect_uri_hint}")
     print("       API/SDK:      Web API")
@@ -2993,15 +2914,15 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
         print(f"No Client ID entered. See {SPOTIFY_DOCS_URL} for the full guide.")
         raise SystemExit("Spotify setup cancelled: empty Client ID.")
 
-    # Persist so subsequent `prostor auth spotify` runs skip the wizard.
-    save_env_value("PROSTOR_SPOTIFY_CLIENT_ID", raw)
+    # Persist so subsequent `hermes auth spotify` runs skip the wizard.
+    save_env_value("HERMES_SPOTIFY_CLIENT_ID", raw)
     # Only persist the redirect URI if it's non-default, to avoid pinning
     # users to a value the default might later change to.
     if redirect_uri_hint and redirect_uri_hint != DEFAULT_SPOTIFY_REDIRECT_URI:
-        save_env_value("PROSTOR_SPOTIFY_REDIRECT_URI", redirect_uri_hint)
+        save_env_value("HERMES_SPOTIFY_REDIRECT_URI", redirect_uri_hint)
 
     print()
-    print("Saved PROSTOR_SPOTIFY_CLIENT_ID to ~/.prostor/.env")
+    print("Saved HERMES_SPOTIFY_CLIENT_ID to ~/.hermes/.env")
     print()
     return raw
 
@@ -3011,7 +2932,7 @@ def login_spotify_command(args) -> None:
 
     # Interactive wizard: if no client_id is configured anywhere, walk the
     # user through creating the Spotify developer app instead of crashing
-    # with "PROSTOR_SPOTIFY_CLIENT_ID is required".
+    # with "HERMES_SPOTIFY_CLIENT_ID is required".
     explicit_client_id = getattr(args, "client_id", None)
     try:
         client_id = _spotify_client_id(explicit_client_id, existing_state)
@@ -3045,7 +2966,7 @@ def login_spotify_command(args) -> None:
     print(f"Redirect URI: {redirect_uri}")
     print("Make sure this redirect URI is allow-listed in your Spotify app settings.")
     print()
-    print("Open this URL to authorize Prostor:")
+    print("Open this URL to authorize Hermes:")
     print(authorize_url)
     print()
     print(f"Full setup guide: {SPOTIFY_DOCS_URL}")
@@ -3104,7 +3025,6 @@ def login_spotify_command(args) -> None:
 # SSH / remote session detection
 # =============================================================================
 
-
 def _is_remote_session() -> bool:
     """Detect environments where loopback OAuth can't reach the local browser.
 
@@ -3126,7 +3046,7 @@ def _is_remote_session() -> bool:
         "CLOUD_SHELL",         # GCP Cloud Shell
         "CODESPACES",          # GitHub Codespaces
         "CODESPACE_NAME",      # GitHub Codespaces (alt)
-        "GITPOD_WORKSPACE_ID",  # Gitpod
+        "GITPOD_WORKSPACE_ID", # Gitpod
         "REPL_ID",             # Replit
         "STACKBLITZ",          # StackBlitz
     ):
@@ -3142,7 +3062,7 @@ def _is_remote_session() -> bool:
 # letting them copy the URL to a real browser.  When the resolved browser is
 # one of these we refuse to auto-open and fall back to the print-the-URL /
 # manual-paste path, same as a remote session.
-_CONSOLE_BROWSER_NAMES: frozenset[str] = frozenset(
+_CONSOLE_BROWSER_NAMES: FrozenSet[str] = frozenset(
     {
         "w3m",
         "lynx",
@@ -3332,7 +3252,7 @@ def _print_loopback_ssh_hint(redirect_uri: str, *, docs_url: str | None = None) 
     print(divider)
     print("Remote session detected — SSH tunnel required")
     print(divider)
-    print(f"Prostor is waiting for the OAuth callback on {redirect_uri}")
+    print(f"Hermes is waiting for the OAuth callback on {redirect_uri}")
     print("but your browser is on a different machine. Run this command")
     print("in a NEW terminal on your local machine BEFORE opening the URL:")
     print()
@@ -3351,16 +3271,16 @@ def _print_loopback_ssh_hint(redirect_uri: str, *, docs_url: str | None = None) 
 
 
 # =============================================================================
-# OpenAI Codex auth — tokens stored in ~/.prostor/auth.json (not ~/.codex/)
+# OpenAI Codex auth — tokens stored in ~/.hermes/auth.json (not ~/.codex/)
 #
-# Prostor maintains its own Codex OAuth session separate from the Codex CLI
+# Hermes maintains its own Codex OAuth session separate from the Codex CLI
 # and VS Code extension. This prevents refresh token rotation conflicts
 # where one app's refresh invalidates the other's session.
 # =============================================================================
 
-def _read_codex_tokens(*, _lock: bool = True) -> dict[str, Any]:
-    """Read Codex OAuth tokens from Prostor auth store (~/.prostor/auth.json).
-
+def _read_codex_tokens(*, _lock: bool = True) -> Dict[str, Any]:
+    """Read Codex OAuth tokens from Hermes auth store (~/.hermes/auth.json).
+    
     Returns dict with 'tokens' (access_token, refresh_token) and 'last_refresh'.
     Raises AuthError if no Codex tokens are stored.
     """
@@ -3372,7 +3292,7 @@ def _read_codex_tokens(*, _lock: bool = True) -> dict[str, Any]:
     state = _load_provider_state(auth_store, "openai-codex")
     if not state:
         raise AuthError(
-            "No Codex credentials stored. Run `prostor auth` to authenticate.",
+            "No Codex credentials stored. Run `hermes auth` to authenticate.",
             provider="openai-codex",
             code="codex_auth_missing",
             relogin_required=True,
@@ -3380,7 +3300,7 @@ def _read_codex_tokens(*, _lock: bool = True) -> dict[str, Any]:
     tokens = state.get("tokens")
     if not isinstance(tokens, dict):
         raise AuthError(
-            "Codex auth state is missing tokens. Run `prostor auth` to re-authenticate.",
+            "Codex auth state is missing tokens. Run `hermes auth` to re-authenticate.",
             provider="openai-codex",
             code="codex_auth_invalid_shape",
             relogin_required=True,
@@ -3389,14 +3309,14 @@ def _read_codex_tokens(*, _lock: bool = True) -> dict[str, Any]:
     refresh_token = tokens.get("refresh_token")
     if not isinstance(access_token, str) or not access_token.strip():
         raise AuthError(
-            "Codex auth is missing access_token. Run `prostor auth` to re-authenticate.",
+            "Codex auth is missing access_token. Run `hermes auth` to re-authenticate.",
             provider="openai-codex",
             code="codex_auth_missing_access_token",
             relogin_required=True,
         )
     if not isinstance(refresh_token, str) or not refresh_token.strip():
         raise AuthError(
-            "Codex auth is missing refresh_token. Run `prostor auth` to re-authenticate.",
+            "Codex auth is missing refresh_token. Run `hermes auth` to re-authenticate.",
             provider="openai-codex",
             code="codex_auth_missing_refresh_token",
             relogin_required=True,
@@ -3408,10 +3328,10 @@ def _read_codex_tokens(*, _lock: bool = True) -> dict[str, Any]:
 
 
 def _sync_codex_pool_entries(
-    auth_store: dict[str, Any],
-    tokens: dict[str, str],
-    last_refresh: str | None,
-    previous_singleton_tokens: dict[str, str] | None = None,
+    auth_store: Dict[str, Any],
+    tokens: Dict[str, str],
+    last_refresh: Optional[str],
+    previous_singleton_tokens: Optional[Dict[str, str]] = None,
 ) -> None:
     """Mirror a fresh Codex re-auth into the credential_pool OAuth entries.
 
@@ -3424,15 +3344,15 @@ def _sync_codex_pool_entries(
     What gets refreshed:
 
     * ``device_code`` — the singleton-seeded entry written by the device-code
-      OAuth flow when the user logged in via ``prostor setup`` / the model
+      OAuth flow when the user logged in via ``hermes setup`` / the model
       picker.  Always synced with the fresh tokens.
-    * ``manual:device_code`` — entries created by ``prostor auth add openai-codex``
+    * ``manual:device_code`` — entries created by ``hermes auth add openai-codex``
       that use the same device-code OAuth mechanism.  ONLY synced if the
       entry's existing access_token matches the *previous* singleton
       access_token (i.e. the entry is a legacy singleton-alias from the
       #33000 workaround era).  Manual entries whose tokens never matched the
       singleton represent INDEPENDENT accounts added via
-      ``prostor auth add openai-codex`` and must not be overwritten by a
+      ``hermes auth add openai-codex`` and must not be overwritten by a
       re-auth that targeted a different account (regression for #39236).
 
       The original #33538 fix refreshed every ``manual:device_code`` entry
@@ -3508,17 +3428,17 @@ def _sync_codex_pool_entries(
         entry["last_error_reset_at"] = None
 
 
-def _save_codex_tokens(tokens: dict[str, str], last_refresh: str = None, label: str = None) -> None:
-    """Save Codex OAuth tokens to Prostor auth store (~/.prostor/auth.json)."""
+def _save_codex_tokens(tokens: Dict[str, str], last_refresh: str = None, label: str = None) -> None:
+    """Save Codex OAuth tokens to Hermes auth store (~/.hermes/auth.json)."""
     if last_refresh is None:
-        last_refresh = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        last_refresh = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     with _auth_store_lock():
         auth_store = _load_auth_store()
         state = _load_provider_state(auth_store, "openai-codex") or {}
         # Capture the previous singleton tokens BEFORE overwriting them.  The
         # pool-sync step uses this to distinguish legacy singleton-aliases
         # (which should be refreshed) from independent accounts that
-        # ``prostor auth add openai-codex`` created (which must not be
+        # ``hermes auth add openai-codex`` created (which must not be
         # overwritten — see #39236).
         previous_singleton_tokens = state.get("tokens") if isinstance(state.get("tokens"), dict) else None
         state["tokens"] = tokens
@@ -3536,8 +3456,8 @@ def _save_codex_tokens(tokens: dict[str, str], last_refresh: str = None, label: 
         _save_auth_store(auth_store)
 
 
-def _recover_codex_tokens_from_cli(reason: str) -> dict[str, str] | None:
-    """Adopt a valid Codex CLI token pair into Prostor auth, if available."""
+def _recover_codex_tokens_from_cli(reason: str) -> Optional[Dict[str, str]]:
+    """Adopt a valid Codex CLI token pair into Hermes auth, if available."""
     imported = _import_codex_cli_tokens()
     # Require BOTH tokens before adopting: persisting a payload without a
     # usable refresh_token would only break the next refresh cycle.
@@ -3557,12 +3477,12 @@ def refresh_codex_oauth_pure(
     refresh_token: str,
     *,
     timeout_seconds: float = 20.0,
-) -> dict[str, Any]:
-    """Refresh Codex OAuth tokens without mutating Prostor auth state."""
+) -> Dict[str, Any]:
+    """Refresh Codex OAuth tokens without mutating Hermes auth state."""
     del access_token  # Access token is only used by callers to decide whether to refresh.
     if not isinstance(refresh_token, str) or not refresh_token.strip():
         raise AuthError(
-            "Codex auth is missing refresh_token. Run `prostor auth` to re-authenticate.",
+            "Codex auth is missing refresh_token. Run `hermes auth` to re-authenticate.",
             provider="openai-codex",
             code="codex_auth_missing_refresh_token",
             relogin_required=True,
@@ -3585,7 +3505,7 @@ def refresh_codex_oauth_pure(
         # The stored refresh token is still valid here — re-authenticating
         # cannot lift a quota cap. Classify distinctly from auth failures so
         # callers surface a "retry later" notice instead of a misleading
-        # "run prostor auth" prompt (see issue #32790).
+        # "run hermes auth" prompt (see issue #32790).
         retry_after = _parse_retry_after_seconds(getattr(response, "headers", None))
         if retry_after is not None:
             message = (
@@ -3635,7 +3555,7 @@ def refresh_codex_oauth_pure(
                 "Codex refresh token was already consumed by another client "
                 "(e.g. Codex CLI or VS Code extension). "
                 "Run `codex` in your terminal to generate fresh tokens, "
-                "then run `prostor auth` to re-authenticate."
+                "then run `hermes auth` to re-authenticate."
             )
             relogin_required = True
         # A 401/403 from the token endpoint always means the refresh token
@@ -3672,7 +3592,7 @@ def refresh_codex_oauth_pure(
     updated = {
         "access_token": refreshed_access.strip(),
         "refresh_token": refresh_token.strip(),
-        "last_refresh": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     next_refresh = refresh_payload.get("refresh_token")
     if isinstance(next_refresh, str) and next_refresh.strip():
@@ -3681,12 +3601,12 @@ def refresh_codex_oauth_pure(
 
 
 def _refresh_codex_auth_tokens(
-    tokens: dict[str, str],
+    tokens: Dict[str, str],
     timeout_seconds: float,
-) -> dict[str, str]:
+) -> Dict[str, str]:
     """Refresh Codex access token using the refresh token.
-
-    Saves the new tokens to Prostor auth store automatically.
+    
+    Saves the new tokens to Hermes auth store automatically.
     """
     try:
         refreshed = refresh_codex_oauth_pure(
@@ -3695,10 +3615,10 @@ def _refresh_codex_auth_tokens(
             timeout_seconds=timeout_seconds,
         )
     except AuthError as exc:
-        # Self-heal cross-store refresh_token rotation. Prostor keeps its OWN
+        # Self-heal cross-store refresh_token rotation. Hermes keeps its OWN
         # Codex OAuth token (per profile + top-level), separate from the Codex
         # CLI's ~/.codex/auth.json. OAuth refresh_tokens are single-use, so when
-        # the Codex CLI (or another Prostor process) rotates the shared token,
+        # the Codex CLI (or another Hermes process) rotates the shared token,
         # this frozen copy's refresh_token goes stale and the refresh fails with
         # a relogin-required error (invalid_grant / refresh_token_reused / 401).
         # Before surfacing that as a hard 401 to the turn, adopt the canonical
@@ -3724,9 +3644,9 @@ def _refresh_codex_auth_tokens(
     return updated_tokens
 
 
-def _import_codex_cli_tokens() -> dict[str, str] | None:
+def _import_codex_cli_tokens() -> Optional[Dict[str, str]]:
     """Try to read tokens from ~/.codex/auth.json (Codex CLI shared file).
-
+    
     Returns tokens dict if valid and not expired, None otherwise.
     Does NOT write to the shared file.
     """
@@ -3763,8 +3683,8 @@ def resolve_codex_runtime_credentials(
     force_refresh: bool = False,
     refresh_if_expiring: bool = True,
     refresh_skew_seconds: int = CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
-) -> dict[str, Any]:
-    """Resolve runtime credentials from Prostor's own Codex token store.
+) -> Dict[str, Any]:
+    """Resolve runtime credentials from Hermes's own Codex token store.
 
     Falls back to the credential pool when the singleton (``providers.openai-codex.tokens``)
     has no usable access_token but the pool (``credential_pool.openai-codex``) does. This
@@ -3775,7 +3695,7 @@ def resolve_codex_runtime_credentials(
     HTTP 401 ``Missing Authentication header`` from the wire instead of a usable
     credential. See issue #32992.
     """
-    read_error: AuthError | None = None
+    read_error: Optional[AuthError] = None
     try:
         data = _read_codex_tokens()
     except AuthError as exc:
@@ -3797,7 +3717,7 @@ def resolve_codex_runtime_credentials(
         pool_token = _pool_codex_access_token()
         if pool_token:
             base_url = (
-                os.getenv("PROSTOR_CODEX_BASE_URL", "").strip().rstrip("/")
+                os.getenv("HERMES_CODEX_BASE_URL", "").strip().rstrip("/")
                 or DEFAULT_CODEX_BASE_URL
             )
             return {
@@ -3831,7 +3751,7 @@ def resolve_codex_runtime_credentials(
         if read_error is not None:
             raise read_error
         raise AuthError(
-            "No Codex credentials stored. Run `prostor auth` to authenticate.",
+            "No Codex credentials stored. Run `hermes auth` to authenticate.",
             provider="openai-codex",
             code="codex_auth_missing",
             relogin_required=True,
@@ -3839,13 +3759,13 @@ def resolve_codex_runtime_credentials(
 
     tokens = dict(data["tokens"])
     access_token = str(tokens.get("access_token", "") or "").strip()
-    refresh_timeout_seconds = env_float("PROSTOR_CODEX_REFRESH_TIMEOUT_SECONDS", 20)
+    refresh_timeout_seconds = env_float("HERMES_CODEX_REFRESH_TIMEOUT_SECONDS", 20)
 
     should_refresh = bool(force_refresh)
     if (not should_refresh) and refresh_if_expiring:
         should_refresh = _codex_access_token_is_expiring(access_token, refresh_skew_seconds)
     if should_refresh:
-        # Re-read under lock to avoid racing with other Prostor processes
+        # Re-read under lock to avoid racing with other Hermes processes
         with _auth_store_lock(timeout_seconds=max(float(AUTH_LOCK_TIMEOUT_SECONDS), refresh_timeout_seconds + 5.0)):
             data = _read_codex_tokens(_lock=False)
             tokens = dict(data["tokens"])
@@ -3860,7 +3780,7 @@ def resolve_codex_runtime_credentials(
                 access_token = str(tokens.get("access_token", "") or "").strip()
 
     base_url = (
-        os.getenv("PROSTOR_CODEX_BASE_URL", "").strip().rstrip("/")
+        os.getenv("HERMES_CODEX_BASE_URL", "").strip().rstrip("/")
         or DEFAULT_CODEX_BASE_URL
     )
 
@@ -3868,15 +3788,15 @@ def resolve_codex_runtime_credentials(
         "provider": "openai-codex",
         "base_url": base_url,
         "api_key": access_token,
-        "source": "prostor-auth-store",
+        "source": "hermes-auth-store",
         "last_refresh": data.get("last_refresh"),
         "auth_mode": "chatgpt",
     }
 
 
-def _codex_pool_rate_limit_status() -> dict[str, Any] | None:
+def _codex_pool_rate_limit_status() -> Optional[Dict[str, Any]]:
     """Return metadata for a pool-only Codex credential in quota cooldown."""
-    def _parse_reset_at(value: Any) -> float | None:
+    def _parse_reset_at(value: Any) -> Optional[float]:
         if value is None or value == "":
             return None
         if isinstance(value, (int, float)):
@@ -3967,7 +3887,7 @@ def _pool_codex_access_token() -> str:
         if not isinstance(entries, list):
             return ""
 
-        def _entry_usable(entry: dict[str, Any]) -> bool:
+        def _entry_usable(entry: Dict[str, Any]) -> bool:
             if not isinstance(entry, dict):
                 return False
             token = entry.get("access_token")
@@ -3988,10 +3908,10 @@ def _pool_codex_access_token() -> str:
 
 
 # =============================================================================
-# xAI Grok OAuth — tokens stored in ~/.prostor/auth.json
+# xAI Grok OAuth — tokens stored in ~/.hermes/auth.json
 # =============================================================================
 
-def _xai_oauth_state_from_store(auth_store: dict[str, Any]) -> dict[str, Any] | None:
+def _xai_oauth_state_from_store(auth_store: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Return usable xAI OAuth state from provider state or credential pool."""
     state = _load_provider_state(auth_store, "xai-oauth")
     tokens = state.get("tokens") if isinstance(state, dict) else None
@@ -4029,7 +3949,7 @@ def _xai_oauth_state_from_store(auth_store: dict[str, Any]) -> dict[str, Any] | 
     return state if isinstance(state, dict) else None
 
 
-def _xai_oauth_state_has_usable_tokens(state: dict[str, Any] | None) -> bool:
+def _xai_oauth_state_has_usable_tokens(state: Optional[Dict[str, Any]]) -> bool:
     tokens = state.get("tokens") if isinstance(state, dict) else None
     return (
         isinstance(tokens, dict)
@@ -4038,7 +3958,7 @@ def _xai_oauth_state_has_usable_tokens(state: dict[str, Any] | None) -> bool:
     )
 
 
-def _read_xai_oauth_tokens(*, _lock: bool = True) -> dict[str, Any]:
+def _read_xai_oauth_tokens(*, _lock: bool = True) -> Dict[str, Any]:
     if _lock:
         with _auth_store_lock():
             auth_store = _load_auth_store()
@@ -4051,7 +3971,7 @@ def _read_xai_oauth_tokens(*, _lock: bool = True) -> dict[str, Any]:
             state = global_state
     if not state:
         raise AuthError(
-            "No xAI OAuth credentials stored. Select xAI Grok OAuth (SuperGrok / Premium+) in `prostor model`.",
+            "No xAI OAuth credentials stored. Select xAI Grok OAuth (SuperGrok / Premium+) in `hermes model`.",
             provider="xai-oauth",
             code="xai_auth_missing",
             relogin_required=True,
@@ -4059,7 +3979,7 @@ def _read_xai_oauth_tokens(*, _lock: bool = True) -> dict[str, Any]:
     tokens = state.get("tokens")
     if not isinstance(tokens, dict):
         raise AuthError(
-            "xAI OAuth state is missing tokens. Re-authenticate with `prostor model`.",
+            "xAI OAuth state is missing tokens. Re-authenticate with `hermes model`.",
             provider="xai-oauth",
             code="xai_auth_invalid_shape",
             relogin_required=True,
@@ -4068,14 +3988,14 @@ def _read_xai_oauth_tokens(*, _lock: bool = True) -> dict[str, Any]:
     refresh_token = str(tokens.get("refresh_token", "") or "").strip()
     if not access_token:
         raise AuthError(
-            "xAI OAuth state is missing access_token. Re-authenticate with `prostor model`.",
+            "xAI OAuth state is missing access_token. Re-authenticate with `hermes model`.",
             provider="xai-oauth",
             code="xai_auth_missing_access_token",
             relogin_required=True,
         )
     if not refresh_token:
         raise AuthError(
-            "xAI OAuth state is missing refresh_token. Re-authenticate with `prostor model`.",
+            "xAI OAuth state is missing refresh_token. Re-authenticate with `hermes model`.",
             provider="xai-oauth",
             code="xai_auth_missing_refresh_token",
             relogin_required=True,
@@ -4088,7 +4008,7 @@ def _read_xai_oauth_tokens(*, _lock: bool = True) -> dict[str, Any]:
     }
 
 
-def _profile_has_own_xai_oauth_state(auth_store: dict[str, Any]) -> bool:
+def _profile_has_own_xai_oauth_state(auth_store: Dict[str, Any]) -> bool:
     """True when this store has its OWN ``providers.xai-oauth`` block.
 
     Distinguishes a profile that genuinely shadows the root xAI grant from
@@ -4099,7 +4019,7 @@ def _profile_has_own_xai_oauth_state(auth_store: dict[str, Any]) -> bool:
     return isinstance(providers, dict) and isinstance(providers.get("xai-oauth"), dict)
 
 
-def _write_through_xai_oauth_to_global_root(state: dict[str, Any]) -> None:
+def _write_through_xai_oauth_to_global_root(state: Dict[str, Any]) -> None:
     """Persist a rotated xAI OAuth ``state`` into the global-root auth.json.
 
     Best-effort write-through for the multi-profile rotation hazard (#43589):
@@ -4119,13 +4039,13 @@ def _write_through_xai_oauth_to_global_root(state: dict[str, Any]) -> None:
         # Classic mode (profile == root); the profile save already hit root.
         return
     # Seat belt: under pytest, refuse to write the real user's
-    # ~/.prostor/auth.json even when PROSTOR_HOME points at a profile path
+    # ~/.hermes/auth.json even when HERMES_HOME points at a profile path
     # (mirrors the read-side guard in _load_global_auth_store). Uses the
     # unmodified HOME env, not Path.home() which fixtures may monkeypatch.
     if os.environ.get("PYTEST_CURRENT_TEST"):
         real_home_env = os.environ.get("HOME", "")
         if real_home_env:
-            real_root = Path(real_home_env) / ".prostor" / "auth.json"
+            real_root = Path(real_home_env) / ".hermes" / "auth.json"
             try:
                 if global_path.resolve(strict=False) == real_root.resolve(strict=False):
                     return
@@ -4145,14 +4065,14 @@ def _write_through_xai_oauth_to_global_root(state: dict[str, Any]) -> None:
 
 
 def _save_xai_oauth_tokens(
-    tokens: dict[str, Any],
+    tokens: Dict[str, Any],
     *,
-    discovery: dict[str, Any] | None = None,
+    discovery: Optional[Dict[str, Any]] = None,
     redirect_uri: str = "",
-    last_refresh: str | None = None,
+    last_refresh: Optional[str] = None,
 ) -> None:
     if last_refresh is None:
-        last_refresh = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        last_refresh = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     with _auth_store_lock():
         auth_store = _load_auth_store()
         # A profile that lacks its own xai-oauth block is reading the root
@@ -4196,7 +4116,7 @@ def _xai_validate_oauth_endpoint(url: str, *, field: str) -> str:
     """Refuse any OIDC discovery endpoint that isn't HTTPS on the xAI origin.
 
     The OIDC discovery response is a long-lived, low-frequency request whose
-    output is cached in ``~/.prostor/auth.json``. A single MITM during initial
+    output is cached in ``~/.hermes/auth.json``. A single MITM during initial
     login could substitute a malicious ``token_endpoint``; that URL would
     then receive the refresh_token on every subsequent refresh — a permanent
     credential leak from a one-time MITM. Validating scheme + host pins the
@@ -4226,7 +4146,7 @@ def _xai_validate_oauth_endpoint(url: str, *, field: str) -> str:
             f"xAI OIDC discovery {field} host {host!r} is not on the xAI origin "
             f"(expected x.ai or a *.x.ai subdomain). Refusing to use a cached "
             f"endpoint that may have been substituted by a MITM during initial "
-            f"discovery; re-authenticate with `prostor model` to re-fetch.",
+            f"discovery; re-authenticate with `hermes model` to re-fetch.",
             provider="xai-oauth",
             code="xai_discovery_invalid",
         )
@@ -4237,7 +4157,7 @@ def _xai_validate_inference_base_url(value: str, *, fallback: str) -> str:
     """Refuse a non-xAI base_url for the OAuth-authenticated inference path.
 
     The xAI Grok OAuth bearer is a high-value, long-lived credential tied to
-    the user's SuperGrok subscription. ``XAI_BASE_URL`` / ``PROSTOR_XAI_BASE_URL``
+    the user's SuperGrok subscription. ``XAI_BASE_URL`` / ``HERMES_XAI_BASE_URL``
     let users repoint the inference endpoint (handy for staging or a local
     proxy), but the env override is also a credential-leak vector: a tampered
     ``.env`` or hostile shell init that sets
@@ -4289,7 +4209,7 @@ def _xai_validate_inference_base_url(value: str, *, fallback: str) -> str:
     return candidate
 
 
-def _xai_oauth_discovery(timeout_seconds: float = 15.0) -> dict[str, str]:
+def _xai_oauth_discovery(timeout_seconds: float = 15.0) -> Dict[str, str]:
     try:
         response = httpx.get(
             XAI_OAUTH_DISCOVERY_URL,
@@ -4344,21 +4264,21 @@ def refresh_xai_oauth_pure(
     *,
     token_endpoint: str = "",
     timeout_seconds: float = 20.0,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     del access_token
     if not isinstance(refresh_token, str) or not refresh_token.strip():
         raise AuthError(
-            "xAI OAuth is missing refresh_token. Re-authenticate with `prostor model`.",
+            "xAI OAuth is missing refresh_token. Re-authenticate with `hermes model`.",
             provider="xai-oauth",
             code="xai_auth_missing_refresh_token",
             relogin_required=True,
         )
     endpoint = token_endpoint.strip() or _xai_oauth_discovery(timeout_seconds)["token_endpoint"]
     # Re-validate cached endpoints on the refresh hot path: an auth.json
-    # written by an older Prostor (or hand-edited) may carry a non-xAI
+    # written by an older Hermes (or hand-edited) may carry a non-xAI
     # token_endpoint that would receive every future refresh_token in
     # plaintext if we trusted it blindly. Cheap suffix check; fast-fail
-    # with a clear error so the user can re-run `prostor model` to refetch.
+    # with a clear error so the user can re-run `hermes model` to refetch.
     _xai_validate_oauth_endpoint(endpoint, field="token_endpoint")
     timeout = httpx.Timeout(max(5.0, float(timeout_seconds)))
     with httpx.Client(timeout=timeout, headers={"Accept": "application/json"}) as client:
@@ -4375,7 +4295,7 @@ def refresh_xai_oauth_pure(
         detail = response.text.strip()
         # ``403`` from xAI's token endpoint is almost always a tier /
         # entitlement gate (the OAuth grant exists but the account isn't
-        # on the allowlist for API access).  Re-running ``prostor model``
+        # on the allowlist for API access).  Re-running ``hermes model``
         # won't fix that — surface a separate error code so
         # ``format_auth_error`` doesn't append a misleading
         # re-authenticate hint, and point users at the ``XAI_API_KEY``
@@ -4431,18 +4351,18 @@ def refresh_xai_oauth_pure(
         "id_token": str(payload.get("id_token") or "").strip(),
         "expires_in": payload.get("expires_in"),
         "token_type": str(payload.get("token_type") or "Bearer").strip() or "Bearer",
-        "last_refresh": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     return updated
 
 
 def _refresh_xai_oauth_tokens(
-    tokens: dict[str, Any],
+    tokens: Dict[str, Any],
     *,
     token_endpoint: str,
     redirect_uri: str = "",
     timeout_seconds: float,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     refreshed = refresh_xai_oauth_pure(
         str(tokens.get("access_token", "") or ""),
         str(tokens.get("refresh_token", "") or ""),
@@ -4472,11 +4392,11 @@ def resolve_xai_oauth_runtime_credentials(
     force_refresh: bool = False,
     refresh_if_expiring: bool = True,
     refresh_skew_seconds: int = XAI_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     data = _read_xai_oauth_tokens()
     tokens = dict(data["tokens"])
     access_token = str(tokens.get("access_token", "") or "").strip()
-    refresh_timeout_seconds = env_float("PROSTOR_XAI_REFRESH_TIMEOUT_SECONDS", 20)
+    refresh_timeout_seconds = env_float("HERMES_XAI_REFRESH_TIMEOUT_SECONDS", 20)
     discovery = dict(data.get("discovery") or {})
     token_endpoint = str(discovery.get("token_endpoint", "") or "").strip()
     redirect_uri = str(data.get("redirect_uri", "") or "").strip()
@@ -4524,7 +4444,7 @@ def resolve_xai_oauth_runtime_credentials(
                                 "message": str(exc),
                                 "reason": "runtime_refresh_failure",
                                 "relogin_required": True,
-                                "at": datetime.now(UTC).isoformat(),
+                                "at": datetime.now(timezone.utc).isoformat(),
                             }
                             _store_provider_state(_q_store, "xai-oauth", _q_state, set_active=False)
                             _save_auth_store(_q_store)
@@ -4535,7 +4455,7 @@ def resolve_xai_oauth_runtime_credentials(
                     raise
 
     base_url = _xai_validate_inference_base_url(
-        os.getenv("PROSTOR_XAI_BASE_URL", "").strip().rstrip("/")
+        os.getenv("HERMES_XAI_BASE_URL", "").strip().rstrip("/")
         or os.getenv("XAI_BASE_URL", "").strip().rstrip("/"),
         fallback=DEFAULT_XAI_OAUTH_BASE_URL,
     )
@@ -4543,7 +4463,7 @@ def resolve_xai_oauth_runtime_credentials(
         "provider": "xai-oauth",
         "base_url": base_url,
         "api_key": access_token,
-        "source": "prostor-auth-store",
+        "source": "hermes-auth-store",
         "last_refresh": data.get("last_refresh"),
         "auth_mode": "oauth_pkce",
     }
@@ -4573,9 +4493,9 @@ def _default_verify() -> bool | ssl.SSLContext:
 
 def _resolve_verify(
     *,
-    insecure: bool | None = None,
-    ca_bundle: str | None = None,
-    auth_state: dict[str, Any] | None = None,
+    insecure: Optional[bool] = None,
+    ca_bundle: Optional[str] = None,
+    auth_state: Optional[Dict[str, Any]] = None,
 ) -> bool | ssl.SSLContext:
     tls_state = auth_state.get("tls") if isinstance(auth_state, dict) else {}
     tls_state = tls_state if isinstance(tls_state, dict) else {}
@@ -4587,7 +4507,7 @@ def _resolve_verify(
     effective_ca = (
         ca_bundle
         or tls_state.get("ca_bundle")
-        or os.getenv("PROSTOR_CA_BUNDLE")
+        or os.getenv("HERMES_CA_BUNDLE")
         or os.getenv("SSL_CERT_FILE")
         or os.getenv("REQUESTS_CA_BUNDLE")
     )
@@ -4614,8 +4534,8 @@ def _request_device_code(
     client: httpx.Client,
     portal_base_url: str,
     client_id: str,
-    scope: str | None,
-) -> dict[str, Any]:
+    scope: Optional[str],
+) -> Dict[str, Any]:
     """POST to the device code endpoint. Returns device_code, user_code, etc."""
     response = client.post(
         f"{portal_base_url}/api/oauth/device/code",
@@ -4644,7 +4564,7 @@ def _poll_for_token(
     device_code: str,
     expires_in: int,
     poll_interval: int,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Poll the token endpoint until the user approves or the code expires."""
     deadline = time.monotonic() + max(1, expires_in)
     current_interval = max(1, min(poll_interval, DEVICE_AUTH_POLL_INTERVAL_CAP_SECONDS))
@@ -4692,15 +4612,15 @@ def _poll_for_token(
 
 # -----------------------------------------------------------------------------
 # Shared Nous token store — lets OAuth credentials persist across profiles
-# so a new `prostor --profile <name> auth add nous --type oauth` can one-tap
+# so a new `hermes --profile <name> auth add nous --type oauth` can one-tap
 # import instead of running the full device-code flow every time.
 #
-# File lives at ${PROSTOR_SHARED_AUTH_DIR}/nous_auth.json, defaulting to
-# ``<prostor-root>/shared/nous_auth.json`` where ``<prostor-root>`` is what
-# ``get_default_prostor_root()`` returns — ``~/.prostor`` on Linux/macOS,
-# ``%LOCALAPPDATA%\prostor`` on native Windows, or the Docker/custom root.
-# It is OUTSIDE any named profile's PROSTOR_HOME so named profiles (which
-# typically live under ``<prostor-root>/profiles/<name>/``) all see the
+# File lives at ${HERMES_SHARED_AUTH_DIR}/nous_auth.json, defaulting to
+# ``<hermes-root>/shared/nous_auth.json`` where ``<hermes-root>`` is what
+# ``get_default_hermes_root()`` returns — ``~/.hermes`` on Linux/macOS,
+# ``%LOCALAPPDATA%\hermes`` on native Windows, or the Docker/custom root.
+# It is OUTSIDE any named profile's HERMES_HOME so named profiles (which
+# typically live under ``<hermes-root>/profiles/<name>/``) all see the
 # same file.
 #
 # Written on successful login and on every runtime refresh so the stored
@@ -4716,35 +4636,35 @@ _nous_shared_lock_holder = threading.local()
 def _nous_shared_auth_dir() -> Path:
     """Resolve the directory that holds the shared Nous token store.
 
-    Honors ``PROSTOR_SHARED_AUTH_DIR`` so tests can redirect it to a tmp
+    Honors ``HERMES_SHARED_AUTH_DIR`` so tests can redirect it to a tmp
     path without touching the real user's home. Defaults to
-    ``<prostor-root>/shared/``, where ``<prostor-root>`` is what
-    :func:`prostor_constants.get_default_prostor_root` returns — so
-    Linux/macOS classic installs land at ``~/.prostor/shared/``, native
-    Windows installs at ``%LOCALAPPDATA%\\prostor\\shared\\``, and
-    Docker / custom ``PROSTOR_HOME`` deployments at
-    ``<PROSTOR_HOME>/shared/``. Sits outside any named profile so all
+    ``<hermes-root>/shared/``, where ``<hermes-root>`` is what
+    :func:`hermes_constants.get_default_hermes_root` returns — so
+    Linux/macOS classic installs land at ``~/.hermes/shared/``, native
+    Windows installs at ``%LOCALAPPDATA%\\hermes\\shared\\``, and
+    Docker / custom ``HERMES_HOME`` deployments at
+    ``<HERMES_HOME>/shared/``. Sits outside any named profile so all
     profiles under the same root share the store.
     """
-    override = os.getenv("PROSTOR_SHARED_AUTH_DIR", "").strip()
+    override = os.getenv("HERMES_SHARED_AUTH_DIR", "").strip()
     if override:
         return Path(override).expanduser()
-    from prostor_constants import get_default_prostor_root
-    return get_default_prostor_root() / "shared"
+    from hermes_constants import get_default_hermes_root
+    return get_default_hermes_root() / "shared"
 
 
 def _nous_shared_store_path() -> Path:
     path = _nous_shared_auth_dir() / NOUS_SHARED_STORE_FILENAME
     # Seat belt: if pytest is running and this resolves to a path under the
-    # real user's Prostor root, refuse rather than silently corrupt cross-profile
-    # state. Tests must set PROSTOR_SHARED_AUTH_DIR to a tmp_path (conftest
+    # real user's Hermes root, refuse rather than silently corrupt cross-profile
+    # state. Tests must set HERMES_SHARED_AUTH_DIR to a tmp_path (conftest
     # does not do this automatically — mirror the _auth_file_path() guard
     # so forgetting to set it fails loudly instead of writing to the real
     # shared store).
     if os.environ.get("PYTEST_CURRENT_TEST"):
-        from prostor_constants import get_default_prostor_root
+        from hermes_constants import get_default_hermes_root
         real_home_shared = (
-            get_default_prostor_root() / "shared" / NOUS_SHARED_STORE_FILENAME
+            get_default_hermes_root() / "shared" / NOUS_SHARED_STORE_FILENAME
         ).resolve(strict=False)
         try:
             resolved = path.resolve(strict=False)
@@ -4753,7 +4673,7 @@ def _nous_shared_store_path() -> Path:
         if resolved == real_home_shared:
             raise RuntimeError(
                 f"Refusing to touch real user shared Nous auth store during test run: "
-                f"{path}. Set PROSTOR_SHARED_AUTH_DIR to a tmp_path in your test fixture."
+                f"{path}. Set HERMES_SHARED_AUTH_DIR to a tmp_path in your test fixture."
             )
     return path
 
@@ -4773,7 +4693,7 @@ def _nous_shared_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
     try:
         lock_path = _nous_shared_store_path().with_suffix(".lock")
     except RuntimeError:
-        # No PROSTOR_HOME yet (pre-setup): fall through without locking.
+        # No HERMES_HOME yet (pre-setup): fall through without locking.
         yield
         return
 
@@ -4786,7 +4706,7 @@ def _nous_shared_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
         yield
 
 
-def _merge_shared_nous_oauth_state(state: dict[str, Any]) -> bool:
+def _merge_shared_nous_oauth_state(state: Dict[str, Any]) -> bool:
     """Copy fresher shared OAuth tokens into a profile-local Nous state."""
     shared = _read_shared_nous_state()
     if not shared:
@@ -4821,7 +4741,7 @@ def _merge_shared_nous_oauth_state(state: dict[str, Any]) -> bool:
     return True
 
 
-def _write_shared_nous_state(state: dict[str, Any]) -> None:
+def _write_shared_nous_state(state: Dict[str, Any]) -> None:
     """Persist a minimal copy of the Nous OAuth state to the shared store.
 
     Best-effort: any failure is swallowed after logging. The shared store
@@ -4850,7 +4770,7 @@ def _write_shared_nous_state(state: dict[str, Any]) -> None:
         "inference_base_url": state.get("inference_base_url") or DEFAULT_NOUS_INFERENCE_URL,
         "obtained_at": state.get("obtained_at"),
         "expires_at": state.get("expires_at"),
-        "updated_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
         with _nous_shared_store_lock():
@@ -4888,7 +4808,7 @@ def _write_shared_nous_state(state: dict[str, Any]) -> None:
         logger.debug("Failed to write shared Nous auth store: %s", exc)
 
 
-def _read_shared_nous_state() -> dict[str, Any] | None:
+def _read_shared_nous_state() -> Optional[Dict[str, Any]]:
     """Return the shared Nous OAuth state if present and well-formed.
 
     Returns ``None`` when the file is missing, unreadable, malformed, or
@@ -4983,7 +4903,7 @@ def _is_terminal_codex_oauth_refresh_error(exc: Exception) -> bool:
 
 
 def _quarantine_nous_oauth_state(
-    state: dict[str, Any],
+    state: Dict[str, Any],
     error: AuthError,
     *,
     reason: str,
@@ -5009,14 +4929,14 @@ def _quarantine_nous_oauth_state(
         "message": str(error),
         "reason": reason,
         "relogin_required": True,
-        "at": datetime.now(UTC).isoformat(),
+        "at": datetime.now(timezone.utc).isoformat(),
     }
     _clear_shared_nous_state(reason)
     invalidate_nous_auth_status_cache()
 
 
 def _quarantine_nous_pool_entries(
-    auth_store: dict[str, Any],
+    auth_store: Dict[str, Any],
     error: AuthError,
     *,
     reason: str,
@@ -5051,7 +4971,7 @@ def _quarantine_nous_pool_entries(
 def _try_import_shared_nous_state(
     *,
     timeout_seconds: float = 15.0,
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """Attempt to rehydrate Nous OAuth state from the shared store.
 
     Reads the shared file (if present), runs a forced refresh using the
@@ -5073,7 +4993,7 @@ def _try_import_shared_nous_state(
             # Build a full state dict so refresh_nous_oauth_from_state has every
             # field it needs. force_refresh=True gets us a fresh access_token
             # for this profile.
-            state: dict[str, Any] = {
+            state: Dict[str, Any] = {
                 "access_token": shared.get("access_token"),
                 "refresh_token": shared.get("refresh_token"),
                 "client_id": shared.get("client_id") or DEFAULT_NOUS_CLIENT_ID,
@@ -5088,7 +5008,7 @@ def _try_import_shared_nous_state(
                 "tls": {"insecure": False, "ca_bundle": None},
             }
 
-            def _persist_shared_refresh(updated_state: dict[str, Any], _reason: str) -> None:
+            def _persist_shared_refresh(updated_state: Dict[str, Any], _reason: str) -> None:
                 _write_shared_nous_state(updated_state)
 
             refreshed = refresh_nous_oauth_from_state(
@@ -5125,7 +5045,7 @@ def _refresh_access_token(
     portal_base_url: str,
     client_id: str,
     refresh_token: str,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     response = client.post(
         f"{portal_base_url}/api/oauth/token",
         headers={"x-nous-refresh-token": refresh_token},
@@ -5155,22 +5075,22 @@ def _refresh_access_token(
     # Detect the OAuth 2.1 "refresh token reuse" signal from the Nous portal
     # server and surface an actionable message.  This fires when an external
     # process (health-check script, monitoring tool, custom self-heal hook)
-    # called POST /api/oauth/token with Prostor's refresh_token without
+    # called POST /api/oauth/token with Hermes's refresh_token without
     # persisting the rotated token back to auth.json — the server then
-    # retires the original RT, Prostor's next refresh uses it, and the whole
+    # retires the original RT, Hermes's next refresh uses it, and the whole
     # session chain gets revoked as a token-theft signal (#15099).
     lowered = description.lower()
     if code == "refresh_token_reused" or "reuse" in lowered or "reuse detected" in lowered:
         description = (
             "Nous Portal detected refresh-token reuse and revoked this session.\n"
             "This usually means an external process (monitoring script, "
-            "custom self-heal hook, or another Prostor install sharing "
-            "~/.prostor/auth.json) called POST /api/oauth/token with Prostor's "
+            "custom self-heal hook, or another Hermes install sharing "
+            "~/.hermes/auth.json) called POST /api/oauth/token with Hermes's "
             "refresh token without persisting the rotated token back.\n"
-            "Nous refresh tokens are single-use — only Prostor may call the "
-            "refresh endpoint. For health checks, use `prostor auth status` "
+            "Nous refresh tokens are single-use — only Hermes may call the "
+            "refresh endpoint. For health checks, use `hermes auth status` "
             "instead.\n"
-            "Re-authenticate with: prostor auth add nous"
+            "Re-authenticate with: hermes auth add nous"
         )
         relogin = True
 
@@ -5183,7 +5103,7 @@ def fetch_nous_models(
     api_key: str,
     timeout_seconds: float = 15.0,
     verify: bool | str = True,
-) -> list[str]:
+) -> List[str]:
     """Fetch available model IDs from the Nous inference API."""
     timeout = httpx.Timeout(timeout_seconds)
     with httpx.Client(timeout=timeout, headers={"Accept": "application/json"}, verify=verify) as client:
@@ -5206,15 +5126,15 @@ def fetch_nous_models(
     if not isinstance(data, list):
         return []
 
-    model_ids: list[str] = []
+    model_ids: List[str] = []
     for item in data:
         if not isinstance(item, dict):
             continue
         model_id = item.get("id")
         if isinstance(model_id, str) and model_id.strip():
             mid = model_id.strip()
-            # Skip Prostor models — they're not reliable for agentic tool-calling
-            if "prostor" in mid.lower():
+            # Skip Hermes models — they're not reliable for agentic tool-calling
+            if "hermes" in mid.lower():
                 continue
             model_ids.append(mid)
 
@@ -5234,7 +5154,7 @@ def fetch_nous_models(
     return list(dict.fromkeys(model_ids))
 
 
-def _agent_key_is_usable(state: dict[str, Any], min_ttl_seconds: int) -> bool:
+def _agent_key_is_usable(state: Dict[str, Any], min_ttl_seconds: int) -> bool:
     key = state.get("agent_key")
     if not isinstance(key, str) or not key.strip():
         return False
@@ -5249,8 +5169,8 @@ def _agent_key_is_usable(state: dict[str, Any], min_ttl_seconds: int) -> bool:
 def resolve_nous_access_token(
     *,
     timeout_seconds: float = 15.0,
-    insecure: bool | None = None,
-    ca_bundle: str | None = None,
+    insecure: Optional[bool] = None,
+    ca_bundle: Optional[str] = None,
     refresh_skew_seconds: int = ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
 ) -> str:
     """Resolve a refresh-aware Nous Portal access token for managed tool gateways."""
@@ -5260,14 +5180,14 @@ def resolve_nous_access_token(
 
         if not state:
             raise AuthError(
-                "Prostor is not logged into Nous Portal.",
+                "Hermes is not logged into Nous Portal.",
                 provider="nous",
                 relogin_required=True,
             )
 
         portal_base_url = (
             _optional_base_url(state.get("portal_base_url"))
-            or os.getenv("PROSTOR_PORTAL_BASE_URL")
+            or os.getenv("HERMES_PORTAL_BASE_URL")
             or os.getenv("NOUS_PORTAL_BASE_URL")
             or DEFAULT_NOUS_PORTAL_URL
         ).rstrip("/")
@@ -5327,7 +5247,7 @@ def resolve_nous_access_token(
                         _save_auth_store(auth_store)
                     raise
 
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             access_ttl = _coerce_ttl_seconds(refreshed.get("expires_in"))
             state["access_token"] = refreshed["access_token"]
             state["refresh_token"] = refreshed.get("refresh_token") or refresh_token
@@ -5337,7 +5257,7 @@ def resolve_nous_access_token(
             state["expires_in"] = access_ttl
             state["expires_at"] = datetime.fromtimestamp(
                 now.timestamp() + access_ttl,
-                tz=UTC,
+                tz=timezone.utc,
             ).isoformat()
             state["portal_base_url"] = portal_base_url
             state["client_id"] = client_id
@@ -5360,23 +5280,23 @@ def refresh_nous_oauth_pure(
     *,
     token_type: str = "Bearer",
     scope: str = DEFAULT_NOUS_SCOPE,
-    obtained_at: str | None = None,
-    expires_at: str | None = None,
-    agent_key: str | None = None,
-    agent_key_expires_at: str | None = None,
+    obtained_at: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    agent_key: Optional[str] = None,
+    agent_key_expires_at: Optional[str] = None,
     timeout_seconds: float = 15.0,
-    insecure: bool | None = None,
-    ca_bundle: str | None = None,
+    insecure: Optional[bool] = None,
+    ca_bundle: Optional[str] = None,
     force_refresh: bool = False,
-    on_state_update: Callable[[dict[str, Any], str], None] | None = None,
-) -> dict[str, Any]:
+    on_state_update: Optional[Callable[[Dict[str, Any], str], None]] = None,
+) -> Dict[str, Any]:
     """Refresh Nous OAuth state without mutating auth.json directly.
 
     ``on_state_update`` is called after a successful access-token refresh.
     Callers that own persistent state can use it to save the newly rotated
     refresh token before later validation can fail.
     """
-    state: dict[str, Any] = {
+    state: Dict[str, Any] = {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "client_id": client_id or DEFAULT_NOUS_CLIENT_ID,
@@ -5409,7 +5329,7 @@ def refresh_nous_oauth_pure(
                     raise AuthError(
                         "Nous Portal access token is not a usable inference JWT "
                         f"({current_invoke_jwt_status}) and no refresh token is available. "
-                        "Re-authenticate with: prostor auth add nous",
+                        "Re-authenticate with: hermes auth add nous",
                         provider="nous",
                         code=current_invoke_jwt_status,
                         relogin_required=True,
@@ -5425,7 +5345,7 @@ def refresh_nous_oauth_pure(
                 client_id=state["client_id"],
                 refresh_token=refresh_token_value,
             )
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             access_ttl = _coerce_ttl_seconds(refreshed.get("expires_in"))
             state["access_token"] = refreshed["access_token"]
             state["refresh_token"] = refreshed.get("refresh_token") or refresh_token_value
@@ -5443,7 +5363,7 @@ def refresh_nous_oauth_pure(
             state["obtained_at"] = now.isoformat()
             state["expires_in"] = access_ttl
             state["expires_at"] = datetime.fromtimestamp(
-                now.timestamp() + access_ttl, tz=UTC
+                now.timestamp() + access_ttl, tz=timezone.utc
             ).isoformat()
             if on_state_update is not None:
                 on_state_update(dict(state), "post_refresh_access_token")
@@ -5455,18 +5375,18 @@ def refresh_nous_oauth_pure(
 
 
 def refresh_nous_oauth_from_state(
-    state: dict[str, Any],
+    state: Dict[str, Any],
     *,
     timeout_seconds: float = 15.0,
     force_refresh: bool = False,
-    on_state_update: Callable[[dict[str, Any], str], None] | None = None,
-) -> dict[str, Any]:
+    on_state_update: Optional[Callable[[Dict[str, Any], str], None]] = None,
+) -> Dict[str, Any]:
     """Refresh Nous OAuth from a state dict. Thin wrapper around refresh_nous_oauth_pure."""
     tls = state.get("tls") or {}
     return refresh_nous_oauth_pure(
         state.get("access_token", ""),
         state.get("refresh_token", ""),
-        state.get("client_id", "prostor-cli"),
+        state.get("client_id", "hermes-cli"),
         state.get("portal_base_url", DEFAULT_NOUS_PORTAL_URL),
         state.get("inference_base_url", DEFAULT_NOUS_INFERENCE_URL),
         token_type=state.get("token_type", "Bearer"),
@@ -5484,9 +5404,9 @@ def refresh_nous_oauth_from_state(
 
 
 def persist_nous_credentials(
-    creds: dict[str, Any],
+    creds: Dict[str, Any],
     *,
-    label: str | None = None,
+    label: Optional[str] = None,
 ):
     """Persist Nous OAuth credentials as the singleton provider state
     and ensure the credential pool is in sync.
@@ -5498,7 +5418,7 @@ def persist_nous_credentials(
       ``_seed_from_singletons()`` during pool load.
     - ``credential_pool.nous``: used by the runtime ``pool.select()`` path.
 
-    Historically ``prostor auth add nous`` wrote a ``manual:device_code`` pool
+    Historically ``hermes auth add nous`` wrote a ``manual:device_code`` pool
     entry only, skipping ``providers.nous``. When the runtime credential
     expired, the recovery path read the empty singleton state and raised
     ``AuthError`` silently (``logger.debug`` at INFO level).
@@ -5509,7 +5429,7 @@ def persist_nous_credentials(
     place; the pool never accumulates duplicate device_code rows.
 
     ``label`` is an optional user-chosen display name (from
-    ``prostor auth add nous --label <name>``).  It gets embedded in the
+    ``hermes auth add nous --label <name>``).  It gets embedded in the
     singleton state so that ``_seed_from_singletons`` uses it as the pool
     entry's label on every subsequent ``load_pool("nous")`` instead of the
     auto-derived token fingerprint.  When ``None``, the auto-derived label
@@ -5530,7 +5450,7 @@ def persist_nous_credentials(
         _save_auth_store(auth_store)
 
     # Mirror to the shared store so a new profile can one-tap import
-    # these credentials via `prostor auth add nous --type oauth`. Best-
+    # these credentials via `hermes auth add nous --type oauth`. Best-
     # effort: any I/O failure is logged and swallowed (the per-profile
     # auth.json is still the source of truth).
     _write_shared_nous_state(state)
@@ -5555,10 +5475,10 @@ def _sync_nous_pool_from_auth_store() -> None:
 def resolve_nous_runtime_credentials(
     *,
     timeout_seconds: float = 15.0,
-    insecure: bool | None = None,
-    ca_bundle: str | None = None,
+    insecure: Optional[bool] = None,
+    ca_bundle: Optional[str] = None,
     force_refresh: bool = False,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Resolve Nous inference credentials for runtime use.
 
@@ -5575,7 +5495,7 @@ def resolve_nous_runtime_credentials(
         state = _load_provider_state(auth_store, "nous")
 
         if not state:
-            raise AuthError("Prostor is not logged into Nous Portal.",
+            raise AuthError("Hermes is not logged into Nous Portal.",
                             provider="nous", relogin_required=True)
 
         persisted_state = dict(state)
@@ -5583,7 +5503,7 @@ def resolve_nous_runtime_credentials(
 
         portal_base_url = (
             _optional_base_url(state.get("portal_base_url"))
-            or os.getenv("PROSTOR_PORTAL_BASE_URL")
+            or os.getenv("HERMES_PORTAL_BASE_URL")
             or os.getenv("NOUS_PORTAL_BASE_URL")
             or DEFAULT_NOUS_PORTAL_URL
         ).rstrip("/")
@@ -5673,7 +5593,7 @@ def resolve_nous_runtime_credentials(
                             raise AuthError(
                                 "Nous Portal access token is not a usable inference JWT "
                                 f"({reason}) and no refresh token is available. "
-                                "Re-authenticate with: prostor auth add nous",
+                                "Re-authenticate with: hermes auth add nous",
                                 provider="nous",
                                 code=reason,
                                 relogin_required=True,
@@ -5705,7 +5625,7 @@ def resolve_nous_runtime_credentials(
                                 )
                                 _persist_state("terminal_runtime_access_refresh_failure")
                             raise
-                        now = datetime.now(UTC)
+                        now = datetime.now(timezone.utc)
                         access_ttl = _coerce_ttl_seconds(refreshed.get("expires_in"))
                         previous_refresh_token = refresh_token
                         state["access_token"] = refreshed["access_token"]
@@ -5722,7 +5642,7 @@ def resolve_nous_runtime_credentials(
                         state["obtained_at"] = now.isoformat()
                         state["expires_in"] = access_ttl
                         state["expires_at"] = datetime.fromtimestamp(
-                            now.timestamp() + access_ttl, tz=UTC
+                            now.timestamp() + access_ttl, tz=timezone.utc
                         ).isoformat()
                         access_token = state["access_token"]
                         refresh_token = state["refresh_token"]
@@ -5789,7 +5709,7 @@ def resolve_nous_runtime_credentials(
 # Status helpers
 # =============================================================================
 
-def _empty_nous_auth_status() -> dict[str, Any]:
+def _empty_nous_auth_status() -> Dict[str, Any]:
     return {
         "logged_in": False,
         "portal_base_url": None,
@@ -5802,7 +5722,7 @@ def _empty_nous_auth_status() -> dict[str, Any]:
     }
 
 
-def _snapshot_nous_pool_status() -> dict[str, Any]:
+def _snapshot_nous_pool_status() -> Dict[str, Any]:
     """Best-effort status from the credential pool.
 
     This is a fallback only. The auth-store provider state is the runtime source
@@ -5864,17 +5784,17 @@ def _snapshot_nous_pool_status() -> dict[str, Any]:
 # ── Process-level memo for get_nous_auth_status() ──
 # get_nous_auth_status() validates state by calling resolve_nous_runtime_credentials(),
 # which does a synchronous OAuth refresh POST to portal.nousresearch.com. That can take
-# ~350ms even on the failure path, and read-only UI surfaces (`prostor tools`, status panels,
-# subscription-feature checks) call it many times per render — `prostor tools` → "All Platforms"
+# ~350ms even on the failure path, and read-only UI surfaces (`hermes tools`, status panels,
+# subscription-feature checks) call it many times per render — `hermes tools` → "All Platforms"
 # was firing the refresh ~31× during one menu paint, racking up >13s of HTTP and burning
 # single-use refresh tokens. Cache the snapshot for a few seconds, keyed on the auth.json
 # path + mtime so that profile switches do not share a process memo and
-# `prostor auth login/logout/add/remove` invalidate naturally on the next call.
+# `hermes auth login/logout/add/remove` invalidate naturally on the next call.
 _NOUS_AUTH_STATUS_CACHE_TTL = 15.0  # seconds
-_nous_auth_status_cache: tuple[float, str, float | None, dict[str, Any]] | None = None
+_nous_auth_status_cache: Optional[Tuple[float, str, Optional[float], Dict[str, Any]]] = None
 
 
-def _auth_file_cache_key() -> tuple[str, float | None]:
+def _auth_file_cache_key() -> Tuple[str, Optional[float]]:
     auth_file = _auth_file_path()
     try:
         auth_file_key = str(auth_file.resolve(strict=False))
@@ -5900,7 +5820,7 @@ def invalidate_nous_auth_status_cache() -> None:
     _nous_auth_status_cache = None
 
 
-def get_nous_auth_status() -> dict[str, Any]:
+def get_nous_auth_status() -> Dict[str, Any]:
     """Status snapshot for Nous auth.
 
     Prefer the auth-store provider state, because that is the live source of
@@ -5933,7 +5853,7 @@ def get_nous_auth_status() -> dict[str, Any]:
     return status
 
 
-def _compute_nous_auth_status() -> dict[str, Any]:
+def _compute_nous_auth_status() -> Dict[str, Any]:
     """Uncached implementation of get_nous_auth_status(). See that function."""
     state = get_provider_auth_state("nous")
     if state:
@@ -5985,14 +5905,14 @@ def _compute_nous_auth_status() -> dict[str, Any]:
     return _snapshot_nous_pool_status()
 
 
-def get_codex_auth_status() -> dict[str, Any]:
+def get_codex_auth_status() -> Dict[str, Any]:
     """Status snapshot for Codex auth.
-
-    Checks the credential pool first (where `prostor auth` stores credentials),
+    
+    Checks the credential pool first (where `hermes auth` stores credentials),
     then falls back to the legacy provider state.
     """
-    # Check credential pool first — this is where `prostor auth` and
-    # `prostor model` store device_code tokens.
+    # Check credential pool first — this is where `hermes auth` and
+    # `hermes model` store device_code tokens.
     try:
         from agent.credential_pool import load_pool
         pool = load_pool("openai-codex")
@@ -6050,7 +5970,7 @@ def get_codex_auth_status() -> dict[str, Any]:
         }
 
 
-def get_xai_oauth_auth_status() -> dict[str, Any]:
+def get_xai_oauth_auth_status() -> Dict[str, Any]:
     try:
         from agent.credential_pool import load_pool
 
@@ -6092,7 +6012,7 @@ def get_xai_oauth_auth_status() -> dict[str, Any]:
         }
 
 
-def get_api_key_provider_status(provider_id: str) -> dict[str, Any]:
+def get_api_key_provider_status(provider_id: str) -> Dict[str, Any]:
     """Status snapshot for API-key providers (z.ai, Kimi, MiniMax)."""
     pconfig = PROVIDER_REGISTRY.get(provider_id)
     if not pconfig or pconfig.auth_type != "api_key":
@@ -6123,18 +6043,18 @@ def get_api_key_provider_status(provider_id: str) -> dict[str, Any]:
     }
 
 
-def get_external_process_provider_status(provider_id: str) -> dict[str, Any]:
+def get_external_process_provider_status(provider_id: str) -> Dict[str, Any]:
     """Status snapshot for providers that run a local subprocess."""
     pconfig = PROVIDER_REGISTRY.get(provider_id)
     if not pconfig or pconfig.auth_type != "external_process":
         return {"configured": False}
 
     command = (
-        os.getenv("PROSTOR_COPILOT_ACP_COMMAND", "").strip()
+        os.getenv("HERMES_COPILOT_ACP_COMMAND", "").strip()
         or os.getenv("COPILOT_CLI_PATH", "").strip()
         or "copilot"
     )
-    raw_args = os.getenv("PROSTOR_COPILOT_ACP_ARGS", "").strip()
+    raw_args = os.getenv("HERMES_COPILOT_ACP_ARGS", "").strip()
     args = shlex.split(raw_args) if raw_args else ["--acp", "--stdio"]
     base_url = os.getenv(pconfig.base_url_env_var, "").strip() if pconfig.base_url_env_var else ""
     if not base_url:
@@ -6153,7 +6073,7 @@ def get_external_process_provider_status(provider_id: str) -> dict[str, Any]:
     }
 
 
-def get_auth_status(provider_id: str | None = None) -> dict[str, Any]:
+def get_auth_status(provider_id: Optional[str] = None) -> Dict[str, Any]:
     """Generic auth status dispatcher."""
     target = (provider_id or get_active_provider() or "").strip().lower()
     if not target:
@@ -6168,8 +6088,6 @@ def get_auth_status(provider_id: str | None = None) -> dict[str, Any]:
         return get_xai_oauth_auth_status()
     if target == "qwen-oauth":
         return get_qwen_auth_status()
-    if target == "google-gemini-cli":
-        return get_gemini_oauth_auth_status()
     if target == "minimax-oauth":
         return get_minimax_oauth_auth_status()
     if target == "copilot-acp":
@@ -6190,14 +6108,14 @@ def get_auth_status(provider_id: str | None = None) -> dict[str, Any]:
     return {"logged_in": False}
 
 
-def _get_azure_foundry_auth_status() -> dict[str, Any]:
+def _get_azure_foundry_auth_status() -> Dict[str, Any]:
     """Return structural auth status for Azure Foundry.
 
     ``logged_in`` is structural, matching other non-OAuth provider status
     checks:
 
       * ``auth_mode == "entra_id"`` AND ``azure-identity`` is importable
-        (we do NOT mint a token here; ``prostor doctor`` runs the live
+        (we do NOT mint a token here; ``hermes doctor`` runs the live
         probe and reports whether the credential chain can acquire one).
       * ``auth_mode == "api_key"`` (default) AND ``AZURE_FOUNDRY_API_KEY``
         is set with a usable value.
@@ -6205,9 +6123,9 @@ def _get_azure_foundry_auth_status() -> dict[str, Any]:
     Never invokes the Entra credential chain — keeps CLI startup latency
     flat regardless of token-service / az login state.
     """
-    info: dict[str, Any] = {"provider": "azure-foundry"}
+    info: Dict[str, Any] = {"provider": "azure-foundry"}
     try:
-        from prostor_cli.config import get_env_value, load_config
+        from hermes_cli.config import load_config, get_env_value
         cfg = load_config()
     except Exception:
         cfg = {}
@@ -6224,8 +6142,8 @@ def _get_azure_foundry_auth_status() -> dict[str, Any]:
     if auth_mode == "entra_id":
         try:
             from agent.azure_identity_adapter import (
-                SCOPE_AI_AZURE_DEFAULT,
                 EntraIdentityConfig,
+                SCOPE_AI_AZURE_DEFAULT,
                 has_azure_identity_installed,
             )
             installed = has_azure_identity_installed()
@@ -6244,13 +6162,13 @@ def _get_azure_foundry_auth_status() -> dict[str, Any]:
             if not installed:
                 info["hint"] = (
                     "azure-identity not installed. Install with: "
-                    "pip install azure-identity  (or rely on Prostor' "
+                    "pip install azure-identity  (or rely on Hermes' "
                     "lazy-install at first use)."
                 )
             else:
                 info["hint"] = (
                     "azure-identity is installed; live credential validation "
-                    "is skipped here. Run `prostor doctor` to verify token acquisition."
+                    "is skipped here. Run `hermes doctor` to verify token acquisition."
                 )
             return info
         except Exception as exc:
@@ -6267,7 +6185,7 @@ def _get_azure_foundry_auth_status() -> dict[str, Any]:
     return info
 
 
-def resolve_api_key_provider_credentials(provider_id: str) -> dict[str, Any]:
+def resolve_api_key_provider_credentials(provider_id: str) -> Dict[str, Any]:
     """Resolve API key and base URL for an API-key provider.
 
     Returns dict with: provider, api_key, base_url, source.
@@ -6312,7 +6230,7 @@ def resolve_api_key_provider_credentials(provider_id: str) -> dict[str, Any]:
     }
 
 
-def resolve_external_process_provider_credentials(provider_id: str) -> dict[str, Any]:
+def resolve_external_process_provider_credentials(provider_id: str) -> Dict[str, Any]:
     """Resolve runtime details for local subprocess-backed providers."""
     pconfig = PROVIDER_REGISTRY.get(provider_id)
     if not pconfig or pconfig.auth_type != "external_process":
@@ -6327,17 +6245,17 @@ def resolve_external_process_provider_credentials(provider_id: str) -> dict[str,
         base_url = pconfig.inference_base_url
 
     command = (
-        os.getenv("PROSTOR_COPILOT_ACP_COMMAND", "").strip()
+        os.getenv("HERMES_COPILOT_ACP_COMMAND", "").strip()
         or os.getenv("COPILOT_CLI_PATH", "").strip()
         or "copilot"
     )
-    raw_args = os.getenv("PROSTOR_COPILOT_ACP_ARGS", "").strip()
+    raw_args = os.getenv("HERMES_COPILOT_ACP_ARGS", "").strip()
     args = shlex.split(raw_args) if raw_args else ["--acp", "--stdio"]
     resolved_command = shutil.which(command) if command else None
     if not resolved_command and not base_url.startswith("acp+tcp://"):
         raise AuthError(
             f"Could not find the Copilot CLI command '{command}'. "
-            "Install GitHub Copilot CLI or set PROSTOR_COPILOT_ACP_COMMAND/COPILOT_CLI_PATH.",
+            "Install GitHub Copilot CLI or set HERMES_COPILOT_ACP_COMMAND/COPILOT_CLI_PATH.",
             provider=provider_id,
             code="missing_copilot_cli",
         )
@@ -6359,7 +6277,7 @@ def resolve_external_process_provider_credentials(provider_id: str) -> dict[str,
 def _update_config_for_provider(
     provider_id: str,
     inference_base_url: str,
-    default_model: str | None = None,
+    default_model: Optional[str] = None,
 ) -> Path:
     """Update config.yaml and auth.json to reflect the active provider.
 
@@ -6400,7 +6318,7 @@ def _update_config_for_provider(
     # Clear stale endpoint credentials left over from a previous custom provider.
     # Built-in providers resolve credentials from env/auth state, not inline
     # model.api_key.
-    from prostor_cli.config import clear_model_endpoint_credentials
+    from hermes_cli.config import clear_model_endpoint_credentials
 
     clear_model_endpoint_credentials(model_cfg)
 
@@ -6418,7 +6336,7 @@ def _update_config_for_provider(
     return config_path
 
 
-def _get_config_provider() -> str | None:
+def _get_config_provider() -> Optional[str]:
     """Return model.provider from config.yaml, normalized, if present."""
     try:
         config = read_raw_config()
@@ -6436,14 +6354,14 @@ def _get_config_provider() -> str | None:
     return provider or None
 
 
-def _config_provider_matches(provider_id: str | None) -> bool:
+def _config_provider_matches(provider_id: Optional[str]) -> bool:
     """Return True when config.yaml currently selects *provider_id*."""
     if not provider_id:
         return False
     return _get_config_provider() == provider_id.strip().lower()
 
 
-def _should_reset_config_provider_on_logout(provider_id: str | None) -> bool:
+def _should_reset_config_provider_on_logout(provider_id: Optional[str]) -> bool:
     """Return True when logout should reset the model provider config."""
     if not provider_id:
         return False
@@ -6451,10 +6369,10 @@ def _should_reset_config_provider_on_logout(provider_id: str | None) -> bool:
     return normalized in PROVIDER_REGISTRY and _config_provider_matches(normalized)
 
 
-def _logout_default_provider_from_config() -> str | None:
+def _logout_default_provider_from_config() -> Optional[str]:
     """Fallback logout target when auth.json has no active provider.
 
-    `prostor logout` historically keyed off auth.json.active_provider only.
+    `hermes logout` historically keyed off auth.json.active_provider only.
     That left users stuck when auth state had already been cleared but
     config.yaml still selected an OAuth provider such as openai-codex for the
     agent model: there was no active auth provider to target, so logout printed
@@ -6494,7 +6412,7 @@ def _confirm_expensive_model_selection(
 ) -> bool:
     """Prompt before saving a model whose known pricing exceeds guardrails."""
     try:
-        from prostor_cli.model_cost_guard import expensive_model_warning
+        from hermes_cli.model_cost_guard import expensive_model_warning
 
         warning = expensive_model_warning(
             model_id,
@@ -6520,16 +6438,16 @@ def _confirm_expensive_model_selection(
 
 
 def _prompt_model_selection(
-    model_ids: list[str],
+    model_ids: List[str],
     current_model: str = "",
-    pricing: dict[str, dict[str, str]] | None = None,
-    unavailable_models: list[str] | None = None,
+    pricing: Optional[Dict[str, Dict[str, str]]] = None,
+    unavailable_models: Optional[List[str]] = None,
     portal_url: str = "",
     unavailable_message: str = "",
     confirm_provider: str = "",
     confirm_base_url: str = "",
     confirm_api_key: str = "",
-) -> str | None:
+) -> Optional[str]:
     """Interactive model selection. Puts current_model first with a marker. Returns chosen model ID or None.
 
     If *pricing* is provided (``{model_id: {prompt, completion}}``), a compact
@@ -6538,11 +6456,11 @@ def _prompt_model_selection(
     If *unavailable_models* is provided, those models are shown grayed out
     and unselectable, with an upgrade link to *portal_url*.
     """
-    from prostor_cli.models import _format_price_per_mtok
+    from hermes_cli.models import _format_price_per_mtok
 
     _unavailable = unavailable_models or []
 
-    def _confirmed_selection(mid: str) -> str | None:
+    def _confirmed_selection(mid: str) -> Optional[str]:
         if not mid:
             return None
         if confirm_provider and not _confirm_expensive_model_selection(
@@ -6630,7 +6548,7 @@ def _prompt_model_selection(
     # of simple_term_menu, which conflicts with /dev/tty and left ESC/arrow
     # keys unreliable in the setup model picker.
     try:
-        from prostor_cli.curses_ui import curses_radiolist
+        from hermes_cli.curses_ui import curses_radiolist
 
         choices = [_label(mid) for mid in ordered]
         choices.append("Enter custom model name")
@@ -6726,7 +6644,7 @@ def _save_model_choice(model_id: str) -> None:
     The model is stored in config.yaml only — NOT in .env.  This avoids
     conflicts in multi-agent setups where env vars would stomp each other.
     """
-    from prostor_cli.config import load_config, save_config
+    from hermes_cli.config import save_config, load_config
 
     config = load_config()
     # Always use dict format so provider/base_url can be stored alongside
@@ -6738,10 +6656,10 @@ def _save_model_choice(model_id: str) -> None:
 
 
 def login_command(args) -> None:
-    """Deprecated: use 'prostor model' or 'prostor setup' instead."""
-    print("The 'prostor login' command has been removed.")
-    print("Use 'prostor auth' to manage credentials,")
-    print("'prostor model' to select a provider, or 'prostor setup' for full setup.")
+    """Deprecated: use 'hermes model' or 'hermes setup' instead."""
+    print("The 'hermes login' command has been removed.")
+    print("Use 'hermes auth' to manage credentials,")
+    print("'hermes model' to select a provider, or 'hermes setup' for full setup.")
     raise SystemExit(0)
 
 
@@ -6751,11 +6669,11 @@ def _login_openai_codex(
     *,
     force_new_login: bool = False,
 ) -> None:
-    """OpenAI Codex login via device code flow. Tokens stored in ~/.prostor/auth.json."""
+    """OpenAI Codex login via device code flow. Tokens stored in ~/.hermes/auth.json."""
 
     del args, pconfig  # kept for parity with other provider login helpers
 
-    # Check for existing Prostor-owned credentials
+    # Check for existing Hermes-owned credentials
     if not force_new_login:
         try:
             existing = resolve_codex_runtime_credentials()
@@ -6765,7 +6683,7 @@ def _login_openai_codex(
             # the user "Login successful!".
             _resolved_key = existing.get("api_key", "")
             if isinstance(_resolved_key, str) and _resolved_key and not _codex_access_token_is_expiring(_resolved_key, 60):
-                print("Existing Codex credentials found in Prostor auth store.")
+                print("Existing Codex credentials found in Hermes auth store.")
                 try:
                     reuse = input("Use existing credentials? [Y/n]: ").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -6786,35 +6704,35 @@ def _login_openai_codex(
         cli_tokens = _import_codex_cli_tokens()
         if cli_tokens:
             print("Found existing Codex CLI credentials at ~/.codex/auth.json")
-            print("Prostor will create its own session to avoid conflicts with Codex CLI / VS Code.")
+            print("Hermes will create its own session to avoid conflicts with Codex CLI / VS Code.")
             try:
                 do_import = input("Import these credentials? (a separate login is recommended) [y/N]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 do_import = "n"
             if do_import in {"y", "yes"}:
                 _save_codex_tokens(cli_tokens)
-                base_url = os.getenv("PROSTOR_CODEX_BASE_URL", "").strip().rstrip("/") or DEFAULT_CODEX_BASE_URL
+                base_url = os.getenv("HERMES_CODEX_BASE_URL", "").strip().rstrip("/") or DEFAULT_CODEX_BASE_URL
                 config_path = _update_config_for_provider("openai-codex", base_url)
                 print()
                 print("Credentials imported. Note: if Codex CLI refreshes its token,")
-                print("Prostor will keep working independently with its own session.")
+                print("Hermes will keep working independently with its own session.")
                 print(f"  Config updated: {config_path} (model.provider=openai-codex)")
                 return
 
-    # Run a fresh device code flow — Prostor gets its own OAuth session
+    # Run a fresh device code flow — Hermes gets its own OAuth session
     print()
     print("Signing in to OpenAI Codex...")
-    print("(Prostor creates its own session — won't affect Codex CLI or VS Code)")
+    print("(Hermes creates its own session — won't affect Codex CLI or VS Code)")
     print()
 
     creds = _codex_device_code_login()
 
-    # Save tokens to Prostor auth store
+    # Save tokens to Hermes auth store
     _save_codex_tokens(creds["tokens"], creds.get("last_refresh"))
     config_path = _update_config_for_provider("openai-codex", creds.get("base_url", DEFAULT_CODEX_BASE_URL))
     print()
     print("Login successful!")
-    from prostor_constants import display_prostor_home as _dhh
+    from hermes_constants import display_hermes_home as _dhh
     print(f"  Auth state: {_dhh()}/auth.json")
     print(f"  Config updated: {config_path} (model.provider=openai-codex)")
 
@@ -6832,7 +6750,7 @@ def _login_xai_oauth(
             existing = resolve_xai_oauth_runtime_credentials()
             api_key = existing.get("api_key", "")
             if isinstance(api_key, str) and api_key and not _xai_access_token_is_expiring(api_key, 60):
-                print("Existing xAI OAuth credentials found in Prostor auth store.")
+                print("Existing xAI OAuth credentials found in Hermes auth store.")
                 try:
                     reuse = input("Use existing credentials? [Y/n]: ").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -6851,7 +6769,7 @@ def _login_xai_oauth(
 
     print()
     print("Signing in to xAI Grok OAuth (SuperGrok / Premium+)...")
-    print("(Prostor creates its own local OAuth session)")
+    print("(Hermes creates its own local OAuth session)")
     print()
 
     timeout_seconds = float(getattr(args, "timeout", None) or 20.0)
@@ -6874,7 +6792,7 @@ def _login_xai_oauth(
     config_path = _update_config_for_provider("xai-oauth", creds.get("base_url", DEFAULT_XAI_OAUTH_BASE_URL))
     print()
     print("Login successful!")
-    from prostor_constants import display_prostor_home as _dhh
+    from hermes_constants import display_hermes_home as _dhh
     print(f"  Auth state: {_dhh()}/auth.json")
     print(f"  Config updated: {config_path} (model.provider=xai-oauth)")
 
@@ -6890,7 +6808,7 @@ def _xai_oauth_build_authorize_url(
     # `plan=generic` opts the consent screen into xAI's generic OAuth plan
     # tier instead of falling back to the per-account default. Without it,
     # accounts.x.ai rejects loopback OAuth from non-allowlisted clients.
-    # `referrer=prostor-agent` lets xAI attribute Prostor-originated logins
+    # `referrer=hermes-agent` lets xAI attribute Hermes-originated logins
     # in their OAuth server logs (we still impersonate the upstream Grok-CLI
     # client_id; this is best-effort attribution until xAI mints us our own).
     authorize_params = {
@@ -6903,7 +6821,7 @@ def _xai_oauth_build_authorize_url(
         "state": state,
         "nonce": nonce,
         "plan": "generic",
-        "referrer": "prostor-agent",
+        "referrer": "hermes-agent",
     }
     return f"{authorization_endpoint}?{urlencode(authorize_params)}"
 
@@ -6916,7 +6834,7 @@ def _xai_oauth_exchange_code_for_tokens(
     code_verifier: str,
     code_challenge: str,
     timeout_seconds: float = 20.0,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """POST the authorization code to xAI's token endpoint and return
     the parsed JSON payload.
 
@@ -6942,8 +6860,8 @@ def _xai_oauth_exchange_code_for_tokens(
     if not code_verifier:
         raise AuthError(
             "xAI token exchange refused locally: PKCE code_verifier is empty. "
-            "This is a bug in Prostor — please report at "
-            "https://github.com/maksim9510/Prostor/issues/26990.",
+            "This is a bug in Hermes — please report at "
+            "https://github.com/NousResearch/hermes-agent/issues/26990.",
             provider="xai-oauth",
             code="xai_pkce_verifier_missing",
         )
@@ -6991,7 +6909,7 @@ def _xai_oauth_exchange_code_for_tokens(
         # key fallback.  See #26847.
         if response.status_code == 403:
             raise AuthError(
-                "xAI token exchange failed (HTTP 403)."
+                f"xAI token exchange failed (HTTP 403)."
                 + (f" Response: {body}" if body else "")
                 + " This OAuth account is not authorized for xAI API"
                   " access — xAI may be restricting API/OAuth use to"
@@ -7033,7 +6951,7 @@ def _xai_oauth_loopback_login(
     timeout_seconds: float = 20.0,
     open_browser: bool = True,
     manual_paste: bool = False,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Run the xAI OAuth PKCE flow.
 
     When ``manual_paste=True`` the loopback HTTP listener is skipped
@@ -7078,7 +6996,7 @@ def _xai_oauth_loopback_login(
             nonce=nonce,
         )
 
-        print("Open this URL to authorize Prostor with xAI:")
+        print("Open this URL to authorize Hermes with xAI:")
         print(authorize_url)
         callback = _prompt_manual_callback_paste(redirect_uri)
         allow_missing_state = True
@@ -7098,7 +7016,7 @@ def _xai_oauth_loopback_login(
                 nonce=nonce,
             )
 
-            print("Open this URL to authorize Prostor with xAI:")
+            print("Open this URL to authorize Hermes with xAI:")
             print(authorize_url)
             print()
             print(f"Waiting for callback on {redirect_uri}")
@@ -7212,7 +7130,7 @@ def _xai_oauth_loopback_login(
         )
 
     base_url = _xai_validate_inference_base_url(
-        os.getenv("PROSTOR_XAI_BASE_URL", "").strip().rstrip("/")
+        os.getenv("HERMES_XAI_BASE_URL", "").strip().rstrip("/")
         or os.getenv("XAI_BASE_URL", "").strip().rstrip("/"),
         fallback=DEFAULT_XAI_OAUTH_BASE_URL,
     )
@@ -7227,12 +7145,12 @@ def _xai_oauth_loopback_login(
         "discovery": discovery,
         "redirect_uri": redirect_uri,
         "base_url": base_url,
-        "last_refresh": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "source": "oauth-loopback",
     }
 
 
-def _codex_device_code_login() -> dict[str, Any]:
+def _codex_device_code_login() -> Dict[str, Any]:
     """Run the OpenAI device code login flow and return credentials dict."""
     import time as _time
 
@@ -7415,7 +7333,7 @@ def _codex_device_code_login() -> dict[str, Any]:
 
     # Return tokens for the caller to persist (no longer writes to ~/.codex/)
     base_url = (
-        os.getenv("PROSTOR_CODEX_BASE_URL", "").strip().rstrip("/")
+        os.getenv("HERMES_CODEX_BASE_URL", "").strip().rstrip("/")
         or DEFAULT_CODEX_BASE_URL
     )
 
@@ -7425,7 +7343,7 @@ def _codex_device_code_login() -> dict[str, Any]:
             "refresh_token": refresh_token,
         },
         "base_url": base_url,
-        "last_refresh": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "auth_mode": "chatgpt",
         "source": "device-code",
     }
@@ -7447,7 +7365,7 @@ def _minimax_pkce_pair() -> tuple:
 def _minimax_request_user_code(
     client: httpx.Client, *, portal_base_url: str, client_id: str,
     code_challenge: str, state: str,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     response = client.post(
         f"{portal_base_url}/oauth/code",
         data={
@@ -7500,8 +7418,8 @@ def _minimax_resolve_token_expiry_unix(expired_in: int, *, now: datetime) -> flo
 
 def _minimax_poll_token(
     client: httpx.Client, *, portal_base_url: str, client_id: str,
-    user_code: str, code_verifier: str, expired_in: int, interval_ms: int | None,
-) -> dict[str, Any]:
+    user_code: str, code_verifier: str, expired_in: int, interval_ms: Optional[int],
+) -> Dict[str, Any]:
     # OpenClaw treats expired_in as a unix-ms timestamp (Date.now() < expireTimeMs).
     # Defensive parsing: if it's small enough to be a duration, treat as seconds.
     import time as _time
@@ -7561,8 +7479,8 @@ def _minimax_poll_token(
     )
 
 
-def _minimax_save_auth_state(auth_state: dict[str, Any]) -> None:
-    """Persist MiniMax OAuth state to Prostor auth store (~/.prostor/auth.json)."""
+def _minimax_save_auth_state(auth_state: Dict[str, Any]) -> None:
+    """Persist MiniMax OAuth state to Hermes auth store (~/.hermes/auth.json)."""
     with _auth_store_lock():
         auth_store = _load_auth_store()
         _save_provider_state(auth_store, "minimax-oauth", auth_state)
@@ -7572,7 +7490,7 @@ def _minimax_save_auth_state(auth_state: dict[str, Any]) -> None:
 def _minimax_oauth_login(
     *, region: str = "global", open_browser: bool = True,
     timeout_seconds: float = 15.0,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Run MiniMax OAuth flow, persist tokens, return auth state dict."""
     pconfig = PROVIDER_REGISTRY["minimax-oauth"]
     if region == "cn":
@@ -7587,7 +7505,7 @@ def _minimax_oauth_login(
     if _is_remote_session():
         open_browser = False
 
-    print(f"Starting Prostor login via MiniMax ({region}) OAuth...")
+    print(f"Starting Hermes login via MiniMax ({region}) OAuth...")
     print(f"Portal: {portal_base_url}")
 
     with httpx.Client(timeout=httpx.Timeout(timeout_seconds),
@@ -7623,7 +7541,7 @@ def _minimax_oauth_login(
             interval_ms=interval_ms,
         )
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     expires_at_unix = _minimax_resolve_token_expiry_unix(
         int(token_data["expired_in"]), now=now,
     )
@@ -7641,7 +7559,7 @@ def _minimax_oauth_login(
         "refresh_token": token_data["refresh_token"],
         "resource_url": token_data.get("resource_url"),
         "obtained_at": now.isoformat(),
-        "expires_at": datetime.fromtimestamp(expires_at_unix, tz=UTC).isoformat(),
+        "expires_at": datetime.fromtimestamp(expires_at_unix, tz=timezone.utc).isoformat(),
         "expires_in": expires_in_s,
     }
 
@@ -7653,9 +7571,9 @@ def _minimax_oauth_login(
 
 
 def _refresh_minimax_oauth_state(
-    state: dict[str, Any], *, timeout_seconds: float = 15.0,
+    state: Dict[str, Any], *, timeout_seconds: float = 15.0,
     force: bool = False,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Refresh MiniMax OAuth access token if close to expiry (or forced)."""
     if not state.get("refresh_token"):
         raise AuthError(
@@ -7701,7 +7619,7 @@ def _refresh_minimax_oauth_state(
             provider="minimax-oauth", code="refresh_failed",
             relogin_required=True,
         )
-    now_dt = datetime.now(UTC)
+    now_dt = datetime.now(timezone.utc)
     expires_at_unix = _minimax_resolve_token_expiry_unix(
         int(payload["expired_in"]), now=now_dt,
     )
@@ -7711,14 +7629,14 @@ def _refresh_minimax_oauth_state(
         "access_token": payload["access_token"],
         "refresh_token": payload.get("refresh_token", state["refresh_token"]),
         "obtained_at": now_dt.isoformat(),
-        "expires_at": datetime.fromtimestamp(expires_at_unix, tz=UTC).isoformat(),
+        "expires_at": datetime.fromtimestamp(expires_at_unix, tz=timezone.utc).isoformat(),
         "expires_in": expires_in_s,
     })
     _minimax_save_auth_state(new_state)
     return new_state
 
 
-def _minimax_oauth_quarantine_on_terminal_refresh(state: dict[str, Any], exc: AuthError) -> None:
+def _minimax_oauth_quarantine_on_terminal_refresh(state: Dict[str, Any], exc: AuthError) -> None:
     """Wipe dead tokens from auth.json after a terminal refresh failure.
 
     Shared by both the eager-resolve path and the lazy per-request token
@@ -7735,7 +7653,7 @@ def _minimax_oauth_quarantine_on_terminal_refresh(state: dict[str, Any], exc: Au
         "message": str(exc),
         "reason": "runtime_refresh_failure",
         "relogin_required": True,
-        "at": datetime.now(UTC).isoformat(),
+        "at": datetime.now(timezone.utc).isoformat(),
     }
     try:
         _minimax_save_auth_state(state)
@@ -7770,7 +7688,7 @@ def build_minimax_oauth_token_provider() -> Callable[[], str]:
         state = get_provider_auth_state("minimax-oauth")
         if not state or not state.get("access_token"):
             raise AuthError(
-                "Not logged into MiniMax OAuth. Run `prostor model` and select "
+                "Not logged into MiniMax OAuth. Run `hermes model` and select "
                 "MiniMax (OAuth).",
                 provider="minimax-oauth", code="not_logged_in", relogin_required=True,
             )
@@ -7793,7 +7711,7 @@ def build_minimax_oauth_token_provider() -> Callable[[], str]:
 def resolve_minimax_oauth_runtime_credentials(
     *, min_token_ttl_seconds: int = MINIMAX_OAUTH_REFRESH_SKEW_SECONDS,
     as_token_provider: bool = False,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Return {provider, api_key, base_url, source} for minimax-oauth.
 
     When ``as_token_provider`` is True, ``api_key`` is a zero-arg callable
@@ -7804,13 +7722,13 @@ def resolve_minimax_oauth_runtime_credentials(
     :func:`build_minimax_oauth_token_provider` for the rationale.
 
     The default (string ``api_key``) preserves the historical contract for
-    diagnostic call sites like ``prostor status`` that just want to know
+    diagnostic call sites like ``hermes status`` that just want to know
     whether a valid token exists right now.
     """
     state = get_provider_auth_state("minimax-oauth")
     if not state or not state.get("access_token"):
         raise AuthError(
-            "Not logged into MiniMax OAuth. Run `prostor model` and select "
+            "Not logged into MiniMax OAuth. Run `hermes model` and select "
             "MiniMax (OAuth).",
             provider="minimax-oauth", code="not_logged_in", relogin_required=True,
         )
@@ -7831,7 +7749,7 @@ def resolve_minimax_oauth_runtime_credentials(
     }
 
 
-def get_minimax_oauth_auth_status() -> dict[str, Any]:
+def get_minimax_oauth_auth_status() -> Dict[str, Any]:
     """Return auth status dict for MiniMax OAuth provider."""
     state = get_provider_auth_state("minimax-oauth")
     if not state or not state.get("access_token"):
@@ -7865,21 +7783,21 @@ def _login_minimax_oauth(args, pconfig: ProviderConfig) -> None:
 
 def _nous_device_code_login(
     *,
-    portal_base_url: str | None = None,
-    inference_base_url: str | None = None,
-    client_id: str | None = None,
-    scope: str | None = None,
+    portal_base_url: Optional[str] = None,
+    inference_base_url: Optional[str] = None,
+    client_id: Optional[str] = None,
+    scope: Optional[str] = None,
     open_browser: bool = True,
     timeout_seconds: float = 15.0,
     insecure: bool = False,
-    ca_bundle: str | None = None,
-    on_verification: Callable[[str, str], None] | None = None,
-) -> dict[str, Any]:
+    ca_bundle: Optional[str] = None,
+    on_verification: Optional[Callable[[str, str], None]] = None,
+) -> Dict[str, Any]:
     """Run the Nous device-code flow and return full OAuth state without persisting."""
     pconfig = PROVIDER_REGISTRY["nous"]
     portal_base_url = (
         portal_base_url
-        or os.getenv("PROSTOR_PORTAL_BASE_URL")
+        or os.getenv("HERMES_PORTAL_BASE_URL")
         or os.getenv("NOUS_PORTAL_BASE_URL")
         or pconfig.portal_base_url
     ).rstrip("/")
@@ -7896,7 +7814,7 @@ def _nous_device_code_login(
     if _is_remote_session():
         open_browser = False
 
-    print(f"Starting Prostor login via {pconfig.name}...")
+    print(f"Starting Hermes login via {pconfig.name}...")
     print(f"Portal: {portal_base_url}")
     if insecure:
         print("TLS verification: disabled (--insecure)")
@@ -7950,7 +7868,7 @@ def _nous_device_code_login(
             poll_interval=interval,
         )
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     token_expires_in = _coerce_ttl_seconds(token_data.get("expires_in", 0))
     expires_at = now.timestamp() + token_expires_in
     resolved_inference_url = (
@@ -7969,7 +7887,7 @@ def _nous_device_code_login(
         "access_token": token_data["access_token"],
         "refresh_token": token_data.get("refresh_token"),
         "obtained_at": now.isoformat(),
-        "expires_at": datetime.fromtimestamp(expires_at, tz=UTC).isoformat(),
+        "expires_at": datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
         "expires_in": token_expires_in,
         "tls": {
             "insecure": verify is False,
@@ -7998,7 +7916,7 @@ def _nous_device_code_login(
             print(message)
             print(f"  Subscribe here: {portal_url}/billing")
             print()
-            print("After subscribing, run `prostor model` again to finish setup.")
+            print("After subscribing, run `hermes model` again to finish setup.")
             raise SystemExit(1)
         raise
 
@@ -8025,7 +7943,7 @@ def step_up_nous_billing_scope(
     *,
     open_browser: bool = True,
     timeout_seconds: float = 15.0,
-    on_verification: Callable[[str, str], None] | None = None,
+    on_verification: Optional[Callable[[str, str], None]] = None,
 ) -> bool:
     """Re-run the device flow requesting ``billing:manage`` and persist the result.
 
@@ -8037,7 +7955,7 @@ def step_up_nous_billing_scope(
     returns False.
 
     Reuses the held credential's portal/inference URLs + client_id so the step-up
-    targets the same deployment (incl. a preview via ``PROSTOR_PORTAL_BASE_URL`` set
+    targets the same deployment (incl. a preview via ``HERMES_PORTAL_BASE_URL`` set
     at the original login). Persists to the auth store + shared store + pool, exactly
     like ``_login_nous`` — but WITHOUT the model picker (this is a scope upgrade, not
     a fresh login).
@@ -8094,7 +8012,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
     insecure = bool(getattr(args, "insecure", False))
     ca_bundle = (
         getattr(args, "ca_bundle", None)
-        or os.getenv("PROSTOR_CA_BUNDLE")
+        or os.getenv("HERMES_CA_BUNDLE")
         or os.getenv("SSL_CERT_FILE")
     )
 
@@ -8178,11 +8096,9 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                     code="invalid_token",
                 )
 
-            from prostor_cli.models import (
-                check_nous_free_tier,
-                get_curated_nous_model_ids,
-                get_pricing_for_provider,
-                partition_nous_models_by_tier,
+            from hermes_cli.models import (
+                get_curated_nous_model_ids, get_pricing_for_provider,
+                check_nous_free_tier, partition_nous_models_by_tier,
                 union_with_portal_free_recommendations,
                 union_with_portal_paid_recommendations,
             )
@@ -8199,7 +8115,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 _portal_for_recs = auth_state.get("portal_base_url", "")
                 if free_tier:
                     try:
-                        from prostor_cli.nous_account import (
+                        from hermes_cli.nous_account import (
                             format_nous_portal_entitlement_message,
                             get_nous_portal_account_info,
                         )
@@ -8217,7 +8133,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                     # The Portal's freeRecommendedModels endpoint is the
                     # source of truth for what's free *right now*. Augment
                     # the curated list with anything new the Portal flags
-                    # as free so users on older Prostor builds still see
+                    # as free so users on older Hermes builds still see
                     # newly-launched free models without a CLI release.
                     model_ids, pricing = union_with_portal_free_recommendations(
                         model_ids, pricing, _portal_for_recs,
@@ -8275,7 +8191,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 _save_auth_store(auth_store)
             print()
             print("No provider change. Nous credentials saved for future use.")
-            print("  Run `prostor model` again to switch to Nous Portal.")
+            print("  Run `hermes model` again to switch to Nous Portal.")
             return
 
         config_path = _update_config_for_provider(
@@ -8317,9 +8233,9 @@ def logout_command(args) -> None:
             _reset_config_provider()
         print(f"Logged out of {provider_name}.")
         if should_reset_config and os.getenv("OPENROUTER_API_KEY"):
-            print("Prostor will use OpenRouter for inference.")
+            print("Hermes will use OpenRouter for inference.")
         elif should_reset_config:
-            print("Run `prostor model` or configure an API key to use Prostor.")
+            print("Run `hermes model` or configure an API key to use Hermes.")
         else:
             print("Model provider configuration was unchanged.")
     else:

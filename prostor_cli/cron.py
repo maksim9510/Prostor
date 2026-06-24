@@ -1,5 +1,5 @@
 """
-Cron subcommand for prostor CLI.
+Cron subcommand for hermes CLI.
 
 Handles standalone cron management commands like list, create, edit,
 pause/resume/run/remove, status, and tick.
@@ -14,7 +14,7 @@ from typing import Iterable, List, Optional
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from prostor_cli.colors import Colors, color
+from hermes_cli.colors import Colors, color
 
 # Patterns that indicate a cron job targets the gateway lifecycle.
 # Matches commands that restart/stop the gateway or its service manager.
@@ -23,10 +23,10 @@ from prostor_cli.colors import Colors, color
 # the API gateway logs and report restart events").
 _GATEWAY_LIFECYCLE_PATTERNS = re.compile(
     r"(?i)"
-    r"(prostor\s+gateway\s+(restart|stop|start))"
-    r"|(launchctl\s+(kickstart|unload|load|stop|restart)\s+.*prostor)"
-    r"|(systemctl\s+(-\S+\s+)*(restart|stop|start)\s+.*prostor)"
-    r"|(p?kill\s+.*prostor.*gateway)"
+    r"(hermes\s+gateway\s+(restart|stop|start))"
+    r"|(launchctl\s+(kickstart|unload|load|stop|restart)\s+.*hermes)"
+    r"|(systemctl\s+(-\S+\s+)*(restart|stop|start)\s+.*hermes)"
+    r"|(p?kill\s+.*hermes.*gateway)"
 )
 
 
@@ -67,7 +67,7 @@ def _warn_if_gateway_not_running() -> None:
     at create/list time, when the user is right there, prevents it.
     """
     try:
-        from prostor_cli.gateway import find_gateway_pids
+        from hermes_cli.gateway import find_gateway_pids
 
         if find_gateway_pids():
             return
@@ -76,9 +76,9 @@ def _warn_if_gateway_not_running() -> None:
         return
 
     print(color("  ⚠  Gateway is not running — jobs won't fire automatically.", Colors.YELLOW))
-    print(color("     Start it with: prostor gateway install", Colors.DIM))
-    print(color("                    sudo prostor gateway install --system  # Linux servers", Colors.DIM))
-    print(color("     Check status:  prostor cron status", Colors.DIM))
+    print(color("     Start it with: hermes gateway install", Colors.DIM))
+    print(color("                    sudo hermes gateway install --system  # Linux servers", Colors.DIM))
+    print(color("     Check status:  hermes cron status", Colors.DIM))
 
 
 def cron_list(show_all: bool = False):
@@ -89,7 +89,7 @@ def cron_list(show_all: bool = False):
 
     if not jobs:
         print(color("No scheduled jobs.", Colors.DIM))
-        print(color("Create one with 'prostor cron create ...' or the /cron command in chat.", Colors.DIM))
+        print(color("Create one with 'hermes cron create ...' or the /cron command in chat.", Colors.DIM))
         return
 
     print()
@@ -173,7 +173,7 @@ def cron_tick():
 def cron_status():
     """Show cron execution status."""
     from cron.jobs import list_jobs
-    from prostor_cli.gateway import find_gateway_pids
+    from hermes_cli.gateway import find_gateway_pids
 
     print()
 
@@ -205,7 +205,7 @@ def cron_status():
                 Colors.YELLOW,
             ))
             print(f"  PID: {', '.join(map(str, pids))}")
-            print("  Cron jobs may NOT be firing. Restart: prostor gateway restart")
+            print("  Cron jobs may NOT be firing. Restart: hermes gateway restart")
         elif hb_age is not None and ok_age is not None and ok_age > STALE_AFTER:
             # Loop is alive (fresh heartbeat) but no tick has SUCCEEDED in a
             # long time → ticks are failing every iteration.
@@ -225,9 +225,9 @@ def cron_status():
         print(color("✗ Gateway is not running — cron jobs will NOT fire", Colors.RED))
         print()
         print("  To enable automatic execution:")
-        print("    prostor gateway install    # Install as a user service")
-        print("    sudo prostor gateway install --system  # Linux servers: boot-time system service")
-        print("    prostor gateway            # Or run in foreground")
+        print("    hermes gateway install    # Install as a user service")
+        print("    sudo hermes gateway install --system  # Linux servers: boot-time system service")
+        print("    hermes gateway            # Or run in foreground")
 
     print()
 
@@ -261,7 +261,7 @@ def cron_create(args):
             "Blocked: cron job contains a gateway lifecycle command "
             "(restart/stop/kill).\n"
             "This is blocked to prevent restart loops (#30719).\n"
-            "Use `prostor gateway restart` from a shell outside the gateway.",
+            "Use `hermes gateway restart` from a shell outside the gateway.",
             Colors.RED,
         ))
         return 1
@@ -420,5 +420,5 @@ def cron_command(args):
         return _job_action("remove", args.job_id, "Removed")
 
     print(f"Unknown cron command: {subcmd}")
-    print("Usage: prostor cron [list|create|edit|pause|resume|run|remove|status|tick]")
+    print("Usage: hermes cron [list|create|edit|pause|resume|run|remove|status|tick]")
     sys.exit(1)

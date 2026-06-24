@@ -1,9 +1,15 @@
 """Entry point for the `computer_use` tool.
 
-Universal (any-model) macOS desktop control via cua-driver's background
-computer-use primitive. Replaces #4562's Anthropic-native `computer_20251124`
-approach — the schema here is standard OpenAI function-calling so every
-tool-capable model can drive it.
+Universal (any-model) desktop control across macOS, Windows, and Linux via
+cua-driver's background computer-use primitive. Replaces #4562's
+Anthropic-native `computer_20251124` approach — the schema here is standard
+OpenAI function-calling so every tool-capable model can drive it.
+
+Linux is the most recent runtime (X11 + Wayland, via cua-driver-rs's
+AT-SPI tree path); it is enabled here alongside macOS and Windows. When a
+host's display server or accessibility stack isn't reachable, cua-driver's
+`health_report` (surfaced by `hermes computer-use doctor`) reports the
+exact blocked check rather than the toolset silently failing.
 
 Return contract
 ---------------
@@ -40,7 +46,7 @@ import re
 import struct
 import sys
 import threading
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from tools.computer_use.backend import (
     ActionResult,
@@ -80,16 +86,26 @@ _DESTRUCTIVE_ACTIONS = frozenset({
 })
 
 # Hard-blocked key combinations. Mirrored from #4562 — these are destructive
-# regardless of approval level (e.g. logout kills the session Prostor runs in).
+# regardless of approval level (e.g. logout kills the session Hermes runs in).
 _BLOCKED_KEY_COMBOS = {
     frozenset({"cmd", "shift", "backspace"}),   # empty trash
     frozenset({"cmd", "option", "backspace"}),   # force delete
     frozenset({"cmd", "ctrl", "q"}),             # lock screen
     frozenset({"cmd", "shift", "q"}),            # log out
     frozenset({"cmd", "option", "shift", "q"}),  # force log out
+    # Windows secure/session shortcuts. The Windows driver accepts Win-key
+    # combos, and Alt is canonicalized to option below, so block the
+    # destructive variants before any backend sees them.
+    frozenset({"win", "l"}),
+    frozenset({"ctrl", "option", "delete"}),
+    frozenset({"ctrl", "option", "del"}),
+    frozenset({"option", "f4"}),
 }
 
-_KEY_ALIASES = {"command": "cmd", "control": "ctrl", "alt": "option", "⌘": "cmd", "⌥": "option"}
+_KEY_ALIASES = {
+    "command": "cmd", "control": "ctrl", "alt": "option", "⌘": "cmd", "⌥": "option",
+    "windows": "win", "super": "win", "meta": "win",
+}
 
 
 def _canon_key_combo(keys: str) -> frozenset:
@@ -109,7 +125,7 @@ _BLOCKED_TYPE_PATTERNS = [
 ]
 
 
-def _is_blocked_type(text: str) -> str | None:
+def _is_blocked_type(text: str) -> Optional[str]:
     for pat in _BLOCKED_TYPE_PATTERNS:
         if pat.search(text):
             return pat.pattern
@@ -122,7 +138,7 @@ def _is_blocked_type(text: str) -> str | None:
 
 # Per-process cached backend; lazily instantiated on first call.
 _backend_lock = threading.Lock()
-_backend: ComputerUseBackend | None = None
+_backend: Optional[ComputerUseBackend] = None
 # Session-scoped approval state.
 _session_auto_approve = False
 _always_allow: set = set()  # action names the user unlocked for the session
@@ -132,15 +148,23 @@ def _get_backend() -> ComputerUseBackend:
     global _backend
     with _backend_lock:
         if _backend is None:
-            backend_name = os.environ.get("PROSTOR_COMPUTER_USE_BACKEND", "cua").lower()
+            backend_name = os.environ.get("HERMES_COMPUTER_USE_BACKEND", "cua").lower()
             if backend_name in {"cua", "cua-driver", ""}:
                 from tools.computer_use.cua_backend import CuaDriverBackend
                 _backend = CuaDriverBackend()
             elif backend_name == "noop":  # pragma: no cover
                 _backend = _NoopBackend()
             else:
-                raise RuntimeError(f"Unknown PROSTOR_COMPUTER_USE_BACKEND={backend_name!r}")
-            _backend.start()
+                raise RuntimeError(f"Unknown HERMES_COMPUTER_USE_BACKEND={backend_name!r}")
+            try:
+                _backend.start()
+            except Exception:
+                # Don't cache a backend whose start() failed (e.g. a lazy
+                # dependency install was declined / failed). The next call
+                # retries cleanly instead of returning a half-initialised
+                # backend.
+                _backend = None
+                raise
         return _backend
 
 
@@ -162,14 +186,14 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
     """Test/CI stub. Records calls; returns trivial results."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: List[Tuple[str, Dict[str, Any]]] = []
         self._started = False
 
     def start(self) -> None: self._started = True
     def stop(self) -> None: self._started = False
     def is_available(self) -> bool: return True
 
-    def capture(self, mode: str = "som", app: str | None = None) -> CaptureResult:
+    def capture(self, mode: str = "som", app: Optional[str] = None) -> CaptureResult:
         self.calls.append(("capture", {"mode": mode, "app": app}))
         return CaptureResult(mode=mode, width=1024, height=768, png_b64=None,
                              elements=[], app=app or "", window_title="")
@@ -194,7 +218,7 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
         self.calls.append(("key", {"keys": keys}))
         return ActionResult(ok=True, action="key")
 
-    def list_apps(self) -> list[dict[str, Any]]:
+    def list_apps(self) -> List[Dict[str, Any]]:
         self.calls.append(("list_apps", {}))
         return []
 
@@ -202,7 +226,7 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
         self.calls.append(("focus_app", {"app": app, "raise": raise_window}))
         return ActionResult(ok=True, action="focus_app")
 
-    def set_value(self, value: str, element: int | None = None) -> ActionResult:
+    def set_value(self, value: str, element: Optional[int] = None) -> ActionResult:
         self.calls.append(("set_value", {"value": value, "element": element}))
         return ActionResult(ok=True, action="set_value")
 
@@ -211,7 +235,7 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
 # Dispatch
 # ---------------------------------------------------------------------------
 
-def handle_computer_use(args: dict[str, Any], **kwargs) -> Any:
+def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
     """Main entry point — dispatched by tools.registry.
 
     Returns either a JSON string (text-only) or a dict marked `_multimodal`
@@ -253,7 +277,8 @@ def handle_computer_use(args: dict[str, Any], **kwargs) -> Any:
     except Exception as e:
         return json.dumps({
             "error": f"computer_use backend unavailable: {e}",
-            "hint": "Run `prostor tools` and enable Computer Use to install cua-driver.",
+            "hint": "If the cua-driver binary is missing, run `hermes computer-use install`. "
+                    "If a Python dependency is missing, the error above shows the exact install command.",
         })
 
     try:
@@ -263,7 +288,7 @@ def handle_computer_use(args: dict[str, Any], **kwargs) -> Any:
         return json.dumps({"error": f"{action} failed: {e}"})
 
 
-def _request_approval(action: str, args: dict[str, Any]) -> str | None:
+def _request_approval(action: str, args: Dict[str, Any]) -> Optional[str]:
     """Return None if approved, or a JSON error string if denied."""
     global _session_auto_approve, _always_allow
     if _session_auto_approve:
@@ -291,7 +316,7 @@ def _request_approval(action: str, args: dict[str, Any]) -> str | None:
     return json.dumps({"error": "denied by user", "action": action})
 
 
-def _summarize_action(action: str, args: dict[str, Any]) -> str:
+def _summarize_action(action: str, args: Dict[str, Any]) -> str:
     if action in {"click", "double_click", "right_click", "middle_click"}:
         if args.get("element") is not None:
             return f"{action} element #{args['element']}"
@@ -315,7 +340,7 @@ def _summarize_action(action: str, args: dict[str, Any]) -> str:
     return action
 
 
-def _dispatch(backend: ComputerUseBackend, action: str, args: dict[str, Any]) -> Any:
+def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) -> Any:
     capture_after = bool(args.get("capture_after"))
 
     if action == "capture":
@@ -414,7 +439,7 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: dict[str, Any]) ->
 # ---------------------------------------------------------------------------
 
 def _text_response(res: ActionResult) -> str:
-    payload: dict[str, Any] = {"ok": res.ok, "action": res.action}
+    payload: Dict[str, Any] = {"ok": res.ok, "action": res.action}
     if res.message:
         payload["message"] = res.message
     if res.meta:
@@ -434,7 +459,7 @@ _MAX_ALLOWED_MAX_ELEMENTS = 1000
 _MIN_PROVIDER_IMAGE_DIMENSION = 8
 
 
-def _image_dimensions_from_b64(image_b64: str) -> tuple[int, int] | None:
+def _image_dimensions_from_b64(image_b64: str) -> Optional[Tuple[int, int]]:
     """Return (width, height) for common inline screenshot formats.
 
     Some providers reject images below 8x8 before the model sees the tool
@@ -562,16 +587,47 @@ def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEME
             routed = _route_capture_through_aux_vision(cap, summary)
             if routed is not None:
                 return routed
-            # Aux routing was requested but failed (no vision client, aux
-            # call raised, etc.). Fall through to the multimodal envelope —
-            # better to surface a tool-result error from the main model
-            # than to silently drop the screenshot entirely.
+            # Aux routing was requested but failed (vision node down, aux call
+            # raised, empty analysis, etc.). Routing being requested means the
+            # main model may not be able to consume images; falling through to
+            # the multimodal envelope can break the capture with a provider
+            # error. Degrade to the AX/SOM text payload instead so element
+            # indices remain usable while vision is unavailable.
+            summary_lines.append(
+                "  (vision unavailable: the auxiliary vision model could not "
+                "be reached; screenshot omitted. Element-index actions still "
+                "work — drive via the element list above.)"
+            )
+            if truncated_elements:
+                summary_lines.append(
+                    f"  (response truncated to {len(visible_elements)} of "
+                    f"{total_elements} elements; raise max_elements or pass "
+                    "app= to narrow)"
+                )
+            payload = {
+                "mode": cap.mode,
+                "width": response_width,
+                "height": response_height,
+                "app": cap.app,
+                "window_title": cap.window_title,
+                "elements": [_element_to_dict(e) for e in visible_elements],
+                "total_elements": total_elements,
+                "summary": "\n".join(summary_lines),
+                "vision_unavailable": True,
+            }
+            if truncated_elements:
+                payload["truncated_elements"] = truncated_elements
+            return json.dumps(payload)
 
-        # Detect actual image format from base64 magic bytes so the MIME type
-        # matches what the data contains (cua-driver may return JPEG or PNG).
-        # JPEG: base64 starts with /9j/   PNG: starts with iVBOR
-        _b64_prefix = cap.png_b64[:8]
-        _mime = "image/jpeg" if _b64_prefix.startswith("/9j/") else "image/png"
+        # Prefer the explicit MIME type cua-driver attaches to its image
+        # parts (Surface 7 of NousResearch/hermes-agent#47072 — trycua/cua#1961
+        # made `mimeType` part of every MCP image-part response). Fall back
+        # to base64-prefix sniffing for older cua-driver builds that didn't
+        # carry the field. JPEG base64 starts with /9j/; PNG with iVBOR.
+        _mime = cap.image_mime_type
+        if not _mime:
+            _b64_prefix = cap.png_b64[:8]
+            _mime = "image/jpeg" if _b64_prefix.startswith("/9j/") else "image/png"
         # The multimodal response carries the screenshot, not the AX
         # elements array, so a "response truncated to N of M elements"
         # note would be inaccurate — skip it on this branch.
@@ -594,7 +650,7 @@ def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEME
             f"raise max_elements or pass app= to narrow)"
         )
     summary = "\n".join(summary_lines)
-    payload: dict[str, Any] = {
+    payload: Dict[str, Any] = {
         "mode": cap.mode,
         "width": response_width,
         "height": response_height,
@@ -613,6 +669,33 @@ def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEME
 # auxiliary.vision routing for captured screenshots (#24015)
 # ---------------------------------------------------------------------------
 
+# Longest image side handed to the aux vision model. Full-resolution desktop
+# captures tokenize heavily and can overflow small local-model context windows;
+# ~1456px keeps SOM badges legible while cutting per-capture vision latency.
+_MAX_VISION_DIM = 1456
+
+
+def _shrink_capture_for_vision(raw: bytes, ext: str,
+                               max_dim: int = _MAX_VISION_DIM) -> bytes:
+    """Downscale encoded image bytes so the longest side is <= max_dim.
+
+    Returns the original bytes unchanged when the image already fits or when
+    Pillow is unavailable/fails — no worse than the pre-shrink behavior.
+    """
+    try:
+        from io import BytesIO
+        from PIL import Image
+        img = Image.open(BytesIO(raw))
+        if max(img.size) <= max_dim:
+            return raw
+        img.thumbnail((max_dim, max_dim))
+        out = BytesIO()
+        img.save(out, format="JPEG" if ext == ".jpg" else "PNG")
+        return out.getvalue()
+    except Exception as exc:
+        logger.debug("computer_use: vision downscale skipped: %s", exc)
+        return raw
+
 def _should_route_through_aux_vision() -> bool:
     """Return True when ``_capture_response`` should hand the PNG to aux vision.
 
@@ -624,7 +707,7 @@ def _should_route_through_aux_vision() -> bool:
     """
     try:
         from agent.auxiliary_client import _read_main_model, _read_main_provider
-        from prostor_cli.config import load_config
+        from hermes_cli.config import load_config
         from tools.computer_use.vision_routing import (
             should_route_capture_to_aux_vision,
         )
@@ -648,10 +731,10 @@ def _should_route_through_aux_vision() -> bool:
 def _route_capture_through_aux_vision(
     cap: CaptureResult,
     summary: str,
-) -> str | None:
+) -> Optional[str]:
     """Pre-analyse the captured PNG via ``vision_analyze`` and return a text result.
 
-    The captured base64 PNG is materialised to ``$PROSTOR_HOME/cache/vision/``
+    The captured base64 PNG is materialised to ``$HERMES_HOME/cache/vision/``
     and handed to ``vision_analyze_tool`` with a generic describe prompt.
     The resulting text description is merged into the existing AX/SOM
     summary so the main model receives a single text payload that mentions
@@ -669,8 +752,8 @@ def _route_capture_through_aux_vision(
         import os as _os
         import uuid as _uuid
 
+        from hermes_constants import get_hermes_dir
         from model_tools import _run_async
-        from prostor_constants import get_prostor_dir
         from tools.vision_tools import vision_analyze_tool
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("computer_use: aux-vision import failed: %s", exc)
@@ -686,14 +769,20 @@ def _route_capture_through_aux_vision(
 
         # Pick an extension that matches the on-disk bytes so vision_analyze's
         # MIME sniffing returns the right content-type.
-        ext = ".jpg" if cap.png_b64[:8].startswith("/9j/") else ".png"
-        cache_dir = get_prostor_dir("cache/vision", "temp_vision_images")
+        # Surface 7: prefer the explicit MIME type cua-driver supplied.
+        _mime_for_ext = cap.image_mime_type or ""
+        if _mime_for_ext == "image/jpeg" or (not _mime_for_ext and cap.png_b64[:8].startswith("/9j/")):
+            ext = ".jpg"
+        else:
+            ext = ".png"
+        cache_dir = get_hermes_dir("cache/vision", "temp_vision_images")
         cache_dir.mkdir(parents=True, exist_ok=True)
         temp_image_path = cache_dir / f"computer_use_{_uuid.uuid4().hex}{ext}"
+        raw = _shrink_capture_for_vision(raw, ext)
         temp_image_path.write_bytes(raw)
 
         prompt = (
-            "Describe what is visible in this macOS application screenshot in "
+            "Describe what is visible in this desktop application screenshot in "
             "concise but specific terms. Mention the app name and window "
             "title if visible, the overall layout, any labelled buttons, "
             "menus or text fields, and any prominent text content the user "
@@ -708,7 +797,7 @@ def _route_capture_through_aux_vision(
     except Exception as exc:
         logger.warning(
             "computer_use: auxiliary.vision pre-analysis failed (%s); "
-            "falling back to native multimodal envelope",
+            "returning to caller without aux analysis",
             exc,
         )
         return None
@@ -782,8 +871,8 @@ def _maybe_follow_capture(
     return json.dumps(data)
 
 
-def _format_elements(elements: list[UIElement], max_lines: int = 40) -> list[str]:
-    out: list[str] = []
+def _format_elements(elements: List[UIElement], max_lines: int = 40) -> List[str]:
+    out: List[str] = []
     for e in elements[:max_lines]:
         label = e.label.replace("\n", " ")[:60]
         out.append(f"  #{e.index} {e.role} {label!r} @ {e.bounds}"
@@ -793,7 +882,7 @@ def _format_elements(elements: list[UIElement], max_lines: int = 40) -> list[str
     return out
 
 
-def _element_to_dict(e: UIElement) -> dict[str, Any]:
+def _element_to_dict(e: UIElement) -> Dict[str, Any]:
     return {
         "index": e.index,
         "role": e.role,
@@ -810,14 +899,19 @@ def _element_to_dict(e: UIElement) -> dict[str, Any]:
 def check_computer_use_requirements() -> bool:
     """Return True iff computer_use can run on this host.
 
-    Conditions: macOS + cua-driver binary installed (or override via env).
+    Conditions: macOS, Windows, or Linux + cua-driver binary installed (or
+    override via env). cua-driver runs on all three; the Linux path is
+    headed/X11 today (Wayland via XWayland), pure-Wayland progress tracked
+    upstream. Linux users see specific blocked checks via
+    `hermes computer-use doctor` if their session is incomplete (e.g. no
+    DISPLAY set).
     """
-    if sys.platform != "darwin":
+    if sys.platform not in ("darwin", "win32", "linux"):
         return False
     from tools.computer_use.cua_backend import cua_driver_binary_available
     return cua_driver_binary_available()
 
 
-def get_computer_use_schema() -> dict[str, Any]:
+def get_computer_use_schema() -> Dict[str, Any]:
     from tools.computer_use.schema import COMPUTER_USE_SCHEMA
     return COMPUTER_USE_SCHEMA

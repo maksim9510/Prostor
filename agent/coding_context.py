@@ -1,7 +1,7 @@
-"""Coding-context awareness — base Prostor, every interactive surface.
+"""Coding-context awareness — base Hermes, every interactive surface.
 
-When the user runs Prostor inside a code workspace (CLI, TUI, desktop app, or an
-editor over ACP), Prostor shifts into a **coding posture**. This module is the
+When the user runs Hermes inside a code workspace (CLI, TUI, desktop app, or an
+editor over ACP), Hermes shifts into a **coding posture**. This module is the
 single place that decides whether we're in that posture and what it implies,
 so the rest of the codebase never re-derives "are we coding?" on its own.
 
@@ -58,9 +58,9 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-logger = logging.getLogger("prostor.coding_context")
+logger = logging.getLogger("hermes.coding_context")
 
 CODING_TOOLSET = "coding"
 
@@ -123,7 +123,7 @@ _EDIT_FORMAT_GUIDANCE: dict[str, tuple[tuple[str, ...], str]] = {
     "replace": (
         ("claude", "sonnet", "opus", "haiku",
          "gemini", "gemma", "deepseek", "qwen", "kimi", "glm", "grok",
-         "prostor", "llama", "mistral", "devstral", "minimax"),
+         "hermes", "llama", "mistral", "devstral", "minimax"),
         "- Edit format: author new files with `write_file`; for edits to "
         "existing code prefer `patch` in `mode='replace'` — match a unique "
         "snippet and swap it. Reach for `mode='patch'` (V4A) only when an edit "
@@ -132,7 +132,7 @@ _EDIT_FORMAT_GUIDANCE: dict[str, tuple[tuple[str, ...], str]] = {
 }
 
 
-def _model_family(model: str | None) -> str | None:
+def _model_family(model: Optional[str]) -> Optional[str]:
     """Classify a model id into an edit-format family key, or ``None``.
 
     Used to steer the coding posture toward the edit tool format a model was
@@ -148,7 +148,7 @@ def _model_family(model: str | None) -> str | None:
     return None
 
 
-def _edit_format_line(model: str | None) -> str:
+def _edit_format_line(model: Optional[str]) -> str:
     """The edit-format guidance line for this model's family (``""`` if none)."""
     family = _model_family(model)
     if family is None:
@@ -158,7 +158,7 @@ def _edit_format_line(model: str | None) -> str:
 
 # Operating brief for the coding posture. Tool names referenced here (read_file,
 # search_files, patch, write_file, terminal, todo) are in the coding toolset and
-# in _PROSTOR_CORE_TOOLS, so they're present on every surface this fires on.
+# in _HERMES_CORE_TOOLS, so they're present on every surface this fires on.
 CODING_AGENT_GUIDANCE = (
     "You are a coding agent pairing with the user inside their codebase. "
     "Operate like a careful senior engineer.\n"
@@ -234,9 +234,9 @@ class ContextProfile:
     """
 
     name: str
-    toolset: str | None = None
+    toolset: Optional[str] = None
     guidance: str = ""
-    model_hint: str | None = None
+    model_hint: Optional[str] = None
     memory_policy: str = "default"
     compact_skill_categories: tuple[str, ...] = ()
 
@@ -278,11 +278,11 @@ def get_profile(name: str) -> ContextProfile:
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 
-def _coding_mode(config: dict[str, Any] | None) -> str:
+def _coding_mode(config: Optional[dict[str, Any]]) -> str:
     """Return the normalized ``agent.coding_context`` mode (auto/focus/on/off)."""
     if config is None:
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
 
             config = load_config()
         except Exception:
@@ -298,7 +298,7 @@ def _coding_mode(config: dict[str, Any] | None) -> str:
     return "auto"
 
 
-def _resolve_cwd(cwd: str | Path | None) -> Path:
+def _resolve_cwd(cwd: Optional[str | Path]) -> Path:
     if cwd:
         return Path(cwd).expanduser()
     try:
@@ -309,7 +309,7 @@ def _resolve_cwd(cwd: str | Path | None) -> Path:
         return Path(os.getcwd())
 
 
-def _git_root(cwd: Path) -> Path | None:
+def _git_root(cwd: Path) -> Optional[Path]:
     current = cwd.resolve()
     for parent in [current, *current.parents]:
         if (parent / ".git").exists():
@@ -317,14 +317,14 @@ def _git_root(cwd: Path) -> Path | None:
     return None
 
 
-def _home() -> Path | None:
+def _home() -> Optional[Path]:
     try:
         return Path.home().resolve()
     except (OSError, RuntimeError):
         return None
 
 
-def _marker_root(cwd: Path) -> Path | None:
+def _marker_root(cwd: Path) -> Optional[Path]:
     """Nearest ancestor that looks like a project root, or ``None``.
 
     Walks up at most a few levels so a manifest in the workspace root counts
@@ -397,7 +397,7 @@ class RuntimeMode:
     # The model id this session runs (e.g. "anthropic/claude-opus-4.8"). Used
     # only to steer edit-format guidance toward the model's family — see
     # ``_edit_format_line``. Fixed for the session, so cache-safe.
-    model: str | None = None
+    model: Optional[str] = None
 
     @property
     def kind(self) -> str:
@@ -407,7 +407,7 @@ class RuntimeMode:
     def is_coding(self) -> bool:
         return self.profile.name == CODING_PROFILE.name
 
-    def toolset_selection(self, config: dict[str, Any] | None = None) -> list[str] | None:
+    def toolset_selection(self, config: Optional[dict[str, Any]] = None) -> Optional[list[str]]:
         """Toolset list for this posture, or ``None`` to keep the platform default.
 
         Non-``None`` only under the opt-in ``focus`` mode. The default posture
@@ -416,7 +416,7 @@ class RuntimeMode:
         messaging for build notifications, …) keeps it while coding.
 
         Callers apply this only when the user hasn't pinned an explicit
-        selection (``--toolsets``, ``PROSTOR_TUI_TOOLSETS``, …); they never
+        selection (``--toolsets``, ``HERMES_TUI_TOOLSETS``, …); they never
         override a pin. Returns the profile's toolset plus enabled MCP servers.
         """
         if self.config_mode != "focus":
@@ -471,10 +471,10 @@ class RuntimeMode:
 
 def resolve_runtime_mode(
     *,
-    platform: str | None = None,
-    cwd: str | Path | None = None,
-    config: dict[str, Any] | None = None,
-    model: str | None = None,
+    platform: Optional[str] = None,
+    cwd: Optional[str | Path] = None,
+    config: Optional[dict[str, Any]] = None,
+    model: Optional[str] = None,
 ) -> RuntimeMode:
     """Resolve the operating posture once. Cheap — a handful of ``stat`` calls.
 
@@ -504,20 +504,20 @@ def resolve_runtime_mode(
 
 def is_coding_context(
     *,
-    platform: str | None = None,
-    cwd: str | Path | None = None,
-    config: dict[str, Any] | None = None,
+    platform: Optional[str] = None,
+    cwd: Optional[str | Path] = None,
+    config: Optional[dict[str, Any]] = None,
 ) -> bool:
-    """Whether Prostor should operate in its coding posture right now."""
+    """Whether Hermes should operate in its coding posture right now."""
     return resolve_runtime_mode(platform=platform, cwd=cwd, config=config).is_coding
 
 
 def coding_selection(
     *,
-    platform: str | None = None,
-    cwd: str | Path | None = None,
-    config: dict[str, Any] | None = None,
-) -> list[str] | None:
+    platform: Optional[str] = None,
+    cwd: Optional[str | Path] = None,
+    config: Optional[dict[str, Any]] = None,
+) -> Optional[list[str]]:
     """Toolset selection for the coding posture.
 
     ``None`` unless the user opted into ``focus`` mode AND the posture is
@@ -530,10 +530,10 @@ def coding_selection(
 
 def coding_system_blocks(
     *,
-    platform: str | None = None,
-    cwd: str | Path | None = None,
-    config: dict[str, Any] | None = None,
-    model: str | None = None,
+    platform: Optional[str] = None,
+    cwd: Optional[str | Path] = None,
+    config: Optional[dict[str, Any]] = None,
+    model: Optional[str] = None,
 ) -> list[str]:
     """Stable system-prompt blocks for the current posture (empty when general).
 
@@ -546,9 +546,9 @@ def coding_system_blocks(
 
 def coding_compact_skill_categories(
     *,
-    platform: str | None = None,
-    cwd: str | Path | None = None,
-    config: dict[str, Any] | None = None,
+    platform: Optional[str] = None,
+    cwd: Optional[str | Path] = None,
+    config: Optional[dict[str, Any]] = None,
 ) -> frozenset[str]:
     """Skill categories the active posture demotes to names-only in the index.
 
@@ -563,15 +563,15 @@ def coding_compact_skill_categories(
     ).compact_skill_categories()
 
 
-def _enabled_mcp_servers(config: dict[str, Any] | None) -> list[str]:
+def _enabled_mcp_servers(config: Optional[dict[str, Any]]) -> list[str]:
     """Names of MCP servers the user has enabled — kept in the coding posture.
 
     MCP servers (figma, browser, tophat, …) are explicitly configured and part
     of the coding workflow, not noise to strip.
     """
     try:
-        from prostor_cli.config import read_raw_config
-        from prostor_cli.tools_config import _parse_enabled_flag
+        from hermes_cli.config import read_raw_config
+        from hermes_cli.tools_config import _parse_enabled_flag
 
         servers = read_raw_config().get("mcp_servers") or {}
         return [
@@ -635,25 +635,32 @@ def _read_small(path: Path) -> str:
         return ""
 
 
-def _project_facts(root: Path) -> list[str]:
-    """Detected project facts for the workspace snapshot.
+@dataclass(frozen=True)
+class ProjectFacts:
+    """Structured project facts — the model's verify loop, detected once.
 
-    The point is to hand the model its *verify loop* up front — which manifest,
-    which package manager, and the exact test/lint/build commands — instead of
-    making it rediscover them every session. Cheap: stat calls plus reads of a
-    couple of small files; built once at prompt-build time (cache-safe).
+    The same data that feeds the workspace snapshot, exposed structurally so
+    non-prompt consumers (e.g. the desktop verify UI) read it instead of
+    re-detecting and drifting from the prompt.
     """
-    facts: list[str] = []
 
+    manifests: list[str]
+    package_managers: list[str]
+    verify_commands: list[str]
+    context_files: list[str]
+
+
+def detect_project_facts(root: Path) -> ProjectFacts:
+    """Detect manifests, package manager(s), verify commands, and context files.
+
+    Cheap: stat calls plus reads of a couple of small files. The single source
+    of truth for both the prompt snapshot (:func:`_project_facts`) and the
+    gateway's ``project.facts`` — so the UI never re-sniffs verify commands.
+    """
     manifests = [m for m in _PROJECT_MARKERS if m not in _CONTEXT_FILES and (root / m).is_file()]
-    package_managers = [
-        pm for lock, pm in (*_PY_LOCKFILES, *_JS_LOCKFILES) if (root / lock).is_file()
-    ]
-    if manifests:
-        line = f"- Project: {', '.join(manifests[:6])}"
-        if package_managers:
-            line += f" ({'/'.join(dict.fromkeys(package_managers))})"
-        facts.append(line)
+    package_managers = list(
+        dict.fromkeys(pm for lock, pm in (*_PY_LOCKFILES, *_JS_LOCKFILES) if (root / lock).is_file())
+    )
 
     verify: list[str] = []
     if (root / "scripts" / "run_tests.sh").is_file():
@@ -673,18 +680,62 @@ def _project_facts(root: Path) -> list[str]:
             f"make {name}" for name in _VERIFY_TARGETS
             if re.search(rf"^{re.escape(name)}\s*:", makefile, re.MULTILINE)
         )
-    if verify:
-        deduped = list(dict.fromkeys(verify))[:_MAX_VERIFY_COMMANDS]
-        facts.append(f"- Verify: {'; '.join(deduped)}")
 
-    context_files = [c for c in _CONTEXT_FILES if (root / c).is_file()]
-    if context_files:
-        facts.append(f"- Context files: {', '.join(context_files)}")
+    return ProjectFacts(
+        manifests=manifests,
+        package_managers=package_managers,
+        verify_commands=list(dict.fromkeys(verify))[:_MAX_VERIFY_COMMANDS],
+        context_files=[c for c in _CONTEXT_FILES if (root / c).is_file()],
+    )
+
+
+def _project_facts(root: Path) -> list[str]:
+    """Render :func:`detect_project_facts` as workspace-snapshot lines.
+
+    Hands the model its *verify loop* up front — which manifest, which package
+    manager, and the exact test/lint/build commands — instead of making it
+    rediscover them every session. Built once at prompt-build time; the string
+    output must stay byte-stable to preserve the prompt cache.
+    """
+    f = detect_project_facts(root)
+    facts: list[str] = []
+
+    if f.manifests:
+        line = f"- Project: {', '.join(f.manifests[:6])}"
+        if f.package_managers:
+            line += f" ({'/'.join(f.package_managers)})"
+        facts.append(line)
+    if f.verify_commands:
+        facts.append(f"- Verify: {'; '.join(f.verify_commands)}")
+    if f.context_files:
+        facts.append(f"- Context files: {', '.join(f.context_files)}")
 
     return facts
 
 
-def build_coding_workspace_block(cwd: str | Path | None = None) -> str:
+def project_facts_for(cwd: Optional[str | Path] = None) -> Optional[dict[str, Any]]:
+    """Structured project facts for ``cwd`` — ``None`` outside a workspace.
+
+    Same detection the system-prompt snapshot uses (git root, else marker root),
+    exposed for non-prompt consumers (the desktop verify UI) so they never
+    re-derive "are we coding?" or duplicate the verify-command sniffing.
+    """
+    resolved = _resolve_cwd(cwd)
+    root = _git_root(resolved) or _marker_root(resolved)
+    if root is None:
+        return None
+
+    f = detect_project_facts(root)
+    return {
+        "root": str(root),
+        "manifests": f.manifests,
+        "packageManagers": f.package_managers,
+        "verifyCommands": f.verify_commands,
+        "contextFiles": f.context_files,
+    }
+
+
+def build_coding_workspace_block(cwd: Optional[str | Path] = None) -> str:
     """Workspace snapshot for the system prompt (empty outside a workspace).
 
     Git state (branch/status/commits) when the cwd is in a repo, plus detected

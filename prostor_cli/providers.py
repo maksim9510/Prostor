@@ -1,5 +1,5 @@
 """
-Single source of truth for provider identity in Prostor Agent.
+Single source of truth for provider identity in Hermes Agent.
 
 Two data sources, merged at runtime:
 
@@ -7,7 +7,7 @@ Two data sources, merged at runtime:
    names, and full model metadata (context, cost, capabilities).  This is
    the primary database.
 
-2. **Prostor overlays** — transport type, auth patterns, aggregator flags,
+2. **Hermes overlays** — transport type, auth patterns, aggregator flags,
    and additional env vars that models.dev doesn't track.  Small dict,
    maintained here.
 
@@ -21,193 +21,188 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from utils import base_url_host_matches, base_url_hostname
 
 logger = logging.getLogger(__name__)
 
 
-# -- Prostor overlay ----------------------------------------------------------
-# Prostor-specific metadata that models.dev doesn't provide.
+# -- Hermes overlay ----------------------------------------------------------
+# Hermes-specific metadata that models.dev doesn't provide.
 
 @dataclass(frozen=True)
-class ProstorOverlay:
-    """Prostor-specific provider metadata layered on top of models.dev."""
+class HermesOverlay:
+    """Hermes-specific provider metadata layered on top of models.dev."""
 
     transport: str = "openai_chat"        # openai_chat | anthropic_messages | codex_responses
     is_aggregator: bool = False
     auth_type: str = "api_key"            # api_key | oauth_device_code | oauth_external | external_process
-    extra_env_vars: tuple[str, ...] = ()  # env vars models.dev doesn't list
+    extra_env_vars: Tuple[str, ...] = ()  # env vars models.dev doesn't list
     base_url_override: str = ""           # override if models.dev URL is wrong/missing
     base_url_env_var: str = ""            # env var for user-custom base URL
 
 
-PROSTOR_OVERLAYS: dict[str, ProstorOverlay] = {
-    "openrouter": ProstorOverlay(
+HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
+    "openrouter": HermesOverlay(
         transport="openai_chat",
         is_aggregator=True,
         base_url_env_var="OPENROUTER_BASE_URL",
     ),
-    "nous": ProstorOverlay(
+    "nous": HermesOverlay(
         transport="openai_chat",
         auth_type="oauth_device_code",
         base_url_override="https://inference-api.nousresearch.com/v1",
     ),
-    "openai-codex": ProstorOverlay(
+    "openai-codex": HermesOverlay(
         transport="codex_responses",
         auth_type="oauth_external",
         base_url_override="https://chatgpt.com/backend-api/codex",
     ),
-    "openai-api": ProstorOverlay(
+    "openai-api": HermesOverlay(
         transport="codex_responses",
         base_url_override="https://api.openai.com/v1",
         base_url_env_var="OPENAI_BASE_URL",
     ),
-    "xai-oauth": ProstorOverlay(
+    "xai-oauth": HermesOverlay(
         transport="codex_responses",
         auth_type="oauth_external",
         base_url_override="https://api.x.ai/v1",
         base_url_env_var="XAI_BASE_URL",
     ),
-    "qwen-oauth": ProstorOverlay(
+    "qwen-oauth": HermesOverlay(
         transport="openai_chat",
         auth_type="oauth_external",
         base_url_override="https://portal.qwen.ai/v1",
-        base_url_env_var="PROSTOR_QWEN_BASE_URL",
+        base_url_env_var="HERMES_QWEN_BASE_URL",
     ),
-    "google-gemini-cli": ProstorOverlay(
-        transport="openai_chat",
-        auth_type="oauth_external",
-        base_url_override="cloudcode-pa://google",
-    ),
-    "lmstudio": ProstorOverlay(
+    "lmstudio": HermesOverlay(
         transport="openai_chat",
         auth_type="api_key",
         extra_env_vars=("LM_API_KEY",),
         base_url_override="http://127.0.0.1:1234/v1",
         base_url_env_var="LM_BASE_URL",
     ),
-    "copilot-acp": ProstorOverlay(
+    "copilot-acp": HermesOverlay(
         transport="codex_responses",
         auth_type="external_process",
         base_url_override="acp://copilot",
         base_url_env_var="COPILOT_ACP_BASE_URL",
     ),
-    "github-copilot": ProstorOverlay(
+    "github-copilot": HermesOverlay(
         transport="openai_chat",
         extra_env_vars=("COPILOT_GITHUB_TOKEN", "GH_TOKEN"),
     ),
-    "anthropic": ProstorOverlay(
+    "anthropic": HermesOverlay(
         transport="anthropic_messages",
         extra_env_vars=("ANTHROPIC_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"),
     ),
-    "zai": ProstorOverlay(
+    "zai": HermesOverlay(
         transport="openai_chat",
         extra_env_vars=("GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"),
         base_url_env_var="GLM_BASE_URL",
     ),
-    "kimi-for-coding": ProstorOverlay(
+    "kimi-for-coding": HermesOverlay(
         transport="openai_chat",
         base_url_env_var="KIMI_BASE_URL",
     ),
-    "stepfun": ProstorOverlay(
+    "stepfun": HermesOverlay(
         transport="openai_chat",
         extra_env_vars=("STEPFUN_API_KEY",),
         base_url_override="https://api.stepfun.ai/step_plan/v1",
         base_url_env_var="STEPFUN_BASE_URL",
     ),
-    "minimax": ProstorOverlay(
+    "minimax": HermesOverlay(
         transport="anthropic_messages",
         base_url_env_var="MINIMAX_BASE_URL",
     ),
-    "minimax-oauth": ProstorOverlay(
+    "minimax-oauth": HermesOverlay(
         transport="anthropic_messages",
         auth_type="oauth_external",
         base_url_override="https://api.minimax.io/anthropic",
     ),
-    "minimax-cn": ProstorOverlay(
+    "minimax-cn": HermesOverlay(
         transport="anthropic_messages",
         base_url_env_var="MINIMAX_CN_BASE_URL",
     ),
-    "deepseek": ProstorOverlay(
+    "deepseek": HermesOverlay(
         transport="openai_chat",
         base_url_env_var="DEEPSEEK_BASE_URL",
     ),
-    "alibaba": ProstorOverlay(
+    "alibaba": HermesOverlay(
         transport="openai_chat",
         base_url_env_var="DASHSCOPE_BASE_URL",
     ),
-    "alibaba-coding-plan": ProstorOverlay(
+    "alibaba-coding-plan": HermesOverlay(
         transport="openai_chat",
         base_url_env_var="ALIBABA_CODING_PLAN_BASE_URL",
     ),
-    "opencode": ProstorOverlay(
+    "opencode": HermesOverlay(
         transport="openai_chat",
         is_aggregator=True,
         base_url_env_var="OPENCODE_ZEN_BASE_URL",
     ),
-    "opencode-go": ProstorOverlay(
+    "opencode-go": HermesOverlay(
         transport="openai_chat",
         is_aggregator=True,
         base_url_env_var="OPENCODE_GO_BASE_URL",
     ),
-    "kilo": ProstorOverlay(
+    "kilo": HermesOverlay(
         transport="openai_chat",
         is_aggregator=True,
         base_url_env_var="KILOCODE_BASE_URL",
     ),
-    "huggingface": ProstorOverlay(
+    "huggingface": HermesOverlay(
         transport="openai_chat",
         is_aggregator=True,
         base_url_env_var="HF_BASE_URL",
     ),
-    "novita": ProstorOverlay(
+    "novita": HermesOverlay(
         transport="openai_chat",
         is_aggregator=True,
         base_url_env_var="NOVITA_BASE_URL",
     ),
-    "xai": ProstorOverlay(
+    "xai": HermesOverlay(
         transport="codex_responses",
         base_url_override="https://api.x.ai/v1",
         base_url_env_var="XAI_BASE_URL",
     ),
-    "nvidia": ProstorOverlay(
+    "nvidia": HermesOverlay(
         transport="openai_chat",
         base_url_override="https://integrate.api.nvidia.com/v1",
         base_url_env_var="NVIDIA_BASE_URL",
     ),
-    "xiaomi": ProstorOverlay(
+    "xiaomi": HermesOverlay(
         transport="openai_chat",
         base_url_env_var="XIAOMI_BASE_URL",
     ),
-    "tencent-tokenhub": ProstorOverlay(
+    "tencent-tokenhub": HermesOverlay(
         transport="openai_chat",
         base_url_env_var="TOKENHUB_BASE_URL",
     ),
-    "arcee": ProstorOverlay(
+    "arcee": HermesOverlay(
         transport="openai_chat",
         base_url_override="https://api.arcee.ai/api/v1",
         base_url_env_var="ARCEE_BASE_URL",
     ),
-    "gmi": ProstorOverlay(
+    "gmi": HermesOverlay(
         transport="openai_chat",
         extra_env_vars=("GMI_API_KEY",),
         base_url_override="https://api.gmi-serving.com/v1",
         base_url_env_var="GMI_BASE_URL",
     ),
-    "ollama-cloud": ProstorOverlay(
+    "ollama-cloud": HermesOverlay(
         transport="openai_chat",
         base_url_override="https://ollama.com/v1",
         base_url_env_var="OLLAMA_BASE_URL",
     ),
     # Azure Foundry: supports both OpenAI-style and Anthropic-style endpoints.
     # The transport is determined at runtime from config.yaml model.api_mode.
-    "azure-foundry": ProstorOverlay(
+    "azure-foundry": HermesOverlay(
         transport="openai_chat",  # default; overridden by api_mode in config
         base_url_env_var="AZURE_FOUNDRY_BASE_URL",
     ),
-    "bedrock": ProstorOverlay(
+    "bedrock": HermesOverlay(
         transport="bedrock_converse",
         auth_type="aws_sdk",
     ),
@@ -224,20 +219,20 @@ class ProviderDef:
     id: str
     name: str
     transport: str                        # openai_chat | anthropic_messages | codex_responses
-    api_key_env_vars: tuple[str, ...]     # all env vars to check for API key
+    api_key_env_vars: Tuple[str, ...]     # all env vars to check for API key
     base_url: str = ""
     base_url_env_var: str = ""
     is_aggregator: bool = False
     auth_type: str = "api_key"
     doc: str = ""
-    source: str = ""                      # "models.dev", "prostor", "user-config"
+    source: str = ""                      # "models.dev", "hermes", "user-config"
 
 
 # -- Aliases ------------------------------------------------------------------
 # Maps human-friendly / legacy names to canonical provider IDs.
 # Uses models.dev IDs where possible.
 
-ALIASES: dict[str, str] = {
+ALIASES: Dict[str, str] = {
     # openrouter
     "openai": "openrouter",     # bare "openai" → route through aggregator
 
@@ -310,11 +305,6 @@ ALIASES: dict[str, str] = {
     "alibaba-coding": "alibaba-coding-plan",
     "alibaba_coding_plan": "alibaba-coding-plan",
 
-    # google-gemini-cli (OAuth + Code Assist)
-    "gemini-cli": "google-gemini-cli",
-    "gemini-oauth": "google-gemini-cli",
-
-
     # huggingface
     "hf": "huggingface",
     "hugging-face": "huggingface",
@@ -364,7 +354,7 @@ ALIASES: dict[str, str] = {
 # Built dynamically from models.dev + overlays.  Fallback for providers
 # not in the catalog.
 
-_LABEL_OVERRIDES: dict[str, str] = {
+_LABEL_OVERRIDES: Dict[str, str] = {
     "nous": "Nous Portal",
     "openai-codex": "OpenAI Codex",
     "copilot-acp": "GitHub Copilot ACP",
@@ -382,7 +372,7 @@ _LABEL_OVERRIDES: dict[str, str] = {
 
 # -- Transport → API mode mapping ---------------------------------------------
 
-TRANSPORT_TO_API_MODE: dict[str, str] = {
+TRANSPORT_TO_API_MODE: Dict[str, str] = {
     "openai_chat": "chat_completions",
     "anthropic_messages": "anthropic_messages",
     "codex_responses": "codex_responses",
@@ -402,12 +392,12 @@ def normalize_provider(name: str) -> str:
     return ALIASES.get(key, key)
 
 
-def get_provider(name: str) -> ProviderDef | None:
+def get_provider(name: str) -> Optional[ProviderDef]:
     """Look up a built-in provider by id or alias.
 
     Resolution order:
-      1. Prostor overlays (for providers not in models.dev: nous, openai-codex, etc.)
-      2. models.dev catalog + Prostor overlay
+      1. Hermes overlays (for providers not in models.dev: nous, openai-codex, etc.)
+      2. models.dev catalog + Hermes overlay
 
     User-defined providers from config.yaml (``providers:`` / ``custom_providers:``)
     are resolved by :func:`resolve_provider_full`, which layers ``resolve_user_provider``
@@ -425,7 +415,7 @@ def get_provider(name: str) -> ProviderDef | None:
     except Exception:
         mdev_info = None
 
-    overlay = PROSTOR_OVERLAYS.get(canonical)
+    overlay = HERMES_OVERLAYS.get(canonical)
 
     if mdev_info is not None:
         # Merge models.dev + overlay
@@ -435,7 +425,7 @@ def get_provider(name: str) -> ProviderDef | None:
         base_url_env = overlay.base_url_env_var if overlay else ""
         base_url_override = overlay.base_url_override if overlay else ""
 
-        # Combine env vars: models.dev env + prostor extra
+        # Combine env vars: models.dev env + hermes extra
         env_vars = list(mdev_info.env)
         if overlay and overlay.extra_env_vars:
             for ev in overlay.extra_env_vars:
@@ -456,7 +446,7 @@ def get_provider(name: str) -> ProviderDef | None:
         )
 
     if overlay is not None:
-        # Prostor-only provider (not in models.dev)
+        # Hermes-only provider (not in models.dev)
         return ProviderDef(
             id=canonical,
             name=_LABEL_OVERRIDES.get(canonical, canonical),
@@ -466,7 +456,7 @@ def get_provider(name: str) -> ProviderDef | None:
             base_url_env_var=overlay.base_url_env_var,
             is_aggregator=overlay.is_aggregator,
             auth_type=overlay.auth_type,
-            source="prostor",
+            source="hermes",
         )
 
     return None
@@ -488,6 +478,8 @@ def get_label(provider_id: str) -> str:
     return canonical
 
 
+
+
 def is_aggregator(provider: str) -> bool:
     """Return True when the provider is a multi-model aggregator."""
     provider_norm = normalize_provider(provider or "")
@@ -495,6 +487,41 @@ def is_aggregator(provider: str) -> bool:
         return True
     pdef = get_provider(provider_norm)
     return pdef.is_aggregator if pdef else False
+
+
+# Flat-namespace resellers (e.g. opencode-go, opencode-zen) are flagged
+# ``is_aggregator=True`` because their live ``/v1/models`` returns bare model
+# IDs ("deepseek-v4-flash") rather than ``vendor/model`` routing slugs — the
+# model-switch resolver relies on that flag to search their flat catalog
+# (see model_switch.py step d). But they are NOT routing aggregators: every
+# model they list is a first-party model served under their own subscription,
+# not a passthrough route to another provider's endpoint. The picker dedup
+# (build_models_payload) must treat them differently from true routers like
+# OpenRouter — a reseller's first-party "minimax-m3" must never be stripped
+# just because a user's custom proxy also happens to serve a same-named model.
+_FLAT_NAMESPACE_RESELLERS: frozenset[str] = frozenset({
+    # Use normalized provider IDs: normalize_provider("opencode-zen") -> "opencode".
+    "opencode-go",
+    "opencode",
+})
+
+
+def is_routing_aggregator(provider: str) -> bool:
+    """Return True only for TRUE routing aggregators (e.g. OpenRouter, named
+    ``custom:*`` proxies) — those that route bare/vendor-slugged model names
+    to *other* providers' endpoints.
+
+    Distinct from :func:`is_aggregator`, which also reports True for
+    flat-namespace resellers (opencode-go/zen) whose catalog is entirely
+    first-party. Use this gate when the question is "would selecting this
+    model silently re-route the call away from the user's intended provider?"
+    — i.e. the picker dedup. Resellers answer no: their listed models are
+    their own, so their rows must not be deduped against user proxies.
+    """
+    provider_norm = normalize_provider(provider or "")
+    if provider_norm in _FLAT_NAMESPACE_RESELLERS:
+        return False
+    return is_aggregator(provider_norm)
 
 
 def determine_api_mode(provider: str, base_url: str = "") -> str:
@@ -519,7 +546,7 @@ def determine_api_mode(provider: str, base_url: str = "") -> str:
                 return "codex_responses"
         return TRANSPORT_TO_API_MODE.get(pdef.transport, "chat_completions")
 
-    # Direct provider checks for providers not in PROSTOR_OVERLAYS
+    # Direct provider checks for providers not in HERMES_OVERLAYS
     if provider == "bedrock":
         return "bedrock_converse"
 
@@ -541,7 +568,7 @@ def determine_api_mode(provider: str, base_url: str = "") -> str:
 
 # -- Provider from user config ------------------------------------------------
 
-def resolve_user_provider(name: str, user_config: dict[str, Any]) -> ProviderDef | None:
+def resolve_user_provider(name: str, user_config: Dict[str, Any]) -> Optional[ProviderDef]:
     """Resolve a provider from the user's config.yaml ``providers:`` section.
 
     Args:
@@ -564,7 +591,7 @@ def resolve_user_provider(name: str, user_config: dict[str, Any]) -> ProviderDef
     key_env = entry.get("key_env", "") or ""
     transport = entry.get("transport", "openai_chat") or "openai_chat"
 
-    env_vars: list[str] = []
+    env_vars: List[str] = []
     if key_env:
         env_vars.append(key_env)
 
@@ -592,8 +619,8 @@ def custom_provider_slug(display_name: str) -> str:
 
 def resolve_custom_provider(
     name: str,
-    custom_providers: list[dict[str, Any]] | None,
-) -> ProviderDef | None:
+    custom_providers: Optional[List[Dict[str, Any]]],
+) -> Optional[ProviderDef]:
     """Resolve a provider from the user's config.yaml ``custom_providers`` list."""
     if not custom_providers or not isinstance(custom_providers, list):
         return None
@@ -661,9 +688,9 @@ def resolve_custom_provider(
 
 def resolve_provider_full(
     name: str,
-    user_providers: dict[str, Any] | None = None,
-    custom_providers: list[dict[str, Any]] | None = None,
-) -> ProviderDef | None:
+    user_providers: Optional[Dict[str, Any]] = None,
+    custom_providers: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[ProviderDef]:
     """Full resolution chain: built-in → models.dev → user config.
 
     This is the main entry point for --provider flag resolution.

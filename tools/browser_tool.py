@@ -55,21 +55,19 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
+import shutil
 import sys
 import tempfile
 import threading
 import time
-from pathlib import Path
-from typing import Any
-
 import requests
-
+from typing import Dict, Any, Optional, List, Tuple, Union
+from pathlib import Path
 from agent.auxiliary_client import call_llm
-from prostor_cli.config import DEFAULT_CONFIG, cfg_get
-from prostor_constants import get_prostor_home
+from hermes_constants import agent_browser_runnable, get_hermes_home
 from utils import env_int, is_truthy_value
+from hermes_cli.config import DEFAULT_CONFIG, cfg_get
 
 try:
     from tools.website_policy import check_website_access
@@ -78,12 +76,8 @@ except Exception:
 
 try:
     from tools.url_safety import (
-        is_always_blocked_url as _is_always_blocked_url,
-    )
-    from tools.url_safety import (
         is_safe_url as _is_safe_url,
-    )
-    from tools.url_safety import (
+        is_always_blocked_url as _is_always_blocked_url,
         normalize_url_for_request as _normalize_url_for_request,
     )
 except Exception:
@@ -99,17 +93,16 @@ from agent.browser_provider import BrowserProvider as CloudBrowserProvider  # no
 from agent.browser_registry import (  # noqa: F401  (test-patchable surface)
     get_provider as _registry_get_browser_provider,
 )
-from plugins.browser.browser_use.provider import (  # noqa: F401
-    BrowserUseBrowserProvider as BrowserUseProvider,
-)
 from plugins.browser.browserbase.provider import (  # noqa: F401  (legacy import surface)
     BrowserbaseBrowserProvider as BrowserbaseProvider,
+)
+from plugins.browser.browser_use.provider import (  # noqa: F401
+    BrowserUseBrowserProvider as BrowserUseProvider,
 )
 from plugins.browser.firecrawl.provider import (  # noqa: F401
     FirecrawlBrowserProvider as FirecrawlProvider,
 )
 from tools.tool_backend_helpers import normalize_browser_cloud_provider
-
 # Camofox local anti-detection browser backend (optional).
 # When CAMOFOX_URL is set, all browser operations route through the
 # camofox REST API instead of the agent-browser CLI.
@@ -163,11 +156,11 @@ def _discover_homebrew_node_dirs() -> tuple[str, ...]:
 
 def _browser_candidate_path_dirs() -> list[str]:
     """Return ordered browser CLI PATH candidates shared by discovery and execution."""
-    prostor_home = get_prostor_home()
-    prostor_node_bin = str(prostor_home / "node" / "bin")
-    prostor_node_root = str(prostor_home / "node")
-    prostor_nm_bin = str(prostor_home / "node_modules" / ".bin")
-    return [prostor_node_bin, prostor_node_root, prostor_nm_bin, *list(_discover_homebrew_node_dirs()), *_SANE_PATH_DIRS]
+    hermes_home = get_hermes_home()
+    hermes_node_bin = str(hermes_home / "node" / "bin")
+    hermes_node_root = str(hermes_home / "node")
+    hermes_nm_bin = str(hermes_home / "node_modules" / ".bin")
+    return [hermes_node_bin, hermes_node_root, hermes_nm_bin, *list(_discover_homebrew_node_dirs()), *_SANE_PATH_DIRS]
 
 
 def _merge_browser_path(existing_path: str = "") -> str:
@@ -183,7 +176,6 @@ def _merge_browser_path(existing_path: str = "") -> str:
             prefix_parts.append(part)
 
     return os.pathsep.join(prefix_parts + path_parts)
-
 
 # Throttle screenshot cleanup to avoid repeated full directory scans.
 _last_screenshot_cleanup_by_dir: dict[str, float] = {}
@@ -201,7 +193,7 @@ SNAPSHOT_SUMMARIZE_THRESHOLD = 8000
 # Commands that legitimately return empty stdout (e.g. close, record).
 _EMPTY_OK_COMMANDS: frozenset = frozenset({"close", "record"})
 
-_cached_command_timeout: int | None = None
+_cached_command_timeout: Optional[int] = None
 _command_timeout_resolved = False
 
 
@@ -219,7 +211,7 @@ def _get_command_timeout() -> int:
     _command_timeout_resolved = True
     result = DEFAULT_COMMAND_TIMEOUT
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         val = cfg_get(cfg, "browser", "command_timeout")
         if val is not None:
@@ -230,12 +222,12 @@ def _get_command_timeout() -> int:
     return result
 
 
-def _get_vision_model() -> str | None:
+def _get_vision_model() -> Optional[str]:
     """Model for browser_vision (screenshot analysis — multimodal)."""
     return os.getenv("AUXILIARY_VISION_MODEL", "").strip() or None
 
 
-def _get_extraction_model() -> str | None:
+def _get_extraction_model() -> Optional[str]:
     """Model for page snapshot text summarization — same as web_extract."""
     return os.getenv("AUXILIARY_WEB_EXTRACT_MODEL", "").strip() or None
 
@@ -305,7 +297,7 @@ def _get_cdp_override() -> str:
         return _resolve_cdp_override(env_override)
 
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
 
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {})
@@ -317,7 +309,7 @@ def _get_cdp_override() -> str:
     return ""
 
 
-def _get_dialog_policy_config() -> tuple[str, float]:
+def _get_dialog_policy_config() -> Tuple[str, float]:
     """Read ``browser.dialog_policy`` + ``browser.dialog_timeout_s`` from config.
 
     Returns a ``(policy, timeout_s)`` tuple, falling back to the supervisor's
@@ -325,13 +317,13 @@ def _get_dialog_policy_config() -> tuple[str, float]:
     """
     # Defer imports so browser_tool can be imported in minimal environments.
     from tools.browser_supervisor import (
-        _VALID_POLICIES,
         DEFAULT_DIALOG_POLICY,
         DEFAULT_DIALOG_TIMEOUT_S,
+        _VALID_POLICIES,
     )
 
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
 
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {}) if isinstance(cfg, dict) else {}
@@ -426,9 +418,9 @@ def _stop_cdp_supervisor(task_id: str) -> None:
 # When the test patches ``_PROVIDER_REGISTRY``, we honour it (so the cache
 # unit tests still drive the function); otherwise the registry-backed path
 # wins. This keeps the test surface stable while letting third-party
-# plugins drop in under ``~/.prostor/plugins/browser/<vendor>/``.
+# plugins drop in under ``~/.hermes/plugins/browser/<vendor>/``.
 
-_PROVIDER_REGISTRY: dict[str, type] = {
+_PROVIDER_REGISTRY: Dict[str, type] = {
     "browserbase": BrowserbaseProvider,
     "browser-use": BrowserUseProvider,
     "firecrawl": FirecrawlProvider,
@@ -436,18 +428,18 @@ _PROVIDER_REGISTRY: dict[str, type] = {
 # Frozen copy of the import-time _PROVIDER_REGISTRY, used by
 # ``_is_legacy_provider_registry_overridden`` to detect test-time
 # monkeypatching. NEVER mutate this dict.
-_DEFAULT_PROVIDER_REGISTRY: dict[str, type] = dict(_PROVIDER_REGISTRY)
+_DEFAULT_PROVIDER_REGISTRY: Dict[str, type] = dict(_PROVIDER_REGISTRY)
 
-_cached_cloud_provider: CloudBrowserProvider | None = None
+_cached_cloud_provider: Optional[CloudBrowserProvider] = None
 _cloud_provider_resolved = False
 _allow_private_urls_resolved = False
-_cached_allow_private_urls: bool | None = None
-_cached_agent_browser: str | None = None
+_cached_allow_private_urls: Optional[bool] = None
+_cached_agent_browser: Optional[str] = None
 _agent_browser_resolved = False
 
 # Lightpanda engine support — cached like _get_cloud_provider().
 # agent-browser v0.25.3+ supports ``--engine lightpanda`` natively.
-_cached_browser_engine: str | None = None
+_cached_browser_engine: Optional[str] = None
 _browser_engine_resolved = False
 
 
@@ -487,14 +479,14 @@ def _ensure_browser_plugins_loaded() -> None:
     calls early-return inside `_ensure_plugins_discovered`.
     """
     try:
-        from prostor_cli.plugins import _ensure_plugins_discovered
+        from hermes_cli.plugins import _ensure_plugins_discovered
 
         _ensure_plugins_discovered()
     except Exception as exc:
         logger.debug("Browser plugin discovery failed (non-fatal): %s", exc)
 
 
-def _get_cloud_provider() -> CloudBrowserProvider | None:
+def _get_cloud_provider() -> Optional[CloudBrowserProvider]:
     """Return the configured cloud browser provider, or None for local mode.
 
     Reads ``config["browser"]["cloud_provider"]`` once and caches the result
@@ -505,7 +497,7 @@ def _get_cloud_provider() -> CloudBrowserProvider | None:
     :data:`agent.browser_registry._LEGACY_PREFERENCE` walk.
 
     Selection routes through :mod:`agent.browser_registry` so third-party
-    browser plugins (``~/.prostor/plugins/browser/<vendor>/``) participate
+    browser plugins (``~/.hermes/plugins/browser/<vendor>/``) participate
     in explicit-config resolution. Test fixtures that override
     ``_PROVIDER_REGISTRY`` or ``BrowserUseProvider`` / ``BrowserbaseProvider``
     on this module still drive the function — see
@@ -515,9 +507,9 @@ def _get_cloud_provider() -> CloudBrowserProvider | None:
     if _cloud_provider_resolved:
         return _cached_cloud_provider
 
-    resolved: CloudBrowserProvider | None = None
+    resolved: Optional[CloudBrowserProvider] = None
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {})
         provider_key = None
@@ -599,7 +591,7 @@ def _get_cloud_provider() -> CloudBrowserProvider | None:
     return _cached_cloud_provider
 
 
-from prostor_constants import is_termux as _is_termux_environment
+from hermes_constants import is_termux as _is_termux_environment
 
 
 def _browser_install_hint() -> str:
@@ -627,7 +619,7 @@ def _is_local_mode() -> bool:
 
 
 def _is_local_backend() -> bool:
-    """Return True when the browser runs locally (no cloud provider).
+    """Return True when the browser runs locally AND the terminal is also local.
 
     SSRF protection is only meaningful for cloud backends (Browserbase,
     BrowserUse) where the agent could reach internal resources on a remote
@@ -635,8 +627,20 @@ def _is_local_backend() -> bool:
     Chromium without a cloud provider — the user already has full terminal
     and network access on the same machine, so the check adds no security
     value.
+
+    However, when the terminal runs in a container (docker, modal, daytona,
+    ssh, singularity), the browser on the host can access internal networks
+    that the terminal cannot.  In this case, SSRF protection should be
+    enabled even though the browser is technically "local".
     """
-    return _is_camofox_mode() or _get_cloud_provider() is None
+    if _is_camofox_mode():
+        return True
+    if _get_cloud_provider() is not None:
+        return False
+    # When terminal runs in a container, browser on host can access
+    # internal networks the terminal can't → treat as non-local.
+    terminal_backend = os.getenv("TERMINAL_ENV", "local").strip().lower()
+    return terminal_backend in ("local", "")
 
 
 _auto_local_for_private_urls_resolved = False
@@ -665,7 +669,7 @@ def _get_browser_engine() -> str:
 
     # Config file takes priority
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         val = cfg.get("browser", {}).get("engine")
         if val and str(val).strip():
@@ -709,11 +713,11 @@ def _using_lightpanda_engine() -> bool:
     return _get_browser_engine() == "lightpanda"
 
 
-def _lightpanda_fallback_reason(engine: str, command: str, result: dict[str, Any]) -> str | None:
+def _lightpanda_fallback_reason(engine: str, command: str, result: Dict[str, Any]) -> Optional[str]:
     """Return the user-visible reason a Lightpanda result needs Chrome fallback.
 
     ``None`` means no fallback should run.  The returned string is copied into
-    the fallback result so CLI/TUI/gateway users can see when Prostor silently
+    the fallback result so CLI/TUI/gateway users can see when Hermes silently
     switched from Lightpanda to Chrome for completeness.
     """
     if engine != "lightpanda":
@@ -761,12 +765,12 @@ def _lightpanda_fallback_reason(engine: str, command: str, result: dict[str, Any
     return None
 
 
-def _needs_lightpanda_fallback(engine: str, command: str, result: dict[str, Any]) -> bool:
+def _needs_lightpanda_fallback(engine: str, command: str, result: Dict[str, Any]) -> bool:
     """Check if a Lightpanda result should trigger an automatic Chrome fallback."""
     return _lightpanda_fallback_reason(engine, command, result) is not None
 
 
-def _annotate_lightpanda_fallback(result: dict[str, Any], reason: str) -> dict[str, Any]:
+def _annotate_lightpanda_fallback(result: Dict[str, Any], reason: str) -> Dict[str, Any]:
     """Add a user-visible Chrome fallback warning to a browser command result."""
     warning = (
         "⚠ Lightpanda fallback: Chrome was used for this browser action. "
@@ -793,7 +797,7 @@ def _annotate_lightpanda_fallback(result: dict[str, Any], reason: str) -> dict[s
     return annotated
 
 
-def _copy_fallback_warning(target: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+def _copy_fallback_warning(target: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
     """Copy browser fallback metadata from an internal result into a tool response."""
     if result.get("fallback_warning"):
         target["fallback_warning"] = result["fallback_warning"]
@@ -805,9 +809,9 @@ def _copy_fallback_warning(target: dict[str, Any], result: dict[str, Any]) -> di
 def _run_chrome_fallback_command(
     task_id: str,
     command: str,
-    args: list[str],
+    args: List[str],
     timeout: int,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Run a browser command in a temporary Chrome session at the current URL.
 
     agent-browser locks the engine when a named daemon starts. Passing
@@ -843,7 +847,7 @@ def _run_chrome_fallback_command(
             hint = (
                 "Chrome fallback requires Chromium, but it is missing. "
                 "You're running in Docker — pull the latest image: "
-                "docker pull ghcr.io/nousresearch/prostor-agent:latest"
+                "docker pull ghcr.io/nousresearch/hermes-agent:latest"
             )
         else:
             hint = (
@@ -873,7 +877,7 @@ def _run_chrome_fallback_command(
     if "AGENT_BROWSER_IDLE_TIMEOUT_MS" not in browser_env:
         browser_env["AGENT_BROWSER_IDLE_TIMEOUT_MS"] = str(BROWSER_SESSION_INACTIVITY_TIMEOUT * 1000)
 
-    def _run_tmp(cmd: str, cmd_args: list[str]) -> dict[str, Any]:
+    def _run_tmp(cmd: str, cmd_args: List[str]) -> Dict[str, Any]:
         full = base_args + [cmd] + cmd_args
         # Use temp-file stdout/stderr pattern (same as _run_browser_command)
         # to avoid pipe hang from agent-browser daemon inheriting fds.
@@ -896,7 +900,7 @@ def _run_chrome_fallback_command(
             #   and that grandchild's CreateProcess dies silently
             #   ("Daemon process exited during startup with no error output")
             #   when inherited parent handles are in a weird state. Observed
-            #   in the Prostor CLI where sys.stdout and sys.stderr both report
+            #   in the Hermes CLI where sys.stdout and sys.stderr both report
             #   fileno=1 (stderr dup'd onto stdout at the OS level).
             # * close_fds=True → block inheritance of every other handle.
             #   (Default on POSIX; must be explicit on Windows for stdio.)
@@ -932,7 +936,7 @@ def _run_chrome_fallback_command(
             proc.wait()
             return {"success": False, "error": f"Chrome fallback '{cmd}' timed out"}
         try:
-            with open(stdout_path, encoding="utf-8") as f:
+            with open(stdout_path, "r", encoding="utf-8") as f:
                 stdout = f.read().strip()
             if stdout:
                 return json.loads(stdout.split("\n")[-1])
@@ -969,9 +973,9 @@ def _run_chrome_fallback_command(
 
 def _chrome_fallback_screenshot(
     task_id: str,
-    args: list[str],
+    args: List[str],
     timeout: int,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Take a screenshot using a temporary Chrome session."""
     return _run_chrome_fallback_command(task_id, "screenshot", args, timeout)
 
@@ -993,7 +997,7 @@ def _auto_local_for_private_urls() -> bool:
 
     _auto_local_for_private_urls_resolved = True
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {})
         if isinstance(browser_cfg, dict) and "auto_local_for_private_urls" in browser_cfg:
@@ -1017,9 +1021,9 @@ def _url_is_private(url: str) -> bool:
         # is_safe_url returns False for private/loopback/link-local/CGNAT AND
         # for DNS failures.  We only want the private-network case here, so
         # we parse + check the host shape as a DNS-failure sieve first.
+        from urllib.parse import urlparse
         import ipaddress
         import socket
-        from urllib.parse import urlparse
         parsed = urlparse(url)
         hostname = (parsed.hostname or "").strip().lower().rstrip(".")
         if not hostname:
@@ -1042,7 +1046,7 @@ def _url_is_private(url: str) -> bool:
         # Hostname — must resolve to confirm it's private (bare "localhost"
         # resolves to 127.0.0.1 via /etc/hosts).  Short-circuit on obvious
         # names to avoid a DNS hop.
-        if hostname in {"localhost", } or hostname.endswith(".localhost"):
+        if hostname in {"localhost",} or hostname.endswith(".localhost"):
             return True
         if hostname.endswith(".local") or hostname.endswith(".lan") or hostname.endswith(".internal"):
             return True
@@ -1129,7 +1133,7 @@ def _allow_private_urls() -> bool:
     _allow_private_urls_resolved = True
     _cached_allow_private_urls = False  # safe default
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         browser_cfg = cfg.get("browser", {})
         if isinstance(browser_cfg, dict):
@@ -1145,7 +1149,7 @@ def _socket_safe_tmpdir() -> str:
     """Return a short temp directory path suitable for Unix domain sockets.
 
     macOS sets ``TMPDIR`` to ``/var/folders/xx/.../T/`` (~51 chars).  When we
-    append ``agent-browser-prostor_…`` the resulting socket path exceeds the
+    append ``agent-browser-hermes_…`` the resulting socket path exceeds the
     104-byte macOS limit for ``AF_UNIX`` addresses, causing agent-browser to
     fail with "Failed to create socket directory" or silent screenshot failures.
 
@@ -1167,7 +1171,7 @@ def _socket_safe_tmpdir() -> str:
 # cleanup_browser code paths — the key is opaque to those internals.
 #
 # Stores: session_name (always), bb_session_id + cdp_url (cloud mode only)
-_active_sessions: dict[str, dict[str, str]] = {}  # session_key -> {session_name, ...}
+_active_sessions: Dict[str, Dict[str, str]] = {}  # session_key -> {session_name, ...}
 _recording_sessions: set = set()  # session_keys with active recordings
 
 # Tracks the most recent session_key used per task_id. Set by browser_navigate()
@@ -1175,7 +1179,7 @@ _recording_sessions: set = set()  # session_keys with active recordings
 # (snapshot/click/fill/eval/...) so they target the session that served the last
 # navigation.  Without this, a task that navigated to localhost on the local
 # sidecar would fall back to the cloud session on its next snapshot call.
-_last_active_session_key: dict[str, str] = {}  # task_id -> session_key
+_last_active_session_key: Dict[str, str] = {}  # task_id -> session_key
 _LOCAL_SUFFIX = "::local"
 
 # Flag to track if cleanup has been done
@@ -1196,7 +1200,7 @@ DEFAULT_SESSION_INACTIVITY_TIMEOUT = int(
 def _get_session_inactivity_timeout() -> int:
     result = env_int("BROWSER_INACTIVITY_TIMEOUT", DEFAULT_SESSION_INACTIVITY_TIMEOUT)
     try:
-        from prostor_cli.config import read_raw_config
+        from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
         val = cfg_get(cfg, "browser", "inactivity_timeout")
         if val is not None:
@@ -1209,7 +1213,7 @@ def _get_session_inactivity_timeout() -> int:
 BROWSER_SESSION_INACTIVITY_TIMEOUT = _get_session_inactivity_timeout()
 
 # Track last activity time per session
-_session_last_activity: dict[str, float] = {}
+_session_last_activity: Dict[str, float] = {}
 
 # Background cleanup thread state
 _cleanup_thread = None
@@ -1225,7 +1229,7 @@ def _emergency_cleanup_all_sessions():
     Called on process exit or interrupt to prevent orphaned sessions.
 
     Also runs the orphan reaper to clean up daemons left behind by previously
-    crashed prostor processes — this way every clean prostor exit sweeps
+    crashed hermes processes — this way every clean hermes exit sweeps
     accumulated orphans, not just ones that actively used the browser tool.
     """
     global _cleanup_done
@@ -1248,9 +1252,9 @@ def _emergency_cleanup_all_sessions():
                 _session_last_activity.clear()
                 _recording_sessions.clear()
 
-    # Sweep orphans from other crashed prostor processes.  Safe even if we
+    # Sweep orphans from other crashed hermes processes.  Safe even if we
     # never used the browser — uses owner_pid liveness to avoid reaping
-    # daemons owned by other live prostor processes.
+    # daemons owned by other live hermes processes.
     try:
         _reap_orphaned_browser_sessions()
     except Exception as e:
@@ -1299,10 +1303,10 @@ def _cleanup_inactive_browser_sessions():
 
 
 def _write_owner_pid(socket_dir: str, session_name: str) -> None:
-    """Record the current prostor PID as the owner of a browser socket dir.
+    """Record the current hermes PID as the owner of a browser socket dir.
 
     Written atomically to ``<socket_dir>/<session_name>.owner_pid`` so the
-    orphan reaper can distinguish daemons owned by a live prostor process
+    orphan reaper can distinguish daemons owned by a live hermes process
     (don't reap) from daemons whose owner crashed (reap).  Best-effort —
     an OSError here just falls back to the legacy ``tracked_names``
     heuristic in the reaper.
@@ -1316,6 +1320,92 @@ def _write_owner_pid(socket_dir: str, session_name: str) -> None:
                      session_name, exc)
 
 
+def _verify_reapable_browser_daemon(daemon_pid: int, socket_dir: str,
+                                    session_name: str) -> bool:
+    """Confirm a live PID is genuinely *this* session's agent-browser daemon.
+
+    The orphan reaper scans world-writable, predictably-named temp paths
+    (``/tmp/agent-browser-h_*`` etc.) and reads a daemon PID from a ``.pid``
+    file we do not write ourselves — the agent-browser daemon writes it.  A
+    same-user actor can therefore plant a fake socket dir whose ``.pid`` points
+    at an arbitrary victim process, or a recycled PID can land on an unrelated
+    process after the real daemon exits.  Either way, terminating that PID
+    (a *tree* kill via ``_terminate_host_pid``) is an arbitrary-process DoS.
+
+    Before reaping we require, via ``psutil`` (a hard dependency, cross-platform
+    for same-user processes — the only processes the reaper can signal):
+
+      1. **Identity** — the process looks like agent-browser: ``agent-browser``
+         appears in its name or command line.
+      2. **Binding** — the process is bound to *this* session's socket dir: the
+         socket dir path (or its basename) appears in the command line, or in
+         ``AGENT_BROWSER_SOCKET_DIR`` in the process environment.
+
+    Requirement (2) is the real spoof defense: a planted process pointing at a
+    victim PID will not have the victim's cmdline/environ referencing our
+    socket dir.  An attacker would need a process that genuinely embeds this
+    exact session path — i.e. a real daemon they already own and could signal
+    directly.  Fail-closed: any ambiguity (unreadable cmdline, no match) means
+    we refuse to reap and leave the process and its socket dir alone.
+
+    Returns ``True`` only when both checks pass.
+    """
+    try:
+        import psutil
+    except ImportError:  # psutil is a hard dep; defensive only
+        logger.warning(
+            "Refusing to reap browser daemon PID %d (session %s): "
+            "psutil unavailable for identity verification",
+            daemon_pid, session_name)
+        return False
+
+    try:
+        proc = psutil.Process(daemon_pid)
+        name = (proc.name() or "").lower()
+        cmdline = " ".join(proc.cmdline() or []).lower()
+    except psutil.NoSuchProcess:
+        # Vanished between the liveness check and now — nothing to reap.
+        return False
+    except (psutil.AccessDenied, OSError) as exc:
+        logger.warning(
+            "Refusing to reap browser daemon PID %d (session %s): "
+            "could not read process identity (%s)",
+            daemon_pid, session_name, exc)
+        return False
+
+    looks_like_browser = "agent-browser" in name or "agent-browser" in cmdline
+    if not looks_like_browser:
+        logger.warning(
+            "Refusing to reap PID %d (session %s): not an agent-browser "
+            "process (name=%r)", daemon_pid, session_name, name)
+        return False
+
+    # Binding check: the live process must reference *this* socket dir.
+    socket_dir_l = socket_dir.lower()
+    socket_base_l = os.path.basename(socket_dir).lower()
+    bound = socket_dir_l in cmdline or (
+        socket_base_l and socket_base_l in cmdline)
+    if not bound:
+        try:
+            env_dir = (proc.environ() or {}).get(
+                "AGENT_BROWSER_SOCKET_DIR", "")
+            bound = bool(env_dir) and os.path.normpath(env_dir) == \
+                os.path.normpath(socket_dir)
+        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+            # environ() can be denied even same-user on some platforms.
+            # cmdline already failed to bind — fail closed.
+            bound = False
+
+    if not bound:
+        logger.warning(
+            "Refusing to reap agent-browser PID %d: not bound to session "
+            "socket dir %s (possible recycled PID or planted pid file)",
+            daemon_pid, socket_dir)
+        return False
+
+    return True
+
+
 def _reap_orphaned_browser_sessions():
     """Scan for orphaned agent-browser daemon processes from previous runs.
 
@@ -1325,13 +1415,13 @@ def _reap_orphaned_browser_sessions():
 
     This function scans the tmp directory for ``agent-browser-*`` socket dirs
     left behind by previous runs, reads the daemon PID files, and kills any
-    daemons whose owning prostor process is no longer alive.
+    daemons whose owning hermes process is no longer alive.
 
     Ownership detection priority:
       1. ``<session>.owner_pid`` file (written by current code) — if the
-         referenced prostor PID is alive, leave the daemon alone regardless
+         referenced hermes PID is alive, leave the daemon alone regardless
          of whether it's in *this* process's ``_active_sessions``.  This is
-         cross-process safe: two concurrent prostor instances won't reap each
+         cross-process safe: two concurrent hermes instances won't reap each
          other's daemons.
       2. Fallback for daemons that predate owner_pid: check
          ``_active_sessions`` in the current process.  If not tracked here,
@@ -1347,7 +1437,7 @@ def _reap_orphaned_browser_sessions():
     # Also pick up CDP sessions
     socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-cdp_*"))
     # Also pick up cloud-provider sessions (browser-use/browserbase/firecrawl)
-    socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-prostor_*"))
+    socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-hermes_*"))
 
     if not socket_dirs:
         return
@@ -1370,7 +1460,7 @@ def _reap_orphaned_browser_sessions():
 
         # Ownership check: prefer owner_pid file (cross-process safe).
         owner_pid_file = os.path.join(socket_dir, f"{session_name}.owner_pid")
-        owner_alive: bool | None = None  # None = owner_pid missing/unreadable
+        owner_alive: Optional[bool] = None  # None = owner_pid missing/unreadable
         if os.path.isfile(owner_pid_file):
             try:
                 owner_pid = int(Path(owner_pid_file).read_text(encoding="utf-8").strip())
@@ -1382,7 +1472,7 @@ def _reap_orphaned_browser_sessions():
                 owner_alive = None  # corrupt file — fall through
 
         if owner_alive is True:
-            # Owner is alive — this session belongs to a live prostor process.
+            # Owner is alive — this session belongs to a live hermes process.
             continue
 
         if owner_alive is None:
@@ -1409,6 +1499,17 @@ def _reap_orphaned_browser_sessions():
         from gateway.status import _pid_exists
         if not _pid_exists(daemon_pid):
             shutil.rmtree(socket_dir, ignore_errors=True)
+            continue
+
+        # The PID is live — but the .pid file lives in a world-writable,
+        # predictably-named temp dir we don't write ourselves, and PIDs get
+        # recycled after the real daemon exits.  Verify the process really is
+        # *this* session's agent-browser daemon before tree-killing it; refuse
+        # otherwise (don't touch the process, leave the socket dir for a later
+        # sweep once the imposter PID is gone).  Fixes the arbitrary same-user
+        # process DoS in issue #14073.
+        if not _verify_reapable_browser_daemon(
+                daemon_pid, socket_dir, session_name):
             continue
 
         # Daemon is alive and its owner is dead (or legacy + untracked).  Reap.
@@ -1606,7 +1707,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_vision",
-        "description": "Take a screenshot of the current page so you can inspect it visually. Use this when you need to understand what the page looks like - especially for CAPTCHAs, visual verification challenges, complex layouts, or cases where the text snapshot misses important visual information. When your active model has native vision, the screenshot is attached to your context directly and you inspect it on the next turn; otherwise Prostor falls back to an auxiliary vision model and returns a text analysis. Includes a screenshot_path that you can share with the user by including MEDIA:<screenshot_path> in your response. Requires browser_navigate to be called first.",
+        "description": "Take a screenshot of the current page so you can inspect it visually. Use this when you need to understand what the page looks like - especially for CAPTCHAs, visual verification challenges, complex layouts, or cases where the text snapshot misses important visual information. When your active model has native vision, the screenshot is attached to your context directly and you inspect it on the next turn; otherwise Hermes falls back to an auxiliary vision model and returns a text analysis. Includes a screenshot_path that you can share with the user by including MEDIA:<screenshot_path> in your response. Requires browser_navigate to be called first.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1649,7 +1750,7 @@ BROWSER_TOOL_SCHEMAS = [
 # Utility Functions
 # ============================================================================
 
-def _create_local_session(task_id: str) -> dict[str, str]:
+def _create_local_session(task_id: str) -> Dict[str, str]:
     import uuid
     session_name = f"h_{uuid.uuid4().hex[:10]}"
     logger.info("Created local browser session %s for task %s",
@@ -1662,7 +1763,7 @@ def _create_local_session(task_id: str) -> dict[str, str]:
     }
 
 
-def _create_cdp_session(task_id: str, cdp_url: str) -> dict[str, str]:
+def _create_cdp_session(task_id: str, cdp_url: str) -> Dict[str, str]:
     """Create a session that connects to a user-supplied CDP endpoint."""
     import uuid
     session_name = f"cdp_{uuid.uuid4().hex[:10]}"
@@ -1676,7 +1777,7 @@ def _create_cdp_session(task_id: str, cdp_url: str) -> dict[str, str]:
     }
 
 
-def _get_session_info(task_id: str | None = None) -> dict[str, str]:
+def _get_session_info(task_id: Optional[str] = None) -> Dict[str, str]:
     """
     Get or create session info for the given session key.
 
@@ -1775,11 +1876,12 @@ def _get_session_info(task_id: str | None = None) -> dict[str, str]:
     return session_info
 
 
+
 def _find_agent_browser() -> str:
     """
     Find the agent-browser CLI executable.
 
-    Checks in order: current PATH, Homebrew/common bin dirs, Prostor-managed
+    Checks in order: current PATH, Homebrew/common bin dirs, Hermes-managed
     node, local node_modules/.bin/, npx fallback.
 
     Returns:
@@ -1802,20 +1904,29 @@ def _find_agent_browser() -> str:
     # Note: _agent_browser_resolved is set at each return site below
     # (not before the search) to prevent a race where a concurrent thread
     # sees resolved=True but _cached_agent_browser is still None.
+    #
+    # Every candidate below is validated with ``agent_browser_runnable`` before
+    # it is cached. A bare ``shutil.which`` hit is NOT trusted: agent-browser's
+    # npm postinstall re-points a global install symlink at our local
+    # node_modules binary, which disappears on the next ``hermes update`` and
+    # leaves a dangling link that ``which`` still reports but exec fails on with
+    # exit 127 (issue #48521). Validating lets a dead candidate fall through to
+    # the next working resolution (extended PATH → local .bin → npx) instead of
+    # caching the broken one and silently killing every browser tool.
 
     # Check if it's in PATH (global install)
     which_result = shutil.which("agent-browser")
-    if which_result:
+    if which_result and agent_browser_runnable(which_result):
         _cached_agent_browser = which_result
         _agent_browser_resolved = True
         return which_result
 
-    # Build an extended search PATH including Prostor-managed Node, macOS
+    # Build an extended search PATH including Hermes-managed Node, macOS
     # versioned Homebrew installs, and fallback system dirs like Termux.
     extended_path = _merge_browser_path("")
     if extended_path:
         which_result = shutil.which("agent-browser", path=extended_path)
-        if which_result:
+        if which_result and agent_browser_runnable(which_result):
             _cached_agent_browser = which_result
             _agent_browser_resolved = True
             return which_result
@@ -1832,7 +1943,7 @@ def _find_agent_browser() -> str:
     local_bin_dir = repo_root / "node_modules" / ".bin"
     if local_bin_dir.is_dir():
         local_which = shutil.which("agent-browser", path=str(local_bin_dir))
-        if local_which:
+        if local_which and agent_browser_runnable(local_which):
             _cached_agent_browser = local_which
             _agent_browser_resolved = True
             return _cached_agent_browser
@@ -1848,24 +1959,20 @@ def _find_agent_browser() -> str:
 
     # Nothing found — try lazy installation before giving up.
     try:
-        from prostor_cli.dep_ensure import ensure_dependency
+        from hermes_cli.dep_ensure import ensure_dependency
         if ensure_dependency("browser"):
-            recheck = shutil.which("agent-browser")
-            if not recheck and extended_path:
-                recheck = shutil.which("agent-browser", path=extended_path)
-            if not recheck:
-                prostor_nm = str(get_prostor_home() / "node_modules" / ".bin")
-                recheck = shutil.which("agent-browser", path=prostor_nm)
-            if not recheck:
-                prostor_node_bin = str(get_prostor_home() / "node" / "bin")
-                recheck = shutil.which("agent-browser", path=prostor_node_bin)
-            if not recheck:
-                prostor_node_root = str(get_prostor_home() / "node")
-                recheck = shutil.which("agent-browser", path=prostor_node_root)
-            if recheck:
-                _cached_agent_browser = recheck
-                _agent_browser_resolved = True
-                return recheck
+            candidates = [
+                shutil.which("agent-browser"),
+                shutil.which("agent-browser", path=extended_path) if extended_path else None,
+                shutil.which("agent-browser", path=str(get_hermes_home() / "node_modules" / ".bin")),
+                shutil.which("agent-browser", path=str(get_hermes_home() / "node" / "bin")),
+                shutil.which("agent-browser", path=str(get_hermes_home() / "node")),
+            ]
+            for recheck in candidates:
+                if recheck and agent_browser_runnable(recheck):
+                    _cached_agent_browser = recheck
+                    _agent_browser_resolved = True
+                    return recheck
     except Exception:
         pass
 
@@ -1878,7 +1985,7 @@ def _find_agent_browser() -> str:
     )
 
 
-def _extract_screenshot_path_from_text(text: str) -> str | None:
+def _extract_screenshot_path_from_text(text: str) -> Optional[str]:
     """Extract a screenshot file path from agent-browser human-readable output."""
     if not text:
         return None
@@ -1902,10 +2009,10 @@ def _extract_screenshot_path_from_text(text: str) -> str | None:
 def _run_browser_command(
     task_id: str,
     command: str,
-    args: list[str] = None,
-    timeout: int | None = None,
-    _engine_override: str | None = None,
-) -> dict[str, Any]:
+    args: List[str] = None,
+    timeout: Optional[int] = None,
+    _engine_override: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Run an agent-browser CLI command using our pre-created Browserbase session.
 
@@ -1946,7 +2053,7 @@ def _run_browser_command(
             hint = (
                 "Chromium browser is missing. You're running in Docker — pull "
                 "the latest image to get the bundled Chromium: "
-                "docker pull ghcr.io/nousresearch/prostor-agent:latest"
+                "docker pull ghcr.io/nousresearch/hermes-agent:latest"
             )
         else:
             hint = (
@@ -2012,7 +2119,7 @@ def _run_browser_command(
             f"agent-browser-{session_info['session_name']}"
         )
         os.makedirs(task_socket_dir, mode=0o700, exist_ok=True)
-        # Record this prostor PID as the session owner (cross-process safe
+        # Record this hermes PID as the session owner (cross-process safe
         # orphan detection — see _write_owner_pid).
         _write_owner_pid(task_socket_dir, session_info['session_name'])
         logger.debug("browser cmd=%s task=%s socket_dir=%s (%d chars)",
@@ -2117,9 +2224,9 @@ def _run_browser_command(
             result = {"success": False, "error": f"Command timed out after {timeout} seconds"}
             # Fall through to fallback check below
         else:
-            with open(stdout_path, encoding="utf-8") as f:
+            with open(stdout_path, "r", encoding="utf-8") as f:
                 stdout = f.read()
-            with open(stderr_path, encoding="utf-8") as f:
+            with open(stderr_path, "r", encoding="utf-8") as f:
                 stderr = f.read()
             returncode = proc.returncode
 
@@ -2224,7 +2331,7 @@ def _run_browser_command(
 
 def _extract_relevant_content(
     snapshot_text: str,
-    user_task: str | None = None
+    user_task: Optional[str] = None
 ) -> str:
     """Use LLM to extract relevant content from a snapshot based on the user's task.
 
@@ -2313,7 +2420,7 @@ def _truncate_snapshot(snapshot_text: str, max_chars: int = 8000) -> str:
 # Browser Tool Functions
 # ============================================================================
 
-def browser_navigate(url: str, task_id: str | None = None) -> str:
+def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
     """
     Navigate to a URL in the browser.
 
@@ -2329,7 +2436,6 @@ def browser_navigate(url: str, task_id: str | None = None) -> str:
     # into navigating to https://evil.com/steal?key=sk-ant-... to exfil secrets.
     # Also check URL-decoded form to catch %2D encoding tricks (e.g. sk%2Dant%2D...).
     import urllib.parse
-
     from agent.redact import _PREFIX_RE
     url_decoded = urllib.parse.unquote(url)
     if _PREFIX_RE.search(url) or _PREFIX_RE.search(url_decoded):
@@ -2524,8 +2630,8 @@ def browser_navigate(url: str, task_id: str | None = None) -> str:
 
 def browser_snapshot(
     full: bool = False,
-    task_id: str | None = None,
-    user_task: str | None = None
+    task_id: Optional[str] = None,
+    user_task: Optional[str] = None
 ) -> str:
     """
     Get a text-based snapshot of the current page's accessibility tree.
@@ -2591,7 +2697,7 @@ def browser_snapshot(
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_click(ref: str, task_id: str | None = None) -> str:
+def browser_click(ref: str, task_id: Optional[str] = None) -> str:
     """
     Click on an element.
 
@@ -2628,7 +2734,7 @@ def browser_click(ref: str, task_id: str | None = None) -> str:
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_type(ref: str, text: str, task_id: str | None = None) -> str:
+def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
     """
     Type text into an input field.
 
@@ -2668,7 +2774,7 @@ def browser_type(ref: str, text: str, task_id: str | None = None) -> str:
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_scroll(direction: str, task_id: str | None = None) -> str:
+def browser_scroll(direction: str, task_id: Optional[str] = None) -> str:
     """
     Scroll the page.
 
@@ -2717,7 +2823,7 @@ def browser_scroll(direction: str, task_id: str | None = None) -> str:
     return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_back(task_id: str | None = None) -> str:
+def browser_back(task_id: Optional[str] = None) -> str:
     """
     Navigate back in browser history.
 
@@ -2749,7 +2855,7 @@ def browser_back(task_id: str | None = None) -> str:
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_press(key: str, task_id: str | None = None) -> str:
+def browser_press(key: str, task_id: Optional[str] = None) -> str:
     """
     Press a keyboard key.
 
@@ -2781,7 +2887,10 @@ def browser_press(key: str, task_id: str | None = None) -> str:
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_console(clear: bool = False, expression: str | None = None, task_id: str | None = None) -> str:
+
+
+
+def browser_console(clear: bool = False, expression: Optional[str] = None, task_id: Optional[str] = None) -> str:
     """Get browser console messages and JavaScript errors, or evaluate JS in the page.
 
     When ``expression`` is provided, evaluates JavaScript in the page context
@@ -2843,7 +2952,7 @@ def browser_console(clear: bool = False, expression: str | None = None, task_id:
     return json.dumps(response, ensure_ascii=False)
 
 
-def _browser_eval(expression: str, task_id: str | None = None) -> str:
+def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
     """Evaluate a JavaScript expression in the page context and return the result."""
     if _is_camofox_mode():
         return _camofox_eval(expression, task_id)
@@ -2949,7 +3058,7 @@ def _browser_eval(expression: str, task_id: str | None = None) -> str:
     return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False, default=str)
 
 
-def _camofox_eval(expression: str, task_id: str | None = None) -> str:
+def _camofox_eval(expression: str, task_id: Optional[str] = None) -> str:
     """Evaluate JS via Camofox's /tabs/{tab_id}/eval endpoint (if available)."""
     from tools.browser_camofox import _ensure_tab, _post
     try:
@@ -2989,15 +3098,15 @@ def _maybe_start_recording(task_id: str):
         if task_id in _recording_sessions:
             return
     try:
-        from prostor_cli.config import read_raw_config
-        prostor_home = get_prostor_home()
+        from hermes_cli.config import read_raw_config
+        hermes_home = get_hermes_home()
         cfg = read_raw_config()
         record_enabled = cfg_get(cfg, "browser", "record_sessions", default=False)
 
         if not record_enabled:
             return
 
-        recordings_dir = prostor_home / "browser_recordings"
+        recordings_dir = hermes_home / "browser_recordings"
         recordings_dir.mkdir(parents=True, exist_ok=True)
         _cleanup_old_recordings(max_age_hours=72)
 
@@ -3032,7 +3141,7 @@ def _maybe_stop_recording(task_id: str):
             _recording_sessions.discard(task_id)
 
 
-def browser_get_images(task_id: str | None = None) -> str:
+def browser_get_images(task_id: Optional[str] = None) -> str:
     """
     Get all images on the current page.
 
@@ -3093,13 +3202,13 @@ def browser_get_images(task_id: str | None = None) -> str:
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_vision(question: str, annotate: bool = False, task_id: str | None = None) -> str | dict[str, Any]:
+def browser_vision(question: str, annotate: bool = False, task_id: Optional[str] = None) -> Union[str, Dict[str, Any]]:
     """
     Take a screenshot of the current page for visual inspection.
 
     Captures what's visually displayed in the browser. When the active model
     supports native vision, the screenshot is attached directly to the
-    conversation so the model can inspect it on the next turn; otherwise Prostor
+    conversation so the model can inspect it on the next turn; otherwise Hermes
     falls back to the auxiliary vision model and returns a text analysis. Useful
     for visual content the text-based snapshot may not capture (CAPTCHAs,
     verification challenges, images, complex layouts, etc.).
@@ -3122,9 +3231,8 @@ def browser_vision(question: str, annotate: bool = False, task_id: str | None = 
 
     import base64
     import uuid as uuid_mod
-
-    from prostor_constants import get_prostor_dir
-    screenshots_dir = get_prostor_dir("cache/screenshots", "browser_screenshots")
+    from hermes_constants import get_hermes_dir
+    screenshots_dir = get_hermes_dir("cache/screenshots", "browser_screenshots")
     screenshot_path = screenshots_dir / f"browser_screenshot_{uuid_mod.uuid4().hex}.png"
     effective_task_id = _last_session_key(task_id or "default")
 
@@ -3151,8 +3259,8 @@ def browser_vision(question: str, annotate: bool = False, task_id: str | None = 
             _lp_fallback_warning = fb_result.get("fallback_warning")
             fb_path = fb_result.get("data", {}).get("path", "")
             if fb_path and os.path.exists(fb_path):
-                from prostor_constants import get_prostor_dir
-                screenshots_dir = get_prostor_dir("cache/screenshots", "browser_screenshots")
+                from hermes_constants import get_hermes_dir
+                screenshots_dir = get_hermes_dir("cache/screenshots", "browser_screenshots")
                 screenshots_dir.mkdir(parents=True, exist_ok=True)
                 import shutil as _shutil_vision
                 persistent_path = screenshots_dir / f"browser_screenshot_{uuid_mod.uuid4().hex}.png"
@@ -3288,7 +3396,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: str | None = 
         vision_timeout = 120.0
         vision_temperature = 0.1
         try:
-            from prostor_cli.config import load_config
+            from hermes_cli.config import load_config
             _cfg = load_config()
             _vision_cfg = cfg_get(_cfg, "auxiliary", "vision", default={})
             _vt = _vision_cfg.get("timeout")
@@ -3322,9 +3430,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: str | None = 
             response = call_llm(**call_kwargs)
         except Exception as _api_err:
             from tools.vision_tools import (
-                _RESIZE_TARGET_BYTES,
-                _is_image_size_error,
-                _resize_image_for_vision,
+                _is_image_size_error, _resize_image_for_vision, _RESIZE_TARGET_BYTES,
             )
             if (_is_image_size_error(_api_err)
                     and len(data_url) > _RESIZE_TARGET_BYTES):
@@ -3397,8 +3503,8 @@ def _cleanup_old_screenshots(screenshots_dir, max_age_hours=24):
 def _cleanup_old_recordings(max_age_hours=72):
     """Remove browser recordings older than max_age_hours to prevent disk bloat."""
     try:
-        prostor_home = get_prostor_home()
-        recordings_dir = prostor_home / "browser_recordings"
+        hermes_home = get_hermes_home()
+        recordings_dir = hermes_home / "browser_recordings"
         if not recordings_dir.exists():
             return
         cutoff = time.time() - (max_age_hours * 3600)
@@ -3416,7 +3522,7 @@ def _cleanup_old_recordings(max_age_hours=72):
 # Cleanup and Management Functions
 # ============================================================================
 
-def cleanup_browser(task_id: str | None = None) -> None:
+def cleanup_browser(task_id: Optional[str] = None) -> None:
     """
     Clean up browser session(s) for a task.
 
@@ -3572,22 +3678,22 @@ def cleanup_all_browsers() -> None:
 
 
 # Cache for Chromium discovery. Invalidated by _reset_browser_caches.
-_cached_chromium_installed: bool | None = None
+_cached_chromium_installed: Optional[bool] = None
 
 
-def _chromium_search_roots() -> list[str]:
+def _chromium_search_roots() -> List[str]:
     """Directories to scan for a Chromium / headless-shell build.
 
     Order mirrors what agent-browser and Playwright actually probe:
 
     1. ``PLAYWRIGHT_BROWSERS_PATH`` when set (Docker image sets this to
-       ``/opt/prostor/.playwright``).
+       ``/opt/hermes/.playwright``).
     2. ``~/.cache/ms-playwright`` — Playwright's default on Linux/macOS.
     3. ``~/Library/Caches/ms-playwright`` — Playwright's default on macOS.
     4. ``%USERPROFILE%\\AppData\\Local\\ms-playwright`` — Playwright's default
        on Windows.
     """
-    roots: list[str] = []
+    roots: List[str] = []
     env_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
     if env_path and env_path != "0":
         roots.append(env_path)
@@ -3670,7 +3776,7 @@ def _running_in_docker() -> bool:
     if os.path.exists("/.dockerenv"):
         return True
     try:
-        with open("/proc/1/cgroup", encoding="utf-8") as fp:
+        with open("/proc/1/cgroup", "rt", encoding="utf-8") as fp:
             return "docker" in fp.read()
     except OSError:
         return False
@@ -3786,7 +3892,7 @@ if __name__ == "__main__":
                         "     Docker: pull the latest image — the current one "
                         "predates the bundled Chromium install"
                     )
-                    print("       docker pull ghcr.io/nousresearch/prostor-agent:latest")
+                    print("       docker pull ghcr.io/nousresearch/hermes-agent:latest")
                 else:
                     print("     Install it with:")
                     print("       npx agent-browser install --with-deps")

@@ -1,19 +1,20 @@
 """
 Cron job storage and management.
 
-Jobs are stored in ~/.prostor/cron/jobs.json
-Output is saved to ~/.prostor/cron/output/{job_id}/{timestamp}.md
+Jobs are stored in ~/.hermes/cron/jobs.json
+Output is saved to ~/.hermes/cron/output/{job_id}/{timestamp}.md
 """
 
 import contextlib
 import copy
 import json
 import logging
-import os
-import re
 import shutil
 import tempfile
 import threading
+import time
+import os
+import re
 import uuid
 
 # Cross-process advisory file locking for jobs.json critical sections.
@@ -30,13 +31,12 @@ except ImportError:  # pragma: no cover - non-Windows
     msvcrt = None
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
-
-from prostor_constants import get_prostor_home
+from hermes_constants import get_hermes_home
+from typing import Optional, Dict, List, Any, Union
 
 logger = logging.getLogger(__name__)
 
-from prostor_time import now as _prostor_now
+from hermes_time import now as _hermes_now
 from utils import atomic_replace
 
 try:
@@ -49,9 +49,23 @@ except ImportError:
 # Configuration
 # =============================================================================
 
-PROSTOR_DIR = get_prostor_home().resolve()
-CRON_DIR = PROSTOR_DIR / "cron"
+HERMES_DIR = get_hermes_home().resolve()
+CRON_DIR = HERMES_DIR / "cron"
 JOBS_FILE = CRON_DIR / "jobs.json"
+# Heartbeat file the in-process ticker touches on every loop iteration. The
+# gateway process and the (separate) ``hermes cron status`` process share it
+# so status can tell whether the ticker THREAD is alive, not just whether the
+# gateway PROCESS exists — a ticker that dies silently inside a live gateway
+# would otherwise report healthy (#32612, #32895).
+TICKER_HEARTBEAT_FILE = CRON_DIR / "ticker_heartbeat"
+# Last tick that completed WITHOUT raising. Distinguishing this from the plain
+# heartbeat lets status detect a ticker that is alive but failing every tick.
+TICKER_SUCCESS_FILE = CRON_DIR / "ticker_last_success"
+# Default ticker loop interval (seconds). The single source of truth shared by
+# the in-process ticker (cron/scheduler_provider.py) and the staleness
+# threshold in `hermes cron status` (hermes_cli/cron.py), so the two never
+# drift apart.
+TICKER_INTERVAL_SECONDS = 60
 
 # In-process lock protecting load_jobs→modify→save_jobs cycles.
 # Required when tick() runs jobs in parallel threads — without this,
@@ -74,7 +88,7 @@ def _jobs_lock():
     Combines the in-process threading lock (cheap mutual exclusion between
     the gateway's parallel tick threads) with a cross-process advisory file
     lock on ``<cron dir>/.jobs.lock`` (mutual exclusion between the gateway process
-    and standalone ``prostor`` CLI invocations, which previously shared no lock
+    and standalone ``hermes`` CLI invocations, which previously shared no lock
     at all — a `cron pause` could be silently clobbered by a concurrent
     gateway write, leaving a "paused" job still firing).
 
@@ -107,8 +121,8 @@ def _jobs_lock():
                 if fcntl is not None:
                     fcntl.flock(lock_fd, fcntl.LOCK_EX)
                 elif msvcrt is not None:
-                    msvcrt.locking(lock_fd.fileno(), msvcrt.LK_LOCK, 1)
-            except OSError as e:
+                    getattr(msvcrt, "locking")(lock_fd.fileno(), getattr(msvcrt, "LK_LOCK"), 1)
+            except (OSError, IOError) as e:
                 # Never let a locking failure take down cron writes — fall back to
                 # in-process-only protection (still held via _jobs_file_lock).
                 logger.warning("jobs.json cross-process lock unavailable (%s); "
@@ -121,14 +135,13 @@ def _jobs_lock():
                         if fcntl is not None:
                             fcntl.flock(lock_fd, fcntl.LOCK_UN)
                         elif msvcrt is not None:
-                            msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
-                    except OSError:
+                            getattr(msvcrt, "locking")(lock_fd.fileno(), getattr(msvcrt, "LK_UNLCK"), 1)
+                    except (OSError, IOError):
                         pass
                     finally:
                         lock_fd.close()
         finally:
             _jobs_lock_state.depth = 0
-
 
 # Fields on a cron job that must never change after creation. ``id`` is used
 # as a filesystem path component under ``OUTPUT_DIR``; allowing it to be
@@ -153,7 +166,7 @@ def _job_output_dir(job_id: str) -> Path:
     return OUTPUT_DIR / text
 
 
-def _normalize_skill_list(skill: str | None = None, skills: Any | None = None) -> list[str]:
+def _normalize_skill_list(skill: Optional[str] = None, skills: Optional[Any] = None) -> List[str]:
     """Normalize legacy/single-skill and multi-skill inputs into a unique ordered list."""
     if skills is None:
         raw_items = [skill] if skill else []
@@ -162,7 +175,7 @@ def _normalize_skill_list(skill: str | None = None, skills: Any | None = None) -
     else:
         raw_items = list(skills)
 
-    normalized: list[str] = []
+    normalized: List[str] = []
     for item in raw_items:
         text = str(item or "").strip()
         if text and text not in normalized:
@@ -170,7 +183,7 @@ def _normalize_skill_list(skill: str | None = None, skills: Any | None = None) -
     return normalized
 
 
-def _apply_skill_fields(job: dict[str, Any]) -> dict[str, Any]:
+def _apply_skill_fields(job: Dict[str, Any]) -> Dict[str, Any]:
     """Return a job dict with canonical `skills` and legacy `skill` fields aligned."""
     normalized = dict(job)
     skills = _normalize_skill_list(normalized.get("skill"), normalized.get("skills"))
@@ -186,7 +199,7 @@ def _coerce_job_text(value: Any, fallback: str = "") -> str:
     return str(value)
 
 
-def _schedule_display_for_job(job: dict[str, Any]) -> str:
+def _schedule_display_for_job(job: Dict[str, Any]) -> str:
     display = _coerce_job_text(job.get("schedule_display")).strip()
     if display:
         return display
@@ -203,7 +216,7 @@ def _schedule_display_for_job(job: dict[str, Any]) -> str:
     return "?"
 
 
-def _normalize_job_record(job: dict[str, Any]) -> dict[str, Any]:
+def _normalize_job_record(job: Dict[str, Any]) -> Dict[str, Any]:
     """Return a read-safe cron job shape for UI/API/tool/scheduler consumers.
 
     Older or hand-edited jobs can have nullable fields like ``prompt``,
@@ -270,7 +283,7 @@ def ensure_dirs():
 def parse_duration(s: str) -> int:
     """
     Parse duration string into minutes.
-
+    
     Examples:
         "30m" → 30
         "2h" → 120
@@ -280,24 +293,24 @@ def parse_duration(s: str) -> int:
     match = re.match(r'^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$', s)
     if not match:
         raise ValueError(f"Invalid duration: '{s}'. Use format like '30m', '2h', or '1d'")
-
+    
     value = int(match.group(1))
     unit = match.group(2)[0]  # First char: m, h, or d
-
+    
     multipliers = {'m': 1, 'h': 60, 'd': 1440}
     return value * multipliers[unit]
 
 
-def parse_schedule(schedule: str) -> dict[str, Any]:
+def parse_schedule(schedule: str) -> Dict[str, Any]:
     """
     Parse schedule string into structured format.
-
+    
     Returns dict with:
         - kind: "once" | "interval" | "cron"
         - For "once": "run_at" (ISO timestamp)
         - For "interval": "minutes" (int)
         - For "cron": "expr" (cron expression)
-
+    
     Examples:
         "30m"              → once in 30 minutes
         "2h"               → once in 2 hours
@@ -309,7 +322,7 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
     schedule = schedule.strip()
     original = schedule
     schedule_lower = schedule.lower()
-
+    
     # "every X" pattern → recurring interval
     if schedule_lower.startswith("every "):
         duration_str = schedule[6:].strip()
@@ -319,7 +332,7 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
             "minutes": minutes,
             "display": f"every {minutes}m"
         }
-
+    
     # Check for cron expression (5 or 6 space-separated fields)
     # Cron fields: minute hour day month weekday [year]
     parts = schedule.split()
@@ -338,7 +351,7 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
             "expr": schedule,
             "display": schedule
         }
-
+    
     # ISO timestamp (contains T or looks like date)
     if 'T' in schedule or re.match(r'^\d{4}-\d{2}-\d{2}', schedule):
         try:
@@ -346,8 +359,19 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
             dt = datetime.fromisoformat(schedule.replace('Z', '+00:00'))
             # Make naive timestamps timezone-aware at parse time so the stored
             # value doesn't depend on the system timezone matching at check time.
+            #
+            # Anchor to the CONFIGURED Hermes timezone, not the server's local
+            # timezone. The due-check (`get_due_jobs`) compares `next_run_at`
+            # against `hermes_time.now()`, which uses the configured zone. If a
+            # naive "20:07" were interpreted as server-local (e.g. UTC) while
+            # now() runs in Asia/Kolkata, the stored instant would land hours
+            # off from the user's wall-clock intent — far enough that one-shots
+            # never become due and recurring jobs fire at the wrong time. Using
+            # the configured zone makes "20:07" mean 20:07 on the same clock the
+            # scheduler checks against (#51021).
             if dt.tzinfo is None:
-                dt = dt.astimezone()  # Interpret as local timezone
+                hermes_tz = _hermes_now().tzinfo
+                dt = dt.replace(tzinfo=hermes_tz)
             return {
                 "kind": "once",
                 "run_at": dt.isoformat(),
@@ -355,11 +379,11 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
             }
         except ValueError as e:
             raise ValueError(f"Invalid timestamp '{schedule}': {e}")
-
+    
     # Duration like "30m", "2h", "1d" → one-shot from now
     try:
         minutes = parse_duration(schedule)
-        run_at = _prostor_now() + timedelta(minutes=minutes)
+        run_at = _hermes_now() + timedelta(minutes=minutes)
         return {
             "kind": "once",
             "run_at": run_at.isoformat(),
@@ -367,7 +391,7 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
         }
     except ValueError:
         pass
-
+    
     raise ValueError(
         f"Invalid schedule '{original}'. Use:\n"
         f"  - Duration: '30m', '2h', '1d' (one-shot)\n"
@@ -378,30 +402,55 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
 
 
 def _ensure_aware(dt: datetime) -> datetime:
-    """Return a timezone-aware datetime in Prostor configured timezone.
+    """Return a timezone-aware datetime in Hermes configured timezone.
 
     Backward compatibility:
     - Older stored timestamps may be naive.
     - Naive values are interpreted as *system-local wall time* (the timezone
       `datetime.now()` used when they were created), then converted to the
-      configured Prostor timezone.
+      configured Hermes timezone.
 
     This preserves relative ordering for legacy naive timestamps across
     timezone changes and avoids false not-due results.
     """
-    target_tz = _prostor_now().tzinfo
+    target_tz = _hermes_now().tzinfo
     if dt.tzinfo is None:
         local_tz = datetime.now().astimezone().tzinfo
         return dt.replace(tzinfo=local_tz).astimezone(target_tz)
     return dt.astimezone(target_tz)
 
 
+def _timezone_offset_mismatch(stored: datetime, current: datetime) -> bool:
+    """Return True when a stored aware timestamp uses a different UTC offset.
+
+    Naive stored timestamps return False: they carry no offset to compare, and
+    are normalized by ``_ensure_aware`` instead — they intentionally never take
+    the offset-repair path.
+    """
+    if stored.tzinfo is None or current.tzinfo is None:
+        return False
+    return stored.utcoffset() != current.utcoffset()
+
+
+def _stored_wall_clock_is_future(stored: datetime, current: datetime) -> bool:
+    """Return True when the stored local wall-clock time has not arrived yet.
+
+    Cron schedules express local wall-clock intent. If Hermes/system local time
+    changes after next_run_at was persisted, an old offset can make a future
+    wall-clock run look due at the converted absolute time (for example
+    21:00+10 becomes 13:00+02). Comparing naive wall-clock values lets us
+    distinguish that migration case from a genuinely missed run whose scheduled
+    wall time has already passed.
+    """
+    return stored.replace(tzinfo=None) > current.replace(tzinfo=None)
+
+
 def _recoverable_oneshot_run_at(
-    schedule: dict[str, Any],
+    schedule: Dict[str, Any],
     now: datetime,
     *,
-    last_run_at: str | None = None,
-) -> str | None:
+    last_run_at: Optional[str] = None,
+) -> Optional[str]:
     """Return a one-shot run time if it is still eligible to fire.
 
     One-shot jobs get a small grace window so jobs created a few seconds after
@@ -442,7 +491,7 @@ def _compute_grace_seconds(schedule: dict) -> int:
 
     if kind == "cron" and HAS_CRONITER:
         try:
-            now = _prostor_now()
+            now = _hermes_now()
             cron = croniter(schedule["expr"], now)
             first = cron.get_next(datetime)
             second = cron.get_next(datetime)
@@ -455,13 +504,13 @@ def _compute_grace_seconds(schedule: dict) -> int:
     return MIN_GRACE
 
 
-def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -> str | None:
+def compute_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = None) -> Optional[str]:
     """
     Compute the next run time for a schedule.
 
     Returns ISO timestamp string, or None if no more runs.
     """
-    now = _prostor_now()
+    now = _hermes_now()
 
     if schedule["kind"] == "once":
         return _recoverable_oneshot_run_at(schedule, now, last_run_at=last_run_at)
@@ -482,7 +531,7 @@ def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -
             logger.warning(
                 "Cannot compute next run for cron schedule %r: 'croniter' is "
                 "not installed. croniter is a core dependency as of v0.9.x; "
-                "reinstall prostor-agent or run 'pip install croniter' in your "
+                "reinstall hermes-agent or run 'pip install croniter' in your "
                 "runtime env.",
                 schedule.get("expr"),
             )
@@ -502,10 +551,82 @@ def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -
 
 
 # =============================================================================
+# Ticker heartbeat (liveness signal for `hermes cron status`)
+# =============================================================================
+
+def _atomic_write_epoch(path: Path) -> None:
+    """Atomically write the current epoch time to ``path``.
+
+    Uses the same tmpfile + ``atomic_replace`` pattern as ``save_jobs`` so a
+    concurrent reader in another process (``hermes cron status``) never sees a
+    torn/truncated file. Best-effort: failures are swallowed by callers.
+    """
+    ensure_dirs()
+    fd, tmp_path = tempfile.mkstemp(dir=str(CRON_DIR), suffix=".tmp", prefix=".hb_")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(str(time.time()))
+            f.flush()
+            os.fsync(f.fileno())
+        atomic_replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def record_ticker_heartbeat(success: bool = False) -> None:
+    """Record a ticker liveness signal, and optionally a successful-tick signal.
+
+    The ticker calls this once per loop iteration. ``success=True`` additionally
+    bumps the *last successful tick* marker. We track two distinct signals so
+    `hermes cron status` can tell a thread that is merely *alive and looping*
+    (heartbeat fresh, success stale) from one that is actually *firing jobs*
+    (both fresh) — a ticker stuck failing every tick would otherwise keep the
+    plain heartbeat fresh and falsely report healthy (#32612, #32895).
+
+    Best-effort: a write failure must never disrupt the tick loop.
+    """
+    try:
+        _atomic_write_epoch(TICKER_HEARTBEAT_FILE)
+    except Exception:
+        pass
+    if success:
+        try:
+            _atomic_write_epoch(TICKER_SUCCESS_FILE)
+        except Exception:
+            pass
+
+
+def _epoch_file_age(path: Path) -> Optional[float]:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        return max(0.0, time.time() - float(raw))
+    except Exception:
+        return None
+
+
+def get_ticker_heartbeat_age() -> Optional[float]:
+    """Seconds since the ticker loop last iterated, or None if unknown.
+
+    None = heartbeat file missing/unreadable (older build, never ran, or a
+    torn read). Callers treat None as "cannot determine", not "dead".
+    """
+    return _epoch_file_age(TICKER_HEARTBEAT_FILE)
+
+
+def get_ticker_success_age() -> Optional[float]:
+    """Seconds since the ticker last completed a tick WITHOUT raising, or None."""
+    return _epoch_file_age(TICKER_SUCCESS_FILE)
+
+
+# =============================================================================
 # Job CRUD Operations
 # =============================================================================
 
-def load_jobs() -> list[dict[str, Any]]:
+def load_jobs() -> List[Dict[str, Any]]:
     """Load all jobs from storage."""
     ensure_dirs()
     if not JOBS_FILE.exists():
@@ -514,18 +635,18 @@ def load_jobs() -> list[dict[str, Any]]:
     _strict_retry = False  # track whether we used the strict=False fallback
 
     try:
-        with open(JOBS_FILE, encoding='utf-8') as f:
+        with open(JOBS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
     except json.JSONDecodeError:
         # Retry with strict=False to handle bare control chars in string values
         _strict_retry = True
         try:
-            with open(JOBS_FILE, encoding='utf-8') as f:
+            with open(JOBS_FILE, 'r', encoding='utf-8') as f:
                 data = json.loads(f.read(), strict=False)
         except Exception as e:
             logger.error("Failed to auto-repair jobs.json: %s", e)
             raise RuntimeError(f"Cron database corrupted and unrepairable: {e}") from e
-    except OSError as e:
+    except IOError as e:
         logger.error("IOError reading jobs.json: %s", e)
         raise RuntimeError(f"Failed to read cron database: {e}") from e
 
@@ -553,13 +674,13 @@ def load_jobs() -> list[dict[str, Any]]:
     )
 
 
-def _save_jobs_unlocked(jobs: list[dict[str, Any]]):
+def _save_jobs_unlocked(jobs: List[Dict[str, Any]]):
     """Save all jobs to storage. Caller must hold _jobs_lock()."""
     ensure_dirs()
     fd, tmp_path = tempfile.mkstemp(dir=str(JOBS_FILE.parent), suffix='.tmp', prefix='.jobs_')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump({"jobs": jobs, "updated_at": _prostor_now().isoformat()}, f, indent=2)
+            json.dump({"jobs": jobs, "updated_at": _hermes_now().isoformat()}, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
         atomic_replace(tmp_path, JOBS_FILE)
@@ -572,13 +693,13 @@ def _save_jobs_unlocked(jobs: list[dict[str, Any]]):
         raise
 
 
-def save_jobs(jobs: list[dict[str, Any]]):
+def save_jobs(jobs: List[Dict[str, Any]]):
     """Save all jobs to storage."""
     with _jobs_lock():
         _save_jobs_unlocked(jobs)
 
 
-def _normalize_workdir(workdir: str | None) -> str | None:
+def _normalize_workdir(workdir: Optional[str]) -> Optional[str]:
     """Normalize and validate a cron job workdir.
 
     Rules:
@@ -611,24 +732,63 @@ def _normalize_workdir(workdir: str | None) -> str | None:
     return str(resolved)
 
 
+def _resolve_default_model_snapshot() -> Optional[str]:
+    """Resolve the global default model the same way the cron ticker does.
+
+    Mirrors the unpinned-model resolution in ``cron/scheduler.py`` ``run_job``:
+    read ``config.yaml`` ``model.default`` (or the ``model`` alias / bare string
+    form), applying the managed-scope overlay and env expansion. Used by
+    ``create_job`` to snapshot the default model for unpinned jobs so a later
+    swap of the global default is detected at fire time (#44585).
+
+    Returns the resolved model string, or ``None`` if config is missing/empty
+    or resolution fails (fail-open — caller treats ``None`` as "no snapshot").
+    """
+    try:
+        import yaml
+        from hermes_cli.config import _expand_env_vars
+
+        cfg_path = get_hermes_home() / "config.yaml"
+        if not cfg_path.exists():
+            return None
+        with cfg_path.open(encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        try:
+            from hermes_cli import managed_scope
+            cfg = managed_scope.apply_managed_overlay(cfg)
+        except Exception:
+            pass
+        cfg = _expand_env_vars(cfg)
+        model_cfg = cfg.get("model") or {}
+        if isinstance(model_cfg, str):
+            return model_cfg.strip() or None
+        if isinstance(model_cfg, dict):
+            default = model_cfg.get("default") or model_cfg.get("model")
+            if isinstance(default, str):
+                return default.strip() or None
+        return None
+    except Exception:
+        return None
+
+
 def create_job(
-    prompt: str | None,
+    prompt: Optional[str],
     schedule: str,
-    name: str | None = None,
-    repeat: int | None = None,
-    deliver: str | None = None,
-    origin: dict[str, Any] | None = None,
-    skill: str | None = None,
-    skills: list[str] | None = None,
-    model: str | None = None,
-    provider: str | None = None,
-    base_url: str | None = None,
-    script: str | None = None,
-    context_from: str | list[str] | None = None,
-    enabled_toolsets: list[str] | None = None,
-    workdir: str | None = None,
+    name: Optional[str] = None,
+    repeat: Optional[int] = None,
+    deliver: Optional[str] = None,
+    origin: Optional[Dict[str, Any]] = None,
+    skill: Optional[str] = None,
+    skills: Optional[List[str]] = None,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    base_url: Optional[str] = None,
+    script: Optional[str] = None,
+    context_from: Optional[Union[str, List[str]]] = None,
+    enabled_toolsets: Optional[List[str]] = None,
+    workdir: Optional[str] = None,
     no_agent: bool = False,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Create a new cron job.
 
@@ -650,7 +810,7 @@ def create_job(
                 delivered verbatim. Without ``no_agent``, its stdout is
                 injected into the agent's prompt as context (data-collection /
                 change-detection pattern). Paths resolve under
-                ~/.prostor/scripts/; ``.sh`` / ``.bash`` files run via bash,
+                ~/.hermes/scripts/; ``.sh`` / ``.bash`` files run via bash,
                 anything else via Python.
         context_from: Optional job ID (or list of job IDs) whose most recent output
                       is injected into the prompt as context before each run.
@@ -691,7 +851,7 @@ def create_job(
         deliver = "origin" if origin else "local"
 
     job_id = uuid.uuid4().hex[:12]
-    now = _prostor_now().isoformat()
+    now = _hermes_now().isoformat()
 
     normalized_skills = _normalize_skill_list(skill, skills)
     normalized_model = str(model).strip() if isinstance(model, str) else None
@@ -726,6 +886,47 @@ def create_job(
 
     prompt_text = _coerce_job_text(prompt)
     label_source = (prompt_text or (normalized_skills[0] if normalized_skills else None) or (normalized_script if normalized_no_agent else None)) or "cron job"
+
+    # Provider/model-drift guard (#44585). When the caller does NOT pin a
+    # provider and/or model, the job follows the global default — model.default
+    # in config.yaml and whatever resolve_runtime_provider() picks at fire time.
+    # That global state can change (e.g. a temporary switch to a paid provider
+    # OR a paid model like claude-fable-5 on the SAME provider), and an unpinned
+    # job would then silently inherit it and spend real money. To detect that,
+    # snapshot what resolution WOULD pick *right now*, at creation, for each
+    # axis the job leaves unpinned. The fire-time guard (run_job) fails closed
+    # when an unpinned job's currently-resolved provider OR model differs from
+    # its snapshot.
+    #
+    # Only captured for agent-backed jobs (no_agent script jobs make no paid
+    # inference). Each axis is snapshotted only when that axis is unpinned —
+    # a pinned provider/model doesn't drift with global state. Fail-open to None
+    # on any resolution error so job creation never breaks; a missing snapshot
+    # preserves the legacy no-guard behaviour for that axis.
+    provider_snapshot: Optional[str] = None
+    model_snapshot: Optional[str] = None
+    if not normalized_no_agent:
+        if normalized_provider is None:
+            try:
+                from hermes_cli.runtime_provider import resolve_runtime_provider
+                _runtime_kwargs = {"requested": None}
+                if normalized_base_url:
+                    _runtime_kwargs["explicit_base_url"] = normalized_base_url
+                _snap = resolve_runtime_provider(**_runtime_kwargs)
+                _snap_provider = str(_snap.get("provider") or "").strip().lower()
+                provider_snapshot = _snap_provider or None
+            except Exception:
+                provider_snapshot = None
+        if normalized_model is None:
+            # Mirror the fire-time unpinned-model resolution (run_job reads
+            # config.yaml model.default / model). Capture that value so a later
+            # swap of the global default model is detected even when the
+            # provider is unchanged (e.g. a premium model on the same endpoint).
+            try:
+                model_snapshot = _resolve_default_model_snapshot() or None
+            except Exception:
+                model_snapshot = None
+
     job = {
         "id": job_id,
         "name": name or label_source[:50].strip(),
@@ -734,6 +935,11 @@ def create_job(
         "skill": normalized_skills[0] if normalized_skills else None,
         "model": normalized_model,
         "provider": normalized_provider,
+        # Provider/model resolution captured at creation for unpinned jobs
+        # (#44585). None for pinned axes, no_agent jobs, resolution failures, and
+        # any pre-existing job written before these fields existed (back-compat).
+        "provider_snapshot": provider_snapshot,
+        "model_snapshot": model_snapshot,
         "base_url": normalized_base_url,
         "script": normalized_script,
         "no_agent": normalized_no_agent,
@@ -769,7 +975,7 @@ def create_job(
     return job
 
 
-def get_job(job_id: str) -> dict[str, Any] | None:
+def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     """Get a job by ID."""
     jobs = load_jobs()
     for job in jobs:
@@ -781,7 +987,7 @@ def get_job(job_id: str) -> dict[str, Any] | None:
 class AmbiguousJobReference(LookupError):
     """Raised when a job name matches more than one job."""
 
-    def __init__(self, ref: str, matches: list[dict[str, Any]]):
+    def __init__(self, ref: str, matches: List[Dict[str, Any]]):
         self.ref = ref
         self.matches = matches
         ids = ", ".join(m["id"] for m in matches)
@@ -791,7 +997,7 @@ class AmbiguousJobReference(LookupError):
         )
 
 
-def resolve_job_ref(ref: str) -> dict[str, Any] | None:
+def resolve_job_ref(ref: str) -> Optional[Dict[str, Any]]:
     """Resolve a job reference (ID or name) to a job record.
 
     - Exact ID match wins (works even if a different job's name equals this ID).
@@ -816,7 +1022,7 @@ def resolve_job_ref(ref: str) -> dict[str, Any] | None:
     return _normalize_job_record(name_matches[0])
 
 
-def list_jobs(include_disabled: bool = False) -> list[dict[str, Any]]:
+def list_jobs(include_disabled: bool = False) -> List[Dict[str, Any]]:
     """List all jobs, optionally including disabled ones."""
     jobs = [_normalize_job_record(j) for j in load_jobs()]
     if not include_disabled:
@@ -824,7 +1030,7 @@ def list_jobs(include_disabled: bool = False) -> list[dict[str, Any]]:
     return jobs
 
 
-def update_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+def update_job(job_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Update a job by ID, refreshing derived schedule fields when needed."""
     # Block mutation of immutable fields. ``id`` in particular is a filesystem
     # path component under OUTPUT_DIR — letting an update change it leaks
@@ -882,7 +1088,7 @@ def update_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def pause_job(job_id: str, reason: str | None = None) -> dict[str, Any] | None:
+def pause_job(job_id: str, reason: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Pause a job without deleting it. Accepts a job ID or name."""
     job = resolve_job_ref(job_id)
     if not job:
@@ -892,13 +1098,13 @@ def pause_job(job_id: str, reason: str | None = None) -> dict[str, Any] | None:
         {
             "enabled": False,
             "state": "paused",
-            "paused_at": _prostor_now().isoformat(),
+            "paused_at": _hermes_now().isoformat(),
             "paused_reason": reason,
         },
     )
 
 
-def resume_job(job_id: str) -> dict[str, Any] | None:
+def resume_job(job_id: str) -> Optional[Dict[str, Any]]:
     """Resume a paused job and compute the next future run from now. Accepts a job ID or name."""
     job = resolve_job_ref(job_id)
     if not job:
@@ -917,7 +1123,7 @@ def resume_job(job_id: str) -> dict[str, Any] | None:
     )
 
 
-def trigger_job(job_id: str) -> dict[str, Any] | None:
+def trigger_job(job_id: str) -> Optional[Dict[str, Any]]:
     """Schedule a job to run on the next scheduler tick. Accepts a job ID or name."""
     job = resolve_job_ref(job_id)
     if not job:
@@ -929,7 +1135,7 @@ def trigger_job(job_id: str) -> dict[str, Any] | None:
             "state": "scheduled",
             "paused_at": None,
             "paused_reason": None,
-            "next_run_at": _prostor_now().isoformat(),
+            "next_run_at": _hermes_now().isoformat(),
         },
     )
 
@@ -957,11 +1163,11 @@ def remove_job(job_id: str) -> bool:
     return False
 
 
-def mark_job_run(job_id: str, success: bool, error: str | None = None,
-                 delivery_error: str | None = None):
+def mark_job_run(job_id: str, success: bool, error: Optional[str] = None,
+                 delivery_error: Optional[str] = None):
     """
     Mark a job as having been run.
-
+    
     Updates last_run_at, last_status, increments completed count,
     computes next_run_at, and auto-deletes if repeat limit reached.
 
@@ -972,7 +1178,7 @@ def mark_job_run(job_id: str, success: bool, error: str | None = None,
         jobs = load_jobs()
         for i, job in enumerate(jobs):
             if job["id"] == job_id:
-                now = _prostor_now().isoformat()
+                now = _hermes_now().isoformat()
                 job["last_run_at"] = now
                 job["last_status"] = "ok" if success else "error"
                 job["last_error"] = error if not success else None
@@ -981,11 +1187,11 @@ def mark_job_run(job_id: str, success: bool, error: str | None = None,
                 # Clear any external-fire claim so a re-armed recurring job can
                 # be claimed again on its next fire (Phase 4C CAS).
                 job["fire_claim"] = None
-
+                
                 # Increment completed count
                 if job.get("repeat"):
                     job["repeat"]["completed"] = job["repeat"].get("completed", 0) + 1
-
+                    
                     # Check if we've hit the repeat limit
                     times = job["repeat"].get("times")
                     completed = job["repeat"]["completed"]
@@ -994,7 +1200,7 @@ def mark_job_run(job_id: str, success: bool, error: str | None = None,
                         jobs.pop(i)
                         save_jobs(jobs)
                         return
-
+                
                 # Compute next run
                 job["next_run_at"] = compute_next_run(job["schedule"], now)
 
@@ -1052,7 +1258,7 @@ def advance_next_run(job_id: str) -> bool:
                 kind = job.get("schedule", {}).get("kind")
                 if kind not in {"cron", "interval"}:
                     return False
-                now = _prostor_now().isoformat()
+                now = _hermes_now().isoformat()
                 new_next = compute_next_run(job["schedule"], now)
                 if new_next and new_next != job.get("next_run_at"):
                     job["next_run_at"] = new_next
@@ -1065,10 +1271,10 @@ def advance_next_run(job_id: str) -> bool:
 def _machine_id() -> str:
     """Stable-ish identifier for claim attribution/debugging (NOT correctness).
 
-    Uses ``PROSTOR_MACHINE_ID`` if set, else hostname + pid. The CAS correctness
+    Uses ``HERMES_MACHINE_ID`` if set, else hostname + pid. The CAS correctness
     comes from the file lock + the fresh-claim check, not from this value.
     """
-    explicit = os.getenv("PROSTOR_MACHINE_ID", "").strip()
+    explicit = os.getenv("HERMES_MACHINE_ID", "").strip()
     if explicit:
         return explicit
     try:
@@ -1107,7 +1313,7 @@ def claim_job_for_fire(job_id: str, *, claim_ttl_seconds: int = 300) -> bool:
                 continue
             if not job.get("enabled", True) or job.get("state") == "paused":
                 return False
-            now = _prostor_now()
+            now = _hermes_now()
             existing = job.get("fire_claim")
             if existing:
                 try:
@@ -1127,21 +1333,27 @@ def claim_job_for_fire(job_id: str, *, claim_ttl_seconds: int = 300) -> bool:
         return False
 
 
-def get_due_jobs() -> list[dict[str, Any]]:
+def get_due_jobs() -> List[Dict[str, Any]]:
     """Get all jobs that are due to run now.
 
-    For recurring jobs (cron/interval), if the scheduled time is stale
-    (more than one period in the past, e.g. because the gateway was down),
-    the job is fast-forwarded to the next future run instead of firing
-    immediately.  This prevents a burst of missed jobs on gateway restart.
+    For recurring jobs (cron/interval), if the scheduled time is stale (more
+    than one period in the past, e.g. because the gateway was down OR because a
+    long-running previous execution overran the interval), the accumulated
+    missed runs are collapsed — ``next_run_at`` is fast-forwarded to the next
+    future occurrence so a backlog does NOT burst-fire on restart — but the job
+    still fires ONCE now. This prevents the perpetual-defer loop (#33315) where
+    a job whose runtime exceeds ``interval + grace`` would be skipped forever.
+
+    Note: firing once on catch-up flows through ``mark_job_run``, so a job with
+    a ``repeat.times`` limit consumes one of its runs on that catch-up fire.
     """
     with _jobs_lock():
         return _get_due_jobs_locked()
 
 
-def _get_due_jobs_locked() -> list[dict[str, Any]]:
+def _get_due_jobs_locked() -> List[Dict[str, Any]]:
     """Inner implementation of get_due_jobs(); must be called with _jobs_lock held."""
-    now = _prostor_now()
+    now = _hermes_now()
     raw_jobs = load_jobs()
     jobs = [_apply_skill_fields(j) for j in copy.deepcopy(raw_jobs)]
     due = []
@@ -1191,35 +1403,84 @@ def _get_due_jobs_locked() -> list[dict[str, Any]]:
                     needs_save = True
                     break
 
-        next_run_dt = _ensure_aware(datetime.fromisoformat(next_run))
+        raw_next_run_dt = datetime.fromisoformat(next_run)
+        schedule = job.get("schedule", {})
+        kind = schedule.get("kind")
+
+        next_run_dt = _ensure_aware(raw_next_run_dt)
+        # Migration repair: a cron job persists next_run_at as an absolute
+        # instant, but the cron expr describes local wall-clock intent. If the
+        # configured/system timezone changed after persistence, the stored
+        # instant's offset no longer matches now's, and its converted time can
+        # look due hours early (21:00+10 -> 13:00+02). When the stored *wall
+        # clock* is still in the future, recompute from the schedule so we fire
+        # at the intended local time instead of early-then-again.
+        #
+        # TRADE-OFF: this cannot distinguish a config/host TZ migration from a
+        # legitimate DST offset change. A DST boundary that satisfies all four
+        # conditions will recompute (and thus SKIP the pending occurrence, no
+        # catch-up) rather than fire it. Accepted: in the pure-migration case
+        # the recompute lands on the same wall-clock time later the same period,
+        # and DST-boundary collisions with a still-future stored wall clock are
+        # rare relative to the double-fire bug this prevents (#28934).
+        if (
+            kind == "cron"
+            and next_run_dt <= now
+            and _timezone_offset_mismatch(raw_next_run_dt, now)
+            and _stored_wall_clock_is_future(raw_next_run_dt, now)
+        ):
+            new_next = compute_next_run(schedule, now.isoformat())
+            if new_next:
+                logger.info(
+                    "Job '%s' next_run_at offset changed (%s -> %s). "
+                    "Recomputing cron run to preserve local wall-clock intent: %s",
+                    job.get("name", job["id"]),
+                    raw_next_run_dt.utcoffset(),
+                    now.utcoffset(),
+                    new_next,
+                )
+                for rj in raw_jobs:
+                    if rj["id"] == job["id"]:
+                        rj["next_run_at"] = new_next
+                        needs_save = True
+                        break
+                continue
+
         if next_run_dt <= now:
-            schedule = job.get("schedule", {})
-            kind = schedule.get("kind")
 
             # For recurring jobs, check if the scheduled time is stale
             # (gateway was down and missed the window). Fast-forward to
             # the next future occurrence instead of firing a stale run.
             grace = _compute_grace_seconds(schedule)
             if kind in {"cron", "interval"} and (now - next_run_dt).total_seconds() > grace:
-                # Job is past its catch-up grace window — this is a stale missed run.
-                # Grace scales with schedule period: daily=2h, hourly=30m, 10min=5m.
+                # Job is past its catch-up grace window — skip accumulated
+                # missed runs but still execute once now to avoid deferring
+                # indefinitely (e.g. a long-running job just finished).
                 new_next = compute_next_run(schedule, now.isoformat())
                 if new_next:
                     logger.info(
                         "Job '%s' missed its scheduled time (%s, grace=%ds). "
-                        "Fast-forwarding to next run: %s",
+                        "Running now; next run provisionally set to: %s "
+                        "(re-anchored on completion)",
                         job.get("name", job["id"]),
                         next_run,
                         grace,
                         new_next,
                     )
-                    # Update the job in storage
+                    # Persist the fast-forward to storage now (skip accumulated
+                    # slots). In the built-in ticker path this is shortly
+                    # overwritten by advance_next_run + mark_job_run, but it is
+                    # NOT redundant: it (a) protects the crash window between
+                    # here and mark_job_run, and (b) covers the external
+                    # fire_due provider path, which does not call
+                    # advance_next_run. mark_job_run re-anchors next_run_at off
+                    # the actual completion time, so this value is provisional.
                     for rj in raw_jobs:
                         if rj["id"] == job["id"]:
                             rj["next_run_at"] = new_next
                             needs_save = True
                             break
-                    continue  # Skip this run
+                    # Fall through to due.append(job) — execute once now
 
             due.append(job)
 
@@ -1235,10 +1496,10 @@ def save_job_output(job_id: str, output: str):
     job_output_dir = _job_output_dir(job_id)
     job_output_dir.mkdir(parents=True, exist_ok=True)
     _secure_dir(job_output_dir)
-
-    timestamp = _prostor_now().strftime("%Y-%m-%d_%H-%M-%S")
+    
+    timestamp = _hermes_now().strftime("%Y-%m-%d_%H-%M-%S")
     output_file = job_output_dir / f"{timestamp}.md"
-
+    
     fd, tmp_path = tempfile.mkstemp(dir=str(job_output_dir), suffix='.tmp', prefix='.output_')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -1253,7 +1514,7 @@ def save_job_output(job_id: str, output: str):
         except OSError:
             pass
         raise
-
+    
     return output_file
 
 
@@ -1262,9 +1523,9 @@ def save_job_output(job_id: str, output: str):
 # =============================================================================
 
 def rewrite_skill_refs(
-    consolidated: dict[str, str] | None = None,
-    pruned: list[str] | None = None,
-) -> dict[str, Any]:
+    consolidated: Optional[Dict[str, str]] = None,
+    pruned: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """Rewrite cron job skill references after a curator consolidation pass.
 
     When the curator consolidates a skill X into umbrella Y (or archives X
@@ -1322,7 +1583,7 @@ def rewrite_skill_refs(
 
     with _jobs_lock():
         jobs = load_jobs()
-        rewrites: list[dict[str, Any]] = []
+        rewrites: List[Dict[str, Any]] = []
         changed = False
 
         for job in jobs:
@@ -1330,9 +1591,9 @@ def rewrite_skill_refs(
             if not skills_before:
                 continue
 
-            mapped: dict[str, str] = {}
-            dropped: list[str] = []
-            new_skills: list[str] = []
+            mapped: Dict[str, str] = {}
+            dropped: List[str] = []
+            new_skills: List[str] = []
 
             for name in skills_before:
                 if name in consolidated:

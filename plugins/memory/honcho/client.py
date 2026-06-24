@@ -1,7 +1,7 @@
 """Honcho client initialization and configuration.
 
 Resolution order for config file:
-  1. $PROSTOR_HOME/honcho.json  (instance-local, enables isolated Prostor instances)
+  1. $HERMES_HOME/honcho.json  (instance-local, enables isolated Hermes instances)
   2. ~/.honcho/config.json     (global, shared across all Honcho-enabled apps)
   3. Environment variables     (HONCHO_API_KEY, HONCHO_ENVIRONMENT)
 
@@ -13,28 +13,28 @@ Resolution order for host-specific settings:
 
 from __future__ import annotations
 
-import hashlib
 import json
-import logging
 import os
+import logging
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
+from hermes_constants import get_hermes_home
+from hermes_cli.profiles import _get_default_hermes_home
 from plugins.plugin_utils import SingletonSlot
-from prostor_cli.profiles import _get_default_prostor_home
-from prostor_constants import get_prostor_home
+from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from honcho import Honcho
 
 logger = logging.getLogger(__name__)
 
-HOST = "prostor"
+HOST = "hermes"
 
 
 def profile_host_key(profile: str | None) -> str:
-    """Return the safe Honcho host key for a Prostor profile."""
+    """Return the safe Honcho host key for a Hermes profile."""
     if not profile or profile in {"default", "custom"}:
         return HOST
     sanitized = "".join(c if c.isalnum() or c in "_-" else "_" for c in profile).strip("_")
@@ -52,19 +52,19 @@ def _host_block(raw: dict, host: str) -> dict:
 
 
 def resolve_active_host() -> str:
-    """Derive the Honcho host key from the active Prostor profile.
+    """Derive the Honcho host key from the active Hermes profile.
 
     Resolution order:
-      1. PROSTOR_HONCHO_HOST env var (explicit override)
-      2. Active profile name via profiles system -> ``prostor.<profile>``
-      3. Fallback: ``"prostor"`` (default profile)
+      1. HERMES_HONCHO_HOST env var (explicit override)
+      2. Active profile name via profiles system -> ``hermes.<profile>``
+      3. Fallback: ``"hermes"`` (default profile)
     """
-    explicit = os.environ.get("PROSTOR_HONCHO_HOST", "").strip()
+    explicit = os.environ.get("HERMES_HONCHO_HOST", "").strip()
     if explicit:
         return explicit
 
     try:
-        from prostor_cli.profiles import get_active_profile_name
+        from hermes_cli.profiles import get_active_profile_name
         profile = get_active_profile_name()
         return profile_host_key(profile)
     except Exception:
@@ -81,18 +81,18 @@ def resolve_config_path() -> Path:
     """Return the active Honcho config path.
 
     Resolution order:
-      1. $PROSTOR_HOME/honcho.json      (profile-local, if it exists)
-      2. ~/.prostor/honcho.json          (default profile — shared host blocks live here)
+      1. $HERMES_HOME/honcho.json      (profile-local, if it exists)
+      2. ~/.hermes/honcho.json          (default profile — shared host blocks live here)
       3. ~/.honcho/config.json          (global, cross-app interop)
 
     Returns the global path if none exist (for first-time setup writes).
     """
-    local_path = get_prostor_home() / "honcho.json"
+    local_path = get_hermes_home() / "honcho.json"
     if local_path.exists():
         return local_path
 
     # Default profile's config — host blocks accumulate here via setup/clone
-    default_path = _get_default_prostor_home() / "honcho.json"
+    default_path = _get_default_hermes_home() / "honcho.json"
     if default_path != local_path and default_path.exists():
         return default_path
 
@@ -285,12 +285,15 @@ def _resolve_observation(
     }
 
 
+
+
+
 @dataclass
 class HonchoClientConfig:
     """Configuration for Honcho client, resolved for a specific host."""
 
     host: str = HOST
-    workspace_id: str = "prostor"
+    workspace_id: str = "hermes"
     api_key: str | None = None
     environment: str = "production"
     # Optional base URL for self-hosted Honcho (overrides environment mapping)
@@ -299,7 +302,7 @@ class HonchoClientConfig:
     timeout: float | None = None
     # Identity
     peer_name: str | None = None
-    ai_peer: str = "prostor"
+    ai_peer: str = "hermes"
     # When True, ``peer_name`` wins over any gateway-supplied runtime
     # identity (Telegram UID, Discord ID, …) when resolving the user peer.
     # This keeps memory unified across platforms for single-user deployments
@@ -328,7 +331,7 @@ class HonchoClientConfig:
     # honcho_reasoning tool param (agentic). When false, always uses
     # dialecticReasoningLevel and ignores model-provided overrides.
     dialectic_dynamic: bool = True
-    # Max chars of dialectic result to inject into Prostor system prompt
+    # Max chars of dialectic result to inject into Hermes system prompt
     dialectic_max_chars: int = 600
     # Dialectic depth: how many .chat() calls per dialectic cycle (1-3).
     # Depth 1: single call. Depth 2: self-audit + targeted synthesis.
@@ -371,7 +374,7 @@ class HonchoClientConfig:
     sessions: dict[str, str] = field(default_factory=dict)
     # Raw global config for anything else consumers need
     raw: dict[str, Any] = field(default_factory=dict)
-    # True when Honcho was explicitly configured for this host (hosts.prostor
+    # True when Honcho was explicitly configured for this host (hosts.hermes
     # block exists or enabled was set explicitly), vs auto-enabled from a
     # stray HONCHO_API_KEY env var.
     explicitly_configured: bool = False
@@ -379,7 +382,7 @@ class HonchoClientConfig:
     @classmethod
     def from_env(
         cls,
-        workspace_id: str = "prostor",
+        workspace_id: str = "hermes",
         host: str | None = None,
     ) -> HonchoClientConfig:
         """Create config from environment variables (fallback)."""
@@ -406,8 +409,8 @@ class HonchoClientConfig:
     ) -> HonchoClientConfig:
         """Create config from the resolved Honcho config path.
 
-        Resolution: $PROSTOR_HOME/honcho.json -> ~/.honcho/config.json -> env vars.
-        When host is None, derives it from the active Prostor profile.
+        Resolution: $HERMES_HOME/honcho.json -> ~/.honcho/config.json -> env vars.
+        When host is None, derives it from the active Hermes profile.
         """
         resolved_host = host or resolve_active_host()
         path = config_path or resolve_config_path()
@@ -422,7 +425,7 @@ class HonchoClientConfig:
             return cls.from_env(host=resolved_host)
 
         host_block = _host_block(raw, resolved_host)
-        # A hosts.prostor block or explicit enabled flag means the user
+        # A hosts.hermes block or explicit enabled flag means the user
         # intentionally configured Honcho for this host.
         _explicitly_configured = bool(host_block) or raw.get("enabled") is True
 
@@ -676,10 +679,11 @@ class HonchoClientConfig:
         """Resolve Honcho session name.
 
         Resolution order:
-          1. Manual directory override from sessions map
-          2. Prostor session title (from /title command)
-          3. Gateway session key (stable per-chat identifier from gateway platforms)
-          4. per-session strategy — Prostor session_id ({timestamp}_{hex})
+          1. Gateway session key (stable per-chat identifier from gateway platforms)
+          2. per-session strategy — Hermes session_id ({timestamp}_{hex}); authoritative,
+             so a generated title never remaps a live conversation
+          3. Manual directory override from sessions map
+          4. Hermes session title (from /title command; non-per-session)
           5. per-repo strategy — git repo root directory name
           6. per-directory strategy — directory basename
           7. global strategy — workspace name
@@ -689,34 +693,33 @@ class HonchoClientConfig:
         if not cwd:
             cwd = os.getcwd()
 
-        # Manual override always wins
+        # Gateway per-chat key wins everywhere — gateways (telegram/discord/…)
+        # need per-chat isolation no cwd/strategy name can provide.
+        if gateway_session_key:
+            sanitized = re.sub(r'[^a-zA-Z0-9_-]+', '-', gateway_session_key).strip('-')
+            if sanitized:
+                return self._enforce_session_id_limit(sanitized, gateway_session_key)
+
+        # per-session: the run's session_id IS the identity — resolve before the
+        # cwd map / title so an auto-generated title can't remap a live
+        # conversation onto a second Honcho session mid-stream.
+        if self.session_strategy == "per-session" and session_id:
+            if self.session_peer_prefix and self.peer_name:
+                return f"{self.peer_name}-{session_id}"
+            return session_id
+
+        # Manual override (cwd → name), for non-per-session strategies.
         manual = self.sessions.get(cwd)
         if manual:
             return manual
 
-        # /title mid-session remap
+        # /title mid-session remap (non-per-session).
         if session_title:
             sanitized = re.sub(r'[^a-zA-Z0-9_-]+', '-', session_title).strip('-')
             if sanitized:
                 if self.session_peer_prefix and self.peer_name:
                     return f"{self.peer_name}-{sanitized}"
                 return sanitized
-
-        # Gateway session key: stable per-chat identifier passed by the gateway
-        # (e.g. "agent:main:telegram:dm:8439114563"). Sanitize colons to hyphens
-        # for Honcho session ID compatibility. This takes priority over strategy-
-        # based resolution because gateway platforms need per-chat isolation that
-        # cwd-based strategies cannot provide.
-        if gateway_session_key:
-            sanitized = re.sub(r'[^a-zA-Z0-9_-]+', '-', gateway_session_key).strip('-')
-            if sanitized:
-                return self._enforce_session_id_limit(sanitized, gateway_session_key)
-
-        # per-session: inherit Prostor session_id (new Honcho session each run)
-        if self.session_strategy == "per-session" and session_id:
-            if self.session_peer_prefix and self.peer_name:
-                return f"{self.peer_name}-{session_id}"
-            return session_id
 
         # per-repo: one Honcho session per git repository
         if self.session_strategy == "per-repo":
@@ -739,6 +742,39 @@ class HonchoClientConfig:
 _honcho_client_slot: SingletonSlot = SingletonSlot()
 
 
+def _apply_fresh_oauth_token(config: HonchoClientConfig) -> None:
+    """Refresh a near-expiry OAuth grant and point ``config.api_key`` at it.
+
+    No-op for static API keys or when refresh fails (fail-open: the stale token
+    is left in place and the existing 401 handling degrades gracefully).
+    """
+    try:
+        from plugins.memory.honcho import oauth
+
+        token, _ = oauth.ensure_fresh_token(resolve_config_path(), config.host)
+        if token:
+            config.api_key = token
+    except Exception:
+        logger.warning("Honcho OAuth pre-build refresh failed", exc_info=True)
+
+
+def _refresh_cached_oauth(client: "Honcho", config: HonchoClientConfig | None) -> None:
+    """Rotate the cached client's Bearer in place when its OAuth token is stale.
+
+    If the SDK shape changed and the in-place rotation can't apply, the slot is
+    reset so the next acquisition rebuilds with the fresh token.
+    """
+    try:
+        from plugins.memory.honcho import oauth
+
+        host = config.host if config is not None else resolve_active_host()
+        token, refreshed = oauth.ensure_fresh_token(resolve_config_path(), host)
+        if refreshed and token and not oauth.apply_token_to_client(client, token):
+            _honcho_client_slot.reset()
+    except Exception:
+        logger.warning("Honcho OAuth cached refresh failed", exc_info=True)
+
+
 def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
     """Get or create the Honcho client singleton.
 
@@ -751,16 +787,21 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
     """
     cached = _honcho_client_slot.peek()
     if cached is not None:
+        _refresh_cached_oauth(cached, config)
         return cached
 
     if config is None:
         config = HonchoClientConfig.from_global_config()
 
+    # Refresh a near-expiry OAuth grant before the first build so the client
+    # starts with a live access token rather than 401ing an hour in.
+    _apply_fresh_oauth_token(config)
+
     if not config.api_key and not config.base_url:
         raise ValueError(
             "Honcho API key not found. "
             "Get your API key at https://app.honcho.dev, "
-            "then run 'prostor honcho setup' or set HONCHO_API_KEY. "
+            "then run 'hermes honcho setup' or set HONCHO_API_KEY. "
             "For local instances, set HONCHO_BASE_URL instead."
         )
 
@@ -769,14 +810,13 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
     # slot's factory so it executes exactly once even when several threads
     # race the first call — the slot's double-checked lock serializes them and
     # the losers get the winner's client instead of building their own.
-    def _build() -> Honcho:
+    def _build() -> "Honcho":
         # Lazy-install the honcho SDK on demand. ensure() honors
         # security.allow_lazy_installs (default true). On failure we surface
         # the original ImportError-shape message so existing callers still get
-        # the "go run prostor honcho setup" hint they used to.
+        # the "go run hermes honcho setup" hint they used to.
         try:
-            from tools.lazy_deps import FeatureUnavailable
-            from tools.lazy_deps import ensure as _lazy_ensure
+            from tools.lazy_deps import FeatureUnavailable, ensure as _lazy_ensure
             _lazy_ensure("memory.honcho", prompt=False)
         except ImportError:
             # lazy_deps module missing — fall through to the raw import below.
@@ -792,7 +832,7 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
             raise ImportError(
                 "honcho-ai is required for Honcho integration. "
                 "Install it with: pip install honcho-ai  "
-                "(or run `prostor honcho setup` to configure)."
+                "(or run `hermes honcho setup` to configure)."
             )
 
         # Allow config.yaml honcho.base_url to override the SDK's environment
@@ -802,9 +842,9 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
         resolved_timeout = config.timeout
         if not resolved_base_url or resolved_timeout is None:
             try:
-                from prostor_cli.config import load_config
-                prostor_cfg = load_config()
-                honcho_cfg = prostor_cfg.get("honcho", {})
+                from hermes_cli.config import load_config
+                hermes_cfg = load_config()
+                honcho_cfg = hermes_cfg.get("honcho", {})
                 if isinstance(honcho_cfg, dict):
                     if not resolved_base_url:
                         resolved_base_url = honcho_cfg.get("base_url", "").strip() or None

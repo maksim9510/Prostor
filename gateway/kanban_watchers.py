@@ -16,14 +16,46 @@ import os
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Optional
 
 # Match the logger run.py uses (logging.getLogger(__name__) where __name__ ==
 # "gateway.run") so extracted log records keep their original logger name.
 logger = logging.getLogger("gateway.run")
 
 
-def _acquire_singleton_lock(lock_path) -> tuple[object | None, str]:
+def _resolve_auto_decompose_settings(
+    load_config: Callable[[], Any],
+) -> "tuple[bool, int]":
+    """Resolve the live (enabled, per_tick) auto-decompose settings.
+
+    Read fresh from config on every dispatcher tick (#49638) so that flipping
+    ``kanban.auto_decompose: false`` to STOP runaway fan-out takes effect on the
+    next tick instead of requiring a gateway restart. Auto-decompose is a
+    safety toggle — a user who sees it create and launch tasks they didn't
+    intend reaches for this flag to halt it, and a stale boot-captured value
+    silently ignoring that change is the bug reported in #49638.
+
+    Fails **safe**: if the config read raises, return ``(False, 3)`` — a
+    transient read error must never re-enable a feature the user turned off,
+    nor fall back to the burst-prone default-on behaviour. ``per_tick`` is
+    clamped to ``>= 1``.
+    """
+    try:
+        cfg = load_config()
+    except Exception:
+        return False, 3
+    kcfg = cfg.get("kanban", {}) if isinstance(cfg, dict) else {}
+    enabled = bool(kcfg.get("auto_decompose", True))
+    try:
+        per_tick = int(kcfg.get("auto_decompose_per_tick", 3) or 3)
+    except (TypeError, ValueError):
+        per_tick = 3
+    if per_tick < 1:
+        per_tick = 1
+    return enabled, per_tick
+
+
+def _acquire_singleton_lock(lock_path) -> "tuple[Optional[object], str]":
     """Take an exclusive, non-blocking advisory lock for the sole dispatcher.
 
     Only one gateway process machine-wide may run the embedded kanban
@@ -102,13 +134,13 @@ class GatewayKanbanWatchersMixin:
         # in the dispatch owner's per-board DBs. This prevents N-gateway -shm contention.
         # TODO: gate per-board when per-board dispatcher_owner tracking lands.
         try:
-            from prostor_cli.config import load_config as _load_config
+            from hermes_cli.config import load_config as _load_config
         except Exception:
             logger.warning("kanban notifier: config loader unavailable; disabled")
             return
-        env_override = os.environ.get("PROSTOR_KANBAN_DISPATCH_IN_GATEWAY", "").strip().lower()
+        env_override = os.environ.get("HERMES_KANBAN_DISPATCH_IN_GATEWAY", "").strip().lower()
         if env_override in {"0", "false", "no", "off"}:
-            logger.info("kanban notifier: disabled via PROSTOR_KANBAN_DISPATCH_IN_GATEWAY env")
+            logger.info("kanban notifier: disabled via HERMES_KANBAN_DISPATCH_IN_GATEWAY env")
             return
         try:
             cfg = _load_config()
@@ -123,7 +155,7 @@ class GatewayKanbanWatchersMixin:
             return
         from gateway.config import Platform as _Platform
         try:
-            from prostor_cli import kanban_db as _kb
+            from hermes_cli import kanban_db as _kb
         except Exception:
             logger.warning("kanban notifier: kanban_db not importable; notifier disabled")
             return
@@ -172,7 +204,7 @@ class GatewayKanbanWatchersMixin:
 
                     # Enumerate every board on disk, but poll each resolved DB
                     # path once. Multiple slugs can point at the same DB when
-                    # PROSTOR_KANBAN_DB pins the board path; without this guard
+                    # HERMES_KANBAN_DB pins the board path; without this guard
                     # one gateway could collect the same subscription/event
                     # more than once before advancing the cursor.
                     try:
@@ -441,14 +473,14 @@ class GatewayKanbanWatchersMixin:
                 await asyncio.sleep(1)
 
     def _kanban_advance(
-        self, sub: dict, cursor: int, board: str | None = None,
+        self, sub: dict, cursor: int, board: Optional[str] = None,
     ) -> None:
         """Sync helper: advance a subscription's cursor. Runs in to_thread.
 
         ``board`` scopes the DB connection to the board that owns this
         subscription. Unsub cursors in one board can't touch another's.
         """
-        from prostor_cli import kanban_db as _kb
+        from hermes_cli import kanban_db as _kb
         conn = _kb.connect(board=board)
         try:
             _kb.advance_notify_cursor(
@@ -462,8 +494,8 @@ class GatewayKanbanWatchersMixin:
         finally:
             conn.close()
 
-    def _kanban_unsub(self, sub: dict, board: str | None = None) -> None:
-        from prostor_cli import kanban_db as _kb
+    def _kanban_unsub(self, sub: dict, board: Optional[str] = None) -> None:
+        from hermes_cli import kanban_db as _kb
         conn = _kb.connect(board=board)
         try:
             _kb.remove_notify_sub(
@@ -481,10 +513,10 @@ class GatewayKanbanWatchersMixin:
         sub: dict,
         claimed_cursor: int,
         old_cursor: int,
-        board: str | None = None,
+        board: Optional[str] = None,
     ) -> None:
         """Sync helper: undo a claimed notification cursor after send failure."""
-        from prostor_cli import kanban_db as _kb
+        from hermes_cli import kanban_db as _kb
         conn = _kb.connect(board=board)
         try:
             _kb.rewind_notify_cursor(
@@ -505,7 +537,7 @@ class GatewayKanbanWatchersMixin:
         adapter,
         chat_id: str,
         metadata: dict,
-        event_payload: dict | None,
+        event_payload: Optional[dict],
         task,
     ) -> None:
         """Upload artifact files referenced by a completed kanban task.
@@ -613,7 +645,7 @@ class GatewayKanbanWatchersMixin:
 
         Gated by `kanban.dispatch_in_gateway` in config.yaml (default True).
         When true, the gateway hosts the single dispatcher for this profile:
-        no separate `prostor kanban daemon` process needed. When false, the
+        no separate `hermes kanban daemon` process needed. When false, the
         loop exits immediately and an external daemon is expected.
 
         Each tick calls :func:`kanban_db.dispatch_once` inside
@@ -628,16 +660,16 @@ class GatewayKanbanWatchersMixin:
         """
         # Read config once at boot. If the user flips the flag later, they
         # restart the gateway; same pattern as every other background
-        # watcher here. Honours PROSTOR_KANBAN_DISPATCH_IN_GATEWAY env var
+        # watcher here. Honours HERMES_KANBAN_DISPATCH_IN_GATEWAY env var
         # as an escape hatch (false-y value disables without editing YAML).
         try:
-            from prostor_cli.config import load_config as _load_config
+            from hermes_cli.config import load_config as _load_config
         except Exception:
             logger.warning("kanban dispatcher: config loader unavailable; disabled")
             return
-        env_override = os.environ.get("PROSTOR_KANBAN_DISPATCH_IN_GATEWAY", "").strip().lower()
+        env_override = os.environ.get("HERMES_KANBAN_DISPATCH_IN_GATEWAY", "").strip().lower()
         if env_override in {"0", "false", "no", "off"}:
-            logger.info("kanban dispatcher: disabled via PROSTOR_KANBAN_DISPATCH_IN_GATEWAY env")
+            logger.info("kanban dispatcher: disabled via HERMES_KANBAN_DISPATCH_IN_GATEWAY env")
             return
 
         try:
@@ -653,7 +685,7 @@ class GatewayKanbanWatchersMixin:
             return
 
         try:
-            from prostor_cli import kanban_db as _kb
+            from hermes_cli import kanban_db as _kb
         except Exception:
             logger.warning("kanban dispatcher: kanban_db not importable; dispatcher disabled")
             return
@@ -839,7 +871,7 @@ class GatewayKanbanWatchersMixin:
                 or "database disk image is malformed" in msg
             )
 
-        def _tick_once_for_board(slug: str) -> object | None:
+        def _tick_once_for_board(slug: str) -> "Optional[object]":
             """Run one dispatch_once for a specific board.
 
             Runs in a worker thread via `asyncio.to_thread`. `board=slug`
@@ -898,7 +930,7 @@ class GatewayKanbanWatchersMixin:
                         "SQLite database; pausing dispatch for this board until "
                         "the file changes, the gateway restarts, or the "
                         "quarantine timer expires. Move or restore the file, "
-                        "then run `prostor kanban init` if you need a fresh board.",
+                        "then run `hermes kanban init` if you need a fresh board.",
                         slug,
                         fingerprint[0],
                     )
@@ -913,7 +945,7 @@ class GatewayKanbanWatchersMixin:
                         "SQLite database; pausing dispatch for this board until "
                         "the file changes, the gateway restarts, or the "
                         "quarantine timer expires. Move or restore the file, "
-                        "then run `prostor kanban init` if you need a fresh board.",
+                        "then run `hermes kanban init` if you need a fresh board.",
                         slug,
                         fingerprint[0],
                     )
@@ -927,7 +959,7 @@ class GatewayKanbanWatchersMixin:
                     except Exception:
                         pass
 
-        def _tick_once() -> list[tuple[str, object | None]]:
+        def _tick_once() -> "list[tuple[str, Optional[object]]]":
             """Run one dispatch_once per board. Returns (slug, result) pairs.
 
             Enumerating boards on every tick keeps the dispatcher honest
@@ -938,7 +970,7 @@ class GatewayKanbanWatchersMixin:
                 boards = _kb.list_boards(include_archived=False)
             except Exception:
                 boards = [_kb.read_board_metadata(_kb.DEFAULT_BOARD)]
-            out: list[tuple[str, object | None]] = []
+            out: list[tuple[str, "Optional[object]"]] = []
             for b in boards:
                 slug = b.get("slug") or _kb.DEFAULT_BOARD
                 out.append((slug, _tick_once_for_board(slug)))
@@ -946,7 +978,7 @@ class GatewayKanbanWatchersMixin:
 
         def _ready_nonempty() -> bool:
             """Cheap probe: is there at least one ready+assigned+unclaimed
-            task on ANY board whose assignee maps to a real Prostor profile
+            task on ANY board whose assignee maps to a real Hermes profile
             (i.e. one the dispatcher would actually spawn for)?
 
             Tasks assigned to control-plane lanes (e.g. ``orion-cc``,
@@ -954,7 +986,7 @@ class GatewayKanbanWatchersMixin:
             ``claim_task`` directly and never spawnable, so a queue full
             of those is "correctly idle", not "stuck". Filtering them out
             here keeps the stuck-warn fire only on real failures (broken
-            PATH, missing venv, credential loss for a real Prostor profile).
+            PATH, missing venv, credential loss for a real Hermes profile).
             """
             try:
                 boards = _kb.list_boards(include_archived=False)
@@ -985,23 +1017,26 @@ class GatewayKanbanWatchersMixin:
         # ``kanban.auto_decompose_per_tick`` (default 3) so a bulk-load
         # of triage tasks doesn't burst-spend the aux LLM in one tick;
         # remainder defers to subsequent ticks.
-        auto_decompose_enabled = bool(kanban_cfg.get("auto_decompose", True))
-        try:
-            auto_decompose_per_tick = int(
-                kanban_cfg.get("auto_decompose_per_tick", 3) or 3
-            )
-        except (TypeError, ValueError):
-            auto_decompose_per_tick = 3
-        if auto_decompose_per_tick < 1:
-            auto_decompose_per_tick = 1
+        #
+        # The flag is re-read from config EVERY tick (#49638) rather than
+        # captured once at boot. Auto-decompose is a safety toggle: a user who
+        # sees it fan out and run tasks they didn't intend reaches for
+        # ``kanban.auto_decompose: false`` to STOP it — and that must take
+        # effect on the next tick, not require a gateway restart. (Reported:
+        # auto-decompose created and launched destructive tasks while the user
+        # was still typing the task description, and the flag "couldn't be
+        # disabled" because the gateway had captured its boot-time value.)
+        def _read_auto_decompose_settings() -> tuple[bool, int]:
+            """Re-resolve (enabled, per_tick) from current config each tick."""
+            return _resolve_auto_decompose_settings(_load_config)
 
-        def _auto_decompose_tick() -> int:
+        def _auto_decompose_tick(auto_decompose_per_tick: int) -> int:
             """Run the auto-decomposer for up to N triage tasks across all
             boards. Returns the number of triage tasks that were
             successfully decomposed or specified this tick.
             """
             try:
-                from prostor_cli import kanban_decompose as _decomp
+                from hermes_cli import kanban_decompose as _decomp
             except Exception as exc:  # pragma: no cover
                 logger.warning(
                     "kanban auto-decompose: import failed (%s); skipping", exc,
@@ -1021,9 +1056,9 @@ class GatewayKanbanWatchersMixin:
                 # pattern as the dashboard specify endpoint. The
                 # decomposer module connects with no board kwarg and
                 # relies on the env var.
-                prev_env = os.environ.get("PROSTOR_KANBAN_BOARD")
+                prev_env = os.environ.get("HERMES_KANBAN_BOARD")
                 try:
-                    os.environ["PROSTOR_KANBAN_BOARD"] = slug
+                    os.environ["HERMES_KANBAN_BOARD"] = slug
                     try:
                         triage_ids = _decomp.list_triage_ids()
                     except Exception as exc:
@@ -1067,9 +1102,9 @@ class GatewayKanbanWatchersMixin:
                             )
                 finally:
                     if prev_env is None:
-                        os.environ.pop("PROSTOR_KANBAN_BOARD", None)
+                        os.environ.pop("HERMES_KANBAN_BOARD", None)
                     else:
-                        os.environ["PROSTOR_KANBAN_BOARD"] = prev_env
+                        os.environ["HERMES_KANBAN_BOARD"] = prev_env
             return successes
 
         logger.info(
@@ -1090,8 +1125,12 @@ class GatewayKanbanWatchersMixin:
                 logger.exception("kanban dispatcher: zombie reaper failed")
 
             try:
-                if auto_decompose_enabled:
-                    await asyncio.to_thread(_auto_decompose_tick)
+                # Re-read the auto-decompose toggle live each tick so a user
+                # flipping kanban.auto_decompose=false to STOP runaway fan-out
+                # takes effect on the next tick, not on gateway restart (#49638).
+                _ad_enabled, _ad_per_tick = _read_auto_decompose_settings()
+                if _ad_enabled:
+                    await asyncio.to_thread(_auto_decompose_tick, _ad_per_tick)
                 results = await asyncio.to_thread(_tick_once)
                 any_spawned = False
                 for slug, res in (results or []):
@@ -1123,7 +1162,7 @@ class GatewayKanbanWatchersMixin:
                             "kanban dispatcher stuck: ready queue non-empty for "
                             "%d consecutive ticks but 0 workers spawned. Check "
                             "profile health (venv, PATH, credentials) and "
-                            "`prostor kanban list --status ready`.",
+                            "`hermes kanban list --status ready`.",
                             bad_ticks,
                         )
                         last_warn_at = now
