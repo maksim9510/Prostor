@@ -735,3 +735,11 @@ FINISH_REASON_LENGTH = "length"
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODELS_URL = f"{OPENROUTER_BASE_URL}/models"
+
+
+# === Aliases for rebrand (hermes -> prostor) ===
+# These allow both get_hermes_home() and get_prostor_home() to work.
+get_prostor_home = get_hermes_home
+get_prostor_home_override = get_hermes_home_override
+set_prostor_home_override = set_hermes_home_override
+_prostor_HOME_OVERRIDE = _HERMES_HOME_OVERRIDE
