@@ -72,10 +72,28 @@
     ]
   },
   "electron_cjs": {
-    "pattern": "hermesDesktop|normalizeHermesHomeRoot",
+    "pattern": "hermesDesktop|normalizeHermesHomeRoot|verifyHermesCli|canImportHermesCli|resolveHermesBackend|resolveHermesHome|resolveHermesCliBinary|resolveHermesVersion|startHermes|waitForHermes|resetHermesConnection|resolveHermesCwd|isHermesSourceRoot|hermesCommand|hermesCwd|hermesOverride|recentHermesLog|venvHermesShimPath|hermesManagedNodePathEntries|pathWithHermesManagedNode",
     "replacement": {
       "hermesDesktop": "prostorDesktop",
-      "normalizeHermesHomeRoot": "normalizeProstorHomeRoot"
+      "normalizeHermesHomeRoot": "normalizeProstorHomeRoot",
+      "verifyHermesCli": "verifyProstorCli",
+      "canImportHermesCli": "canImportProstorCli",
+      "resolveHermesBackend": "resolveProstorBackend",
+      "resolveHermesHome": "resolveProstorHome",
+      "resolveHermesCliBinary": "resolveProstorCliBinary",
+      "resolveHermesVersion": "resolveProstorVersion",
+      "startHermes": "startProstor",
+      "waitForHermes": "waitForProstor",
+      "resetHermesConnection": "resetProstorConnection",
+      "resolveHermesCwd": "resolveProstorCwd",
+      "isHermesSourceRoot": "isProstorSourceRoot",
+      "hermesCommand": "prostorCommand",
+      "hermesCwd": "prostorCwd",
+      "hermesOverride": "prostorOverride",
+      "recentHermesLog": "recentProstorLog",
+      "venvHermesShimPath": "venvProstorShimPath",
+      "hermesManagedNodePathEntries": "prostorManagedNodePathEntries",
+      "pathWithHermesManagedNode": "pathWithProstorManagedNode"
     },
     "dirs": [
       "apps/desktop/electron/"
