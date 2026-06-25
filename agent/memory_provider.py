@@ -297,9 +297,9 @@ class MemoryProvider(ABC):
         """
 
     def backup_paths(self) -> List[str]:
-        """Return extra on-disk paths this provider stores OUTSIDE HERMES_HOME.
+        """Return extra on-disk paths this provider stores OUTSIDE PROSTOR_HOME.
 
-        ``hermes backup`` only walks HERMES_HOME, so any provider state kept
+        ``hermes backup`` only walks PROSTOR_HOME, so any provider state kept
         under ``~/.honcho``, ``~/.hindsight``, ``~/.openviking``, etc. is lost
         across a backup/import cycle unless it's declared here.
 

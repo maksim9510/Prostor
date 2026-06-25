@@ -5,8 +5,8 @@ Provides a FastAPI backend serving the Vite/React frontend and REST API
 endpoints for managing configuration, environment variables, and sessions.
 
 Usage:
-    python -m hermes_cli.main web          # Start on http://127.0.0.1:9119
-    python -m hermes_cli.main web --port 8080
+    python -m prostor_cli.main web          # Start on http://127.0.0.1:9119
+    python -m prostor_cli.main web --port 8080
 """
 
 from contextlib import asynccontextmanager, contextmanager
@@ -51,7 +51,7 @@ from prostor_cli.config import (
     clear_model_endpoint_credentials,
     get_config_path,
     get_env_path,
-    get_hermes_home,
+    get_prostor_home,
     load_config,
     load_env,
     save_config,
@@ -135,7 +135,7 @@ def _start_desktop_cron_ticker(stop_event: "threading.Event", interval: int = 60
 
     Cross-process safe: the built-in provider's ``cron.scheduler.tick`` takes
     the ``cron/.tick.lock`` file lock, so this never double-fires alongside a
-    real gateway on the same HERMES_HOME — whichever process grabs the lock
+    real gateway on the same PROSTOR_HOME — whichever process grabs the lock
     first wins the tick.
     """
     from cron.scheduler_provider import resolve_cron_scheduler
@@ -171,7 +171,7 @@ async def _lifespan(app: "FastAPI"):
     # event loop during lifespan startup — see _get_event_state's docstring.
     app.state.chat_argv_lock = asyncio.Lock()
 
-    # Fire hermes_cli.gateway import into a background thread so the event
+    # Fire prostor_cli.gateway import into a background thread so the event
     # loop is not blocked and HERMES_DASHBOARD_READY fires without delay.
     # On a cold Windows install the module chain triggers .pyc compilation
     # and Defender real-time scans that can stall the event loop for 15-30s.
@@ -278,7 +278,7 @@ app.add_middleware(
 # Endpoints that do NOT require the session token.  Everything else under
 # /api/ is gated by the auth middleware below.
 #
-# This list is defined in ``hermes_cli.dashboard_auth.public_paths`` so the
+# This list is defined in ``prostor_cli.dashboard_auth.public_paths`` so the
 # OAuth gate middleware can honour the same allowlist — keeping the two
 # gates in lockstep avoids drift like the wildcard-subdomain regression
 # where ``/api/status`` was public under the legacy gate but 401'd under
@@ -1220,7 +1220,7 @@ def _media_serve_roots() -> list[Path]:
     key or a screenshot outside the cache) merely because the suffix passes the
     allowlist.
     """
-    home = get_hermes_home()
+    home = get_prostor_home()
     roots = [home / "images", home / "screenshots", home / "cache"]
     out: list[Path] = []
     for root in roots:
@@ -1308,11 +1308,11 @@ def _local_dashboard_request(request: Request) -> bool:
 
 
 def _default_hermes_root_is_opt_data() -> bool:
-    raw = os.environ.get("HERMES_HOME", "").strip()
+    raw = os.environ.get("PROSTOR_HOME", "").strip()
     if not raw:
         return False
     try:
-        from hermes_constants import get_default_hermes_root
+        from prostor_constants import get_default_hermes_root
 
         root = get_default_hermes_root().expanduser().resolve(strict=False)
     except (OSError, RuntimeError):
@@ -1338,7 +1338,7 @@ def _dashboard_local_update_managed_externally() -> bool:
     if _default_hermes_root_is_opt_data():
         return True
     try:
-        from hermes_constants import is_container
+        from prostor_constants import is_container
 
         if not is_container():
             return False
@@ -1798,7 +1798,7 @@ async def get_status(profile: Optional[str] = None):
     # Use the config-only (contextvar) scope, NOT _profile_scope: this handler
     # awaits the remote-health probe, and _profile_scope swaps process-global
     # skills-module attributes that a concurrent request would cross-restore
-    # across that await. Status only resolves get_hermes_home() at call time
+    # across that await. Status only resolves get_prostor_home() at call time
     # (config/env/gateway state), which the task-local contextvar covers.
     if requested_profile and requested_profile.lower() != "current":
         status_scope = _config_profile_scope(requested_profile)
@@ -1918,7 +1918,7 @@ async def get_status(profile: Optional[str] = None):
         )
         # Resolved drain timeout (seconds) so NAS can size its poll deadline
         # without out-of-band knowledge.  Offload to a thread: on a cold
-        # Windows install the first import of hermes_cli.gateway blocks the
+        # Windows install the first import of prostor_cli.gateway blocks the
         # asyncio event loop for 15-30s (.pyc compilation + Defender scans),
         # exceeding the desktop handshake's 15s socket timeout.  After the
         # first call the module is in sys.modules and run_in_executor returns
@@ -1976,7 +1976,7 @@ async def get_status(profile: Optional[str] = None):
         # envelope — the same loopback/gated split ``should_require_auth`` draws.
         if not auth_required:
             status.update({
-                "hermes_home": str(get_hermes_home()),
+                "prostor_home": str(get_prostor_home()),
                 "config_path": str(get_config_path()),
                 "env_path": str(get_env_path()),
                 "gateway_pid": gateway_pid,
@@ -2069,7 +2069,7 @@ async def get_system_stats():
             "percent": vm.percent,
         }
         try:
-            du = psutil.disk_usage(str(get_hermes_home()))
+            du = psutil.disk_usage(str(get_prostor_home()))
             info["disk"] = {
                 "total": du.total,
                 "used": du.used,
@@ -2308,7 +2308,7 @@ async def run_debug_share_endpoint(body: DebugShareRequest | None = None):
 # the dashboard can tail them back to the user.
 # ---------------------------------------------------------------------------
 
-_ACTION_LOG_DIR: Path = get_hermes_home() / "logs"
+_ACTION_LOG_DIR: Path = get_prostor_home() / "logs"
 
 # Short ``name`` (from the URL) → absolute log file path.
 _ACTION_LOG_FILES: Dict[str, str] = {
@@ -2361,7 +2361,7 @@ def _record_completed_action(name: str, message: str, exit_code: int = 1) -> Non
 def _spawn_hermes_action(subcommand: List[str], name: str) -> subprocess.Popen:
     """Spawn ``hermes <subcommand>`` detached and record the Popen handle.
 
-    Uses the running interpreter's ``hermes_cli.main`` module so the action
+    Uses the running interpreter's ``prostor_cli.main`` module so the action
     inherits the same venv/PYTHONPATH the web server is using.
     """
     log_file_name = _ACTION_LOG_FILES[name]
@@ -2372,7 +2372,7 @@ def _spawn_hermes_action(subcommand: List[str], name: str) -> subprocess.Popen:
         f"\n=== {name} started {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n".encode()
     )
 
-    cmd = [sys.executable, "-m", "hermes_cli.main", *subcommand]
+    cmd = [sys.executable, "-m", "prostor_cli.main", *subcommand]
 
     popen_kwargs: Dict[str, Any] = {
         "cwd": str(PROJECT_ROOT),
@@ -2676,7 +2676,7 @@ async def check_hermes_update(force: bool = False):
 
         if force:
             try:
-                (get_hermes_home() / ".update_check").unlink()
+                (get_prostor_home() / ".update_check").unlink()
             except OSError:
                 pass
 
@@ -3332,7 +3332,7 @@ def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _memory_provider_config_path(provider: MemoryProvider) -> Path:
-    return get_hermes_home() / provider.name / "config.json"
+    return get_prostor_home() / provider.name / "config.json"
 
 
 def _read_memory_provider_file(provider: MemoryProvider) -> Dict[str, Any]:
@@ -3602,7 +3602,7 @@ def get_model_info(profile: Optional[str] = None):
 # ---------------------------------------------------------------------------
 
 # Canonical auxiliary task slots. Keep in sync with DEFAULT_CONFIG["auxiliary"]
-# in hermes_cli/config.py — listed here for deterministic ordering in the UI.
+# in prostor_cli/config.py — listed here for deterministic ordering in the UI.
 _AUX_TASK_SLOTS: Tuple[str, ...] = (
     "vision",
     "web_extract",
@@ -3868,7 +3868,7 @@ def _apply_model_assignment_sync(
         cfg["model"] = model_cfg
 
         # When switching the main provider to Nous, mirror the CLI's
-        # post-model-selection behaviour (hermes_cli/main.py
+        # post-model-selection behaviour (prostor_cli/main.py
         # prompt_enable_tool_gateway / tools_config apply_nous_managed_defaults):
         # auto-route any *unconfigured* tools through the Nous Tool Gateway.
         # This is purely additive — apply_nous_managed_defaults skips every
@@ -5415,7 +5415,7 @@ async def get_messaging_platforms(profile: Optional[str] = None):
     # Profile-scoped so the dashboard's global profile switcher shows the
     # TARGET profile's channel credentials/state, not the root install's.
     # Inside _profile_scope, load_env()/read_runtime_status()/get_running_pid()
-    # all resolve against the requested profile's HERMES_HOME.
+    # all resolve against the requested profile's PROSTOR_HOME.
     with _profile_scope(profile) as scoped_dir:
         env_on_disk = load_env()
         runtime = read_runtime_status()
@@ -5573,7 +5573,7 @@ def _anthropic_oauth_status() -> Dict[str, Any]:
     2. ``ANTHROPIC_API_KEY`` → ``ANTHROPIC_TOKEN`` → ``CLAUDE_CODE_OAUTH_TOKEN``
        env vars (registry order) — from ``.env``, the shell, or an external
        secret source like Bitwarden (whose keys are injected into the process
-       env during ``load_hermes_dotenv()``, so the same check covers them)
+       env during ``load_prostor_dotenv()``, so the same check covers them)
 
     Claude Code's ``~/.claude/.credentials.json`` is deliberately NOT read
     here — it has its own dedicated catalog entry (``claude-code`` →
@@ -7526,7 +7526,7 @@ async def prune_sessions_endpoint(body: SessionPrune):
     """Delete ended sessions older than N days (mirrors `hermes sessions prune`)."""
     if body.older_than_days < 1:
         raise HTTPException(status_code=400, detail="older_than_days must be >= 1")
-    profile_home = _cron_profile_home(body.profile)[1] if body.profile else get_hermes_home()
+    profile_home = _cron_profile_home(body.profile)[1] if body.profile else get_prostor_home()
     db = _open_session_db_for_profile(body.profile)
     try:
         sessions_dir = profile_home / "sessions"
@@ -7558,7 +7558,7 @@ async def get_logs(
     log_name = LOG_FILES.get(file)
     if not log_name:
         raise HTTPException(status_code=400, detail=f"Unknown log file: {file}")
-    log_path = get_hermes_home() / "logs" / log_name
+    log_path = get_prostor_home() / "logs" / log_name
     if not log_path.exists():
         return {"file": file, "lines": []}
 
@@ -7629,7 +7629,7 @@ def _cron_profile_dicts() -> List[Dict[str, Any]]:
 
 
 def _cron_profile_home(profile: Optional[str]) -> Tuple[str, Path]:
-    """Resolve a profile query value to (profile_name, HERMES_HOME)."""
+    """Resolve a profile query value to (profile_name, PROSTOR_HOME)."""
     from prostor_cli import profiles as profiles_mod
 
     raw = (profile or "default").strip() or "default"
@@ -7647,7 +7647,7 @@ def _annotate_cron_job(job: Dict[str, Any], profile: str, home: Path) -> Dict[st
     annotated = dict(job)
     annotated["profile"] = profile
     annotated["profile_name"] = profile
-    annotated["hermes_home"] = str(home)
+    annotated["prostor_home"] = str(home)
     annotated["is_default_profile"] = profile == "default"
     return annotated
 
@@ -7656,7 +7656,7 @@ def _call_cron_for_profile(profile: Optional[str], func_name: str, *args, **kwar
     """Run cron.jobs helpers against the selected profile's cron directory.
 
     cron.jobs keeps CRON_DIR/JOBS_FILE/OUTPUT_DIR as module globals resolved
-    from the process HERMES_HOME at import time. The dashboard is a single
+    from the process PROSTOR_HOME at import time. The dashboard is a single
     process that can inspect many profiles, so temporarily retarget those
     globals while holding a lock and restore them immediately after the call.
     """
@@ -8035,7 +8035,7 @@ async def instantiate_blueprint(body: AutomationBlueprintInstantiate, profile: s
 # ---------------------------------------------------------------------------
 # MCP server endpoints — list / add / remove / test.
 #
-# Wraps the same config data layer the CLI uses (hermes_cli.mcp_config), so
+# Wraps the same config data layer the CLI uses (prostor_cli.mcp_config), so
 # servers managed here show up under `hermes mcp list` and vice versa.  Secrets
 # in stdio `env` blocks are redacted on read; the agent picks them up from
 # config.yaml at session start exactly as with CLI-added servers.
@@ -8169,7 +8169,7 @@ async def test_mcp_server(name: str, profile: Optional[str] = None):
         # keeps the lock-protected SKILLS_DIR swap balanced per-thread.)
         # The probe's dedicated MCP event-loop thread is covered too:
         # _run_on_mcp_loop wraps scheduled coroutines with the caller's
-        # HERMES_HOME override (see mcp_tool._wrap_with_home_override), so
+        # PROSTOR_HOME override (see mcp_tool._wrap_with_home_override), so
         # OAuth token stores resolve against the selected profile as well.
         with _profile_scope(profile):
             return _probe_single_server(name, servers[name])
@@ -8329,7 +8329,7 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[s
 
     # Git-bootstrap entries can take a while to clone — run via the background
     # action path so the request returns immediately and the UI can tail logs.
-    # The -p subprocess rebinds HERMES_HOME-derived paths in the child.
+    # The -p subprocess rebinds PROSTOR_HOME-derived paths in the child.
     if entry.install is not None:
         try:
             proc = _spawn_hermes_action(
@@ -8446,7 +8446,7 @@ async def clear_pending_pairing():
 # ---------------------------------------------------------------------------
 # Webhook subscription endpoints — list / subscribe / remove.
 #
-# Wraps the same JSON store the CLI uses (hermes_cli.webhook); the webhook
+# Wraps the same JSON store the CLI uses (prostor_cli.webhook); the webhook
 # adapter hot-reloads it without a gateway restart.  Per-route HMAC secrets
 # are redacted on read and surfaced once on create.
 # ---------------------------------------------------------------------------
@@ -8801,7 +8801,7 @@ async def get_memory_status():
         _log.exception("discover_memory_providers failed")
 
     # Built-in memory file sizes (so the UI can show what a reset would erase).
-    mem_dir = get_hermes_home() / "memories"
+    mem_dir = get_prostor_home() / "memories"
     files = {}
     for fname, key in (("MEMORY.md", "memory"), ("USER.md", "user")):
         path = mem_dir / fname
@@ -8844,7 +8844,7 @@ async def reset_memory(body: MemoryReset):
     if target not in {"all", "memory", "user"}:
         raise HTTPException(status_code=400, detail="target must be all, memory, or user")
 
-    mem_dir = get_hermes_home() / "memories"
+    mem_dir = get_prostor_home() / "memories"
     deleted = []
     targets = []
     if target in {"all", "memory"}:
@@ -9104,11 +9104,11 @@ async def delete_hook(body: HookDelete):
 @app.get("/api/ops/checkpoints")
 async def list_checkpoints():
     """List the /rollback shadow store checkpoints (read-only)."""
-    # Checkpoints live under <hermes_home>/checkpoints/.  Surface a count +
+    # Checkpoints live under <prostor_home>/checkpoints/.  Surface a count +
     # total size so the dashboard can show what a prune would reclaim; the
     # actual prune is a spawned action so confirmation/pruning logic stays
     # in one place (the CLI).
-    cp_dir = get_hermes_home() / "checkpoints"
+    cp_dir = get_prostor_home() / "checkpoints"
     sessions = []
     total_bytes = 0
     if cp_dir.is_dir():
@@ -9588,7 +9588,7 @@ class ProfileCreate(BaseModel):
     keep_skills: List[str] = []
     # Skills-hub identifiers to install into the new profile. Installed async
     # via a subprocess scoped to the profile (`hermes -p <name> skills install`)
-    # because skills_hub.SKILLS_DIR is import-time-bound and the HERMES_HOME
+    # because skills_hub.SKILLS_DIR is import-time-bound and the PROSTOR_HOME
     # override can't redirect it. Returns spawned PIDs for the UI to poll.
     hub_skills: List[str] = []
 
@@ -9652,7 +9652,7 @@ def _fallback_profile_dicts(profiles_mod) -> List[Dict[str, Any]]:
             return default
 
     profiles: List[Dict[str, Any]] = []
-    default_home = profiles_mod._get_default_hermes_home()
+    default_home = profiles_mod._get_default_prostor_home()
     if default_home.is_dir():
         model, provider = _safe(lambda: profiles_mod._read_config_model(default_home), (None, None))
         profiles.append({
@@ -9720,28 +9720,28 @@ def _write_profile_model(profile_dir: Path, provider: str, model: str) -> None:
     """Write the main model assignment into a specific profile's config.yaml.
 
     Scopes ``load_config``/``save_config`` to ``profile_dir`` via the
-    context-local HERMES_HOME override so the write lands in the target
+    context-local PROSTOR_HOME override so the write lands in the target
     profile's config rather than the dashboard process's active profile.
     Clears any stale ``base_url`` / ``context_length`` the same way
     ``POST /api/model/set`` does, since the new model may differ.
     """
-    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+    from prostor_constants import set_prostor_home_override, reset_prostor_home_override
 
-    token = set_hermes_home_override(str(profile_dir))
+    token = set_prostor_home_override(str(profile_dir))
     try:
         provider, model = _normalize_main_model_assignment(provider, model)
         cfg = load_config()
         cfg["model"] = _apply_main_model_assignment(cfg.get("model", {}), provider, model)
         save_config(cfg)
     finally:
-        reset_hermes_home_override(token)
+        reset_prostor_home_override(token)
 
 
 def _write_profile_mcp_servers(profile_dir: Path, servers: List["MCPServerCreate"]) -> int:
     """Write MCP server entries into a specific profile's config.yaml.
 
     Scopes ``load_config``/``save_config`` to ``profile_dir`` via the
-    context-local HERMES_HOME override (same mechanism as
+    context-local PROSTOR_HOME override (same mechanism as
     ``_write_profile_model``) so the entries land in the target profile's
     config rather than the dashboard process's active profile.
 
@@ -9749,11 +9749,11 @@ def _write_profile_mcp_servers(profile_dir: Path, servers: List["MCPServerCreate
     but batched so the whole profile-create write is a single config save.
     Returns the number of servers written.
     """
-    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+    from prostor_constants import set_prostor_home_override, reset_prostor_home_override
     from prostor_cli.mcp_security import validate_mcp_server_entry
 
     written = 0
-    token = set_hermes_home_override(str(profile_dir))
+    token = set_prostor_home_override(str(profile_dir))
     try:
         cfg = load_config()
         mcp = cfg.setdefault("mcp_servers", {})
@@ -9790,7 +9790,7 @@ def _write_profile_mcp_servers(profile_dir: Path, servers: List["MCPServerCreate
             cfg.pop("mcp_servers", None)
             save_config(cfg)
     finally:
-        reset_hermes_home_override(token)
+        reset_prostor_home_override(token)
     return written
 
 
@@ -9802,15 +9802,15 @@ def _disable_unselected_skills(profile_dir: Path, keep: List[str]) -> int:
     uses "replace" semantics: the user picks exactly which seeded built-in /
     optional skills stay active, and everything else gets added to the disabled
     list. (Hub skills are installed separately via subprocess and are active on
-    install.) Scoped to the profile via the HERMES_HOME override. Returns the
+    install.) Scoped to the profile via the PROSTOR_HOME override. Returns the
     number of skills newly disabled.
     """
-    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+    from prostor_constants import set_prostor_home_override, reset_prostor_home_override
     from prostor_cli.skills_config import get_disabled_skills, save_disabled_skills
 
     keep_set = {s.strip() for s in keep if s and s.strip()}
     disabled_count = 0
-    token = set_hermes_home_override(str(profile_dir))
+    token = set_prostor_home_override(str(profile_dir))
     try:
         installed: List[str] = []
         skills_root = profile_dir / "skills"
@@ -9826,7 +9826,7 @@ def _disable_unselected_skills(profile_dir: Path, keep: List[str]) -> int:
         if disabled_count:
             save_disabled_skills(cfg, disabled)
     finally:
-        reset_hermes_home_override(token)
+        reset_prostor_home_override(token)
     return disabled_count
 
 
@@ -9922,7 +9922,7 @@ async def create_profile_endpoint(body: ProfileCreate):
 
     # Optional skills-hub installs. Spawned async, scoped to the new profile
     # via `-p <name>` (a fresh subprocess re-binds skills_hub.SKILLS_DIR to the
-    # profile's HERMES_HOME at import). Returns PIDs for the UI to poll.
+    # profile's PROSTOR_HOME at import). Returns PIDs for the UI to poll.
     hub_installs: List[Dict[str, Any]] = []
     for identifier in body.hub_skills:
         ident = (identifier or "").strip()
@@ -9960,7 +9960,7 @@ async def get_active_profile_endpoint():
 
     ``active`` is the sticky default written by ``hermes profile use`` —
     the profile new CLI invocations pick up. ``current`` is the profile
-    the running dashboard/gateway is scoped to (derived from HERMES_HOME).
+    the running dashboard/gateway is scoped to (derived from PROSTOR_HOME).
     """
     from prostor_cli import profiles as profiles_mod
     try:
@@ -10136,7 +10136,7 @@ async def update_profile_model_endpoint(name: str, body: ProfileModelUpdate):
     """Set the main model (``model.default`` + ``model.provider``) for a
     specific profile's config.yaml, without touching the dashboard's own
     active profile. Mirrors ``POST /api/model/set`` (main scope) but scoped
-    to the named profile via the HERMES_HOME override.
+    to the named profile via the PROSTOR_HOME override.
     """
     profile_dir = _resolve_profile_dir(name)
     provider = (body.provider or "").strip()
@@ -10201,8 +10201,8 @@ def _profile_scope(profile: Optional[str]):
 
     Two seams must be redirected for skills/toolsets endpoints:
 
-    1. ``load_config``/``save_config`` resolve ``get_hermes_home()`` at call
-       time — the context-local override from ``set_hermes_home_override``
+    1. ``load_config``/``save_config`` resolve ``get_prostor_home()`` at call
+       time — the context-local override from ``set_prostor_home_override``
        reaches them (same pattern as ``_write_profile_model``).
     2. ``tools.skills_tool`` and ``tools.skill_manager_tool`` bind
        ``SKILLS_DIR`` at import time, so the override CANNOT reach them.
@@ -10212,46 +10212,46 @@ def _profile_scope(profile: Optional[str]):
 
     ``profile`` of None/""/"current" means "the dashboard's own profile" —
     config resolution is untouched, but the skill-module globals are still
-    retargeted to the *current* ``get_hermes_home()`` so writes land in the
+    retargeted to the *current* ``get_prostor_home()`` so writes land in the
     live home even when the import-time binding is stale (e.g. the process
-    imported the modules before a HERMES_HOME override, or under test
+    imported the modules before a PROSTOR_HOME override, or under test
     isolation).
     """
     requested = (profile or "").strip()
 
-    from hermes_constants import (
-        get_hermes_home,
-        set_hermes_home_override,
-        reset_hermes_home_override,
+    from prostor_constants import (
+        get_prostor_home,
+        set_prostor_home_override,
+        reset_prostor_home_override,
     )
     from tools import skills_tool as _skills_tool
     from tools import skill_manager_tool as _skill_mgr
 
     token = None
     if not requested or requested.lower() == "current":
-        profile_dir = get_hermes_home()
+        profile_dir = get_prostor_home()
     else:
         profile_dir = _resolve_profile_dir(requested)
-        token = set_hermes_home_override(str(profile_dir))
+        token = set_prostor_home_override(str(profile_dir))
 
     with _SKILLS_PROFILE_LOCK:
-        old_home = _skills_tool.HERMES_HOME
+        old_home = _skills_tool.PROSTOR_HOME
         old_skills_dir = _skills_tool.SKILLS_DIR
-        old_mgr_home = _skill_mgr.HERMES_HOME
+        old_mgr_home = _skill_mgr.PROSTOR_HOME
         old_mgr_skills_dir = _skill_mgr.SKILLS_DIR
-        _skills_tool.HERMES_HOME = profile_dir
+        _skills_tool.PROSTOR_HOME = profile_dir
         _skills_tool.SKILLS_DIR = profile_dir / "skills"
-        _skill_mgr.HERMES_HOME = profile_dir
+        _skill_mgr.PROSTOR_HOME = profile_dir
         _skill_mgr.SKILLS_DIR = profile_dir / "skills"
         try:
             yield profile_dir if token is not None else None
         finally:
-            _skills_tool.HERMES_HOME = old_home
+            _skills_tool.PROSTOR_HOME = old_home
             _skills_tool.SKILLS_DIR = old_skills_dir
-            _skill_mgr.HERMES_HOME = old_mgr_home
+            _skill_mgr.PROSTOR_HOME = old_mgr_home
             _skill_mgr.SKILLS_DIR = old_mgr_skills_dir
             if token is not None:
-                reset_hermes_home_override(token)
+                reset_prostor_home_override(token)
 
 
 @contextmanager
@@ -10259,13 +10259,13 @@ def _config_profile_scope(profile: Optional[str]):
     """Await-safe, config-only profile scope for handlers that ``await``.
 
     Unlike ``_profile_scope`` this touches ONLY the context-local
-    ``set_hermes_home_override`` contextvar — it does NOT swap the
+    ``set_prostor_home_override`` contextvar — it does NOT swap the
     process-global ``skills_tool``/``skill_manager`` module attributes.
     Those globals are shared across all event-loop tasks, so holding them
     across an ``await`` lets a concurrent skills request restore THIS
     request's profile dir on its ``finally`` (cross-contamination). The
     contextvar override is task-local and survives an ``await`` cleanly,
-    which is all endpoints that resolve ``get_hermes_home()`` at call time
+    which is all endpoints that resolve ``get_prostor_home()`` at call time
     (config, env, gateway status) actually need.
 
     None/""/"current" means the dashboard's own profile — no override.
@@ -10275,17 +10275,17 @@ def _config_profile_scope(profile: Optional[str]):
         yield None
         return
 
-    from hermes_constants import (
-        set_hermes_home_override,
-        reset_hermes_home_override,
+    from prostor_constants import (
+        set_prostor_home_override,
+        reset_prostor_home_override,
     )
 
     profile_dir = _resolve_profile_dir(requested)
-    token = set_hermes_home_override(str(profile_dir))
+    token = set_prostor_home_override(str(profile_dir))
     try:
         yield profile_dir
     finally:
-        reset_hermes_home_override(token)
+        reset_prostor_home_override(token)
 
 
 class SkillToggle(BaseModel):
@@ -10654,7 +10654,7 @@ async def run_toolset_post_setup(
     ``profile`` spawns the hook as ``hermes -p <profile> tools post-setup``.
     Most hooks install machine-level artifacts (repo node_modules, shared
     pip packages) where the scope is inert, but hooks that read config or
-    write per-profile state must see the same HERMES_HOME the rest of the
+    write per-profile state must see the same PROSTOR_HOME the rest of the
     drawer's writes targeted — so the scope is threaded for consistency.
     """
     from prostor_cli.tools_config import (
@@ -11304,7 +11304,7 @@ def _resolve_chat_argv(
     so nothing has to build Node or the TUI bundle.
 
     Session resume is propagated via the ``HERMES_TUI_RESUME`` env var —
-    matching what ``hermes_cli.main._launch_tui`` does for the CLI path.
+    matching what ``prostor_cli.main._launch_tui`` does for the CLI path.
     Appending ``--resume <id>`` to argv doesn't work because ``ui-tui`` does
     not parse its argv.
 
@@ -11317,9 +11317,9 @@ def _resolve_chat_argv(
     dashboard's ``/api/pub`` endpoint (see :func:`pub_ws`).
 
     `profile` (when set) scopes the ENTIRE chat to that profile by pointing
-    ``HERMES_HOME`` at the profile dir in the child env. Every spawned
+    ``PROSTOR_HOME`` at the profile dir in the child env. Every spawned
     process (the TUI and the ``tui_gateway.entry`` it launches) resolves
-    ``get_hermes_home()`` from that env var at its own import, so the child
+    ``get_prostor_home()`` from that env var at its own import, so the child
     binds the profile's config, skills, memory, and state.db from the start
     — the same propagation ``hermes -p <name>`` performs. The in-process
     ``HERMES_TUI_GATEWAY_URL`` attach is SKIPPED for scoped chats: the
@@ -11352,7 +11352,7 @@ def _resolve_chat_argv(
     env["HERMES_TUI_DASHBOARD"] = "1"
 
     if profile_dir is not None:
-        env["HERMES_HOME"] = str(profile_dir)
+        env["PROSTOR_HOME"] = str(profile_dir)
 
     if resume:
         latest_resume, _latest_path = _session_latest_descendant(resume)
@@ -11366,7 +11366,7 @@ def _resolve_chat_argv(
     # Profile-scoped chats must NOT attach to the dashboard's in-memory
     # gateway — it runs under the dashboard's own profile. Without the
     # attach URL, gatewayClient spawns its own `tui_gateway.entry`, which
-    # inherits the profile HERMES_HOME set above.
+    # inherits the profile PROSTOR_HOME set above.
     if profile_dir is None:
         if gateway_ws_url := _build_gateway_ws_url():
             env["HERMES_TUI_GATEWAY_URL"] = gateway_ws_url
@@ -11758,7 +11758,7 @@ async def events_ws(ws: WebSocket) -> None:
 def _normalise_prefix(raw: Optional[str]) -> str:
     """Normalise an X-Forwarded-Prefix header value.
 
-    Thin re-export of :func:`hermes_cli.dashboard_auth.prefix.normalise_prefix`
+    Thin re-export of :func:`prostor_cli.dashboard_auth.prefix.normalise_prefix`
     — the single source of truth lives in the dashboard_auth package so
     the gate middleware, the OAuth routes, the cookie helpers, and the
     SPA mount all agree on validation rules.
@@ -12129,7 +12129,7 @@ def _discover_user_themes() -> list:
     to the frontend, so the client can apply them without a secondary
     round-trip or a built-in stub.
     """
-    themes_dir = get_hermes_home() / "dashboard-themes"
+    themes_dir = get_prostor_home() / "dashboard-themes"
     if not themes_dir.is_dir():
         return []
     result = []
@@ -12280,7 +12280,7 @@ def _safe_plugin_api_relpath(api_field: Any, *, dashboard_dir: Path) -> Optional
 def _discover_dashboard_plugins() -> list:
     """Scan plugins/*/dashboard/manifest.json for dashboard extensions.
 
-    Checks three plugin sources (same as hermes_cli.plugins):
+    Checks three plugin sources (same as prostor_cli.plugins):
     1. User plugins:    ~/.hermes/plugins/<name>/dashboard/manifest.json
     2. Bundled plugins: <repo>/plugins/<name>/dashboard/manifest.json  (memory/, etc.)
     3. Project plugins: ./.hermes/plugins/  (only if HERMES_ENABLE_PROJECT_PLUGINS)
@@ -12291,7 +12291,7 @@ def _discover_dashboard_plugins() -> list:
     from prostor_cli.plugins import get_bundled_plugins_dir
     bundled_root = get_bundled_plugins_dir()
     search_dirs = [
-        (get_hermes_home() / "plugins", "user"),
+        (get_prostor_home() / "plugins", "user"),
         (bundled_root / "memory", "bundled"),
         (bundled_root, "bundled"),
     ]
@@ -12303,7 +12303,7 @@ def _discover_dashboard_plugins() -> list:
     # the manifest's ``api`` field (now patched below), this turned the
     # opt-in into a sticky always-on switch.  Use the shared truthy
     # semantics (``1`` / ``true`` / ``yes`` / ``on``) so the gate matches
-    # ``hermes_cli/plugins.py`` and the documented user contract.
+    # ``prostor_cli/plugins.py`` and the documented user contract.
     if env_var_enabled("HERMES_ENABLE_PROJECT_PLUGINS"):
         search_dirs.append((Path.cwd() / ".hermes" / "plugins", "project"))
 
@@ -12450,7 +12450,7 @@ def _merged_plugins_hub() -> Dict[str, Any]:
     config = load_config()
     hidden_plugins: list = cfg_get(config, "dashboard", "hidden_plugins", default=[]) or []
 
-    plugins_root_resolved = (get_hermes_home() / "plugins").resolve()
+    plugins_root_resolved = (get_prostor_home() / "plugins").resolve()
     rows: List[Dict[str, Any]] = []
 
     for name, version, description, source, dir_str, key in _discover_all_plugins():

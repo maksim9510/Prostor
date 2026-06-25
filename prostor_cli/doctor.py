@@ -10,22 +10,22 @@ import subprocess
 import shutil
 from pathlib import Path
 
-from prostor_cli.config import get_project_root, get_hermes_home, get_env_path
-from prostor_cli.env_loader import load_hermes_dotenv
-from hermes_constants import display_hermes_home
-from hermes_constants import agent_browser_runnable
+from prostor_cli.config import get_project_root, get_prostor_home, get_env_path
+from prostor_cli.env_loader import load_prostor_dotenv
+from prostor_constants import display_prostor_home
+from prostor_constants import agent_browser_runnable
 
 PROJECT_ROOT = get_project_root()
-HERMES_HOME = get_hermes_home()
-_DHH = display_hermes_home()  # user-facing display path (e.g. ~/.hermes or ~/.hermes/profiles/coder)
+PROSTOR_HOME = get_prostor_home()
+_DHH = display_prostor_home()  # user-facing display path (e.g. ~/.hermes or ~/.hermes/profiles/coder)
 
 # Load environment variables from ~/.hermes/.env so API key checks work
 _env_path = get_env_path()
-load_hermes_dotenv(hermes_home=_env_path.parent, project_env=PROJECT_ROOT / ".env")
+load_prostor_dotenv(prostor_home=_env_path.parent, project_env=PROJECT_ROOT / ".env")
 
 from prostor_cli.colors import Colors, color
 from prostor_cli.models import _HERMES_USER_AGENT
-from hermes_constants import OPENROUTER_MODELS_URL
+from prostor_constants import OPENROUTER_MODELS_URL
 from utils import base_url_host_matches
 
 
@@ -55,7 +55,7 @@ _PROVIDER_ENV_HINTS = (
 )
 
 
-from hermes_constants import is_termux as _is_termux
+from prostor_constants import is_termux as _is_termux
 
 
 def _python_install_cmd() -> str:
@@ -226,7 +226,7 @@ def _read_pyproject_version() -> str | None:
 
 
 def _check_version_consistency(issues: list[str]) -> None:
-    """Verify pyproject.toml version matches hermes_cli.__version__.
+    """Verify pyproject.toml version matches prostor_cli.__version__.
 
     A git conflict resolution (reset/merge) can revert one file without the
     other, leaving ``hermes --version`` reporting a stale version while
@@ -246,9 +246,9 @@ def _check_version_consistency(issues: list[str]) -> None:
     else:
         _fail_and_issue(
             "Version mismatch between source files",
-            f"(pyproject.toml {pyproject_version} != hermes_cli/__init__.py {init_version})",
+            f"(pyproject.toml {pyproject_version} != prostor_cli/__init__.py {init_version})",
             "Re-sync version files (e.g. run 'hermes update', or set "
-            "hermes_cli/__init__.py __version__ to match pyproject.toml)",
+            "prostor_cli/__init__.py __version__ to match pyproject.toml)",
             issues,
         )
 
@@ -625,7 +625,7 @@ def run_doctor(args):
     else:
         check_warn("Not in virtual environment", "(recommended)")
 
-    # Detect drift between pyproject.toml and hermes_cli/__init__.py versions
+    # Detect drift between pyproject.toml and prostor_cli/__init__.py versions
     # (a git conflict resolution can silently revert one but not the other).
     _check_version_consistency(issues)
 
@@ -665,7 +665,7 @@ def run_doctor(args):
     # Managed scope (administrator-pinned config/env), when present.
     managed_scope_check()
     # Check ~/.hermes/.env (primary location for user config)
-    env_path = HERMES_HOME / '.env'
+    env_path = PROSTOR_HOME / '.env'
     if env_path.exists():
         check_ok(f"{_DHH}/.env file exists")
         
@@ -704,7 +704,7 @@ def run_doctor(args):
                 issues.append("Run 'hermes setup' to create .env")
     
     # Check ~/.hermes/config.yaml (primary) or project cli-config.yaml (fallback)
-    config_path = HERMES_HOME / 'config.yaml'
+    config_path = PROSTOR_HOME / 'config.yaml'
     if config_path.exists():
         check_ok(f"{_DHH}/config.yaml exists")
 
@@ -903,7 +903,7 @@ def run_doctor(args):
                 check_warn("config.yaml not found", "(using defaults)")
 
     # Check config version and stale keys
-    config_path = HERMES_HOME / 'config.yaml'
+    config_path = PROSTOR_HOME / 'config.yaml'
     if config_path.exists():
         try:
             from prostor_cli.config import check_config_version, migrate_config
@@ -1123,11 +1123,11 @@ def run_doctor(args):
         pass
 
     _section("Directory Structure")
-    hermes_home = HERMES_HOME
-    if hermes_home.exists():
+    prostor_home = PROSTOR_HOME
+    if prostor_home.exists():
         check_ok(f"{_DHH} directory exists")
     elif should_fix:
-        hermes_home.mkdir(parents=True, exist_ok=True)
+        prostor_home.mkdir(parents=True, exist_ok=True)
         check_ok(f"Created {_DHH} directory")
         fixed_count += 1
     else:
@@ -1136,7 +1136,7 @@ def run_doctor(args):
     # Check expected subdirectories
     expected_subdirs = ["cron", "sessions", "logs", "skills", "memories"]
     for subdir_name in expected_subdirs:
-        subdir_path = hermes_home / subdir_name
+        subdir_path = prostor_home / subdir_name
         if subdir_path.exists():
             check_ok(f"{_DHH}/{subdir_name}/ exists")
         elif should_fix:
@@ -1147,7 +1147,7 @@ def run_doctor(args):
             check_warn(f"{_DHH}/{subdir_name}/ not found", "(will be created on first use)")
     
     # Check for SOUL.md persona file
-    soul_path = hermes_home / "SOUL.md"
+    soul_path = prostor_home / "SOUL.md"
     if soul_path.exists():
         content = soul_path.read_text(encoding="utf-8").strip()
         # Check if it's just the template comments (no real content)
@@ -1170,7 +1170,7 @@ def run_doctor(args):
             fixed_count += 1
     
     # Check memory directory
-    memories_dir = hermes_home / "memories"
+    memories_dir = prostor_home / "memories"
     if memories_dir.exists():
         check_ok(f"{_DHH}/memories/ directory exists")
         memory_file = memories_dir / "MEMORY.md"
@@ -1193,7 +1193,7 @@ def run_doctor(args):
             fixed_count += 1
     
     # Check SQLite session store
-    state_db_path = hermes_home / "state.db"
+    state_db_path = prostor_home / "state.db"
     if state_db_path.exists():
         try:
             import sqlite3
@@ -1254,7 +1254,7 @@ def run_doctor(args):
         check_info(f"{_DHH}/state.db not created yet (will be created on first session)")
 
     # Check WAL file size (unbounded growth indicates missed checkpoints)
-    wal_path = hermes_home / "state.db-wal"
+    wal_path = prostor_home / "state.db-wal"
     if wal_path.exists():
         try:
             wal_size = wal_path.stat().st_size
@@ -1373,7 +1373,7 @@ def run_doctor(args):
     # Docker (optional)
     terminal_env = os.getenv("TERMINAL_ENV", "local")
     try:
-        from hermes_constants import is_container as _is_container
+        from prostor_constants import is_container as _is_container
         running_in_container = _is_container()
     except Exception:
         running_in_container = False
@@ -1574,7 +1574,7 @@ def run_doctor(args):
         # glob (which pulls in Electron, node-pty, etc.) is never resolved
         # for a routine security check. The web and ui-tui workspaces are
         # audited separately via --workspace flags. See #38772.
-        # The WhatsApp bridge may live under a writable HERMES_HOME mirror
+        # The WhatsApp bridge may live under a writable PROSTOR_HOME mirror
         # instead of the (possibly read-only) install tree in Docker — resolve
         # it through the shared helper so we audit the dir that actually holds
         # node_modules. See #49561.
@@ -2129,7 +2129,7 @@ def run_doctor(args):
         check_warn("Could not check tool availability", f"({e})")
     
     _section("Skills Hub")
-    hub_dir = HERMES_HOME / "skills" / ".hub"
+    hub_dir = PROSTOR_HOME / "skills" / ".hub"
     if hub_dir.exists():
         check_ok("Skills Hub directory exists")
         lock_file = hub_dir / "lock.json"
@@ -2173,7 +2173,7 @@ def run_doctor(args):
     _active_memory_provider = ""
     try:
         import yaml as _yaml
-        _mem_cfg_path = HERMES_HOME / "config.yaml"
+        _mem_cfg_path = PROSTOR_HOME / "config.yaml"
         if _mem_cfg_path.exists():
             with open(_mem_cfg_path, encoding="utf-8") as _f:
                 _raw_cfg = _yaml.safe_load(_f) or {}

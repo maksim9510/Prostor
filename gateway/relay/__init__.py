@@ -419,7 +419,7 @@ def self_provision_relay() -> bool:
         return False
 
     try:
-        from hermes_cli.auth import resolve_nous_access_token
+        from prostor_cli.auth import resolve_nous_access_token
 
         access_token = resolve_nous_access_token()
     except Exception as exc:  # noqa: BLE001 - boot must survive a token failure

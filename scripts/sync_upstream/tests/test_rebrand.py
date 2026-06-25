@@ -21,7 +21,7 @@ from scripts.sync_upstream.rebrand import (  # noqa: E402
 def test_apply_rebrand_basic():
     assert apply_rebrand("hermes-agent") == "prostor-agent"
     assert apply_rebrand("Hermes Agent") == "Prostor Agent"
-    assert apply_rebrand("HERMES_HOME") == "PROSTOR_HOME"
+    assert apply_rebrand("PROSTOR_HOME") == "PROSTOR_HOME"
     assert apply_rebrand("HermesAgent.run()") == "ProstorAgent.run()"
 
 

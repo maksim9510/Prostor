@@ -22,7 +22,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from hermes_constants import agent_browser_runnable
+from prostor_constants import agent_browser_runnable
 
 _IS_WINDOWS = platform.system() == "Windows"
 

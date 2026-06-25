@@ -46,7 +46,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 # Rebrand rules — case-sensitive, longest match first. Python's `\b` treats
-# `_` as a word char, so for UPPER_SNAKE_CASE identifiers (HERMES_HOME) we use
+# `_` as a word char, so for UPPER_SNAKE_CASE identifiers (PROSTOR_HOME) we use
 # `(?![a-z])` instead of `\b` to match HERMES when followed by `_` or end-of-token.
 REBRAND_RULES: list[tuple[re.Pattern[str], str]] = [
     # Compound CamelCase / snake_case forms first (longest match wins)
@@ -57,7 +57,7 @@ REBRAND_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bHermes(?![A-Za-z0-9_])"), "Prostor"),
     # snake_case: same boundary handling
     (re.compile(r"\bhermes(?![A-Za-z0-9_])"), "prostor"),
-    # UPPER_SNAKE: HERMES_HOME, HERMES_AGENT. `(?![a-z])` means HERMES not
+    # UPPER_SNAKE: PROSTOR_HOME, HERMES_AGENT. `(?![a-z])` means HERMES not
     # followed by lowercase (which would be part of a longer identifier).
     # Followed by `_` is fine and falls through to plain `HERMES\b`.
     (re.compile(r"\bHERMES(?![a-z])"), "PROSTOR"),

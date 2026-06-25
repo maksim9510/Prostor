@@ -66,7 +66,7 @@ def _hermes_version() -> str:
     """Return the hermes-agent version string, or "dev" if it can't be resolved.
 
     Tries the installed package metadata first (authoritative for a pip/uv
-    install), then the in-tree ``hermes_cli.__version__`` (covers editable /
+    install), then the in-tree ``prostor_cli.__version__`` (covers editable /
     source checkouts where metadata may be stale or absent). Never raises —
     a version probe must not be able to break the health endpoint.
     """
@@ -77,7 +77,7 @@ def _hermes_version() -> str:
     except Exception:
         pass
     try:
-        from hermes_cli import __version__
+        from prostor_cli import __version__
 
         return __version__
     except Exception:
@@ -384,8 +384,8 @@ class ResponseStore:
         self._max_size = max_size
         if db_path is None:
             try:
-                from hermes_cli.config import get_hermes_home
-                db_path = str(get_hermes_home() / "response_store.db")
+                from prostor_cli.config import get_prostor_home
+                db_path = str(get_prostor_home() / "response_store.db")
             except Exception:
                 db_path = ":memory:"
         self._db_path: Optional[str] = db_path if db_path != ":memory:" else None
@@ -395,7 +395,7 @@ class ResponseStore:
             self._conn = sqlite3.connect(":memory:", check_same_thread=False)
             self._db_path = None
         # Use shared WAL-fallback helper so response_store.db degrades
-        # gracefully on NFS/SMB/FUSE-mounted HERMES_HOME (same filesystem
+        # gracefully on NFS/SMB/FUSE-mounted PROSTOR_HOME (same filesystem
         # issue addressed for state.db/kanban.db — see
         # hermes_state._WAL_INCOMPAT_MARKERS).
         from hermes_state import apply_wal_with_fallback
@@ -827,7 +827,7 @@ class APIServerAdapter(BasePlatformAdapter):
         """
         default = 10
         try:
-            from hermes_cli.config import cfg_get, load_config
+            from prostor_cli.config import cfg_get, load_config
 
             raw = cfg_get(
                 load_config(),
@@ -853,7 +853,7 @@ class APIServerAdapter(BasePlatformAdapter):
         if explicit and explicit.strip():
             return explicit.strip()
         try:
-            from hermes_cli.profiles import get_active_profile_name
+            from prostor_cli.profiles import get_active_profile_name
             profile = get_active_profile_name()
             if profile and profile not in {"default", "custom"}:
                 return profile
@@ -1093,7 +1093,7 @@ class APIServerAdapter(BasePlatformAdapter):
             _load_gateway_config,
             GatewayRunner,
         )
-        from hermes_cli.tools_config import _get_platform_tools
+        from prostor_cli.tools_config import _get_platform_tools
 
         runtime_kwargs = _resolve_runtime_agent_kwargs()
         reasoning_config = GatewayRunner._load_reasoning_config()
@@ -1326,8 +1326,8 @@ class APIServerAdapter(BasePlatformAdapter):
             return auth_err
 
         try:
-            from hermes_cli.config import load_config
-            from hermes_cli.tools_config import (
+            from prostor_cli.config import load_config
+            from prostor_cli.tools_config import (
                 _get_effective_configurable_toolsets,
                 _get_platform_tools,
                 _toolset_has_keys,
@@ -3447,7 +3447,7 @@ class APIServerAdapter(BasePlatformAdapter):
         trips NAS's HTTP timeout. The store CAS claim inside fire_due guards
         against double-fire on a NAS/scheduler retry.
         """
-        from hermes_cli.config import cfg_get, load_config
+        from prostor_cli.config import cfg_get, load_config
         from plugins.cron_providers.chronos.verify import get_fire_verifier
 
         auth = request.headers.get("Authorization", "")
@@ -4455,7 +4455,7 @@ class APIServerAdapter(BasePlatformAdapter):
             # terminal-capable agent work on a public bind is brute-forceable).
             if is_network_accessible(self._host) and self._api_key:
                 try:
-                    from hermes_cli.auth import has_usable_secret
+                    from prostor_cli.auth import has_usable_secret
                     if not has_usable_secret(self._api_key, min_length=16):
                         logger.error(
                             "[%s] Refusing to start: API_SERVER_KEY is a "
@@ -4480,7 +4480,7 @@ class APIServerAdapter(BasePlatformAdapter):
             # the operator may have an external firewall / strong key.
             if is_network_accessible(self._host):
                 try:
-                    from hermes_cli.config import load_config as _load_cfg
+                    from prostor_cli.config import load_config as _load_cfg
                     _backend = (
                         ((_load_cfg() or {}).get("terminal") or {}).get(
                             "backend", "local"

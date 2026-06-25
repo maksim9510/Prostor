@@ -169,7 +169,7 @@ VALID_HOOKS: set[str] = {
     #   choice: "once" | "session" | "always" | "deny" | "timeout"
     "pre_approval_request",
     "post_approval_response",
-    # Kanban task lifecycle hooks. Fired by hermes_cli.kanban_db when a task
+    # Kanban task lifecycle hooks. Fired by prostor_cli.kanban_db when a task
     # transitions state, AFTER the change is committed to the board DB (so the
     # hook always sees durable state and a slow plugin can never hold the
     # SQLite write lock). Observers only: return values are ignored.
@@ -348,15 +348,15 @@ class PluginContext:
     def profile_name(self) -> str:
         """Return the active Hermes profile name (e.g. ``"default"``).
 
-        Derived from ``HERMES_HOME`` via
-        :func:`hermes_cli.profiles.get_active_profile_name`, so it works in
+        Derived from ``PROSTOR_HOME`` via
+        :func:`prostor_cli.profiles.get_active_profile_name`, so it works in
         every execution context — interactive CLI, gateway, and
         kanban-spawned worker sessions alike — without depending on
         ``_cli_ref`` (which is ``None`` outside an interactive CLI run).
 
         Returns ``"default"`` for the default profile, the profile id when
         running under ``~/.hermes/profiles/<name>``, or ``"custom"`` when
-        ``HERMES_HOME`` points somewhere unrecognized.
+        ``PROSTOR_HOME`` points somewhere unrecognized.
         """
         try:
             from prostor_cli.profiles import get_active_profile_name

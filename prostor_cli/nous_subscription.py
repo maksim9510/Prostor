@@ -157,7 +157,7 @@ def _toolset_enabled(config: dict[str, object], toolset_key: str) -> bool:
 def _has_agent_browser() -> bool:
     import shutil
 
-    from hermes_constants import agent_browser_runnable
+    from prostor_constants import agent_browser_runnable
 
     # Validate the resolved binary actually runs — a dangling global symlink
     # (issue #48521) is reported by ``which`` but fails at exec. Fall through to

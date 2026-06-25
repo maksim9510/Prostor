@@ -644,7 +644,7 @@ def compress_context(
                 # per-session lookup with no parent walk, so without this an
                 # active goal silently dies at the boundary (#33618).
                 try:
-                    from hermes_cli.goals import migrate_goal_to_session
+                    from prostor_cli.goals import migrate_goal_to_session
                     migrate_goal_to_session(old_session_id, agent.session_id, reason="compression")
                 except Exception as _goal_err:
                     logger.debug("Could not migrate goal on compression: %s", _goal_err)

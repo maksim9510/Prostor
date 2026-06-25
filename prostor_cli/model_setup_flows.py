@@ -1,6 +1,6 @@
 """Per-provider model-selection wizard flows for ``hermes setup`` / ``hermes model``.
 
-Extracted from ``hermes_cli/main.py`` as part of the god-file decomposition
+Extracted from ``prostor_cli/main.py`` as part of the god-file decomposition
 campaign (``~/.hermes/plans/god-file-decomposition.md``, Phase 2 — splitting
 main.py handler/flow bodies out of the module). These 18 ``_model_flow_*``
 functions are the interactive provider-setup branches dispatched by
@@ -9,13 +9,13 @@ functions are the interactive provider-setup branches dispatched by
 Behavior-neutral: each function is lifted verbatim. ``select_provider_and_model``
 in main.py re-imports them (``from prostor_cli.model_setup_flows import *``-style
 explicit import) so existing call sites — and test monkeypatches that target
-``hermes_cli.main._model_flow_*`` — keep resolving against main.py's namespace.
+``prostor_cli.main._model_flow_*`` — keep resolving against main.py's namespace.
 
 main.py-internal helpers the flows call (``_prompt_api_key``, ``_save_custom_provider``,
 the reasoning-effort/stepfun/qwen helpers, ``_run_anthropic_oauth_flow``, …) are
 imported lazily inside the flows (``from prostor_cli.main import ...`` resolves at
 call time, when main.py is fully loaded) so this module never imports
-``hermes_cli.main`` at import time -> no import cycle.
+``prostor_cli.main`` at import time -> no import cycle.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def _prompt_auth_credentials_choice(title: str) -> str:
 def _model_flow_openrouter(config, current_model=""):
     """OpenRouter provider: ensure API key, then pick model."""
     from prostor_cli.main import _prompt_api_key
-    from hermes_constants import OPENROUTER_BASE_URL
+    from prostor_constants import OPENROUTER_BASE_URL
     from prostor_cli.auth import (
         ProviderConfig,
         _prompt_model_selection,

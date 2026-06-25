@@ -13,7 +13,7 @@ Design notes
   ``schtasks /Run`` immediately after install so the gateway starts right
   away without waiting for the next logon.
 * We write two files: a shared ``gateway.cmd`` wrapper script (cwd + env + the
-  actual ``python -m hermes_cli.main gateway run --replace`` invocation) and
+  actual ``python -m prostor_cli.main gateway run --replace`` invocation) and
   EITHER a schtasks entry pointing at it OR a Startup-folder ``.cmd`` that
   spawns it detached.
 * Status = merge of "is the schtasks entry registered?" + "is the startup
@@ -183,7 +183,7 @@ def _launch_elevated_gateway_command(command: str, extra_args: list[str] | None 
     decisions are already collected in the parent shell before this point.
     """
     _assert_windows()
-    args = ["-m", "hermes_cli.main", *_current_profile_cli_args(), "gateway", command]
+    args = ["-m", "prostor_cli.main", *_current_profile_cli_args(), "gateway", command]
     if extra_args:
         args.extend(extra_args)
     params = subprocess.list2cmdline(args)
@@ -259,7 +259,7 @@ def get_task_name() -> str:
     Named profile X: ``Hermes_Gateway_<X>``
     """
     _assert_windows()
-    # Local import to avoid circular module initialization during hermes_cli boot.
+    # Local import to avoid circular module initialization during prostor_cli boot.
     from prostor_cli.gateway import _profile_suffix
 
     suffix = _profile_suffix()
@@ -277,13 +277,13 @@ def get_task_script_path() -> Path:
     """The generated ``gateway.cmd`` wrapper that the schtasks entry invokes.
 
     Lives under ``%LOCALAPPDATA%\\hermes\\gateway-service\\<task_name>.cmd``
-    (or ``<HERMES_HOME>/gateway-service/<task_name>.cmd`` so per-profile
+    (or ``<PROSTOR_HOME>/gateway-service/<task_name>.cmd`` so per-profile
     Hermes installs stay self-contained).
     """
     _assert_windows()
-    from prostor_cli.config import get_hermes_home
+    from prostor_cli.config import get_prostor_home
 
-    script_dir = Path(get_hermes_home()) / "gateway-service"
+    script_dir = Path(get_prostor_home()) / "gateway-service"
     script_dir.mkdir(parents=True, exist_ok=True)
     return script_dir / f"{_sanitize_filename(get_task_name())}.cmd"
 
@@ -319,15 +319,15 @@ def get_startup_entry_path() -> Path:
 def _stable_gateway_working_dir(project_root: Path) -> str:
     """Return a stable cwd for detached/startup gateway runs.
 
-    Mirror the POSIX service invariant: anchor at ``HERMES_HOME`` whenever it
+    Mirror the POSIX service invariant: anchor at ``PROSTOR_HOME`` whenever it
     exists so Scheduled Task / Startup launches do not fail at the ``cd`` step
     after a transient checkout or worktree is moved away. Fall back to the
-    source checkout only if ``HERMES_HOME`` cannot be resolved yet.
+    source checkout only if ``PROSTOR_HOME`` cannot be resolved yet.
     """
-    from prostor_cli.config import get_hermes_home
+    from prostor_cli.config import get_prostor_home
 
     try:
-        home = get_hermes_home()
+        home = get_prostor_home()
         if home and Path(home).is_dir():
             return str(Path(home).resolve())
     except Exception:
@@ -342,15 +342,15 @@ def _stable_gateway_working_dir(project_root: Path) -> str:
 def _build_gateway_cmd_script(
     python_path: str,
     working_dir: str,
-    hermes_home: str,
+    prostor_home: str,
     profile_arg: str,
 ) -> str:
     """Build the ``gateway.cmd`` wrapper content (CRLF-terminated).
 
     The script:
       - cd's into a stable working directory
-      - exports HERMES_HOME, PYTHONIOENCODING, VIRTUAL_ENV
-      - invokes ``pythonw -m hermes_cli.main [--profile X] gateway run``
+      - exports PROSTOR_HOME, PYTHONIOENCODING, VIRTUAL_ENV
+      - invokes ``pythonw -m prostor_cli.main [--profile X] gateway run``
         directly so the wrapper cmd.exe exits without a visible gateway console
 
     We intentionally do NOT inline PATH overrides here — cmd.exe inherits
@@ -359,17 +359,17 @@ def _build_gateway_cmd_script(
     """
     lines = ["@echo off", f"rem {_TASK_DESCRIPTION}"]
     lines.append(f"cd /d {_quote_cmd_script_arg(working_dir)}")
-    lines.append(f'set "HERMES_HOME={hermes_home}"')
+    lines.append(f'set "PROSTOR_HOME={prostor_home}"')
     lines.append('set "PYTHONIOENCODING=utf-8"')
     lines.append('set "HERMES_GATEWAY_DETACHED=1"')
     pythonw_path, venv_dir, extra_pythonpath = _resolve_detached_python(python_path)
     # VIRTUAL_ENV lets the gateway's own python detection find the venv
-    # if someone imports hermes_constants-based logic during startup.
+    # if someone imports prostor_constants-based logic during startup.
     lines.append(f'set "VIRTUAL_ENV={venv_dir}"')
     pythonpath_entries = [str(Path(__file__).resolve().parent.parent), *extra_pythonpath]
     lines.append(f'set "PYTHONPATH={";".join([*pythonpath_entries, "%PYTHONPATH%"])}"')
 
-    prog_args = [pythonw_path, "-m", "hermes_cli.main"]
+    prog_args = [pythonw_path, "-m", "prostor_cli.main"]
     if profile_arg:
         prog_args.extend(profile_arg.split())
     prog_args.extend(["gateway", "run"])
@@ -398,7 +398,7 @@ def _quote_vbs_string(value: str) -> str:
 def _build_gateway_vbs_script(
     python_path: str,
     working_dir: str,
-    hermes_home: str,
+    prostor_home: str,
     profile_arg: str,
 ) -> str:
     """Build a console-less ``gateway.vbs`` launcher (CRLF-terminated).
@@ -420,7 +420,7 @@ def _build_gateway_vbs_script(
     """
     pythonw_path, venv_dir, extra_pythonpath = _resolve_detached_python(python_path)
 
-    prog_args = [pythonw_path, "-m", "hermes_cli.main"]
+    prog_args = [pythonw_path, "-m", "prostor_cli.main"]
     if profile_arg:
         prog_args.extend(profile_arg.split())
     prog_args.extend(["gateway", "run"])
@@ -436,7 +436,7 @@ def _build_gateway_vbs_script(
         "Dim sh, env, existing_pp",
         'Set sh = CreateObject("WScript.Shell")',
         'Set env = sh.Environment("PROCESS")',
-        f"env.Item({_quote_vbs_string('HERMES_HOME')}) = {_quote_vbs_string(hermes_home)}",
+        f"env.Item({_quote_vbs_string('PROSTOR_HOME')}) = {_quote_vbs_string(prostor_home)}",
         f"env.Item({_quote_vbs_string('PYTHONIOENCODING')}) = {_quote_vbs_string('utf-8')}",
         f"env.Item({_quote_vbs_string('HERMES_GATEWAY_DETACHED')}) = {_quote_vbs_string('1')}",
         f"env.Item({_quote_vbs_string('VIRTUAL_ENV')}) = {_quote_vbs_string(str(venv_dir))}",
@@ -485,7 +485,7 @@ def _write_task_script() -> Path:
     """Generate and write the gateway.cmd wrapper. Return its absolute path."""
     _assert_windows()
     # Local imports to avoid circular-init at module load time.
-    from prostor_cli.config import get_hermes_home
+    from prostor_cli.config import get_prostor_home
     from prostor_cli.gateway import (
         PROJECT_ROOT,
         _profile_arg,
@@ -494,10 +494,10 @@ def _write_task_script() -> Path:
 
     python_path = get_python_path()
     working_dir = _stable_gateway_working_dir(PROJECT_ROOT)
-    hermes_home = str(Path(get_hermes_home()).resolve())
-    profile_arg = _profile_arg(hermes_home)
+    prostor_home = str(Path(get_prostor_home()).resolve())
+    profile_arg = _profile_arg(prostor_home)
 
-    content = _build_gateway_cmd_script(python_path, working_dir, hermes_home, profile_arg)
+    content = _build_gateway_cmd_script(python_path, working_dir, prostor_home, profile_arg)
     script_path = get_task_script_path()
     tmp = script_path.with_suffix(".tmp")
     tmp.write_text(content, encoding="utf-8", newline="")
@@ -506,7 +506,7 @@ def _write_task_script() -> Path:
     # Also render the console-less .vbs launcher the Scheduled Task runs via
     # wscript.exe (issue #45599 fix A). The .cmd above stays for the
     # Startup-folder fallback and direct /Run paths.
-    vbs_content = _build_gateway_vbs_script(python_path, working_dir, hermes_home, profile_arg)
+    vbs_content = _build_gateway_vbs_script(python_path, working_dir, prostor_home, profile_arg)
     vbs_path = script_path.with_suffix(".vbs")
     vbs_tmp = vbs_path.with_name(vbs_path.name + ".tmp")
     vbs_tmp.write_text(vbs_content, encoding="utf-8", newline="")
@@ -725,7 +725,7 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
     layer in between.
     """
     _assert_windows()
-    from prostor_cli.config import get_hermes_home
+    from prostor_cli.config import get_prostor_home
     from prostor_cli.gateway import (
         PROJECT_ROOT,
         _profile_arg,
@@ -735,16 +735,16 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
     python_exe, venv_dir, extra_pythonpath = _resolve_detached_python(get_python_path())
     project_root = str(PROJECT_ROOT)
     working_dir = _stable_gateway_working_dir(PROJECT_ROOT)
-    hermes_home = str(Path(get_hermes_home()).resolve())
-    profile_arg = _profile_arg(hermes_home)
+    prostor_home = str(Path(get_prostor_home()).resolve())
+    profile_arg = _profile_arg(prostor_home)
 
-    argv = [python_exe, "-m", "hermes_cli.main"]
+    argv = [python_exe, "-m", "prostor_cli.main"]
     if profile_arg:
         argv.extend(profile_arg.split())
     argv.extend(["gateway", "run"])
 
     env_overlay = {
-        "HERMES_HOME": hermes_home,
+        "PROSTOR_HOME": prostor_home,
         "PYTHONIOENCODING": "utf-8",
         "HERMES_GATEWAY_DETACHED": "1",
         "VIRTUAL_ENV": str(venv_dir),
@@ -756,7 +756,7 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
 def _spawn_detached(script_path: Path | None = None) -> int:
     """Launch the gateway as a fully detached background process.
 
-    We spawn ``pythonw.exe -m hermes_cli.main gateway run``
+    We spawn ``pythonw.exe -m prostor_cli.main gateway run``
     directly — NOT through a cmd.exe shim — because on Windows a cmd.exe
     child inherits the parent session's console handle and tends to get
     reaped when the spawning shell exits. pythonw.exe has no console, and
@@ -791,9 +791,9 @@ def _spawn_detached(script_path: Path | None = None) -> int:
     # logging module writes to gateway.log through a FileHandler, so the
     # real gateway logs still land there — this just captures anything
     # that goes to print() or native stderr.
-    from prostor_cli.config import get_hermes_home
+    from prostor_cli.config import get_prostor_home
 
-    log_dir = Path(get_hermes_home()) / "logs"
+    log_dir = Path(get_prostor_home()) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     stray_log = log_dir / "gateway-stdio.log"
 
@@ -1044,19 +1044,19 @@ def _report_gateway_start(via: str) -> None:
     else:
         print(f"⚠ Launched gateway via {via}, but no process detected after 6s.")
         print("  Check the log for startup errors:")
-        from prostor_cli.config import get_hermes_home
-        print(f"    type {Path(get_hermes_home()).resolve()}\\logs\\gateway.log")
-        print(f"    type {Path(get_hermes_home()).resolve()}\\logs\\gateway-stdio.log")
+        from prostor_cli.config import get_prostor_home
+        print(f"    type {Path(get_prostor_home()).resolve()}\\logs\\gateway.log")
+        print(f"    type {Path(get_prostor_home()).resolve()}\\logs\\gateway-stdio.log")
 
 
 def _print_next_steps() -> None:
-    from prostor_cli.config import get_hermes_home
+    from prostor_cli.config import get_prostor_home
 
-    hermes_home = Path(get_hermes_home()).resolve()
+    prostor_home = Path(get_prostor_home()).resolve()
     print()
     print("Next steps:")
     print("  hermes gateway status                      # Check status")
-    print(f"  type {hermes_home}\\logs\\gateway.log       # View logs")
+    print(f"  type {prostor_home}\\logs\\gateway.log       # View logs")
 
 
 def uninstall() -> None:
@@ -1169,9 +1169,9 @@ def _print_deep_probes() -> None:
     import json
     from datetime import datetime, timezone
 
-    from prostor_cli.config import get_hermes_home
+    from prostor_cli.config import get_prostor_home
 
-    home = Path(get_hermes_home()).resolve()
+    home = Path(get_prostor_home()).resolve()
     pid_path = home / "gateway.pid"
     lock_path = home / "gateway.lock"
     state_path = home / "gateway_state.json"
