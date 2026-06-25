@@ -1,7 +1,6 @@
 {
   "_comment": "Rebrand manifest — files that MUST be rebranded after upstream sync. Run: python scripts/rebrand/apply_rebrand.py",
   "_updated": "2026-06-25",
-
   "python_imports": {
     "pattern": "from hermes_cli\\.|import hermes_cli\\.|from hermes_constants|import hermes_constants",
     "replacement": {
@@ -10,10 +9,17 @@
       "from hermes_constants": "from prostor_constants",
       "import hermes_constants": "import prostor_constants"
     },
-    "dirs": ["prostor_cli/", "agent/", "tools/", "gateway/", "scripts/"],
-    "exclude": ["hermes_cli/"]
+    "dirs": [
+      "prostor_cli/",
+      "agent/",
+      "tools/",
+      "gateway/",
+      "scripts/"
+    ],
+    "exclude": [
+      "hermes_cli/"
+    ]
   },
-
   "python_names": {
     "pattern": "\\bhermes_home\\b|\\bHERMES_HOME\\b|\\bhermes_cli\\b|\\bHERMES_CLI\\b|\\bhermes_constants\\b",
     "replacement": {
@@ -31,7 +37,6 @@
     ],
     "comment": "Skip env var names and comments — HERMES_HOME env var must stay for backward compat"
   },
-
   "python_functions": {
     "pattern": "normalizeHermesHomeRoot|get_hermes_home|ensure_hermes_home|load_hermes_dotenv",
     "replacement": {
@@ -41,16 +46,16 @@
       "load_hermes_dotenv": "load_prostor_dotenv"
     }
   },
-
   "typescript_imports": {
     "pattern": "from '@/hermes'|from '@/types/hermes'",
     "replacement": {
       "from '@/hermes'": "from '@/prostor'",
       "from '@/types/hermes'": "from '@/types/prostor'"
     },
-    "dirs": ["apps/desktop/src/"]
+    "dirs": [
+      "apps/desktop/src/"
+    ]
   },
-
   "typescript_names": {
     "pattern": "hermesDesktop|HermesConfigRecord|getHermesConfigRecord|hermesActiveSessions|startingHermesDesktop|updateHermes|HermesWindowState",
     "replacement": {
@@ -62,18 +67,20 @@
       "updateHermes": "updateProstor",
       "HermesWindowState": "ProstorWindowState"
     },
-    "dirs": ["apps/desktop/src/"]
+    "dirs": [
+      "apps/desktop/src/"
+    ]
   },
-
   "electron_cjs": {
     "pattern": "hermesDesktop|normalizeHermesHomeRoot",
     "replacement": {
       "hermesDesktop": "prostorDesktop",
       "normalizeHermesHomeRoot": "normalizeProstorHomeRoot"
     },
-    "dirs": ["apps/desktop/electron/"]
+    "dirs": [
+      "apps/desktop/electron/"
+    ]
   },
-
   "i18n": {
     "pattern": "hermesActiveSessions|startingHermesDesktop|updateHermes|guiSkewBody.*Hermes",
     "replacement": {
@@ -81,9 +88,10 @@
       "startingHermesDesktop": "startingProstorDesktop",
       "updateHermes": "updateProstor"
     },
-    "dirs": ["apps/desktop/src/i18n/"]
+    "dirs": [
+      "apps/desktop/src/i18n/"
+    ]
   },
-
   "protected_files": [
     "tools/hashline.py",
     "tools/batch_patch_tool.py",
@@ -115,9 +123,15 @@
     "gateway/shutdown_mixin.py",
     "gateway/telegram_topic_mixin.py",
     "gateway/voice_mixin.py",
-    "toolsets.py"
+    "toolsets.py",
+    "README.md",
+    "docs/SYNC.md",
+    "SECURITY.md",
+    "INSTALL.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE"
   ],
-
   "files_needing_rebrand": [
     "prostor_cli/main.py",
     "prostor_cli/config.py",
