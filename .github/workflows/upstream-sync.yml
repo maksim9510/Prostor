@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload sync log
         if: always()
-        uses: actions/upload-artifact@de65e23aa2b7e23d7139f76d6a7ef36f406ec559 # v7.0.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v7.0.0
         with:
           name: sync-output
           path: sync-output.log
